@@ -357,47 +357,6 @@ function App() {
     [serverCategories]
   );
 
-  const resetSpecialFollowForm = () => {
-    setSpecialFollowForm({ type: 'source', target: '', note: '' });
-    setEditingSpecialFollowId(null);
-  };
-
-  const submitSpecialFollow = () => {
-    const target = specialFollowForm.target.trim();
-    const note = specialFollowForm.note.trim();
-    if (!target) {
-      showToast('请输入特别关注目标');
-      return;
-    }
-    const duplicate = specialFollows.some(item =>
-      item.id !== editingSpecialFollowId
-      && item.type === specialFollowForm.type
-      && item.target.toLocaleLowerCase() === target.toLocaleLowerCase()
-    );
-    if (duplicate) {
-      showToast('该特别关注已存在');
-      return;
-    }
-    if (editingSpecialFollowId) {
-      setSpecialFollows(previous => previous.map(item => item.id === editingSpecialFollowId
-        ? { ...item, type: specialFollowForm.type, target, note }
-        : item));
-    } else {
-      setSpecialFollows(previous => [...previous, {
-        id: globalThis.crypto?.randomUUID?.() || `follow-${Date.now()}`,
-        type: specialFollowForm.type,
-        target,
-        note,
-      }]);
-    }
-    resetSpecialFollowForm();
-  };
-
-  const editSpecialFollow = item => {
-    setEditingSpecialFollowId(item.id);
-    setSpecialFollowForm({ type: item.type, target: item.target, note: item.note || '' });
-  };
-
   // 获取用户兴趣分类的详细信息
   const userInterestCategories = useMemo(() => {
     return categories.filter(c => c.id !== 'all' && selectedInterests.includes(c.id));
