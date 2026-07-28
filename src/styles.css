@@ -19444,4 +19444,155 @@ body {
   margin: 8px 0 0;
 }
 
+/* ============ Phase 5: 画像进化趋势 + diff 样式 ============ */
+
+.persona-evolution-section {
+  margin-top: 16px;
+}
+
+.persona-diff-wrap {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-elevated, #1e293b);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 8px;
+}
+
+.persona-diff-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.diff-selected-label {
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.diff-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.diff-close-btn:hover {
+  background: var(--bg-hover, #334155);
+  color: var(--text-primary, #f1f5f9);
+}
+
+.persona-diff-card {
+  width: 100%;
+}
+
+.persona-diff-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 10px;
+}
+
+.diff-arrow {
+  color: var(--text-muted, #64748b);
+}
+
+.persona-diff-empty {
+  text-align: center;
+  color: var(--text-muted, #64748b);
+  padding: 16px 0;
+  font-size: 13px;
+}
+
+.persona-diff-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.diff-column {
+  background: var(--bg-default, #0f172a);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.diff-column-title {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.diff-group {
+  margin-bottom: 8px;
+}
+
+.diff-group:last-child {
+  margin-bottom: 0;
+}
+
+.diff-group-label {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-bottom: 4px;
+}
+
+.diff-added .diff-group-label {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+}
+
+.diff-removed .diff-group-label {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+.diff-column ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-primary, #e2e8f0);
+}
+
+.diff-column li {
+  margin: 2px 0;
+}
+
+.diff-added li {
+  color: #4ade80;
+}
+
+.diff-removed li {
+  color: #f87171;
+  text-decoration: line-through;
+}
+
+.diff-column-empty {
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  margin: 0;
+}
+
+.persona-diff-hint {
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* 响应式：小屏单列 */
+@media (max-width: 768px) {
+  .persona-diff-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 
