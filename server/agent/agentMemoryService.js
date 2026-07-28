@@ -229,6 +229,30 @@ export async function mergePersonaSummary(userId, patch) {
 }
 
 /**
+ * Phase 5: 读取 personaSummary 进化历史（最新在前）
+ * @param {string} userId
+ * @param {number} limit - 默认 30，最大 90（与 cap 一致）
+ * @returns {Promise<Array<{ id, snapshot, evolved_at }>>}
+ */
+export async function getPersonaHistory(userId, limit = 30) {
+  const pool = getPool();
+  const cappedLimit = Math.max(1, Math.min(90, Number(limit) || 30));
+  const result = await pool.query(
+    `SELECT id, snapshot, evolved_at
+     FROM persona_summary_history
+     WHERE user_id = $1
+     ORDER BY evolved_at DESC
+     LIMIT $2`,
+    [userId, cappedLimit]
+  );
+  return result.rows.map(r => ({
+    id: r.id,
+    snapshot: r.snapshot,
+    evolved_at: r.evolved_at,
+  }));
+}
+
+/**
  * Phase 3 Task B7-3: 合并式更新 learned_preferences
  * - topics: 与现有合并去重（保留高频在前），cap 20
  * - preferredDepth / preferredFormat: 直接覆盖（最新值优先）
