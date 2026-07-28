@@ -76,3 +76,55 @@ describe('pendingSuggestions', () => {
     expect(list[0].id).toBe('new');
   });
 });
+
+// Phase 3 Task B6: personaSummary 持久化字段
+describe('personaSummary', () => {
+  beforeEach(() => {
+    installLocalStorage();
+    // 重置为默认值
+    useProfileStore.setState({
+      personaSummary: { habits: [], traits: [], needs: [], updatedAt: null },
+    });
+  });
+
+  it('replaces habits/traits/needs and stamps updatedAt', () => {
+    useProfileStore.getState().setPersonaSummary({
+      habits: ['简洁回复'], traits: ['技术派'], needs: ['GPU 资讯'],
+    });
+    const ps = useProfileStore.getState().personaSummary;
+    expect(ps.habits).toEqual(['简洁回复']);
+    expect(ps.traits).toEqual(['技术派']);
+    expect(ps.needs).toEqual(['GPU 资讯']);
+    expect(typeof ps.updatedAt).toBe('string');
+    expect(new Date(ps.updatedAt).getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('caps habits/traits/needs at 10 each', () => {
+    const many = Array.from({ length: 15 }, (_, i) => `h${i}`);
+    useProfileStore.getState().setPersonaSummary({ habits: many, traits: many, needs: many });
+    const ps = useProfileStore.getState().personaSummary;
+    expect(ps.habits).toHaveLength(10);
+    expect(ps.traits).toHaveLength(10);
+    expect(ps.needs).toHaveLength(10);
+    expect(ps.habits[0]).toBe('h0'); // 保留前 10 项
+  });
+
+  it('supports updater function form', () => {
+    useProfileStore.getState().setPersonaSummary({ habits: ['a'], traits: [], needs: [] });
+    useProfileStore.getState().setPersonaSummary(prev => ({
+      ...prev,
+      habits: [...prev.habits, 'b'],
+    }));
+    const ps = useProfileStore.getState().personaSummary;
+    expect(ps.habits).toEqual(['a', 'b']);
+  });
+
+  it('gracefully handles missing fields', () => {
+    useProfileStore.getState().setPersonaSummary({});
+    const ps = useProfileStore.getState().personaSummary;
+    expect(ps.habits).toEqual([]);
+    expect(ps.traits).toEqual([]);
+    expect(ps.needs).toEqual([]);
+    expect(typeof ps.updatedAt).toBe('string');
+  });
+});

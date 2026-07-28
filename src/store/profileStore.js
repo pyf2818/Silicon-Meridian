@@ -133,6 +133,20 @@ export const useProfileStore = create(
       }),
       clearPendingSuggestions: () => set({ pendingSuggestions: [] }),
 
+      // ===== AI 性格画像（持久化）Phase 3 Task B6 =====
+      // 由 agent_memories 派生的用户性格画像摘要，跨会话保留。
+      // habits/traits/needs 各最多 10 项，避免 LLM prompt 过长。
+      personaSummary: { habits: [], traits: [], needs: [], updatedAt: null },
+      setPersonaSummary: (updater) => set(state => {
+        const next = typeof updater === 'function' ? updater(state.personaSummary) : updater;
+        const capped = {
+          habits: Array.isArray(next?.habits) ? next.habits.slice(0, 10) : [],
+          traits: Array.isArray(next?.traits) ? next.traits.slice(0, 10) : [],
+          needs: Array.isArray(next?.needs) ? next.needs.slice(0, 10) : [],
+        };
+        return { personaSummary: { ...capped, updatedAt: new Date().toISOString() } };
+      }),
+
       // ===== UI 状态（不持久化）=====
       // 资料表单（打开资料弹窗时预填充）
       profileForm: { displayName: '', signature: '' },
@@ -165,6 +179,7 @@ export const useProfileStore = create(
         specialFollows: state.specialFollows,
         briefingConfig: state.briefingConfig,
         pendingSuggestions: state.pendingSuggestions,
+        personaSummary: state.personaSummary,
       }),
     }
   )
