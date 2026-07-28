@@ -306,3 +306,143 @@ export async function handleAiGenerateRequest(req, res) {
     if (timeout) clearTimeout(timeout);
   }
 }
+
+/**
+ * Phase 3 Task B1: 构建 ai-insights prompt（纯函数，便于测试）
+ * 在原 prompt 基础上注入 personaSummary（习惯/性格/需求），用于个性化趋势分析。
+ * @param {Array} items - top N 资讯
+ * @param {Object|null} personaSummary - { habits: [], traits: [], needs: [] }
+ */
+export function buildAiInsightsPrompt(items, personaSummary) {
+  const habits = Array.isArray(personaSummary?.habits) && personaSummary.habits.length
+    ? personaSummary.habits.join('、')
+    : '无';
+  const traits = Array.isArray(personaSummary?.traits) && personaSummary.traits.length
+    ? personaSummary.traits.join('、')
+    : '无';
+  const needs = Array.isArray(personaSummary?.needs) && personaSummary.needs.length
+    ? personaSummary.needs.join('、')
+    : '无';
+
+  const itemsText = items.map((i, idx) => {
+    const summaryLine = i.summary ? ` | 摘要: ${i.summary}` : '';
+    const tagsLine = i.tags ? ` | 标签: ${i.tags}` : '';
+    return `${idx + 1}. [id:${i.id || idx}] [${i.category || '未分类'}] ${i.title} - ${i.source || '未知'}${summaryLine}${tagsLine}`;
+  }).join('\n');
+
+  return `你是一个科技趋势分析师。请分析以下${items.length}条技术资讯，输出**简洁**的纯 JSON（不要 markdown 代码块）：
+
+{"trends":["趋势 1","趋势 2","趋势 3"],"correlations":["关联 1","关联 2"],"signals":["信号 1","信号 2","信号 3"],"itemScores":[{"id":"资讯id","score":85,"label":"必读","reason":"一句话说明"}]}
+
+【用户画像】
+- 习惯：${habits}
+- 性格：${traits}
+- 需求：${needs}
+
+资讯列表：
+${itemsText}
+
+要求：
+- trends：基于当前资讯内容，提炼 3 条最显著的技术趋势
+- correlations：发现不同领域/赛道之间的关联或共同主题
+- signals：指出值得关注的早期信号或潜在变化
+- itemScores：对每条资讯评估重要性，输出 {id, score, label, reason}
+  · score: 0-100，综合考量时效性、影响力、与用户相关性
+  · label: "必读"(score>=75) / "关注"(50-74) / "降噪"(<50)
+  · reason: 一句话说明评分理由（不超过 30 字）
+- 每条 trend/correlation/signal/reason **不超过 30 字**，简洁明了
+- 只输出 JSON，不要其他文字`;
+}
+
+/**
+ * Phase 3 Task B1: 处理 /api/ai-insights 请求
+ * 从 plugin.js 内联实现迁出，新增 personaSummary 注入。
+ * 复用 fetchWithRetry + enforceRateLimit，保留原有 JSON 修复逻辑。
+ */
+export async function handleAiInsightsRequest(req, res) {
+  try {
+    const body = await readJsonBody(req);
+    const { baseUrl: rawBaseUrl = '', apiKey = '', model = '', items = [], personaSummary = null } = body;
+    if (!rawBaseUrl || !model) {
+      return sendJsonResponse(res, 400, { ok: false, error: 'baseUrl and model are required' });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return sendJsonResponse(res, 400, { ok: false, error: 'items required' });
+    }
+    enforceRateLimit(req);
+
+    const cleanBaseUrl = String(rawBaseUrl).replace(/\/+$/, '');
+    const apiUrl = /\/v[1-4]$/.test(cleanBaseUrl) ? `${cleanBaseUrl}/chat/completions` : `${cleanBaseUrl}/v1/chat/completions`;
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
+    // 最多取 top 30 条
+    const topItems = items.slice(0, 30);
+    const prompt = buildAiInsightsPrompt(topItems, personaSummary);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45_000);
+    try {
+      const response = await fetchWithRetry(apiUrl, {
+        allowPrivate: allowPrivateAiNetwork(),
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 2500,
+          temperature: 0.5,
+        }),
+        signal: controller.signal,
+      }, { retries: 1, baseDelay: 1200 });
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        const isRateLimited = response.status === 429;
+        return sendJsonResponse(res, isRateLimited ? 429 : 502, {
+          ok: false,
+          error: `API responded ${response.status}: ${errText.slice(0, 200)}`,
+          errorCode: isRateLimited ? 'UPSTREAM_RATE_LIMITED' : 'UPSTREAM_AI_ERROR',
+        });
+      }
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+
+      // Smart JSON parsing (migrated from plugin.js inline): handles markdown code blocks + truncation
+      let cleaned = content.trim();
+      cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const start = cleaned.indexOf('{');
+      let end = cleaned.lastIndexOf('}');
+
+      if (start === -1) {
+        return sendJsonResponse(res, 200, { ok: false, error: 'AI 响应缺少 JSON 开始标记', raw: content.slice(0, 300) });
+      }
+      if (end === -1 || end <= start) {
+        // 响应被截断，尝试补全闭合括号
+        end = cleaned.length - 1;
+        cleaned = cleaned + ']}]}'.repeat(3);
+      }
+      const jsonStr = cleaned.slice(start, end + 1);
+      try {
+        const insights = JSON.parse(jsonStr);
+        return sendJsonResponse(res, 200, insights);
+      } catch (parseErr) {
+        return sendJsonResponse(res, 200, {
+          ok: false,
+          error: `AI 返回格式错误：${parseErr.message}`,
+          raw: content.slice(0, 300),
+        });
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (error) {
+    const code = error?.code || (error?.name === 'AbortError' ? 'UPSTREAM_TIMEOUT' : 'AI_GATEWAY_ERROR');
+    const status = error?.status || (error?.name === 'AbortError' ? 504 : 500);
+    let message;
+    if (error?.name === 'AbortError') message = '模型服务请求超时';
+    else if (code === 'RATE_LIMITED') message = error.message;
+    else if (code === 'UPSTREAM_RATE_LIMITED') message = '模型服务繁忙（429），请稍候再试，或更换模型';
+    else message = error?.message || 'AI 网关请求失败';
+    return sendJsonResponse(res, status, { ok: false, error: message, errorCode: code });
+  }
+}

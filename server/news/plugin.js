@@ -9,7 +9,7 @@ import { handleAgentMemoryRequest } from '../http/agentMemoryHandlers.js';
 import { handleAgentRunRequest } from '../http/agentRunHandlers.js';
 import { handleAgentJobsRequest } from '../http/agentJobsHandlers.js';
 import { startCronDaemon } from '../agent/agentJobsService.js';
-import { handleAiGenerateRequest } from '../http/aiHandlers.js';
+import { handleAiGenerateRequest, handleAiInsightsRequest } from '../http/aiHandlers.js';
 import { handleFetchPageRequest } from '../http/fetchPageHandler.js';
 import { handleWebSearchRequest } from '../http/webSearchHandler.js';
 import { handleIntelligenceRequest } from '../http/intelligenceHandlers.js';
@@ -334,102 +334,9 @@ export function newsPlugin() {
           }
         }
 
-if (requestUrl.pathname === '/api/ai-insights') {
-          const body = await parseBody(req);
-          const { baseUrl = '', apiKey = '', model = '', items = [] } = body;
-          console.log('[AI Insights] Request:', { baseUrl, model, itemsCount: items.length, hasKey: !!apiKey });
-          if (!baseUrl || !model) return sendJson(res, { error: 'baseUrl and model are required' }, 400);
-          if (items.length === 0) return sendJson(res, { error: 'items required' }, 400);
-          try {
-            const cleanBaseUrl = baseUrl.replace(/\/$/, '');
-            const apiUrl = cleanBaseUrl.endsWith('/v1') || cleanBaseUrl.endsWith('/v2') || cleanBaseUrl.endsWith('/v3') || cleanBaseUrl.endsWith('/v4')
-              ? cleanBaseUrl + '/chat/completions'
-              : cleanBaseUrl + '/v1/chat/completions';
-            const headers = { 'Content-Type': 'application/json' };
-            if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-            console.log('[AI Insights] Calling:', apiUrl, 'model:', model);
-            const prompt = `你是一个科技趋势分析师。请分析以下${items.length}条技术资讯，输出**简洁**的纯 JSON（不要 markdown 代码块）：
-
-{"trends":["趋势 1","趋势 2","趋势 3"],"correlations":["关联 1","关联 2"],"signals":["信号 1","信号 2","信号 3"],"itemScores":[{"id":"资讯id","score":85,"label":"必读","reason":"一句话说明"}]}
-
-资讯列表：
-${items.map((i, idx) => {
-  const summaryLine = i.summary ? ` | 摘要: ${i.summary}` : '';
-  const tagsLine = i.tags ? ` | 标签: ${i.tags}` : '';
-  return `${idx + 1}. [id:${i.id || idx}] [${i.category || '未分类'}] ${i.title} - ${i.source || '未知'}${summaryLine}${tagsLine}`;
-}).join('\n')}
-
-要求：
-- trends：基于当前资讯内容，提炼 3 条最显著的技术趋势
-- correlations：发现不同领域/赛道之间的关联或共同主题
-- signals：指出值得关注的早期信号或潜在变化
-- itemScores：对每条资讯评估重要性，输出 {id, score, label, reason}
-  · score: 0-100，综合考量时效性、影响力、与用户相关性
-  · label: "必读"(score>=75) / "关注"(50-74) / "降噪"(<50)
-  · reason: 一句话说明评分理由（不超过 30 字）
-- 每条 trend/correlation/signal/reason **不超过 30 字**，简洁明了
-- 只输出 JSON，不要其他文字`;
-
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 45000);
-            const response = await fetch(apiUrl, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                model,
-                messages: [{ role: 'user', content: prompt }],
-                max_tokens: 2500,
-                temperature: 0.5
-              }),
-              signal: controller.signal
-            });
-            clearTimeout(timeout);
-            console.log('[AI Insights] API response status:', response.status);
-            if (!response.ok) {
-              const errText = await response.text().catch(() => '');
-              console.error('[AI Insights] API error:', response.status, errText);
-              return sendJson(res, { error: `API responded ${response.status}: ${errText.slice(0, 200)}` });
-            }
-            const data = await response.json();
-            console.log('[AI Insights] API response data:', JSON.stringify(data, null, 2).slice(0, 500));
-            const content = data.choices?.[0]?.message?.content || '';
-            console.log('[AI Insights] Raw response:', content.slice(0, 500));
-            try {
-              let cleaned = content.trim();
-              cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-              const start = cleaned.indexOf('{');
-              let end = cleaned.lastIndexOf('}');
-
-              if (start === -1) {
-                console.log('[AI Insights] No opening brace found');
-                throw new Error('AI 响应缺少 JSON 开始标记');
-              }
-
-              if (end === -1 || end <= start) {
-                console.log('[AI Insights] No closing brace, trying to repair...');
-                end = cleaned.length - 1;
-                cleaned = cleaned + ']}]}'.repeat(3);
-              }
-
-              const jsonStr = cleaned.slice(start, end + 1);
-              console.log('[AI Insights] Extracted JSON:', jsonStr.slice(0, 300));
-
-              try {
-                const insights = JSON.parse(jsonStr);
-                return sendJson(res, insights);
-              } catch (parseErr) {
-                console.log('[AI Insights] JSON parse failed, content may be truncated');
-                throw new Error(`JSON 解析失败，响应可能被截断：${parseErr.message}`);
-              }
-            } catch (e) {
-              console.error('[AI Insights] Parse error:', e.message, 'Content:', content);
-              return sendJson(res, { error: `AI 返回格式错误：${e.message}`, raw: content.slice(0, 300) });
-            }
-          } catch (e) {
-              console.error('[AI Insights] Outer error:', e);
-              return sendJson(res, { error: e.message });
-            }
-          }
+        if (requestUrl.pathname === '/api/ai-insights') {
+          return handleAiInsightsRequest(req, res);
+        }
 
         if (requestUrl.pathname.startsWith('/api/ai/') || requestUrl.pathname.startsWith('/api/translate') || requestUrl.pathname.startsWith('/api/subscriptions') || requestUrl.pathname.startsWith('/api/bookmarks')) {
           return sendJson(res, { ok: false, message: 'Reserved extension endpoint.' }, 501);
