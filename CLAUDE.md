@@ -10,7 +10,7 @@ npm run dev                              # Dev server on 0.0.0.0:5175 (with API 
 npm run build                            # Production build -> dist/
 npm start                                # Production Node server (dist + full API, default port 3000)
 npm run preview                          # Preview production build (static only, no API)
-npm test                                 # Run unit tests (vitest) — 347 tests across src/utils, src/store, src/domain, src/hooks/__tests__, server/
+npm test                                 # Run unit tests (vitest) — 362 tests across src/utils, src/store, src/domain, src/hooks/__tests__, src/components/profile/__tests__, server/
 npm run test:watch                       # Watch mode
 node node_modules/vitest/vitest.mjs run <file>  # Run a single test file (bin symlink not created on Windows)
 npm run db:migrate
@@ -126,6 +126,10 @@ src/components/
   stock/
     KLineChart.jsx      K线图（klinecharts v10）
     ResearchTools.jsx   研究工具
+  profile/             Phase 2 用户画像 AI 学习闭环组件
+    PendingSuggestionsSection.jsx  AI 建议待确认列表容器（读 useProfileStore.pendingSuggestions）
+    PendingSuggestionCard.jsx     单条建议卡片 + SuggestionAcceptEditor + applySuggestionByType 纯函数
+    AgentMemorySection.jsx        AI 跨会话记忆列表 + 过滤/搜索/分页/删除
 ```
 
 **NOT separate files (inline in App.jsx or located elsewhere):**
@@ -163,6 +167,7 @@ src/hooks/
   useCommunity.js       社区广场数据（posts/comments/likes，调用 /api/community/*）
   useProfileSync.js     画像分层同步：扩展同步 5 块（domainTiers/sourceTiers/specialFollows + dailyProfileSnapshots/briefingConfig）<-> /api/profile/state。
                         含纯函数 buildSavePayload（构造 PUT 请求体，仅传今日 snapshot）和 mergeSnapshots（远端+本地合并，本地优先，cap 30）
+  useAgentMemories.js          agent_memories CRUD hook（list/search/delete + buildListQuery/parseListResponse 纯函数）
   useAgentWorkflowRunner.js  智能体工作流运行器（runAgentWorkflow，从 App.jsx 抽离，~578 行）
   useWorkflowActions.js     工作流行动队列（createWorkflowActions/executeWorkflowAction，从 App.jsx 抽离）
   useBriefingOps.js          早报操作（从 App.jsx 抽离）
@@ -191,6 +196,14 @@ src/domain/stock/
 The v2 features described in `docs/wanban-silicon-valley-v2-blueprint.md` are wired into App.jsx (imported at top, used via `workflowEngine` hook and `useMemo`-derived briefing/profile data), NOT as separate page files. The engines themselves live in `src/utils/workflowEngine.js` + `src/utils/profileModel.js` + `src/constants/workflowConstants.js` (see above).
 
 **Workflow node types**: `input`, `llm`, `skill`, `condition`, `classifier`, `reply`, `output`. Each node has `inputKey`/`outputKey` forming a variable chain; the first node's input is `buildWorkbenchContext()` (today's recommended items + profile + tracked terms + saved materials). `skill` nodes map to local builders: `evidence-pack`, `media-audit`, `material-extractor`, `profile-memory`, `article-outline`, `github-evaluator`.
+
+**Phase 2 AI 主动学习闭环（已完成）**：
+- 消除 buildProfileMemory 双源（useAgentWorkflowRunner.js 内联版删除，统一调 workflowEngine.js + ctx）
+- ProfilePage 顶部 PendingSuggestionsSection：展示 AI 建议、接受时弹出 inline 编辑器确认后写入偏好、拒绝/稍后映射为 'rejected'
+- ProfilePage 底部 AgentMemorySection：完整 CRUD（列表 + memory_type 过滤 + 搜索 + 分页 + 单条删除）
+- buildSystemPrompt "最近校准"段自动激活（用户接受建议后，后续对话 prompt 注入近 7 天 accepted 建议）
+- applySuggestionByType 纯函数含大小写不敏感幂等检查
+- pendingSuggestions 不同步跨设备（agent_memories 已是 PG 跨设备来源）
 
 ### Stock Market Module (股市动向)
 
@@ -335,7 +348,7 @@ Categories, source grades, and tag rules are defined **independently** in both `
 - **GitHub card**: App.jsx has an **inline** `GithubRepoCard` function (NOT a separate file). Inline version uses `inferGithubScenario/Audience/Difficulty/Value` + `buildGithubMaterial`; `deriveRepoInsight` in repoInsight.js is a parallel implementation. AI insight is collapsible by default.
 ## Known Issues
 
-- **Tests limited to pure-logic engines** — 347 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15) tests; no integration/E2E tests, no component tests
+- **Tests limited to pure-logic engines** — 362 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + applySuggestionByType (7) + useAgentMemories (8) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15) tests; no integration/E2E tests, no component tests
 - **RSS failure rate ~40-50%** — many sources return 403/404 or HTML instead of RSS
 - **Auth requires PostgreSQL** - register/login/me/logout/profile/interests delegate to server/http/authHandlers.js -> server/auth/authService.js (password hashing + session tokens in sessions table). Dev (server/news/plugin.js) and prod (api/auth/[action].js) share the same handler. Without DATABASE_URL, auth endpoints return 503 DATABASE_UNAVAILABLE.
 - **`package.json` type: "module"** — all `.js` files use ESM; CI workflows using `require()` will crash
