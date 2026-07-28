@@ -90,7 +90,7 @@ function emitChange() {
 /** 注册一个工具 */
 export function registerTool(name, entry) {
   if (!name || typeof name !== 'string') throw new Error('工具名必须为非空字符串');
-  const meta = entry.meta || { label: name, icon: '⚙️' };
+  const meta = entry.meta || { label: name, iconKey: 'settings' };
   // 用户在 Settings 中的覆写优先于工具默认 requiresApproval
   meta.requiresApproval = resolveRequiresApproval(name, meta.requiresApproval);
   registry.set(name, {
@@ -155,7 +155,7 @@ export function selectSchemasByName(toolNames) {
 /** 获取工具 UI 元信息（label/icon/description） */
 export function getToolMeta(name) {
   const entry = registry.get(name);
-  return entry?.meta || { label: name, icon: '⚙️', description: '' };
+  return entry?.meta || { label: name, iconKey: 'settings', description: '' };
 }
 
 /**
@@ -300,7 +300,7 @@ export function registerCustomHttpTool(name, config, meta, enabled = true) {
     },
     meta: {
       label: meta?.label || name,
-      icon: meta?.icon || '🔧',
+      iconKey: meta?.iconKey || 'wrench',
       description: meta?.description || '',
       category: 'custom',
       requiresApproval: false,
@@ -336,7 +336,7 @@ export function updateCustomHttpTool(name, config, meta) {
     },
     meta: {
       label: meta?.label || existing.meta?.label || name,
-      icon: meta?.icon || existing.meta?.icon || '🔧',
+      iconKey: meta?.iconKey || existing.meta?.iconKey || 'wrench',
       description: meta?.description || existing.meta?.description || '',
       category: 'custom',
       requiresApproval: false,
