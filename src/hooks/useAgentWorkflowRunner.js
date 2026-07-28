@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { getWorkflowSkillMeta, WORKFLOW_CONDITION_METRICS } from '../constants/appConstants.jsx';
+import { useProfileStore } from '../store';
 
 /**
  * 智能体工作流运行器（从 App.jsx 抽离）
@@ -214,6 +215,42 @@ export function useAgentWorkflowRunner({
         ...scopedAgentItems.slice(0, 5).flatMap(item => item.tags || []),
         ...scopedAgentItems.slice(0, 3).map(item => getCategoryLabel(item.category))
       ])].filter(Boolean).slice(0, 8);
+
+      // Phase 1.3 Task 13: write AI suggestions to pendingSuggestions store.
+      // Dedupe/cap/cooldown handled by the store's addPendingSuggestions action.
+      try {
+        const categoryCount = new Map();
+        scopedAgentItems.forEach(item => {
+          if (item.category) {
+            const label = getCategoryLabel(item.category);
+            categoryCount.set(label, (categoryCount.get(label) || 0) + 1);
+          }
+        });
+        const topCategories = [...categoryCount.entries()]
+          .sort((a, b) => b[1] - a[1]).slice(0, 2);
+        const suggestions = [
+          ...(terms.slice(0, 3).map(term => ({
+            type: 'track',
+            target: term,
+            reason: '基于近期阅读资讯提取的追踪关键词',
+            source: 'ai',
+            metadata: { confidence: Math.min(scopedAgentItems.length / 10, 1) },
+          }))),
+          ...(topCategories.map(([label, count]) => ({
+            type: 'boost',
+            target: label,
+            reason: `近 ${count} 条相关资讯，建议加权关注`,
+            source: 'ai',
+            metadata: { confidence: Math.min(count / 10, 1) },
+          }))),
+        ];
+        if (suggestions.length > 0) {
+          useProfileStore.getState().addPendingSuggestions(suggestions);
+        }
+      } catch (err) {
+        // Silent fail — suggestions are best-effort, must not break workflow
+      }
+
       return {
         terms,
         output: `画像记忆建议：\n- 建议追踪：${terms.join('、') || '暂无'}\n- 强化领域：${intelligenceProfile.focusLabels.join('、') || '未设置'}\n- 本次行为依据：${scopedAgentItems.length} 条资讯、${savedScopedItems.length} 条收藏/素材命中、${mediaItems.length} 条多媒体线索。`

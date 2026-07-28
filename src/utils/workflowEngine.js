@@ -94,7 +94,7 @@ export function buildMaterialExtraction(items, materials, existingMaterials = []
   };
 }
 
-export function buildProfileMemory(items, profile, tracked, bookmarks, materials) {
+export function buildProfileMemory(items, profile, tracked, bookmarks, materials, ctx) {
   const terms = [...new Set([
     ...(tracked || []),
     ...items.slice(0, 5).flatMap(item => item.tags || []),
@@ -103,6 +103,38 @@ export function buildProfileMemory(items, profile, tracked, bookmarks, materials
   const savedCount = items.filter(item =>
     bookmarks.some(b => b.itemId === item.id) || materials.some(m => m.originalItemId === item.id)
   ).length;
+
+  // Phase 1.3 Task 13: write AI suggestions to pendingSuggestions via ctx.
+  // Build suggestions from derived terms + top categories. ctx is optional
+  // (backward compat: existing callers/tests that don't pass ctx keep working).
+  if (ctx?.addPendingSuggestions) {
+    const categoryCount = new Map();
+    items.forEach(item => {
+      if (item.category) categoryCount.set(item.category, (categoryCount.get(item.category) || 0) + 1);
+    });
+    const topCategories = [...categoryCount.entries()]
+      .sort((a, b) => b[1] - a[1]).slice(0, 2);
+    const suggestions = [
+      ...(terms.slice(0, 3).map(term => ({
+        type: 'track',
+        target: term,
+        reason: '基于近期阅读资讯提取的追踪关键词',
+        source: 'ai',
+        metadata: { confidence: Math.min(items.length / 10, 1) },
+      }))),
+      ...(topCategories.map(([cat, count]) => ({
+        type: 'boost',
+        target: cat,
+        reason: `近 ${count} 条相关资讯，建议加权关注`,
+        source: 'ai',
+        metadata: { confidence: Math.min(count / 10, 1) },
+      }))),
+    ];
+    if (suggestions.length > 0) {
+      ctx.addPendingSuggestions(suggestions);
+    }
+  }
+
   return {
     terms,
     output: `画像记忆建议：\n- 建议追踪：${terms.join('、') || '暂无'}\n- 强化领域：${(profile?.focusLabels || []).join('、') || '未设置'}\n- 本次行为依据：${items.length} 条资讯、${savedCount} 条收藏/素材命中、${items.filter(item => item.imageUrl || item.videoUrl).length} 条多媒体线索。`
@@ -224,7 +256,7 @@ function runLocalNode(node, previousOutput, ctx) {
     const evidencePack = buildEvidencePack(scopedAgentItems);
     const mediaAudit = buildMediaAudit(scopedAgentItems);
     const materialExtraction = buildMaterialExtraction(scopedAgentItems, materials, materials);
-    const profileMemory = buildProfileMemory(scopedAgentItems, intelligenceProfile, trackedTerms, bookmarks, materials);
+    const profileMemory = buildProfileMemory(scopedAgentItems, intelligenceProfile, trackedTerms, bookmarks, materials, ctx);
     const articleOutline = buildArticleOutline(scopedAgentItems.slice(0, 5), selectedMission?.label);
     const githubEvaluation = buildGithubEvaluation(scopedAgentItems);
     const skillOutputs = {

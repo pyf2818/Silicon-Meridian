@@ -250,6 +250,38 @@ describe('buildProfileMemory', () => {
     const r = buildProfileMemory([], null, [], [], []);
     expect(r.output).toContain('强化领域：未设置');
   });
+
+  it('Phase 1.3 Task 13: writes suggestions via ctx.addPendingSuggestions when ctx provided', () => {
+    const addPendingSuggestions = vi.fn();
+    const r = buildProfileMemory(
+      SAMPLE_ITEMS,
+      { focusLabels: ['AI'] },
+      ['算力'],
+      SAMPLE_BOOKMARKS,
+      SAMPLE_MATERIALS,
+      { addPendingSuggestions }
+    );
+    expect(addPendingSuggestions).toHaveBeenCalledTimes(1);
+    const suggestions = addPendingSuggestions.mock.calls[0][0];
+    expect(Array.isArray(suggestions)).toBe(true);
+    expect(suggestions.length).toBeGreaterThan(0);
+    // Each suggestion must have required fields for pendingSuggestions store
+    suggestions.forEach(s => {
+      expect(s.type).toMatch(/^(track|boost)$/);
+      expect(typeof s.target).toBe('string');
+      expect(s.source).toBe('ai');
+      expect(s.metadata).toBeDefined();
+    });
+    // Return shape unchanged
+    expect(r.terms).toBeDefined();
+    expect(r.output).toContain('画像记忆建议');
+  });
+
+  it('Phase 1.3 Task 13: does not throw when ctx is undefined (backward compat)', () => {
+    expect(() => buildProfileMemory(SAMPLE_ITEMS, {}, [], [], [])).not.toThrow();
+    expect(() => buildProfileMemory(SAMPLE_ITEMS, {}, [], [], [], undefined)).not.toThrow();
+    expect(() => buildProfileMemory(SAMPLE_ITEMS, {}, [], [], [], {})).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
