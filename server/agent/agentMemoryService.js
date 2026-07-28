@@ -175,6 +175,38 @@ export async function mergePersonaSummary(userId, patch) {
 }
 
 /**
+ * Phase 3 Task B7-3: 合并式更新 learned_preferences
+ * - topics: 与现有合并去重（保留高频在前），cap 20
+ * - preferredDepth / preferredFormat: 直接覆盖（最新值优先）
+ * - updatedAt: 时间戳
+ *
+ * @param {string} userId
+ * @param {{topics?: string[], preferredDepth?: 'deep'|'shallow', preferredFormat?: 'detailed'|'concise'}} patch
+ * @returns {Promise<{updated: number}>}
+ */
+export async function mergeLearnedPreferences(userId, patch) {
+  if (!userId) return { updated: 0 };
+  const current = await getPersonaSummary(userId);
+  const existing = current.learnedPreferences || {};
+  const existingTopics = Array.isArray(existing.topics) ? existing.topics : [];
+
+  // topics 合并去重：新 topics 优先，旧的追加在后，cap 20
+  const newTopics = Array.isArray(patch?.topics) ? patch.topics : [];
+  const mergedTopics = [...newTopics, ...existingTopics]
+    .filter((t, i, arr) => arr.indexOf(t) === i) // 去重
+    .slice(0, 20);
+
+  const next = {
+    topics: mergedTopics,
+    preferredDepth: patch?.preferredDepth || existing.preferredDepth || 'shallow',
+    preferredFormat: patch?.preferredFormat || existing.preferredFormat || 'concise',
+    updatedAt: new Date().toISOString(),
+  };
+
+  return setPersonaSummary(userId, current.personaSummary || {}, next);
+}
+
+/**
  * Phase 3 Task B4: 为一批资讯条目拉取相关 agent 记忆。
  * 取每条 item 的 title+summary 作为 query 调用 searchAgentMemories（top 3），
  * 合并后按 weight+createdAt 去重排序，最多返回 5 条。

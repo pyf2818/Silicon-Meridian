@@ -4,6 +4,7 @@
 import {
   addAgentMemory, addAgentMemoriesBatch, getAgentMemories, searchAgentMemories,
   deleteAgentMemory, getPersonaSummary, setPersonaSummary, mergePersonaSummary,
+  mergeLearnedPreferences,
 } from '../agent/agentMemoryService.js';
 import { sendJsonResponse, readJsonBody } from './httpUtils.js';
 import { getUserIdFromRequest } from './agentAuth.js';
@@ -109,6 +110,16 @@ export async function handleAgentMemoryRequest(req, res, pathname, method) {
     if (!userId) return sendJsonResponse(res, 401, { ok: false, error: 'UNAUTHORIZED' });
     const body = await readJsonBody(req);
     const result = await mergePersonaSummary(userId, body.patch || {});
+    return sendJsonResponse(res, 200, { ok: true, ...result });
+  }
+
+  // PATCH /api/agent-memory/learned-preferences (Phase 3 Task B7-4: 合并式更新学习偏好)
+  // body: { topics?: string[], preferredDepth?: 'deep'|'shallow', preferredFormat?: 'detailed'|'concise' }
+  if (pathname === '/api/agent-memory/learned-preferences' && method === 'PATCH') {
+    const userId = await requireUserId(req);
+    if (!userId) return sendJsonResponse(res, 401, { ok: false, error: 'UNAUTHORIZED' });
+    const body = await readJsonBody(req);
+    const result = await mergeLearnedPreferences(userId, body || {});
     return sendJsonResponse(res, 200, { ok: true, ...result });
   }
 

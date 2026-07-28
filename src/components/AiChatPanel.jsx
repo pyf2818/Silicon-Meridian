@@ -28,6 +28,7 @@ import { buildSystemPrompt } from './aichat/buildSystemPrompt.js';
 import { buildQuickActions } from './aichat/buildQuickActions.js';
 import { runAgentLoop as runAgentLoopImpl } from './aichat/runAgentLoop.js';
 import { useInputHistory } from './aichat/useInputHistory.js';
+import { useProfileStore } from '../store';
 import ChatHeader from './aichat/ChatHeader.jsx';
 
 // 模块级 abortController，跨组件生命周期保持
@@ -139,15 +140,17 @@ export default function AiChatPanel({
   // 工作空间召回：异步检索相关文件（IndexedDB），debounce 避免频繁查询
   const [recalledFiles, setRecalledFiles] = useState([]);
 
-  // 用户性格画像：从服务端 persona_summary 加载，让 agent 跨会话「记得」用户
-  const [personaSummary, setPersonaSummary] = useState(null);
+  // 用户性格画像：Phase 3 Task B7 改读 profileStore（跨会话持久化）
+  // 服务端 persona_summary 仍由 fetchPersonaSummary 拉取并写入 store
+  const personaSummary = useProfileStore(s => s.personaSummary);
+  const setPersonaSummary = useProfileStore(s => s.setPersonaSummary);
   useEffect(() => {
     let cancelled = false;
     fetchPersonaSummary().then(ps => {
       if (!cancelled && ps) setPersonaSummary(ps);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [memoriesVersion]); // memoriesVersion 变化时重新拉取（记忆进化后刷新画像）
+  }, [memoriesVersion, setPersonaSummary]); // memoriesVersion 变化时重新拉取（记忆进化后刷新画像）
 
   useEffect(() => {
     const query = input || messages.filter(m => m.role === 'user').pop()?.content || '';

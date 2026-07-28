@@ -25,6 +25,37 @@ const EVOLVE_SYSTEM_PROMPT = `你是一个用户行为分析专家。基于以�
 严格输出 JSON 数组，不要其他解释。如果对话内容贫乏无可总结，输出 []。`;
 
 /**
+ * 从对话消息中提取学习偏好（纯函数，无副作用）
+ * Phase 3 Task B7-2：本地启发式派生 topics / preferredDepth / preferredFormat
+ * 同步写入 user_profiles.learned_preferences，供推荐算法使用
+ *
+ * @param {Array} messages - [{role, content}]，仅取 role==='user' 的内容做分析
+ * @returns {{topics: string[], preferredDepth: 'deep'|'shallow', preferredFormat: 'detailed'|'concise'}}
+ */
+export function extractLearnedPreferences(messages) {
+  const userMessages = (messages || [])
+    .filter(m => m?.role === 'user')
+    .map(m => String(m?.content || ''));
+  const text = userMessages.join(' ');
+
+  // 关键词频次提取（按空格/中英文标点切分，长度 2-20 过滤）
+  const words = text.split(/[\s,，。.!?！？;；:：]+/).filter(w => w.length >= 2 && w.length <= 20);
+  const freq = new Map();
+  for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
+  const topics = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([w]) => w);
+
+  // 启发式判断偏好深度/格式
+  const avgLen = userMessages.reduce((s, m) => s + m.length, 0) / Math.max(userMessages.length, 1);
+  const preferredDepth = avgLen > 100 ? 'deep' : 'shallow';
+  const preferredFormat = /详细|深入|具体|展开/.test(text) ? 'detailed' : 'concise';
+
+  return { topics, preferredDepth, preferredFormat };
+}
+
+/**
  * 触发记忆进化：异步总结对话 → 批量写入记忆 → 增量更新 persona_summary
  * @param {Object} params
  * @param {Array} params.messages - 完整对话历史 [{role, content, toolCalls?}]
@@ -125,6 +156,7 @@ export async function evolveMemory({ messages, sessionId, agentId, llmConfig, to
     .sort((a, b) => (b.weight || 1) - (a.weight || 1))
     .slice(0, 2);
 
+  let personaUpdated = false;
   if (topInsights.length > 0) {
     try {
       const patch = {};
@@ -142,13 +174,26 @@ export async function evolveMemory({ messages, sessionId, agentId, llmConfig, to
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ patch }),
       });
-      return { memories: memories.length, personaUpdated: true };
+      personaUpdated = true;
     } catch (err) {
       console.error('[evolveMemory] persona patch failed:', err.message);
     }
   }
 
-  return { memories: memories.length, personaUpdated: false };
+  // Phase 3 Task B7-2: 同步写 learned_preferences（fire-and-forget，失败静默）
+  // 本地启发式派生 topics / preferredDepth / preferredFormat，供推荐算法使用
+  try {
+    const learnedPrefs = extractLearnedPreferences(recent);
+    await fetch('/api/agent-memory/learned-preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(learnedPrefs),
+    });
+  } catch {
+    /* silent: 同步失败不影响主流程 */
+  }
+
+  return { memories: memories.length, personaUpdated };
 }
 
 /**
