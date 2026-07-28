@@ -13,7 +13,7 @@ import AgentPanel from './AgentPanel.jsx';
 import { retrieveRelevantMemories } from '../utils/sessionMemory.js';
 import { searchFiles } from '../utils/workspaceIndex.js';
 import { observeQuestion, observeReply, observeFeedback, getLearnedPreferences } from '../utils/profileLearning.js';
-import { evolveMemory, fetchPersonaSummary } from '../utils/memoryEvolver.js';
+import { evolveMemory, fetchPersonaSummary, fetchRelevantMemories } from '../utils/memoryEvolver.js';
 import { extractTodos } from '../utils/todoExtractor.js';
 import { selectToolSchemas } from '../utils/agentTools.js';
 import {
@@ -132,6 +132,23 @@ export default function AiChatPanel({
     return retrieveRelevantMemories(query, activeSessionId, 3);
   }, [input, messages, activeSessionId, memoriesVersion]);
 
+  // Phase 3 Task B11: 服务端 agent_memories 异步检索（debounce 500ms，失败静默）
+  // 与本地 relevantMemories 互补：本地走 sessionMemory，服务端走 agent_memories 表
+  const [agentMemories, setAgentMemories] = useState([]);
+  useEffect(() => {
+    const query = input || messages.filter(m => m.role === 'user').pop()?.content || '';
+    if (!query || query.length < 4) { setAgentMemories([]); return; }
+    const timer = setTimeout(async () => {
+      try {
+        const memories = await fetchRelevantMemories(query, 5);
+        setAgentMemories(memories);
+      } catch {
+        /* silent: 服务端记忆失败不影响主流程 */
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [input, messages]);
+
   // 学习画像：从用户行为观测到的偏好（高频主题/格式/深度）
   const learnedPrefs = useMemo(() => getLearnedPreferences(), [learnedVersion]);
 
@@ -174,9 +191,9 @@ export default function AiChatPanel({
   // Build system prompt：已抽离至 aichat/buildSystemPrompt.js
   const systemPrompt = useMemo(() => buildSystemPrompt({
     selectedInterests, categories, intelligenceProfile, workbenchItems, intelligenceContext,
-    workspaceFiles, relevantMemories, recalledFiles, learnedPrefs,
+    workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs,
     excludeAllEvidence, materialContext, agent, personaSummary,
-  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, recalledFiles, learnedPrefs, excludeAllEvidence, materialContext, agent, personaSummary]);
+  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, excludeAllEvidence, materialContext, agent, personaSummary]);
 
   // 情境化快捷建议：已抽离至 aichat/buildQuickActions.js
   const quickActions = useMemo(() => buildQuickActions(intelligenceContext, workbenchItems, materialContext), [intelligenceContext, workbenchItems, materialContext]);
