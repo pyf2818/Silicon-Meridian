@@ -25,6 +25,15 @@ function readLS(key, fallback) {
   } catch { return fallback; }
 }
 
+// ============ pendingSuggestions 常量 ============
+const PENDING_CAP = 20;
+const COOLDOWN_MS = 60 * 60 * 1000;
+const AUDIT_RETAIN_MS = 30 * 24 * 60 * 60 * 1000;
+
+function createSuggestionId() {
+  return `sg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
 // ============ Profile Store ============
 export const useProfileStore = create(
   persist(
@@ -77,6 +86,53 @@ export const useProfileStore = create(
         set({ briefingConfig: next });
       },
 
+      // ===== 待处理建议（持久化）=====
+      // 由 AI 引擎派生出的用户画像建议（如新增特别关注、来源升级等），
+      // 等待用户接受或拒绝。包含去重、容量上限、冷却期与历史保留机制。
+      pendingSuggestions: [],
+      addPendingSuggestion: (s) => get().addPendingSuggestions([s]),
+      addPendingSuggestions: (input) => set(state => {
+        const now = Date.now();
+        let next = [...state.pendingSuggestions];
+
+        for (const s of input) {
+          const idx = next.findIndex(x => x.type === s.type && x.target === s.target);
+          if (idx >= 0) {
+            const existing = next[idx];
+            if (existing.status === 'pending') {
+              // pending 状态：更新 reason + createdAt（去重）
+              next[idx] = { ...existing, ...s, id: existing.id, createdAt: now };
+              continue;
+            }
+            // accepted/rejected 状态：1 小时冷却检查
+            if (now - existing.createdAt < COOLDOWN_MS) continue;
+            // 冷却已过：作为新 pending 加入
+          }
+          next.unshift({ ...s, id: createSuggestionId(), createdAt: now, status: 'pending' });
+        }
+
+        // 仅过滤 pending 状态做上限控制
+        const pending = next.filter(s => s.status === 'pending');
+        const nonPending = next.filter(s => s.status !== 'pending');
+        if (pending.length > PENDING_CAP) {
+          pending.sort((a, b) => (b.metadata?.confidence || 0) - (a.metadata?.confidence || 0));
+          pending.splice(PENDING_CAP);
+        }
+        next = [...pending, ...nonPending];
+        return { pendingSuggestions: next };
+      }),
+      updateSuggestionStatus: (id, status) => set(state => ({
+        pendingSuggestions: state.pendingSuggestions.map(s => s.id === id ? { ...s, status } : s)
+      })),
+      pruneExpiredSuggestions: () => set(state => {
+        const cutoff = Date.now() - AUDIT_RETAIN_MS;
+        return {
+          pendingSuggestions: state.pendingSuggestions.filter(s =>
+            s.status === 'pending' || s.createdAt >= cutoff)
+        };
+      }),
+      clearPendingSuggestions: () => set({ pendingSuggestions: [] }),
+
       // ===== UI 状态（不持久化）=====
       // 资料表单（打开资料弹窗时预填充）
       profileForm: { displayName: '', signature: '' },
@@ -108,6 +164,7 @@ export const useProfileStore = create(
         dailyProfileSnapshots: state.dailyProfileSnapshots,
         specialFollows: state.specialFollows,
         briefingConfig: state.briefingConfig,
+        pendingSuggestions: state.pendingSuggestions,
       }),
     }
   )
