@@ -4,7 +4,7 @@
 import {
   addAgentMemory, addAgentMemoriesBatch, getAgentMemories, searchAgentMemories,
   deleteAgentMemory, getPersonaSummary, setPersonaSummary, mergePersonaSummary,
-  mergeLearnedPreferences,
+  mergeLearnedPreferences, getPersonaHistory,
 } from '../agent/agentMemoryService.js';
 import { sendJsonResponse, readJsonBody } from './httpUtils.js';
 import { getUserIdFromRequest } from './agentAuth.js';
@@ -93,6 +93,17 @@ export async function handleAgentMemoryRequest(req, res, pathname, method) {
     if (!userId) return sendJsonResponse(res, 401, { ok: false, error: 'UNAUTHORIZED' });
     const result = await getPersonaSummary(userId);
     return sendJsonResponse(res, 200, { ok: true, ...result });
+  }
+
+  // GET /api/agent-memory/persona/history?limit=30
+  // Phase 5: personaSummary 进化历史
+  if (pathname === '/api/agent-memory/persona/history' && method === 'GET') {
+    const userId = await requireUserId(req);
+    if (!userId) return sendJsonResponse(res, 401, { ok: false, error: 'UNAUTHORIZED' });
+    const url = new URL(req.url, 'http://x');
+    const limit = parseInt(url.searchParams.get('limit') || '30', 10);
+    const history = await getPersonaHistory(userId, limit);
+    return sendJsonResponse(res, 200, { ok: true, history });
   }
 
   // PUT /api/agent-memory/persona
