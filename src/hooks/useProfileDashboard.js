@@ -4,10 +4,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useProfileStore } from '../store';
-import { buildTrendSeries, buildAiStatusCounts, normalizeError } from '../utils/dashboardBuilders.js';
+import { buildTrendSeries, buildAiStatusCounts, normalizeError, buildPersonaTrendSeries, diffPersonaSnapshots } from '../utils/dashboardBuilders.js';
 
 // Re-export 纯函数（便于从 hook 文件统一 import）
-export { buildTrendSeries, buildAiStatusCounts, normalizeError };
+export { buildTrendSeries, buildAiStatusCounts, normalizeError, buildPersonaTrendSeries, diffPersonaSnapshots };
 
 /**
  * Phase 4 仪表盘聚合 hook
@@ -27,6 +27,9 @@ export function useProfileDashboard() {
   const [preheatLoading, setPreheatLoading] = useState(false);
   const [preheatResult, setPreheatResult] = useState(null); // { cached, aiStatus } | null
   const [preheatError, setPreheatError] = useState(null);
+
+  const [personaHistory, setPersonaHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   const personaSummary = useProfileStore(s => s.personaSummary);
 
@@ -59,6 +62,20 @@ export function useProfileDashboard() {
     }
   }, []);
 
+  // Phase 5: 加载 personaSummary 进化历史（最新在前，最多 30 条）
+  const loadPersonaHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const resp = await fetch('/api/agent-memory/persona/history?limit=30');
+      const data = await resp.json();
+      if (data.ok) setPersonaHistory(data.history || []);
+    } catch {
+      /* silent: 历史加载失败不阻塞仪表盘 */
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   const preheat = useCallback(async () => {
     setPreheatLoading(true);
     setPreheatError(null);
@@ -82,13 +99,15 @@ export function useProfileDashboard() {
   useEffect(() => {
     loadSnapshots();
     loadLearnedPrefs();
-  }, [loadSnapshots, loadLearnedPrefs]);
+    loadPersonaHistory();
+  }, [loadSnapshots, loadLearnedPrefs, loadPersonaHistory]);
 
   return {
     snapshots, snapshotsLoading, snapshotsError,
     learnedPrefs, prefsLoading,
     personaSummary,
+    personaHistory, historyLoading,
     preheat, preheatLoading, preheatResult, preheatError,
-    refresh: () => { loadSnapshots(); loadLearnedPrefs(); },
+    refresh: () => { loadSnapshots(); loadLearnedPrefs(); loadPersonaHistory(); },
   };
 }
