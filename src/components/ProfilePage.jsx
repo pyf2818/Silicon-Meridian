@@ -7,6 +7,8 @@ import {
 } from '../domain/intelligence/profileTiers.js';
 import { ICONS } from '../constants/index.jsx';
 import { showToast } from '../utils/toast.js';
+import PendingSuggestionsSection from './profile/PendingSuggestionsSection.jsx';
+import AgentMemorySection from './profile/AgentMemorySection.jsx';
 
 export default function ProfilePage({
   intelligenceProfile,
@@ -83,6 +85,8 @@ export default function ProfilePage({
                   <button className="secondary-action" onClick={() => setShowInterestModal(true)}>调整关注领域</button>
                 </div>
               </section>
+
+              <PendingSuggestionsSection />
 
               <BlockGrid columns={3}>
                 <BlockStat variant="card" label="关注领域" value={selectedInterests.length} desc={intelligenceProfile.focusLabels.slice(0, 4).join('、') || '尚未设置'} />
@@ -256,6 +260,8 @@ export default function ProfilePage({
                   </div>
                 )}
               </section>
+
+              <AgentMemorySection />
             </div>
   );
 }
