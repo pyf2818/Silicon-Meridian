@@ -113,17 +113,24 @@ async function toolFetchPage(args, ctx) {
 }
 
 /**
- * 联网搜索：Tavily 优先（如配置 Key），自动 fallback 到 DuckDuckGo
+ * 联网搜索：豆包搜索（火山引擎，国内首选） > Tavily > DuckDuckGo
  * 返回结构化文本：标题、链接、摘要，便于 LLM 后续引用
  */
 async function toolWebSearch(args, ctx) {
   const query = String(args?.query || args?.keyword || '').trim();
   if (!query) return '错误：query 参数不能为空';
+  // 联网搜索总开关兜底：即使 LLM 通过其他途径触发了 web_search（如 execute_command 的 search 子命令），
+  // 在开关关闭时也直接拒绝，确保不会消耗任何额度
+  if (ctx?.webSearchEnabled === false || ctx?.llmConfig?.webSearchEnabled === false) {
+    return '联网搜索已被用户在设置中关闭。如需联网信息，请提示用户前往设置 → 大模型 → 联网搜索总开关开启。';
+  }
   const maxResults = Math.max(1, Math.min(Number(args?.max_results) || 6, 20));
-  // 优先从 ctx 取 Tavily Key（用户在设置面板配置），未配置则后端使用环境变量
+  // 从 ctx 取 API Key（用户在设置面板配置），未配置则后端使用环境变量
   const tavilyKey = ctx?.tavilyKey || ctx?.llmConfig?.tavilyKey || '';
+  const doubaoKey = ctx?.doubaoSearchKey || ctx?.llmConfig?.doubaoSearchKey || '';
   const headers = { 'Content-Type': 'application/json' };
   if (tavilyKey) headers['X-Tavily-Key'] = tavilyKey;
+  if (doubaoKey) headers['X-Doubao-Search-Key'] = doubaoKey;
   const res = await fetch('/api/web-search', {
     method: 'POST',
     headers,
@@ -137,7 +144,7 @@ async function toolWebSearch(args, ctx) {
   }
   const items = Array.isArray(data.results) ? data.results : [];
   if (items.length === 0) return `未找到与 "${query}" 相关的网页`;
-  const providerLabel = data.provider === 'tavily' ? 'Tavily' : 'DuckDuckGo';
+  const providerLabel = data.provider === 'doubao' ? '豆包搜索' : (data.provider === 'tavily' ? 'Tavily' : 'DuckDuckGo');
   const lines = items.map((item, i) => {
     const title = item.title || '(无标题)';
     const url = item.url || '';
@@ -887,7 +894,7 @@ const BUILTIN_TOOL_DEFS = [
       type: 'function',
       function: {
         name: 'web_search',
-        description: '联网搜索（实时获取互联网最新信息）。优先用 Tavily API（需配置 Key），自动 fallback 到 DuckDuckGo 免费搜索。适用于查询超出训练数据时间范围、最新资讯、最新版本信息等场景',
+        description: '联网搜索（实时获取互联网最新信息）。优先用豆包搜索（火山引擎，国内首选），其次 Tavily，最后 DuckDuckGo 兜底。适用于查询超出训练数据时间范围、最新资讯、最新版本信息等场景',
         parameters: {
           type: 'object',
           properties: {
@@ -898,7 +905,7 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: '联网搜索', icon: '🔎', description: '联网搜索互联网最新信息（Tavily / DuckDuckGo）', category: 'web' },
+    meta: { label: '联网搜索', icon: '🔎', description: '联网搜索互联网最新信息（豆包搜索 / Tavily / DuckDuckGo）', category: 'web' },
     executor: toolWebSearch,
   },
   {

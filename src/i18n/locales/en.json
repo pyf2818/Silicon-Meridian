@@ -104,6 +104,10 @@
       "tavilyDesc": "When the Agent calls the web_search tool, Tavily is preferred (1000 calls/month free, register at tavily.com). Falls back to DuckDuckGo free search if no key is set.",
       "tavilyPlaceholder": "Tavily API Key (optional, falls back to DuckDuckGo free search)",
       "clearTavily": "Clear",
+      "doubaoTitle": "Web Search (Doubao Search API Key · Recommended)",
+      "doubaoDesc": "Volcano Engine Doubao Search, stable access in China, 500 free calls per month. Subscribe to 'Doubao Search Custom Edition' in the Volcano Engine console and create an API Key. Once configured, the Agent's web_search tool will prioritize Doubao Search.",
+      "doubaoPlaceholder": "Doubao Search API Key (e.g., 4d0e2***-****-****-****-************)",
+      "clearDoubao": "Clear",
       "presets": "Preset Management"
     },
     "appearance": {

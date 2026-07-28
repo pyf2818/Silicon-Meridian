@@ -8,6 +8,8 @@ const DEFAULT_LLM_CONFIG = {
   manualModels: [],
   provider: 'custom',
   tavilyKey: '', // 联网搜索 Tavily API Key（可选，未填则自动 fallback 到 DuckDuckGo 免费搜索）
+  doubaoSearchKey: '', // 豆包搜索 API Key（火山引擎，国内首选；https://console.volcengine.com/search-infinity/web-search）
+  webSearchEnabled: true, // 联网搜索总开关：false 时从工具白名单中过滤掉 web_search，避免 LLM 调用以节省额度
 };
 
 const CONFIG_KEY = 'llmConfig';
@@ -112,16 +114,20 @@ export function useLlmConfig({ LLM_PRESETS = [], onQuickSaveSuccess } = {}) {
     if (!llmConfig.baseUrl) return;
     setLlmFetching(true);
     setLlmFetchError('');
-    const params = new URLSearchParams({ baseUrl: llmConfig.baseUrl, apiKey: llmConfig.apiKey });
-    fetch(`/api/llm-models?${params}`).then(r => r.json()).then(d => {
+    // 改用 POST 请求：避免 API Key 出现在 URL/日志中，并突破 URL 长度限制
+    fetch('/api/llm-models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseUrl: llmConfig.baseUrl, apiKey: llmConfig.apiKey })
+    }).then(r => r.json()).then(d => {
       if (d.ok) {
         setLlmModels(d.models || []);
       } else {
         setLlmFetchError(d.message || 'Failed to fetch models');
         setLlmModels([]);
       }
-    }).catch(() => {
-      setLlmFetchError('Network error');
+    }).catch((err) => {
+      setLlmFetchError(`Network error: ${err?.message || '无法连接到 /api/llm-models，请确认开发服务器正在运行'}`);
       setLlmModels([]);
     }).finally(() => setLlmFetching(false));
   }

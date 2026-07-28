@@ -255,16 +255,29 @@ export function newsPlugin() {
         }
 
         if (requestUrl.pathname === '/api/llm-models') {
-          const baseUrl = requestUrl.searchParams.get('baseUrl') || '';
-          const apiKey = requestUrl.searchParams.get('apiKey') || '';
+          // 改用 POST 请求避免 API Key 暴露在 URL/日志中，同时兼容旧版 GET
+          let baseUrl = '';
+          let apiKey = '';
+          if (req.method === 'POST') {
+            const body = await parseBody(req);
+            baseUrl = body.baseUrl || '';
+            apiKey = body.apiKey || '';
+          } else {
+            baseUrl = requestUrl.searchParams.get('baseUrl') || '';
+            apiKey = requestUrl.searchParams.get('apiKey') || '';
+          }
           if (!baseUrl) return sendJson(res, { ok: false, message: 'baseUrl is required' }, 400);
           if (!isSafeUrl(baseUrl)) return sendJson(res, { ok: false, message: 'baseUrl points to a blocked destination' }, 403);
           try {
-            const apiUrl = baseUrl.replace(/\/+$/, '') + '/v1/models';
+            // 兼容 baseUrl 已含 /v1 /v2 等版本路径的情况，与 /api/llm-test 处理一致
+            const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+            const apiUrl = cleanBaseUrl.endsWith('/v1') || cleanBaseUrl.endsWith('/v2') || cleanBaseUrl.endsWith('/v3') || cleanBaseUrl.endsWith('/v4')
+              ? cleanBaseUrl + '/models'
+              : cleanBaseUrl + '/v1/models';
             const headers = { 'Content-Type': 'application/json' };
             if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 10000);
+            const timeout = setTimeout(() => controller.abort(), 15000);
             const response = await fetch(apiUrl, { headers, signal: controller.signal });
             clearTimeout(timeout);
             if (!response.ok) {
@@ -272,7 +285,13 @@ export function newsPlugin() {
               return sendJson(res, { ok: false, message: `API responded ${response.status}: ${errText.slice(0, 200)}`, status: response.status });
             }
             const data = await response.json();
-            const models = (data.data || []).map(m => ({ id: m.id, name: m.id, owned_by: m.owned_by || '' }));
+            // 兼容 OpenAI 风格 { data: [...] } 与简单数组 [...] 两种响应
+            const list = Array.isArray(data) ? data : (data.data || data.models || []);
+            const models = list.map(m => ({
+              id: typeof m === 'string' ? m : (m.id || m.name),
+              name: typeof m === 'string' ? m : (m.name || m.id),
+              owned_by: typeof m === 'string' ? '' : (m.owned_by || m.owner || '')
+            })).filter(m => m.id);
             return sendJson(res, { ok: true, models });
           } catch (e) {
             return sendJson(res, { ok: false, message: e.message });
@@ -327,32 +346,36 @@ if (requestUrl.pathname === '/api/ai-insights') {
             console.log('[AI Insights] Calling:', apiUrl, 'model:', model);
             const prompt = `你是一个科技趋势分析师。请分析以下${items.length}条技术资讯，输出**简洁**的纯 JSON（不要 markdown 代码块）：
 
-{"trends":["趋势 1","趋势 2","趋势 3"],"correlations":["关联 1","关联 2"],"signals":["信号 1","信号 2","信号 3"]}
+{"trends":["趋势 1","趋势 2","趋势 3"],"correlations":["关联 1","关联 2"],"signals":["信号 1","信号 2","信号 3"],"itemScores":[{"id":"资讯id","score":85,"label":"必读","reason":"一句话说明"}]}
 
 资讯列表：
 ${items.map((i, idx) => {
   const summaryLine = i.summary ? ` | 摘要: ${i.summary}` : '';
   const tagsLine = i.tags ? ` | 标签: ${i.tags}` : '';
-  return `${idx + 1}. [${i.category || '未分类'}] ${i.title} - ${i.source || '未知'}${summaryLine}${tagsLine}`;
+  return `${idx + 1}. [id:${i.id || idx}] [${i.category || '未分类'}] ${i.title} - ${i.source || '未知'}${summaryLine}${tagsLine}`;
 }).join('\n')}
 
 要求：
 - trends：基于当前资讯内容，提炼 3 条最显著的技术趋势
 - correlations：发现不同领域/赛道之间的关联或共同主题
 - signals：指出值得关注的早期信号或潜在变化
-- 每条**不超过 30 字**，简洁明了
+- itemScores：对每条资讯评估重要性，输出 {id, score, label, reason}
+  · score: 0-100，综合考量时效性、影响力、与用户相关性
+  · label: "必读"(score>=75) / "关注"(50-74) / "降噪"(<50)
+  · reason: 一句话说明评分理由（不超过 30 字）
+- 每条 trend/correlation/signal/reason **不超过 30 字**，简洁明了
 - 只输出 JSON，不要其他文字`;
 
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 30000);
+            const timeout = setTimeout(() => controller.abort(), 45000);
             const response = await fetch(apiUrl, {
               method: 'POST',
               headers,
               body: JSON.stringify({
                 model,
                 messages: [{ role: 'user', content: prompt }],
-                max_tokens: 1000,
-                temperature: 0.7
+                max_tokens: 2500,
+                temperature: 0.5
               }),
               signal: controller.signal
             });

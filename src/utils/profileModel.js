@@ -41,11 +41,17 @@ export function computeIntelligenceProfile({
   domainTiers = null,
   sourceTiers = null,
 }) {
-  const focusLabels = selectedInterests.map(id => id);
+  const focusLabels = selectedInterests.map(id => {
+    const category = categories?.find(c => c.id === id);
+    return category?.label || id;
+  });
   const boosted = Object.entries(recommendationFeedback.boostedCategories || {})
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map(([id]) => id);
+    .map(([id]) => {
+      const category = categories?.find(c => c.id === id);
+      return category?.label || id;
+    });
   const muted = Object.keys(recommendationFeedback.mutedSources || {}).slice(0, 3);
   const tracked = [...new Set([...followKeywords, ...Object.keys(recommendationFeedback.trackedTerms || {})])].slice(0, 8);
   const depth = workbenchItemCount > 0 && focusMatches / Math.max(workbenchItemCount, 1) > 0.5 ? '深度聚焦' : '探索校准';
@@ -247,6 +253,13 @@ export function computeProfileLearningEngine({
     : recentReads.length >= 6 ? '高频扫描型'
     : '探索校准型';
 
+  // feedback learning count — needed for confidence formula (Phase 1.2 Task 10)
+  const feedbackLearningCount =
+    (recommendationFeedback.hiddenIds || []).length
+    + Object.values(recommendationFeedback.boostedCategories || {}).reduce((sum, v) => sum + v, 0)
+    + Object.values(recommendationFeedback.mutedSources || {}).reduce((sum, v) => sum + v, 0)
+    + Object.values(recommendationFeedback.trackedTerms || {}).reduce((sum, v) => sum + v, 0);
+
   // confidence
   const confidence = Math.min(96, Math.round(
     Math.min(readingHistory.length, 30) * 1.4
@@ -254,9 +267,10 @@ export function computeProfileLearningEngine({
     + Math.min(materials.length, 20) * 1.8
     + selectedInterests.length * 3
     + followKeywords.length * 1.8
+    + feedbackLearningCount * 2
   ));
 
-  const dominantCategory = topCategories[0]?.id || '综合科技';
+  const dominantCategory = topCategories[0]?.label || '综合科技';
   const dominantSource = topSources[0]?.name || '多来源';
   const dominantTag = topTags[0]?.name || '关键趋势';
 
@@ -285,11 +299,7 @@ export function computeProfileLearningEngine({
   const multimediaReads = readingHistory.filter(item => item.imageUrl || item.videoUrl).length;
   const materialRatio = bookmarks.length
     ? Math.round(materials.length / Math.max(bookmarks.length, 1) * 100) : 0;
-  const feedbackLearningCount =
-    (recommendationFeedback.hiddenIds || []).length
-    + Object.values(recommendationFeedback.boostedCategories || {}).reduce((sum, v) => sum + v, 0)
-    + Object.values(recommendationFeedback.mutedSources || {}).reduce((sum, v) => sum + v, 0)
-    + Object.values(recommendationFeedback.trackedTerms || {}).reduce((sum, v) => sum + v, 0);
+  // feedbackLearningCount is computed above (before confidence) — reused here
   const authorMap = new Map();
   bookmarks.forEach(b => {
     if (b.author) authorMap.set(b.author, (authorMap.get(b.author) || 0) + 1);

@@ -24,7 +24,7 @@ export default function ProfilePage({
   setSpecialFollowForm,
   editingSpecialFollowId,
   setEditingSpecialFollowId,
-  profileCalibrationSignals,
+  profileCalibrationCards,
   generateDailyProfileSnapshot,
   setShowInterestModal,
   selectedInterests,
@@ -227,7 +227,7 @@ export default function ProfilePage({
                   <p className="section-desc">这些信号已经接入每日汇报排序，让系统从“你设置了什么、读了什么、收藏了什么”里持续学习。</p>
                 </div>
                 <div className="profile-calibration-grid">
-                  {profileCalibrationSignals.map(signal => (
+                  {profileCalibrationCards.map(signal => (
                     <div key={signal.label} className="profile-calibration-card">
                       <span>{signal.label}</span>
                       <strong>{signal.value}</strong>

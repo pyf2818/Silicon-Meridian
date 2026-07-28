@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { ICONS, MODE_MAP, REGION_MAP } from '../constants/index.jsx';
-import { getGradeColors, isEnglishText, formatRelative } from '../utils/format.js';
+import { getGradeColors, isEnglishText, formatRelative, isFreshNews } from '../utils/format.js';
 
 function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBookmarked = false, isInMaterials = false, onBookmark, onSummary, isSummaryOpen, summaryText, summaryLoading = false, summaryMode = '', isFollowed = false, onRead, showTranslation, onToggleTranslation, onRequestTranslation, isTranslating, translation, onOpenLightbox, onAddMaterial }) {
   const isCompact = viewMode === 'compact';
@@ -108,6 +108,7 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
       onDragStart={handleDragStart}
     >
       {isFollowed && <div className="follow-badge">关注</div>}
+      {isFreshNews(item.publishedAt) && <div className="new-badge" aria-label="新资讯">NEW</div>}
       <div className="item-left">
         {!isCompact && <div className="item-tags">
           <span className={`item-mode mode-${item.mode}`}>{MODE_MAP[item.mode]}</span>
@@ -119,6 +120,14 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
         <div className="item-top-tags">
           <span className={`item-mode mode-${item.mode}`}>{MODE_MAP[item.mode]}</span>
           <span className={`item-region region-${item.region}`}>{REGION_MAP[item.region]}</span>
+          {item.aiLabel && (item.aiLabel === '必读' || item.aiLabel === '关注') && (
+            <span
+              className={`ai-label-badge ai-label-${item.aiLabel === '必读' ? 'must' : 'watch'}`}
+              title={item.aiReason || `${item.aiLabel} · AI 评分 ${item.aiRelevanceScore ?? '-'}`}
+            >
+              AI · {item.aiLabel}
+            </span>
+          )}
           {item.tags?.slice(0, 3).map(t => <span key={t} className="item-tag">{t}</span>)}
         </div>
         <div className="item-content-row">

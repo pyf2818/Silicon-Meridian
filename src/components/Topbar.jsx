@@ -69,6 +69,7 @@ export default function Topbar({
   trendingPlatform,
   setTrendingPlatform,
   loadTrending,
+  newSinceLastVisit = 0,
 }) {
   return (
     <header className={`topbar ${nav === 'all' ? 'topbar-all' : ''} ${nav === 'stock' ? 'topbar-stock' : ''} ${(nav === 'trending' || nav === 'recommendations') ? 'topbar-trending' : ''}`}>
@@ -224,6 +225,7 @@ export default function Topbar({
               )}
               <button className={`btn-refresh ${nav === 'all' ? 'btn-refresh-all' : ''}`} onClick={() => { if (nav === 'all') loadNews(blocked, false, debouncedQuery, { forceRefresh: true }); else if (nav === 'trending') loadTrending(false, trendingPlatform, trendingType); else if (nav === 'github') loadGithub(); }}>
                 {ICONS.refresh}
+                {nav === 'all' && newSinceLastVisit > 0 && <span className="new-news-badge" title={`自上次访问以来新增 ${newSinceLastVisit} 条`}>{newSinceLastVisit > 99 ? '99+' : newSinceLastVisit}</span>}
               </button>
               {nav === 'trending' && (
                 <>
@@ -271,8 +273,8 @@ export default function Topbar({
               )}
             </>
           )}
-          {/* 语言切换器：所有页面顶部右侧均可见，点击切换中英文 */}
-          <LanguageSwitcher variant="compact" />
+          {/* 语言切换器：仅在非「全部动态」页显示（全部动态页移除中英文切换） */}
+          {nav !== 'all' && <LanguageSwitcher variant="compact" />}
         </div>
       </div>
     </header>

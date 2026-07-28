@@ -178,12 +178,18 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
       item.isChinaFocused = computeIsChinaFocused(item);
     });
 
-    // 按综合质量分数降序排列（高分优先），同一分数时按源等级排序
+    // 排序策略：先按质量分降序（高质量优先），同分时按发布时间倒序（最新优先）
+    // 这样用户打开页面看到的是「最新 + 高质量」的资讯：
+    // - 同等质量下，最新的排最前
+    // - 高质量资讯即使稍旧也会排在中低质量新资讯前面
     fullItems.sort((a, b) => {
       const qualityDiff = (b.qualityScore || 0) - (a.qualityScore || 0);
       if (qualityDiff !== 0) return qualityDiff;
-      // 同等质量时，按源等级排序
-      return (b.sourceGrade || 0) - (a.sourceGrade || 0);
+      // 同质量时按源等级
+      const gradeDiff = (b.sourceGrade || 0) - (a.sourceGrade || 0);
+      if (gradeDiff !== 0) return gradeDiff;
+      // 同质量同等级时按发布时间倒序（最新优先）
+      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
     });
 
     // 初始化统计

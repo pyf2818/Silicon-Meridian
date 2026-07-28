@@ -294,7 +294,11 @@ export default function AiChatPanel({
       activeAbortController = controller; // 模块级引用，组件 unmount 后仍可 abort
 
       // Agent 模式：当前智能体配置了 tools 时走 agent loop（非流式 + tool_calls 循环）
-      const toolSchemas = agent?.tools?.length ? selectToolSchemas(agent.tools) : [];
+      let toolSchemas = agent?.tools?.length ? selectToolSchemas(agent.tools) : [];
+      // 联网搜索总开关：关闭时从工具列表中过滤掉 web_search，LLM 看不到就不会调用，避免消耗额度
+      if (llmConfig?.webSearchEnabled === false) {
+        toolSchemas = toolSchemas.filter(s => s?.function?.name !== 'web_search');
+      }
       if (toolSchemas.length > 0) {
         await runAgentLoop({
           targetId,
@@ -586,15 +590,35 @@ export default function AiChatPanel({
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} id={`chat-msg-${i}`} className={`chat-msg chat-msg-${msg.role}`}>
+          <div key={i} id={`chat-msg-${i}`} className={`chat-msg chat-msg-${msg.role}${msg.error ? ' chat-msg-error' : ''}`}>
+            {/* 用户消息标识：头像 + 用户名 */}
+            {msg.role === 'user' && (
+              <div className="chat-role-header chat-role-user">
+                {user?.avatar ? (
+                  <img src={user.avatar} alt="" className="chat-avatar chat-avatar-user-img" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                ) : (
+                  <div className="chat-avatar chat-avatar-user-fallback" aria-hidden="true">
+                    {(userName || '你').slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <span className="chat-role-name">{userName || '你'}</span>
+              </div>
+            )}
+            {/* AI 头像 + 角色名 */}
             {msg.role === 'assistant' && (
-              <div className="chat-avatar">
-                <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
-                  <circle cx="24" cy="24" r="20" stroke="var(--accent-cyan)" strokeWidth="1.5" opacity="0.3"/>
-                  <circle cx="21" cy="23" r="1.5" fill="var(--accent-cyan)"/>
-                  <circle cx="27" cy="23" r="1.5" fill="var(--accent-cyan)"/>
-                  <path d="M21 28C21 28 22.5 30 24 30C25.5 30 27 28 27 28" stroke="var(--accent-cyan)" strokeWidth="1.2" strokeLinecap="round"/>
-                </svg>
+              <div className="chat-avatar-wrap">
+                <div className="chat-avatar chat-avatar-ai" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
+                    {/* 旋转方框：几何科技感外环 */}
+                    <rect x="8" y="8" width="32" height="32" rx="2" stroke="var(--accent-cyan)" strokeWidth="1.4" opacity="0.4" transform="rotate(45 24 24)"/>
+                    {/* 内部菱形核心 */}
+                    <path d="M24 14 L34 24 L24 34 L14 24 Z" fill="var(--accent-cyan)" opacity="0.15" stroke="var(--accent-cyan)" strokeWidth="1.3"/>
+                    {/* 中心四芒星 */}
+                    <path d="M24 18 L26 24 L24 30 L22 24 Z" fill="var(--accent-cyan)" opacity="0.95"/>
+                    <path d="M18 24 L24 22 L30 24 L24 26 Z" fill="var(--accent-cyan)" opacity="0.7"/>
+                  </svg>
+                </div>
+                <span className="chat-role-name">SiliconStream</span>
               </div>
             )}
             <div className={`chat-bubble ${msg.error ? 'chat-bubble-error' : ''}${msg.toolCalls?.length ? ' chat-bubble-has-tools' : ''}`}>
@@ -630,12 +654,24 @@ export default function AiChatPanel({
                   dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
                 />
               )}
+              {msg.stopped && (
+                <div className="chat-stopped-mark">已停止生成</div>
+              )}
             </div>
             {msg.role === 'assistant' && !msg.loading && !msg.error && (
               <div className="chat-msg-actions">
-                <button type="button" className="chat-action-btn" title="复制" onClick={e => copyMessage(msg.content, e)}>复制</button>
-                <button type="button" className="chat-action-btn" title="重新生成" onClick={() => regenerateLast()} disabled={isStreaming}>重新生成</button>
-                <button type="button" className="chat-action-btn" title="引用追问" onClick={() => quoteReply(msg.content)}>引用追问</button>
+                <button type="button" className="chat-action-btn" title="复制" onClick={e => copyMessage(msg.content, e)}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  复制
+                </button>
+                <button type="button" className="chat-action-btn" title="重新生成" onClick={() => regenerateLast()} disabled={isStreaming}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  重新生成
+                </button>
+                <button type="button" className="chat-action-btn" title="引用追问" onClick={() => quoteReply(msg.content)}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  引用追问
+                </button>
               </div>
             )}
           </div>

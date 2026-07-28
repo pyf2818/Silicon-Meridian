@@ -51,6 +51,12 @@ export function buildAgenticSystemPrompt(activeAgent, missions = [], agents = []
 
 ${buildPersonalContext(profile)}
 
+【输出风格·硬性约束】
+- 禁止使用任何 emoji、颜文字或装饰性符号（包括但不限于 💡📊🚀✨🔍📌🎯✅❌⚡🔥等）。
+- 不要在标题或列表项前加 emoji 或符号前缀。
+- 保持专业、克制的文字表达，让信息密度本身成为可读性的来源。
+- 使用纯文字 markdown 结构（标题、列表、表格、加粗），不依赖装饰符号传达层次。
+
 【当前智能体】
 - 名称：${activeAgent?.name || 'AI精灵'}
 - 专长：${activeAgent?.description || '综合分析'}
@@ -264,5 +270,7 @@ ${baseContent}
 
 ${baseContent}
 
-请根据你的专业身份，给出结构化的分析。`;
+请根据你的专业身份，给出结构化的分析。
+
+【输出风格】禁止使用任何 emoji、颜文字或装饰性符号（包括但不限于 💡📊🚀✨🔍📌🎯✅❌⚡🔥等）。不要在标题或列表项前加 emoji。使用纯文字 markdown 结构。`;
 }

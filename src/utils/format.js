@@ -6,11 +6,19 @@ export function formatTime(v) {
 
 export function formatRelative(v) {
   const diff = Date.now() - new Date(v).getTime();
-  const mins = Math.max(1, Math.round(diff / 60000));
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return '刚刚';        // 新增"刚刚"档：5分钟内的资讯感知更强
   if (mins < 60) return `${mins}分钟前`;
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours}小时前`;
   return formatTime(v);
+}
+
+// 是否为"刚到"的资讯（用于 NewsItem NEW 角标）
+// 5 分钟内的资讯显示 NEW 标识，强化时效感知
+export function isFreshNews(publishedAt, thresholdMs = 5 * 60 * 1000) {
+  if (!publishedAt) return false;
+  return (Date.now() - new Date(publishedAt).getTime()) < thresholdMs;
 }
 
 export function formatStars(n) {

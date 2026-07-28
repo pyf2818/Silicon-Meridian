@@ -18,7 +18,14 @@ import { getRootHandle } from '../../utils/workspaceHandleStore.js';
  */
 export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas, systemPrompt, llmConfig, setAgentMessages }) {
   const MAX_ITERATIONS = 6;
-  const toolCtx = { rootHandle: getRootHandle() };
+  const toolCtx = {
+    rootHandle: getRootHandle(),
+    // 注入 llmConfig 让联网搜索开关和 API Key 兜底逻辑生效（与 runAgentLoop 对齐）
+    llmConfig,
+    tavilyKey: llmConfig?.tavilyKey || '',
+    doubaoSearchKey: llmConfig?.doubaoSearchKey || '',
+    webSearchEnabled: llmConfig?.webSearchEnabled !== false,
+  };
   const conversationMessages = baseMessages.map(m => ({ role: m.role, content: m.content }));
   const toolCallTrace = [];
   let finalContent = '';

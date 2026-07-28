@@ -77,7 +77,12 @@ export function useSendMessage({
       const currentMessages = agentMessages[activeAgentId] || [];
 
       // ===== Agent Loop 模式：当智能体配置了 tools 白名单时走工具调用循环 =====
-      const toolSchemas = activeAgent?.tools?.length ? selectToolSchemas(activeAgent.tools) : null;
+      let toolSchemas = activeAgent?.tools?.length ? selectToolSchemas(activeAgent.tools) : null;
+      // 联网搜索总开关：关闭时过滤掉 web_search，避免 LLM 调用消耗额度
+      if (toolSchemas && llmConfig?.webSearchEnabled === false) {
+        toolSchemas = toolSchemas.filter(s => s?.function?.name !== 'web_search');
+        if (toolSchemas.length === 0) toolSchemas = null;
+      }
 
       if (toolSchemas && toolSchemas.length > 0) {
         // 预先插入一条 placeholder assistant 消息，agent loop 会原地更新它
@@ -102,6 +107,7 @@ export function useSendMessage({
           baseMessages: baseConversation,
           toolSchemas,
           systemPrompt,
+          llmConfig,
         });
 
         // 用最终结果替换 placeholder，并保存到 session 历史

@@ -55,8 +55,9 @@ export async function runAgentLoop({
     agentId: agent?.id || '',
     agentName: agent?.name || '',
     agentTools: Array.isArray(agent?.tools) ? agent.tools : [],
-    // 联网搜索 Tavily Key（用户在设置面板配置；未配置则后端使用环境变量）
+    // 联网搜索 Key（用户在设置面板配置；未配置则后端使用环境变量）
     tavilyKey: llmConfig?.tavilyKey || '',
+    doubaoSearchKey: llmConfig?.doubaoSearchKey || '',
     llmConfig,
   };
   // 工作中的消息列表（包含 user / assistant / tool 三种角色），逐步累积

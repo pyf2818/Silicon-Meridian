@@ -8,7 +8,7 @@ import ColorfulBubbles from './components/ColorfulBubbles.jsx';
 import AiChatPanel from './components/AiChatPanel.jsx';
 import ThemePicker from './ThemePicker.jsx';
 import { PALETTES } from './ThemePicker.jsx';
-import { formatTime, formatRelative, getGradeColors, isEnglishText, isChineseText } from './utils/format.js';
+import { formatTime, formatRelative, getGradeColors, isEnglishText, isChineseText, isFreshNews } from './utils/format.js';
 import { validateWorkflowDraft } from './utils/workflowValidation.js';
 import { loadLS, saveLS, clearStaleLS } from './utils/localStorage.js';
 import { showToast } from './utils/toast.js';
@@ -43,7 +43,6 @@ import { useBriefingOps } from './hooks/useBriefingOps.js';
 import { useGithubInsight } from './hooks/useGithubInsight.js';
 import { BlockGrid, BlockPanel, BlockStat, BlockToolbar } from './blocks/index.js';
 import CommandPalette from './shell/CommandPalette.jsx';
-import IntelligenceSidebar from './components/IntelligenceSidebar.jsx';
 import IntelligenceFeedPanel from './components/IntelligenceFeedPanel.jsx';
 import LanguageSwitcher from './components/LanguageSwitcher.jsx';
 import RecommendationFeed from './components/RecommendationFeed.jsx';
@@ -60,7 +59,6 @@ import KnowledgeExportPage from './components/KnowledgeExportPage.jsx';
 import InsightDashboardPage from './components/InsightDashboardPage.jsx';
 import GithubPage from './components/GithubPage.jsx';
 import TrendingPage from './components/TrendingPage.jsx';
-import HomePage from './components/HomePage.jsx';
 import AgentsPage from './components/AgentsPage.jsx';
 import CalendarPage from './components/CalendarPage.jsx';
 import MaterialsPage from './components/MaterialsPage.jsx';
@@ -682,6 +680,7 @@ function App() {
     setAiInsights(p => ({ ...p, loading: true, error: '' }));
     try {
       const topItems = items.slice(0, 30).map(i => ({
+        id: i.id,  // P2: 传入 id 以便回写 AI 评分
         title: i.title,
         category: i.category,
         source: i.source,
@@ -704,6 +703,27 @@ function App() {
         throw new Error(msg);
       }
       setAiInsights({ loading: false, data, error: '' });
+
+      // P2: 异步回写 AI 评分到 items，触发前端重排（不阻塞首屏，失败时静默降级）
+      // 只有当返回包含 itemScores 字段时才回写，避免破坏无 AI 配置的降级路径
+      if (Array.isArray(data.itemScores) && data.itemScores.length > 0) {
+        const scoreMap = new Map();
+        data.itemScores.forEach(s => {
+          if (s && s.id != null) {
+            scoreMap.set(String(s.id), {
+              aiRelevanceScore: typeof s.score === 'number' ? s.score : 0,
+              aiLabel: s.label || '',
+              aiReason: s.reason || ''
+            });
+          }
+        });
+        if (scoreMap.size > 0) {
+          setItems(prev => prev.map(item => {
+            const ai = scoreMap.get(String(item.id));
+            return ai ? { ...item, aiRelevanceScore: ai.aiRelevanceScore, aiLabel: ai.aiLabel, aiReason: ai.aiReason } : item;
+          }));
+        }
+      }
     } catch (e) {
       setAiInsights({ loading: false, data: null, error: e.message });
     }
@@ -888,6 +908,21 @@ function App() {
     fetch('/api/stock/dashboard').catch(() => {});
   }, []);
 
+  // P5: 自动刷新轮询 —— 在「全部动态」页每 60s 静默拉取新资讯（命中后端 SWR 缓存，不重新抓源）
+  // 仅当用户停留在 all 页且非搜索/非加载中时触发；新资讯到达后通过 newSinceLastVisit 徽标提示
+  useEffect(() => {
+    if (nav !== 'all') return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      if (cancelled) return;
+      // 仅在非搜索、非流式加载时静默刷新（避免打断用户操作）
+      if (!debouncedQuery && !loading && !loadingMore) {
+        loadNews(blocked, false, debouncedQuery, { forceRefresh: false });
+      }
+    }, 60 * 1000);  // 60s
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [nav, blocked, debouncedQuery, loading, loadingMore]);
+
   // 趋势分析数据
   const trendData = useMemo(() => {
     // 按赛道统计
@@ -967,17 +1002,22 @@ function App() {
       const sampleRegions = items.slice(0, 5).map(i => ({ title: i.title?.substring(0, 30), region: i.region }));
     }
 
-    // 综合质量排序：qualityScore（多源交叉验证×源权重）+ mustReadScore + 关注词加权
+    // 排序策略：先按综合质量分降序（高质量优先），同分时按发布时间倒序（最新优先）
+    // 这样用户打开页面看到的是「最新 + 高质量」的资讯：
+    // - 同等质量下，最新的排最前
+    // - 高质量资讯即使稍旧也会排在中低质量新资讯前面
     const followLc = followKeywords.map(kw => kw.toLowerCase());
     result.sort((a, b) => {
       // 1. 关注词命中：命中加分 +50，置于前列
       const aFollow = followLc.some(kw => `${a.title} ${a.summary}`.toLowerCase().includes(kw)) ? 50 : 0;
       const bFollow = followLc.some(kw => `${b.title} ${b.summary}`.toLowerCase().includes(kw)) ? 50 : 0;
-      // 2. 质量分（后端 qualityScore 范围 0~30+）
-      const aQ = (a.qualityScore || 0) + (a.mustReadScore || 0) + aFollow;
-      const bQ = (b.qualityScore || 0) + (b.mustReadScore || 0) + bFollow;
+      // 2. 综合质量分（后端 qualityScore + mustReadScore + AI 评分加权 0.3）
+      const aAi = (a.aiRelevanceScore || 0) * 0.3;
+      const bAi = (b.aiRelevanceScore || 0) * 0.3;
+      const aQ = (a.qualityScore || 0) + (a.mustReadScore || 0) + aFollow + aAi;
+      const bQ = (b.qualityScore || 0) + (b.mustReadScore || 0) + bFollow + bAi;
       if (bQ !== aQ) return bQ - aQ;
-      // 3. 同分时按发布时间倒序
+      // 3. 同分时按发布时间倒序（最新优先）
       return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
     });
 
@@ -986,6 +1026,27 @@ function App() {
 
   // 同步 filtered.length 到 ref（供 IntersectionObserver 闭包读取最新值）
   useEffect(() => { filteredLengthRef.current = filtered.length; }, [filtered.length]);
+
+  // 「新资讯」感知：自上次访问以来新增的资讯条数
+  // 用 localStorage 存上次访问时最新 item 的 publishedAt，本次进入时计算增量
+  const [newSinceLastVisit, setNewSinceLastVisit] = useState(0);
+  useEffect(() => {
+    if (items.length === 0) return;
+    const latestPublishedAt = items.reduce((max, item) => {
+      const t = new Date(item.publishedAt).getTime();
+      return t > max ? t : max;
+    }, 0);
+    try {
+      const lastVisitStr = localStorage.getItem('lastVisitLatestNewsAt');
+      const lastVisit = lastVisitStr ? parseInt(lastVisitStr, 10) : 0;
+      if (lastVisit > 0 && latestPublishedAt > lastVisit) {
+        const count = items.filter(item => new Date(item.publishedAt).getTime() > lastVisit).length;
+        setNewSinceLastVisit(count);
+      }
+      // 更新上次访问时间为本次最新
+      localStorage.setItem('lastVisitLatestNewsAt', String(latestPublishedAt));
+    } catch { /* localStorage 异常时忽略 */ }
+  }, [items]);
 
   // 「全部动态」当前活动筛选 —— 用于 chip 条展示与一键清除
   const allActiveFilters = useMemo(() => {
@@ -1189,6 +1250,9 @@ function App() {
     intelligenceProfile,
     profilePriorityItems,
     sourcePriorityItems,
+    profileLearningEngine,
+    todayProfileSnapshot,
+    calibrationFlags,
   } = useWorkbenchMemos({
     todayMustRead,
     selectedDateItems,
@@ -1204,6 +1268,9 @@ function App() {
     insightData,
     isBookmarked,
     isInMaterials,
+    readingHistory,
+    selectedNewsDate,
+    dailyProfileSnapshots,
   });
 
   const feedbackLearningCount = useMemo(() => {
@@ -1313,134 +1380,16 @@ function App() {
     ];
   }, [selectedDateItems, items, workbenchItems, feedbackLearningCount, followKeywords, selectedInterests, workbenchAiInsight, bookmarks, materials]);
 
-  const profileLearningEngine = useMemo(() => {
-    const categoryMap = new Map();
-    const sourceMap = new Map();
-    const tagMap = new Map();
-    const allBehaviorItems = [
-      ...readingHistory.map(item => ({ ...item, behavior: 'read', weight: 3 })),
-      ...bookmarks.map(item => ({ ...item, behavior: 'saved', weight: 4 })),
-      ...materials.map(item => ({ ...item, behavior: 'material', weight: 5 }))
-    ];
+  // profileLearningEngine and todayProfileSnapshot are now computed by
+  // useWorkbenchMemos (delegating to profileModel.js pure functions).
+  // Phase 1.2 Task 10: removed inline useMemo blocks that duplicated the
+  // pure-function logic.
 
-    allBehaviorItems.forEach(item => {
-      const category = item.category || item.metadata?.category || '';
-      if (category) categoryMap.set(category, (categoryMap.get(category) || 0) + item.weight);
-      if (item.source) sourceMap.set(item.source, (sourceMap.get(item.source) || 0) + item.weight);
-      (item.tags || []).forEach(tag => {
-        if (tag) tagMap.set(tag, (tagMap.get(tag) || 0) + item.weight);
-      });
-    });
-
-    selectedInterests.forEach(id => categoryMap.set(id, (categoryMap.get(id) || 0) + domainTierScore(domainTiers[id])));
-    Object.entries(recommendationFeedback.boostedCategories || {}).forEach(([id, count]) => categoryMap.set(id, (categoryMap.get(id) || 0) + count * 6));
-    Object.entries(recommendationFeedback.trackedTerms || {}).forEach(([term, count]) => tagMap.set(term, (tagMap.get(term) || 0) + count * 5));
-    followKeywords.forEach(term => tagMap.set(term, (tagMap.get(term) || 0) + 4));
-    Object.entries(sourceTiers || {}).forEach(([source, tier]) => sourceMap.set(source, (sourceMap.get(source) || 0) + sourceTierScore(tier)));
-    Object.entries(recommendationFeedback.mutedSources || {}).forEach(([source, count]) => sourceMap.set(source, Math.max(0, (sourceMap.get(source) || 0) - count * 8)));
-
-    const topCategories = [...categoryMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([id, score]) => ({
-        id,
-        label: categories.find(cat => cat.id === id)?.label || id,
-        score: Math.round(score)
-      }));
-    const topSources = [...sourceMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, score]) => ({ name, score: Math.round(score) }));
-    const topTags = [...tagMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, score]) => ({ name, score: Math.round(score) }));
-
-    const selectedSet = new Set(selectedInterests);
-    const readCategorySet = new Set(readingHistory.map(item => item.category).filter(Boolean));
-    const blindSpots = categories
-      .filter(cat => cat.id !== 'all' && !selectedSet.has(cat.id) && !readCategorySet.has(cat.id))
-      .slice(0, 4)
-      .map(cat => cat.label);
-
-    const materialRatio = allBehaviorItems.length ? Math.round(materials.length / Math.max(allBehaviorItems.length, 1) * 100) : 0;
-    const savedRatio = readingHistory.length ? Math.round(bookmarks.length / Math.max(readingHistory.length, 1) * 100) : 0;
-    const recentReads = readingHistory.filter(item => Date.now() - new Date(item.readAt || 0).getTime() < 7 * 24 * 60 * 60 * 1000);
-    const multimediaReads = readingHistory.filter(item => item.imageUrl || item.videoUrl).length;
-    const behaviorDepth = materials.length >= bookmarks.length && materials.length > 0
-      ? '资产沉淀型'
-      : savedRatio >= 50
-        ? '收藏复盘型'
-        : recentReads.length >= 6
-          ? '高频扫描型'
-          : '探索校准型';
-
-    const confidence = Math.min(96, Math.round(
-      Math.min(readingHistory.length, 30) * 1.4
-      + Math.min(bookmarks.length, 20) * 1.3
-      + Math.min(materials.length, 20) * 1.8
-      + selectedInterests.length * 3
-      + followKeywords.length * 1.8
-      + feedbackLearningCount * 2
-    ));
-    const confidenceLabel = confidence >= 75 ? '高可信' : confidence >= 45 ? '持续学习中' : '需要校准';
-    const dominantCategory = topCategories[0]?.label || '综合科技';
-    const dominantSource = topSources[0]?.name || '多来源';
-    const dominantTag = topTags[0]?.name || followKeywords[0] || '关键趋势';
-    const summary = confidence >= 45
-      ? `系统判断你当前更偏向「${dominantCategory}」与「${dominantTag}」，信任来源集中在「${dominantSource}」，推荐会优先保留高质量、可沉淀的信息。`
-      : '系统仍在学习你的偏好。建议先设置关注领域、阅读几条推荐并收藏/沉淀重要内容。';
-
-    const explanation = [
-      topCategories[0] ? `领域权重最高：${topCategories[0].label}` : '',
-      topSources[0] ? `信任来源最高：${topSources[0].name}` : '',
-      topTags[0] ? `记忆关键词：${topTags.slice(0, 3).map(item => item.name).join('、')}` : '',
-      recommendationFeedback.mutedSources && Object.keys(recommendationFeedback.mutedSources).length ? `已降低 ${Object.keys(recommendationFeedback.mutedSources).slice(0, 2).join('、')} 的权重` : ''
-    ].filter(Boolean);
-
-    const nextActions = [
-      blindSpots.length ? `补看 ${blindSpots.slice(0, 2).join('、')}，避免信息茧房` : '',
-      topTags.length ? `持续追踪 ${topTags.slice(0, 2).map(item => item.name).join('、')}` : '',
-      materialRatio < 15 && bookmarks.length > 0 ? '把收藏中的关键内容沉淀为素材' : '',
-      confidence < 45 ? '先校准 3 个关注领域和 2 个高信任来源' : ''
-    ].filter(Boolean).slice(0, 3);
-
-    return {
-      confidence,
-      confidenceLabel,
-      summary,
-      behaviorDepth,
-      topCategories,
-      topSources,
-      topTags,
-      blindSpots,
-      explanation,
-      nextActions,
-      savedRatio,
-      materialRatio,
-      recentReadCount: recentReads.length,
-      multimediaReads
-    };
-  }, [readingHistory, bookmarks, materials, selectedInterests, domainTiers, recommendationFeedback, followKeywords, sourceTiers, feedbackLearningCount, categories]);
-
-  const todayProfileSnapshot = useMemo(() => ({
-    date: selectedNewsDate,
-    focus: intelligenceProfile.focusLabels.slice(0, 5),
-    tracked: intelligenceProfile.tracked.slice(0, 5),
-    depth: intelligenceProfile.depth,
-    outputGoal: intelligenceProfile.outputGoal,
-    confidence: profileLearningEngine.confidence,
-    learningSummary: profileLearningEngine.summary,
-    behaviorDepth: profileLearningEngine.behaviorDepth,
-    blindSpots: profileLearningEngine.blindSpots.slice(0, 3),
-    nextActions: profileLearningEngine.nextActions.slice(0, 3),
-    reads: readingHistory.length,
-    saved: bookmarks.length,
-    materials: materials.length,
-    sources: sourcePriorityItems.slice(0, 3).map(s => s.name)
-  }), [selectedNewsDate, intelligenceProfile, profileLearningEngine, readingHistory.length, bookmarks.length, materials.length, sourcePriorityItems]);
-
-  const profileCalibrationSignals = useMemo(() => {
+  // profileCalibrationCards: UI-only cards array (depends on
+  // profilePriorityItems / sourcePriorityItems which are UI state).
+  // Renamed from profileCalibrationSignals to avoid confusion with
+  // calibrationFlags (3 booleans from useWorkbenchMemos for AI prompt layer).
+  const profileCalibrationCards = useMemo(() => {
     const highDomainCount = profilePriorityItems.filter(item => item.tier === 'focus').length;
     const highSourceCount = sourcePriorityItems.filter(item => item.tier === 'focus').length;
     const clickedCategories = [...new Set(readingHistory.map(item => item.category).filter(Boolean))].length;
@@ -2159,6 +2108,7 @@ ${signals}
           trendingPlatform={trendingPlatform}
           setTrendingPlatform={setTrendingPlatform}
           loadTrending={loadTrending}
+          newSinceLastVisit={newSinceLastVisit}
         />
 
         {showStatsBar && <div className="stats-bar">
@@ -2415,7 +2365,7 @@ ${signals}
               setSpecialFollowForm={setSpecialFollowForm}
               editingSpecialFollowId={editingSpecialFollowId}
               setEditingSpecialFollowId={setEditingSpecialFollowId}
-              profileCalibrationSignals={profileCalibrationSignals}
+              profileCalibrationCards={profileCalibrationCards}
               generateDailyProfileSnapshot={generateDailyProfileSnapshot}
               setShowInterestModal={setShowInterestModal}
               selectedInterests={selectedInterests}

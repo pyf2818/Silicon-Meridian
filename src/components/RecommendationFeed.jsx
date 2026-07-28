@@ -25,6 +25,7 @@ export default function RecommendationFeed({
   onLogin,
 }) {
   // 扁平化当日推荐 lanes：个人必看优先，再公共热点，去重
+  // P4: 同分时按发布时间倒序，让最新资讯排前（与全部动态页保持一致体验）
   const feedItems = useMemo(() => {
     const seen = new Set();
     const merged = [...(lanes?.personal || []), ...(lanes?.public || [])];
@@ -34,6 +35,12 @@ export default function RecommendationFeed({
       seen.add(item.id);
       result.push(item);
     }
+    // 同 mustReadScore 下按发布时间倒序，最新资讯排前
+    result.sort((a, b) => {
+      const scoreDiff = (b.mustReadScore || 0) - (a.mustReadScore || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
+    });
     return result;
   }, [lanes]);
 

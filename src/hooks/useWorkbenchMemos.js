@@ -1,12 +1,24 @@
 import { useMemo } from 'react';
+import {
+  computeIntelligenceProfile,
+  computeProfileLearningEngine,
+  computeTodayProfileSnapshot,
+  computeCalibrationSignals,
+} from '../utils/profileModel.js';
 
 /**
  * Extracted workbench and intelligence profile useMemo computations.
  *
- * These blocks originally lived inline in App.jsx (around lines 2411-2625).
- * All logic and deps arrays are kept identical to the original implementation.
+ * Phase 1.2 refactor: this hook is now a thin shell over profileModel.js
+ * pure functions. The intelligenceProfile / profileLearningEngine /
+ * todayProfileSnapshot / calibrationFlags memos delegate to the pure
+ * functions so they can be unit-tested independently.
  *
- * Source of truth: src/App.jsx (codex/intelligence-workbench-redesign branch).
+ * The "校准信号卡片数组" (array of {label, value, desc} cards) is kept
+ * inline in App.jsx because it depends on UI-only state
+ * (profilePriorityItems / sourcePriorityItems).
+ *
+ * Source of truth: src/utils/profileModel.js
  */
 
 /**
@@ -25,6 +37,9 @@ import { useMemo } from 'react';
  * @param {object} params.insightData           - Insight data object (must expose `sourceQuality`).
  * @param {(id: string) => boolean} params.isBookmarked  - Bookmark membership check.
  * @param {(id: string) => boolean} params.isInMaterials - Material membership check.
+ * @param {Array}  [params.readingHistory]      - Reading history (for profile learning engine).
+ * @param {string} [params.selectedNewsDate]    - Selected date string YYYY-MM-DD (for today's snapshot).
+ * @param {Array}  [params.dailyProfileSnapshots] - Daily snapshot history (for calibration signals).
  */
 export function useWorkbenchMemos({
   todayMustRead,
@@ -41,6 +56,9 @@ export function useWorkbenchMemos({
   insightData,
   isBookmarked,
   isInMaterials,
+  readingHistory = [],
+  selectedNewsDate,
+  dailyProfileSnapshots = [],
 }) {
   const workbenchItems = useMemo(() => {
     const seen = new Set();
@@ -106,24 +124,24 @@ export function useWorkbenchMemos({
     return { gradeCounts, focusMatches, keywordMatches, savedCount };
   }, [workbenchItems, selectedInterests, followKeywords, bookmarks, materials]);
 
-  const intelligenceProfile = useMemo(() => {
-    const focusLabels = selectedInterests.map(id => categories.find(c => c.id === id)?.label || id);
-    const boosted = Object.entries(recommendationFeedback.boostedCategories || {})
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([id]) => categories.find(c => c.id === id)?.label || id);
-    const muted = Object.keys(recommendationFeedback.mutedSources || {}).slice(0, 3);
-    const tracked = [...new Set([...followKeywords, ...Object.keys(recommendationFeedback.trackedTerms || {})])].slice(0, 8);
-
-    return {
-      focusLabels,
-      boosted,
-      muted,
-      tracked,
-      depth: workbenchItems.length > 0 && workbenchStats.focusMatches / Math.max(workbenchItems.length, 1) > 0.5 ? '深度聚焦' : '探索校准',
-      outputGoal: materials.length > bookmarks.length ? '素材沉淀' : '阅读判断'
-    };
-  }, [selectedInterests, recommendationFeedback, followKeywords, workbenchItems.length, workbenchStats.focusMatches, materials.length, bookmarks.length]);
+  // intelligenceProfile: delegate to pure function (Phase 1.2 Task 10)
+  const intelligenceProfile = useMemo(() => computeIntelligenceProfile({
+    bookmarks,
+    readingHistory: readingHistory || [],
+    materials,
+    selectedInterests,
+    recommendationFeedback,
+    followKeywords,
+    sourcePriorities: Object.fromEntries(Object.entries(sourceTiers || {}).map(([k, v]) => [k, v === 'focus' ? 100 : v === 'normal' ? 50 : 0])),
+    domainPriorities: Object.fromEntries(Object.entries(domainTiers || {}).map(([k, v]) => [k, v === 'focus' ? 100 : v === 'normal' ? 50 : 0])),
+    insightSourceQuality: insightData?.sourceQuality || [],
+    workbenchItemCount: workbenchItems.length,
+    focusMatches: workbenchStats.focusMatches,
+    categories,
+    domainTiers, sourceTiers,
+  }), [bookmarks, readingHistory, materials, selectedInterests, recommendationFeedback,
+       followKeywords, sourceTiers, domainTiers, insightData, workbenchItems.length,
+       workbenchStats.focusMatches, categories]);
 
   const profilePriorityItems = useMemo(() => {
     const base = selectedInterests.length ? selectedInterests : categories.slice(0, 6).map(c => c.id);
@@ -150,11 +168,49 @@ export function useWorkbenchMemos({
     }));
   }, [readingProfile.topSources, insightData.sourceQuality, sourceTiers]);
 
+  // profileLearningEngine: delegate to pure function (Phase 1.2 Task 10)
+  const profileLearningEngine = useMemo(() => computeProfileLearningEngine({
+    readingHistory: readingHistory || [],
+    bookmarks,
+    materials,
+    selectedInterests,
+    domainTiers,
+    domainPriorities: Object.fromEntries(Object.entries(domainTiers || {}).map(([k, v]) => [k, v === 'focus' ? 100 : v === 'normal' ? 50 : 0])),
+    recommendationFeedback,
+    followKeywords,
+    sourceTiers,
+    sourcePriorities: Object.fromEntries(Object.entries(sourceTiers || {}).map(([k, v]) => [k, v === 'focus' ? 100 : v === 'normal' ? 50 : 0])),
+    categories,
+  }), [readingHistory, bookmarks, materials, selectedInterests, domainTiers, recommendationFeedback, followKeywords, sourceTiers, categories]);
+
+  // todayProfileSnapshot: delegate to pure function (Phase 1.2 Task 10)
+  const todayProfileSnapshot = useMemo(() => computeTodayProfileSnapshot({
+    date: selectedNewsDate,
+    intelligenceProfile,
+    profileLearningEngine,
+    readingHistory: readingHistory || [],
+    bookmarks,
+    materials,
+    sourcePriorityItems,
+  }), [selectedNewsDate, intelligenceProfile, profileLearningEngine, readingHistory, bookmarks, materials, sourcePriorityItems]);
+
+  // calibrationFlags: 3 booleans for AI prompt layer (Phase 1.2 Task 10)
+  // Note: the UI "校准信号卡片数组" (cards with {label, value, desc}) is kept inline in App.jsx
+  // because it depends on UI-only state (profilePriorityItems / sourcePriorityItems).
+  const calibrationFlags = useMemo(() => computeCalibrationSignals({
+    intelligenceProfile,
+    recommendationFeedback,
+    dailyProfileSnapshots,
+  }), [intelligenceProfile, recommendationFeedback, dailyProfileSnapshots]);
+
   return {
     workbenchItems,
     workbenchStats,
     intelligenceProfile,
     profilePriorityItems,
     sourcePriorityItems,
+    profileLearningEngine,
+    todayProfileSnapshot,
+    calibrationFlags,
   };
 }

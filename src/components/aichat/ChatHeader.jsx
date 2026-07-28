@@ -12,15 +12,22 @@ export default function ChatHeader({
   return (
     <div className="chat-header">
       <div className="chat-header-left">
-        <div className="chat-logo">
-          <svg width="22" height="22" viewBox="0 0 48 48" fill="none">
-            <circle cx="24" cy="24" r="22" stroke="var(--accent-cyan)" strokeWidth="2" opacity="0.3"/>
-            <path d="M14 24C14 18.477 18.477 14 24 14V14C29.523 14 34 18.477 34 24V24C34 29.523 29.523 34 24 34V34C18.477 34 14 29.523 14 24V24Z" stroke="var(--accent-cyan)" strokeWidth="1.5" opacity="0.6"/>
-            <circle cx="24" cy="24" r="8" fill="var(--accent-cyan)" opacity="0.15"/>
-            <path d="M20 22C20 22 22 18 24 18C26 18 28 22 28 22" stroke="var(--accent-cyan)" strokeWidth="1.5" strokeLinecap="round"/>
-            <circle cx="21" cy="24" r="1.2" fill="var(--accent-cyan)"/>
-            <circle cx="27" cy="24" r="1.2" fill="var(--accent-cyan)"/>
-            <path d="M22 27C22 27 23 28 24 28C25 28 26 27 26 27" stroke="var(--accent-cyan)" strokeWidth="1" strokeLinecap="round"/>
+        <div className="chat-logo" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 48 48" fill="none">
+            {/* 外环：旋转 45° 的方框，几何科技感 */}
+            <rect x="6" y="6" width="36" height="36" rx="3" stroke="var(--accent-cyan)" strokeWidth="1.4" opacity="0.35" transform="rotate(45 24 24)"/>
+            {/* 中环：金色圆 */}
+            <circle cx="24" cy="24" r="15" stroke="var(--accent-cyan)" strokeWidth="1.2" opacity="0.5"/>
+            {/* 内部菱形核心：渐变填充 */}
+            <path d="M24 13 L35 24 L24 35 L13 24 Z" fill="var(--accent-cyan)" opacity="0.18" stroke="var(--accent-cyan)" strokeWidth="1.4"/>
+            {/* 中心四芒星：核心标识 */}
+            <path d="M24 17 L26 24 L24 31 L22 24 Z" fill="var(--accent-cyan)" opacity="0.95"/>
+            <path d="M17 24 L24 22 L31 24 L24 26 Z" fill="var(--accent-cyan)" opacity="0.7"/>
+            {/* 四角节点：电路感 */}
+            <circle cx="24" cy="6" r="1.4" fill="var(--accent-cyan)"/>
+            <circle cx="42" cy="24" r="1.4" fill="var(--accent-cyan)"/>
+            <circle cx="24" cy="42" r="1.4" fill="var(--accent-cyan)"/>
+            <circle cx="6" cy="24" r="1.4" fill="var(--accent-cyan)"/>
           </svg>
         </div>
         <div className="chat-header-titles">

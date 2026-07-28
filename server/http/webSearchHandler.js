@@ -4,22 +4,36 @@ import { assertSafeExternalUrl } from '../security/urlSafety.js';
 /**
  * Web Search Handler - 联网搜索接口
  *
- * 策略：Tavily 优先（如配置了 API Key），自动 fallback 到 DuckDuckGo（完全免费、无需注册）。
- * Tavily 专为 AI Agent 设计，返回结构化 JSON；DuckDuckGo 解析 HTML lite 页面。
+ * 优先级：豆包搜索（火山引擎） > Tavily > DuckDuckGo
  *
- * API Key 来源（优先级）：
- *   1. 环境变量 TAVILY_API_KEY（推荐，运维统一配置）
- *   2. 请求头 X-Tavily-Key（前端用户在设置面板填入）
+ * - 豆包搜索：国内首选，每月 500 次免费，订阅地址 https://console.volcengine.com/search-infinity/web-search
+ * - Tavily：海外 AI 搜索服务，每月 1000 次免费（tavily.com）
+ * - DuckDuckGo：兜底免费方案，无需注册
+ *
+ * API Key 来源：
+ *   豆包：环境变量 DOUBAO_SEARCH_API_KEY 或请求头 X-Doubao-Search-Key
+ *   Tavily：环境变量 TAVILY_API_KEY 或请求头 X-Tavily-Key
  *
  * 统一返回格式：
- *   { ok: true, provider: 'tavily'|'duckduckgo', results: [{title, url, snippet, score?}], meta: {query, count, latencyMs} }
+ *   { ok: true, provider: 'doubao'|'tavily'|'duckduckgo', results: [{title, url, snippet, score?}], meta: {query, count, latencyMs} }
  */
 
+const DOUBAO_SEARCH_ENDPOINT = 'https://open.feedcoopapi.com/search_api/web_search';
 const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
 const DUCKDUCKGO_ENDPOINT = 'https://lite.duckduckgo.com/lite/';
 const DEFAULT_MAX_RESULTS = 8;
 const MAX_RESULTS_LIMIT = 20;
 const REQUEST_TIMEOUT_MS = 12_000;
+
+function resolveDoubaoKey(req) {
+  const fromHeader = req.headers['x-doubao-search-key'];
+  if (fromHeader && typeof fromHeader === 'string' && fromHeader.trim()) {
+    return fromHeader.trim();
+  }
+  const fromEnv = process.env.DOUBAO_SEARCH_API_KEY;
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+  return '';
+}
 
 function resolveTavilyKey(req) {
   const fromHeader = req.headers['x-tavily-key'];
@@ -35,6 +49,73 @@ function withTimeout(ms) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
   return { signal: controller.signal, clear: () => clearTimeout(timer) };
+}
+
+/**
+ * 豆包搜索（火山引擎）- 国内首选
+ * 文档：https://www.volcengine.com/docs/87772/2272953
+ * 订阅：https://console.volcengine.com/search-infinity/web-search
+ *
+ * 响应结构：
+ *   {
+ *     ResponseMetadata: { RequestId, Error?: { Code, CodeN, Message } },
+ *     Result: { ResultCount, WebResults: [{ Title, Url, Snippet, Summary, RankScore, PublishTime, SiteName }] } | null
+ *   }
+ * 注意：HTTP 200 也可能携带业务错误（如 invalid_api_key），必须检查 ResponseMetadata.Error
+ */
+async function callDoubaoSearch(query, maxResults, apiKey) {
+  const body = JSON.stringify({
+    Query: query,
+    SearchType: 'web',
+    Count: Math.min(maxResults, 20),
+    Filter: {
+      NeedContent: false, // 不强制要求正文（仅 Snippet 也可）
+      NeedUrl: true,      // 必须有原文链接
+    },
+  });
+  const { signal, clear } = withTimeout(REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(DOUBAO_SEARCH_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body,
+      signal,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw Object.assign(new Error(`豆包搜索 HTTP ${response.status}：${text.slice(0, 200)}`), {
+        code: 'DOUBAO_UPSTREAM_ERROR', status: 502,
+      });
+    }
+    const data = await response.json();
+    // 业务错误（HTTP 200 但 ResponseMetadata.Error 存在）
+    const errMeta = data?.ResponseMetadata?.Error;
+    if (errMeta && (errMeta.Code || errMeta.CodeN)) {
+      const errCode = errMeta.Code || `code=${errMeta.CodeN}`;
+      const errMsg = errMeta.Message || errCode;
+      // invalid_api_key / 余额不足等用户配置错误 → 401/403，不重试
+      const isAuthError = errCode === 'invalid_api_key' || errCode === 'no_permission';
+      const isQuotaError = errCode === 'exceed_free_limit' || errCode === 'quota_exceeded';
+      throw Object.assign(new Error(`豆包搜索${isAuthError ? '：API Key 无效' : isQuotaError ? '：免费额度已用尽' : '业务错误：' + errMsg}`), {
+        code: isAuthError ? 'DOUBAO_INVALID_KEY' : (isQuotaError ? 'DOUBAO_QUOTA_EXCEEDED' : 'DOUBAO_BIZ_ERROR'),
+        status: isAuthError ? 401 : (isQuotaError ? 429 : 502),
+      });
+    }
+    // 提取结果：Result.WebResults
+    const webResults = Array.isArray(data?.Result?.WebResults) ? data.Result.WebResults : [];
+    const items = webResults.slice(0, maxResults).map(it => ({
+      title: String(it.Title || '').trim(),
+      url: String(it.Url || '').trim(),
+      snippet: String(it.Summary || it.Snippet || '').trim(), // Summary 更适合 LLM，Snippet 仅用于展示
+      score: Number.isFinite(Number(it.RankScore)) ? Number(it.RankScore) : undefined,
+    })).filter(r => r.title || r.url || r.snippet);
+    return { provider: 'doubao', results: items };
+  } finally {
+    clear();
+  }
 }
 
 async function callTavily(query, maxResults, apiKey) {
@@ -186,7 +267,31 @@ export async function handleWebSearchRequest(req, res) {
       return sendJsonResponse(res, 400, { ok: false, error: { code: 'QUERY_TOO_LONG', message: '搜索关键词过长（>500 字符）' } });
     }
 
-    // 优先尝试 Tavily
+    // 优先尝试豆包搜索（国内用户首选）
+    const doubaoKey = resolveDoubaoKey(req);
+    if (doubaoKey) {
+      try {
+        const { provider, results } = await callDoubaoSearch(query, maxResults, doubaoKey);
+        // 豆包调用成功就返回（即使 0 结果，也优于降级到国内不通的 DDG）
+        return sendJsonResponse(res, 200, {
+          ok: true,
+          provider,
+          results,
+          meta: { query, count: results.length, latencyMs: Date.now() - started },
+        });
+      } catch (err) {
+        // 仅在 API Key 无效 / 配额用尽时记录 warn（用户配置问题）
+        // 其他错误（网络/超时/5xx）也降级，但记录 error
+        const isUserConfigError = err.code === 'DOUBAO_INVALID_KEY' || err.code === 'DOUBAO_QUOTA_EXCEEDED';
+        if (isUserConfigError) {
+          console.warn('[webSearch] 豆包搜索配置错误，降级到 Tavily/DuckDuckGo：', err.message);
+        } else {
+          console.warn('[webSearch] 豆包搜索调用失败，降级：', err.message, err.code);
+        }
+      }
+    }
+
+    // 次选 Tavily
     const tavilyKey = resolveTavilyKey(req);
     if (tavilyKey) {
       try {
@@ -206,18 +311,35 @@ export async function handleWebSearchRequest(req, res) {
       }
     }
 
-    // 兜底：DuckDuckGo
-    const { provider, results } = await callDuckDuckGo(query, maxResults);
+    // 兜底：DuckDuckGo（国内通常无法访问，配置了豆包/Tavily 后不应走到这里）
+    let ddgResult;
+    try {
+      ddgResult = await callDuckDuckGo(query, maxResults);
+    } catch (ddgErr) {
+      // DDG 网络不可达时返回友好错误，引导用户配置 Key
+      const hint = doubaoKey || tavilyKey
+        ? '所有联网搜索源均不可用（豆包/Tavily 调用失败，DuckDuckGo 网络不可达）'
+        : '未配置联网搜索 API Key 且 DuckDuckGo 网络不可达。请前往「设置 → 大模型配置」填写豆包搜索 API Key（推荐，国内稳定）';
+      return sendJsonResponse(res, 503, {
+        ok: false,
+        error: {
+          code: 'WEB_SEARCH_UNAVAILABLE',
+          message: hint,
+          cause: ddgErr?.message || String(ddgErr),
+        },
+      });
+    }
     return sendJsonResponse(res, 200, {
       ok: true,
-      provider,
-      results,
-      meta: { query, count: results.length, latencyMs: Date.now() - started, tavilyConfigured: Boolean(tavilyKey) },
+      provider: ddgResult.provider,
+      results: ddgResult.results,
+      meta: { query, count: ddgResult.results.length, latencyMs: Date.now() - started, tavilyConfigured: Boolean(tavilyKey), doubaoConfigured: Boolean(doubaoKey) },
     });
   } catch (error) {
     if (error?.name === 'AbortError') {
       return routeError(res, Object.assign(new Error('搜索请求超时'), { code: 'UPSTREAM_TIMEOUT', status: 504 }));
     }
+    console.error('[webSearch] 全链路失败:', error?.message, error?.code);
     return routeError(res, error);
   }
 }

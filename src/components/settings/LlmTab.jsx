@@ -57,10 +57,60 @@ export default function LlmTab({
       </div>
 
       <div className="setting-item">
-        <label>联网搜索（Tavily API Key）</label>
+        <label>联网搜索总开关</label>
         <p className="setting-desc">
-          Agent 调用 web_search 工具时优先用 Tavily（每月 1000 次免费，<a href="https://tavily.com" target="_blank" rel="noreferrer">tavily.com</a> 注册）。
-          未填写时自动 fallback 到 DuckDuckGo 免费搜索（无需注册）。
+          关闭后，Agent 工具列表中的「联网搜索（web_search）」会被移除，LLM 不会发起联网搜索请求，从而节省豆包/Tavily 的调用额度。需要时随时回来打开。
+        </p>
+        <div className="llm-config-form">
+          <div className="llm-config-row" style={{ alignItems: 'center', gap: '10px' }}>
+            <label className="llm-toggle-wrap" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={llmConfig.webSearchEnabled !== false}
+                onChange={e => setLlmConfig(prev => ({ ...prev, webSearchEnabled: e.target.checked }))}
+                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--accent-cyan, #22d3ee)' }}
+              />
+              <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
+                {llmConfig.webSearchEnabled === false ? '已关闭联网搜索' : '已开启联网搜索'}
+              </span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="setting-item">
+        <label>联网搜索（豆包搜索 API Key · 推荐）</label>
+        <p className="setting-desc">
+          火山引擎豆包搜索，国内访问稳定，每月 500 次免费。
+          请前往 <a href="https://console.volcengine.com/search-infinity/web-search" target="_blank" rel="noreferrer">火山引擎控制台</a> 订阅「豆包搜索 Custom 版」并创建 API Key。
+          填写后 Agent 的 web_search 工具将优先使用豆包搜索。
+        </p>
+        <div className="llm-config-form">
+          <div className="llm-config-row">
+            <input
+              type="password"
+              placeholder="豆包搜索 API Key（如 4d0e2***-****-****-****-************）"
+              value={llmConfig.doubaoSearchKey || ''}
+              onChange={e => setLlmConfig(prev => ({ ...prev, doubaoSearchKey: e.target.value }))}
+              className="llm-input"
+              autoComplete="off"
+            />
+            {(llmConfig.doubaoSearchKey || '').trim() && (
+              <button
+                className="fetch-models-btn"
+                onClick={() => setLlmConfig(prev => ({ ...prev, doubaoSearchKey: '' }))}
+                title="清空豆包搜索 Key"
+              >清空</button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="setting-item">
+        <label>联网搜索（Tavily API Key · 海外备选）</label>
+        <p className="setting-desc">
+          海外 AI 搜索服务，每月 1000 次免费，<a href="https://tavily.com" target="_blank" rel="noreferrer">tavily.com</a> 注册。
+          未填写豆包和 Tavily 时，自动 fallback 到 DuckDuckGo 免费搜索（无需注册，但国内可能不稳定）。
         </p>
         <div className="llm-config-form">
           <div className="llm-config-row">

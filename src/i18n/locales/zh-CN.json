@@ -104,6 +104,10 @@
       "tavilyDesc": "Agent 调用 web_search 工具时优先用 Tavily（每月 1000 次免费，tavily.com 注册）。未填写时自动 fallback 到 DuckDuckGo 免费搜索（无需注册）。",
       "tavilyPlaceholder": "Tavily API Key（可选，留空使用 DuckDuckGo 免费搜索）",
       "clearTavily": "清空",
+      "doubaoTitle": "联网搜索（豆包搜索 API Key · 推荐）",
+      "doubaoDesc": "火山引擎豆包搜索，国内访问稳定，每月 500 次免费。请前往火山引擎控制台订阅「豆包搜索 Custom 版」并创建 API Key。填写后 Agent 的 web_search 工具将优先使用豆包搜索。",
+      "doubaoPlaceholder": "豆包搜索 API Key（如 4d0e2***-****-****-****-************）",
+      "clearDoubao": "清空",
       "presets": "预设管理"
     },
     "appearance": {

@@ -32,10 +32,47 @@ function enforceRateLimit(req, isAgentLoop = false) {
 
 function cleanText(value, max) { return String(value || '').slice(0, max); }
 
+// 上游 429/5xx 自动重试：仅对幂等的非流式 generate 路径生效（流式已开 SSE 不能重试）
+async function fetchWithRetry(url, options, { retries = 1, baseDelay = 1200 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const resp = await safeExternalFetch(url, options);
+      if (resp.status !== 429 && resp.status < 500) return resp;
+      // 429 或 5xx 才重试
+      lastErr = Object.assign(new Error(`模型服务返回 ${resp.status}`), {
+        code: resp.status === 429 ? 'UPSTREAM_RATE_LIMITED' : 'UPSTREAM_AI_ERROR',
+        status: resp.status === 429 ? 429 : 502,
+      });
+      // 取出响应体后才能下一次请求
+      await resp.text().catch(() => {});
+      if (attempt < retries) {
+        const retryAfter = Number(resp.headers?.get('retry-after')) || 0;
+        const delay = retryAfter > 0 ? Math.min(retryAfter * 1000, 5000) : baseDelay * (attempt + 1);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      return resp; // 重试后仍失败，返回响应让调用方处理
+    } catch (err) {
+      lastErr = err;
+      if (err?.name === 'AbortError') throw err; // 用户主动取消不重试
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, baseDelay * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr || new Error('AI 网关请求失败');
+}
+
 function sendAiError(res, error) {
   const code = error?.code || (error?.name === 'AbortError' ? 'UPSTREAM_TIMEOUT' : 'AI_GATEWAY_ERROR');
   const status = error?.status || (error?.name === 'AbortError' ? 504 : 500);
-  const message = error?.name === 'AbortError' ? '模型服务请求超时' : (error?.message || 'AI 网关请求失败');
+  let message;
+  if (error?.name === 'AbortError') message = '模型服务请求超时';
+  else if (code === 'UPSTREAM_RATE_LIMITED') message = '模型服务繁忙（429），请稍候再试，或更换模型';
+  else message = error?.message || 'AI 网关请求失败';
   return sendJsonResponse(res, status, { ok: false, error: message, errorCode: code });
 }
 
@@ -117,19 +154,29 @@ async function handleAiStreamRequest(req, res, body) {
 
   let upstream;
   try {
-    upstream = await safeExternalFetch(apiUrl, {
+    // 流式路径仅重试连接阶段（已开 SSE 不能重试整段对话）
+    upstream = await fetchWithRetry(apiUrl, {
       allowPrivate: allowPrivateAiNetwork(), method: 'POST', headers, signal: controller.signal,
       body: JSON.stringify({ model, messages: buildMessages(body), max_tokens: maxTokens, temperature: 0.7, stream: true }),
-    });
+    }, { retries: 1, baseDelay: 1200 });
     if (!upstream.ok) {
       const errText = await upstream.text().catch(() => '');
-      res.write(`data: ${JSON.stringify({ ok: false, error: `模型服务返回 ${upstream.status}${errText ? ': ' + errText.slice(0, 200) : ''}`, errorCode: 'UPSTREAM_AI_ERROR' })}\n\n`);
+      const isRateLimited = upstream.status === 429;
+      const errorCode = isRateLimited ? 'UPSTREAM_RATE_LIMITED' : 'UPSTREAM_AI_ERROR';
+      const friendlyMsg = isRateLimited
+        ? '模型服务繁忙（429），请稍候再试，或更换模型'
+        : `模型服务返回 ${upstream.status}${errText ? ': ' + errText.slice(0, 200) : ''}`;
+      res.write(`data: ${JSON.stringify({ ok: false, error: friendlyMsg, errorCode })}\n\n`);
       return res.end();
     }
   } catch (err) {
     const isAbort = err?.name === 'AbortError';
-    const msg = isAbort ? '模型服务请求超时或已停止' : (err?.message || 'AI 网关请求失败');
-    res.write(`data: ${JSON.stringify({ ok: false, error: msg, errorCode: isAbort ? 'UPSTREAM_TIMEOUT' : 'AI_GATEWAY_ERROR' })}\n\n`);
+    const isRateLimited = err?.code === 'UPSTREAM_RATE_LIMITED';
+    const msg = isAbort
+      ? '模型服务请求超时或已停止'
+      : (isRateLimited ? '模型服务繁忙（429），请稍候再试，或更换模型' : (err?.message || 'AI 网关请求失败'));
+    const errorCode = isAbort ? 'UPSTREAM_TIMEOUT' : (isRateLimited ? 'UPSTREAM_RATE_LIMITED' : 'AI_GATEWAY_ERROR');
+    res.write(`data: ${JSON.stringify({ ok: false, error: msg, errorCode })}\n\n`);
     return res.end();
   } finally {
     clearTimeout(timeout);
@@ -222,13 +269,17 @@ export async function handleAiGenerateRequest(req, res) {
         upstreamBody.tool_choice = 'auto';
       }
     }
-    const response = await safeExternalFetch(apiUrl, {
+    const response = await fetchWithRetry(apiUrl, {
       allowPrivate: allowPrivateAiNetwork(), method: 'POST', headers, signal: controller.signal,
       body: JSON.stringify(upstreamBody),
-    });
+    }, { retries: 1, baseDelay: 1200 });
     if (!response.ok) {
       await response.body?.cancel().catch(() => {});
-      throw Object.assign(new Error(`模型服务返回 ${response.status}`), { code: 'UPSTREAM_AI_ERROR', status: 502 });
+      const isRateLimited = response.status === 429;
+      throw Object.assign(new Error(`模型服务返回 ${response.status}`), {
+        code: isRateLimited ? 'UPSTREAM_RATE_LIMITED' : 'UPSTREAM_AI_ERROR',
+        status: isRateLimited ? 429 : 502,
+      });
     }
     const data = await response.json();
     const choice = data.choices?.[0] || {};
