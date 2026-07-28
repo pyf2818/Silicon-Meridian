@@ -255,6 +255,22 @@ The v2 features described in `docs/wanban-silicon-valley-v2-blueprint.md` are wi
 - Bug 3 修复：`profileStore` 默认值字段名 `updatedAt` → `lastEvolvedAt`（带 fallback 兼容旧 localStorage）
 - 测试：新增 15 个纯函数单元测试（buildPersonaTrendSeries 8 + diffPersonaSnapshots 7），总测试数 410 → 425
 
+**Phase 6 仪表盘视觉重构（已完成）**：从"方块堆叠"重构为左侧时间轴叙事 + 右侧画像主卡聚焦的双栏布局。
+- `src/components/profile/ProfileDashboard.jsx`：重写容器，引入双栏布局 + `selectedIdx` 状态联动时间轴与趋势图
+- `src/components/profile/PersonaTimelineRail.jsx`：左侧时间轴，节点显示日期 + delta chip（+N 绿 / -N 红）
+- `src/components/profile/PersonaHeroCard.jsx`：主画像卡，current/diff 两种模式，含置信度环 SVG（金色渐变 stroke + glow）
+- `src/components/profile/PersonaDiffList.jsx`：diff 模式下的三栏列表，added/removed 标记
+- `src/components/profile/BehaviorObservedCard.jsx`：行为观测卡（重命名自 LearnedPrefsCard）
+- `src/components/profile/PreheatCard.jsx`：包装 PreheatButton，加 info-card 样式
+- `src/components/profile/KpiStrip.jsx`：KPI 细条，4 项均分，项间竖向分隔
+- `src/components/profile/PersonaEvolutionMiniChart.jsx`：精简 SVG 进化趋势，3 条折线 + 节点 + 图例，index 映射 history[length-1-trendIdx]
+- 删除：PersonaSummaryCard / LearnedPrefsCard / PersonaEvolutionSection / PersonaDiffCard（被新组件取代）
+- `src/utils/dashboardBuilders.js`：`formatEvolvedAt` 改为 export（Phase 6 前置依赖）
+- `src/components/ProfilePage.jsx`：传递 `specialFollows` 给 ProfileDashboard
+- `src/styles.css`：替换 L19241-L19596 的 Phase 4/5 样式块为 Phase 6 新样式（双栏布局 + 时间轴 + 主画像卡 + KPI 细条 + 趋势图）
+- 交互：点击时间轴节点 / 趋势图节点 → PersonaHeroCard 切换 diff 模式；再次点击 / 点击 × / 点击"今日" → 回到当前画像视图
+- 测试：425 个测试全部通过（无新增测试，computeDelta 留在组件内部未抽纯函数）
+
 ### Stock Market Module (股市动向)
 
 Three-column quote terminal (`src/components/StockPage.jsx`): left list (watchlist/hot tabs) | center chart (timeline/K-line) | right orderbook + metrics. AI diagnosis panel below the three columns.
