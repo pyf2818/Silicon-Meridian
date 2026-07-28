@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { loadLS, saveLS } from '../utils/localStorage.js';
 
 const DEFAULT_LLM_CONFIG = {
@@ -42,7 +42,7 @@ function loadPresets() {
   return Array.isArray(presets) ? presets.map(normalizePreset) : [];
 }
 
-export function useLlmConfig({ LLM_PRESETS = [], onQuickSaveSuccess } = {}) {
+export function useLlmConfig({ LLM_PRESETS = [], onQuickSaveSuccess, user } = {}) {
   const [llmConfig, setLlmConfig] = useState(loadConfig);
   const [llmPresets, setLlmPresets] = useState(loadPresets);
   const [activePresetId, setActivePresetId] = useState(() => loadLS(ACTIVE_KEY, null));
@@ -66,6 +66,28 @@ export function useLlmConfig({ LLM_PRESETS = [], onQuickSaveSuccess } = {}) {
   useEffect(() => { saveLS(CONFIG_KEY, llmConfig); }, [llmConfig]);
   useEffect(() => { saveLS(PRESETS_KEY, llmPresets); }, [llmPresets]);
   useEffect(() => { saveLS(ACTIVE_KEY, activePresetId); }, [activePresetId]);
+
+  // Phase 3 Task A5: 跨设备 LLM 配置同步（fire-and-forget）
+  // - 仅在用户登录后才同步
+  // - 仅在配置有效时（baseUrl + apiKey 都存在）才同步
+  // - 防抖 2s 避免每次按键都打 POST
+  // - 失败静默，不影响本地写入
+  const syncTimerRef = useRef(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    if (!llmConfig.baseUrl || !llmConfig.apiKey) return;
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      fetch('/api/profile/llm-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: llmConfig }),
+        credentials: 'include',
+      }).catch(() => { /* silent: 同步失败不影响本地 */ });
+    }, 2000);
+    return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
+  }, [user?.id, llmConfig.baseUrl, llmConfig.apiKey, llmConfig.selectedModel,
+      llmConfig.provider, llmConfig.tavilyKey, llmConfig.doubaoSearchKey, llmConfig.webSearchEnabled]);
 
   const upsertPreset = useCallback((preset, options = {}) => {
     if (!preset?.name && !preset?.selectedModel) return null;

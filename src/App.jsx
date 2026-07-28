@@ -266,6 +266,21 @@ function App() {
   // autoMonitorEnabled/monitorInterval/monitorAlerts 已迁移至 useSourceManager
   const showAlertPanel = useStockStore(s => s.showAlertPanel);
   const setShowAlertPanel = useStockStore(s => s.setShowAlertPanel);
+
+  // ========== 用户系统 ==========
+  // 认证与用户会话 — 从 App.jsx 提取为独立 hook（减少 ~140 行）
+  // 注意：useLlmConfig 需要 user 参数做跨设备同步，必须在 useAuth 之后调用
+  const {
+    user, token, showAuthModal, authMode, authForm, authLoading, authError, setAuthError,
+    showInterestModal, selectedInterests, isLoggedIn,
+    setUser, setToken, setShowAuthModal, setAuthMode, setAuthForm,
+    setSelectedInterests, setShowInterestModal,
+    handleRegister, handleLogin, handleLogout, updateUserInterests, updateUserProfile,
+  } = useAuth({ setSelectedInterests: (interests) => {
+    setSelectedInterests(interests);
+    // 同步更新外部 state
+  } });
+
   const {
     llmConfig, setLlmConfig,
     llmModels, setLlmModels,
@@ -280,20 +295,7 @@ function App() {
     llmPresets, upsertPreset, removePreset, activatePreset, activePresetId, setActivePresetId,
     fetchLlmModels, addManualModel, removeManualModel, testLlmConnection,
     handleSelectPreset, handleQuickSave, handleQuickTest,
-  } = useLlmConfig({ LLM_PRESETS, onQuickSaveSuccess: () => setAiInsights({ loading: false, data: null, error: '' }) });
-
-  // ========== 用户系统 ==========
-  // 认证与用户会话 — 从 App.jsx 提取为独立 hook（减少 ~140 行）
-  const {
-    user, token, showAuthModal, authMode, authForm, authLoading, authError, setAuthError,
-    showInterestModal, selectedInterests, isLoggedIn,
-    setUser, setToken, setShowAuthModal, setAuthMode, setAuthForm,
-    setSelectedInterests, setShowInterestModal,
-    handleRegister, handleLogin, handleLogout, updateUserInterests, updateUserProfile,
-  } = useAuth({ setSelectedInterests: (interests) => {
-    setSelectedInterests(interests);
-    // 同步更新外部 state
-  } });
+  } = useLlmConfig({ LLM_PRESETS, user, onQuickSaveSuccess: () => setAiInsights({ loading: false, data: null, error: '' }) });
 
   // profilePage 已从 useUiStore 订阅（见上方 UI 状态区）
   // ===== AI 助手与简报状态（迁移自 useState -> Zustand aiStore）=====
