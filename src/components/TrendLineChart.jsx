@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-function TrendLineChart({ labels = [], series = [] }) {
+function TrendLineChart({ labels = [], series = [], onSelect = null }) {
   const width = 760;
   const height = 220;
   const pad = 28;
@@ -62,10 +62,12 @@ function TrendLineChart({ labels = [], series = [] }) {
                   key={`${s.name}-${i}`}
                   cx={x}
                   cy={y}
-                  r="4"
+                  r={onSelect ? 6 : 4}
                   fill={colors[idx % colors.length]}
+                  style={onSelect ? { cursor: 'pointer' } : undefined}
                   onMouseEnter={() => setHover({ x, y, label: labels[i], series: s.name, value: v })}
                   onMouseLeave={() => setHover(null)}
+                  onClick={onSelect ? () => onSelect({ index: i, label: labels[i], series: s.name, value: v }) : undefined}
                 />
               );
             })}
