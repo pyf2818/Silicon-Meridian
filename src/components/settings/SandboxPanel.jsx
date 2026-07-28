@@ -9,6 +9,7 @@ import {
 import {
   getEgressAllowlist, setEgressAllowlist, subscribeEgressAllowlist,
 } from '../../utils/sandbox.js';
+import { ICONS } from '../../constants/appConstants.jsx';
 
 export default function SandboxPanel() {
   // 网络出口白名单
@@ -134,7 +135,7 @@ export default function SandboxPanel() {
             const state = getApprovalState(t.name);
             return (
               <div key={t.name} className={`sandbox-tool-row sandbox-tool-state-${state.state}`}>
-                <span className="sandbox-tool-icon">{t.meta?.icon || '⚙️'}</span>
+                <span className="sandbox-tool-icon">{t.meta?.icon || ICONS.settings}</span>
                 <span className="sandbox-tool-name">{t.name}</span>
                 <span className="sandbox-tool-label">{t.meta?.label || ''}</span>
                 <button
@@ -155,7 +156,7 @@ export default function SandboxPanel() {
                 const state = getApprovalState(t.name);
                 return (
                   <div key={t.name} className={`sandbox-tool-row sandbox-tool-state-${state.state}`}>
-                    <span className="sandbox-tool-icon">{t.meta?.icon || '⚙️'}</span>
+                    <span className="sandbox-tool-icon">{t.meta?.icon || ICONS.settings}</span>
                     <span className="sandbox-tool-name">{t.name}</span>
                     <span className="sandbox-tool-label">{t.meta?.label || ''}</span>
                     <button
