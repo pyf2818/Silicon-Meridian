@@ -28,11 +28,11 @@
   --accent-cyan-softer: rgba(201,169,97,.075);
   --accent-cyan-border: rgba(201,169,97,.3);
   --accent-amber-soft: rgba(212,181,118,.14);
-  --border-color: rgba(201,169,97,.12);
+  --border-color: rgba(201,169,97,.25);
   --border-active: rgba(201,169,97,.45);
   --border-glow: rgba(201,169,97,.18);
   /* 布局原语变量（P1：收敛重复 border 规则） */
-  --panel-border: 1px solid var(--border-color);
+  --panel-border: 2px solid var(--border-color);
   /* 圆角 token（卡片/面板级） */
   --radius-card: 12px;
   /* 阴影 token（容器面板去 shadow，内容卡片用轻 shadow） */
@@ -89,7 +89,7 @@
   --accent-cyan-softer: rgba(154,123,63,.065);
   --accent-cyan-border: rgba(154,123,63,.25);
   --accent-amber-soft: rgba(184,148,62,.11);
-  --border-color: rgba(154,123,63,.15);
+  --border-color: rgba(154,123,63,.30);
   --border-active: rgba(154,123,63,.4);
   --border-glow: rgba(154,123,63,.12);
   --bg-glow-1: rgba(154,123,63,.09);
@@ -15773,9 +15773,9 @@ body {
   --text-primary: #302417;
   --text-secondary: #51402a;
   --text-muted: #786545;
-  --border-color: rgba(86, 61, 29, .28);
+  --border-color: rgba(86, 61, 29, .35);
   --border-active: #765126;
-  --panel-border: 1px solid rgba(86, 61, 29, .28);
+  --panel-border: 2px solid rgba(86, 61, 29, .35);
   --accent-cyan: #70471f;
   --accent-cyan-soft: rgba(112, 71, 31, .12);
   --accent-cyan-border: rgba(112, 71, 31, .42);
