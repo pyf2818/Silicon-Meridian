@@ -2,6 +2,8 @@
 // 拼装成最终 system prompt 字符串
 // 从 src/components/AiChatPanel.jsx 抽离，纯函数
 
+import { useProfileStore } from '../../store';
+
 /**
  * @param {object} opts
  * @param {Array<string>} opts.selectedInterests 用户关注领域 id 列表
@@ -101,5 +103,17 @@ export function buildSystemPrompt({
     workspaceFiles.length > 0
       ? `用户从本地工作空间加入了以下文件作为分析上下文：\n${workspaceFiles.map(f => `[文件:${f.name}]\n${String(f.content || '').slice(0, 2000)}`).join('\n\n')}`
       : '',
+    // Phase 1.3 Task 14: 预留"最近校准"段 —— 读取 pendingSuggestions 中近 7 天 accepted 的建议。
+    // 当前 pendingSuggestions 永远没有 accepted 项（Phase 2 才有接受 UI），此段实际不输出内容，
+    // 仅预留接口点，让 Phase 2 接入接受 UI 后此段自动激活。
+    (() => {
+      try {
+        const accepted = useProfileStore.getState().pendingSuggestions
+          .filter(x => x.status === 'accepted' && Date.now() - x.createdAt < 7 * 86400_000);
+        if (!accepted.length) return '';
+        const typeLabel = t => t === 'track' ? '追踪' : t === 'boost' ? '强化' : t === 'mute' ? '静默' : t;
+        return `【最近校准】用户在过去 7 天接受了以下 AI 建议，请在回复中主动贴合：\n${accepted.map(s => `  - ${typeLabel(s.type)} ${s.target}（${s.reason}）`).join('\n')}`;
+      } catch { return ''; }
+    })(),
   ].filter(Boolean).join('\n');
 }
