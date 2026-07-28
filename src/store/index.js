@@ -235,8 +235,14 @@ export { useProfileStore } from './profileStore.js';
 // 新闻流与搜索：分类/筛选/视图模式/搜索/列表/分页/错误
 export { useNewsStore } from './newsStore.js';
 
+// ============ Behavior Store ============
+// 行为信号单一 source of truth：readingHistory/recommendationFeedback/
+// recommendationFeedbackEvents/followKeywords/trackTargets
+// (从 recommendStore 迁入；旧 LS key 保留 30 天由 migrateLegacyBehavior 处理)
+export { useBehaviorStore } from './behaviorStore.js';
+
 // ============ Recommend Store ============
-// 推荐反馈与追踪：关键词/反馈/快照/搜索历史/追踪目标/阅读历史
+// 推荐结果缓存与搜索/导出 UI：pinnedKeywords/快照/搜索历史/搜索 UI/导出过滤
 export { useRecommendStore } from './recommendStore.js';
 
 // ============ AI Store ============
