@@ -56,6 +56,8 @@ describe('computeIntelligenceProfile', () => {
       tracked: [],
       depth: '探索校准',
       outputGoal: '阅读判断',
+      confidence: 0,
+      confidenceLabel: '需要校准',
     });
   });
 
@@ -836,5 +838,37 @@ describe('computeProfileLearningEngine extended fields', () => {
     expect(Array.isArray(r.topAuthors)).toBe(true);
     expect(r.topAuthors).toContain('Author1');
     expect(r.topAuthors).toContain('Author2');
+  });
+});
+
+// ===========================================================================
+// computeIntelligenceProfile confidence (Phase 1.2 Task 8)
+// ===========================================================================
+describe('computeIntelligenceProfile confidence', () => {
+  it('returns confidence derived from computeProfileLearningEngine', () => {
+    const r = computeIntelligenceProfile({
+      bookmarks: [{ id: 'b1', category: 'ai' }],
+      readingHistory: [{ id: 'r1', category: 'ai', readAt: new Date().toISOString() }],
+      materials: [],
+      selectedInterests: ['ai'],
+      recommendationFeedback: { hiddenIds: [], boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
+      followKeywords: [],
+      sourcePriorities: {},
+      domainPriorities: { ai: 100 },
+      insightSourceQuality: [],
+      workbenchItemCount: 1,
+      focusMatches: 1,
+      categories: [{ id: 'ai', label: 'AI' }],
+      domainTiers: { ai: 'focus' },
+      sourceTiers: {},
+    });
+    expect(r.confidence).toBeGreaterThan(0);
+    expect(['高可信', '持续学习中', '需要校准']).toContain(r.confidenceLabel);
+  });
+
+  it('returns confidence 0 and label 需要校准 for empty input', () => {
+    const r = computeIntelligenceProfile({});
+    expect(r.confidence).toBe(0);
+    expect(r.confidenceLabel).toBe('需要校准');
   });
 });

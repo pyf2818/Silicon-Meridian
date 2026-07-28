@@ -20,6 +20,9 @@ const CURRENT_DATE = () => new Date().toISOString().slice(0, 10);
  * @param {Array} opts.insightSourceQuality
  * @param {number} opts.workbenchItemCount
  * @param {number} opts.focusMatches
+ * @param {Array} [opts.categories]
+ * @param {Object} [opts.domainTiers]
+ * @param {Object} [opts.sourceTiers]
  * @returns {Object}
  */
 export function computeIntelligenceProfile({
@@ -34,6 +37,9 @@ export function computeIntelligenceProfile({
   insightSourceQuality = [],
   workbenchItemCount = 0,
   focusMatches = 0,
+  categories = null,
+  domainTiers = null,
+  sourceTiers = null,
 }) {
   const focusLabels = selectedInterests.map(id => id);
   const boosted = Object.entries(recommendationFeedback.boostedCategories || {})
@@ -45,7 +51,32 @@ export function computeIntelligenceProfile({
   const depth = workbenchItemCount > 0 && focusMatches / Math.max(workbenchItemCount, 1) > 0.5 ? '深度聚焦' : '探索校准';
   const outputGoal = materials.length > bookmarks.length ? '素材沉淀' : '阅读判断';
 
-  return { focusLabels, boosted, muted, tracked, depth, outputGoal };
+  // Derive confidence from the learning engine so callers (e.g. buildSystemPrompt)
+  // see a real value instead of a hardcoded 0. (Phase 1.2 Task 8)
+  const learningEngine = computeProfileLearningEngine({
+    readingHistory,
+    bookmarks,
+    materials,
+    selectedInterests,
+    domainTiers,
+    domainPriorities,
+    recommendationFeedback,
+    followKeywords,
+    sourceTiers,
+    sourcePriorities,
+    categories,
+  });
+
+  return {
+    focusLabels,
+    boosted,
+    muted,
+    tracked,
+    depth,
+    outputGoal,
+    confidence: learningEngine.confidence,
+    confidenceLabel: learningEngine.confidenceLabel,
+  };
 }
 
 /**
