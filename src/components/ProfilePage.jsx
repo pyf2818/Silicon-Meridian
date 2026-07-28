@@ -9,6 +9,8 @@ import { ICONS } from '../constants/index.jsx';
 import { showToast } from '../utils/toast.js';
 import PendingSuggestionsSection from './profile/PendingSuggestionsSection.jsx';
 import AgentMemorySection from './profile/AgentMemorySection.jsx';
+import PersonaSummarySection from './profile/PersonaSummarySection.jsx';
+import SnapshotHistorySection from './profile/SnapshotHistorySection.jsx';
 
 export default function ProfilePage({
   intelligenceProfile,
@@ -86,6 +88,7 @@ export default function ProfilePage({
                 </div>
               </section>
 
+              <PersonaSummarySection />
               <PendingSuggestionsSection />
 
               <BlockGrid columns={3}>
@@ -262,6 +265,7 @@ export default function ProfilePage({
               </section>
 
               <AgentMemorySection />
+              <SnapshotHistorySection />
             </div>
   );
 }
