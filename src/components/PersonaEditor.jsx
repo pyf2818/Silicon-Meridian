@@ -10,6 +10,7 @@
  * 编辑后通过 onChange 实时回调，由父组件持久化到 useAgents store
  */
 import { useEffect, useState } from 'react';
+import { ICONS } from '../constants/appConstants.jsx';
 
 export default function PersonaEditor({ value, onChange, agentName }) {
   const persona = value?.persona || { traits: [], background: '', values: [] };
@@ -29,7 +30,7 @@ export default function PersonaEditor({ value, onChange, agentName }) {
       <div className="persona-editor-body">
         <section className="persona-section">
           <div className="persona-section-title">
-            <span className="persona-section-icon">🎭</span>
+            <span className="persona-section-icon">{ICONS.user}</span>
             <span>性格特质（persona）</span>
           </div>
           <div className="persona-field">
@@ -66,7 +67,7 @@ export default function PersonaEditor({ value, onChange, agentName }) {
 
         <section className="persona-section">
           <div className="persona-section-title">
-            <span className="persona-section-icon">✨</span>
+            <span className="persona-section-icon">{ICONS.sparkles}</span>
             <span>灵魂（soul）</span>
           </div>
           <div className="persona-field">
@@ -125,7 +126,7 @@ export default function PersonaEditor({ value, onChange, agentName }) {
 
         <section className="persona-section">
           <div className="persona-section-title">
-            <span className="persona-section-icon">📋</span>
+            <span className="persona-section-icon">{ICONS.list}</span>
             <span>行为习惯（habits）</span>
           </div>
           <div className="persona-field">
@@ -187,7 +188,7 @@ export function PersonaDrawer({ open, onClose, agent, onChange }) {
       <div className="persona-drawer" onClick={e => e.stopPropagation()}>
         <div className="persona-drawer-header">
           <div className="persona-drawer-title">
-            <span className="persona-drawer-icon">⚙️</span>
+            <span className="persona-drawer-icon">{ICONS.settings}</span>
             <span>角色设定 · {agent.name}</span>
           </div>
           <button className="persona-drawer-close" onClick={onClose} title="关闭（Esc）">×</button>
