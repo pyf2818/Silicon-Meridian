@@ -10,7 +10,7 @@ npm run dev                              # Dev server on 0.0.0.0:5175 (with API 
 npm run build                            # Production build -> dist/
 npm start                                # Production Node server (dist + full API, default port 3000)
 npm run preview                          # Preview production build (static only, no API)
-npm test                                 # Run unit tests (vitest) — 296 tests across src/utils, src/domain, src/hooks/__tests__, server/
+npm test                                 # Run unit tests (vitest) — 347 tests across src/utils, src/store, src/domain, src/hooks/__tests__, server/
 npm run test:watch                       # Watch mode
 node node_modules/vitest/vitest.mjs run <file>  # Run a single test file (bin symlink not created on Windows)
 npm run db:migrate
@@ -68,10 +68,14 @@ State progressively extracted from App.jsx `useState` into Zustand stores. Each 
 
 ```
 src/store/
-  index.js              Barrel: exports useUiStore, useLightboxStore, useWorkflowStore, useMaterialsStore, useProfileStore
+  index.js              Barrel: exports useUiStore, useLightboxStore, useWorkflowStore, useMaterialsStore, useProfileStore, useBehaviorStore
   workflowStore.js      智能体工作流：draft/templates/activeId/selectedNodeId/run/result/history/actions (persisted)
   materialsStore.js     素材库 UI：filter/search/tags/timeRange/sourceFilter/spaceFilter/showSpaceForm/showAddMaterial (non-persisted)
-  profileStore.js       用户画像：domainTiers/sourceTiers/specialFollows/dailyProfileSnapshots/briefingConfig (persisted) + profileForm/specialFollowForm/editingSpecialFollowId (non-persisted)
+  profileStore.js       用户画像：domainTiers/sourceTiers/specialFollows/dailyProfileSnapshots/briefingConfig/pendingSuggestions (persisted) + profileForm/specialFollowForm/editingSpecialFollowId (non-persisted)
+                        pendingSuggestions 含去重(cap=20)、冷却(1h)、审计保留(30d) 机制
+  behaviorStore.js      行为信号单一 source of truth：readingHistory/recommendationFeedback/
+                        recommendationFeedbackEvents/followKeywords/trackTargets
+                        (persisted, 从 recommendStore 迁入, 旧 LS key 保留 30 天)
 ```
 
 UI Store (`useUiStore`) and Lightbox Store (`useLightboxStore`) are defined inline in `src/store/index.js`. Usage:
@@ -157,7 +161,8 @@ src/hooks/
   useStockAi.js         股市AI智能模块（诊断/早报/监控，联动LLM）
   useWorkflowEngine.js  React wrapper over WorkflowEngine: run/result/history/actions state, persists to localStorage `agentWorkflowHistory` (max 12)
   useCommunity.js       社区广场数据（posts/comments/likes，调用 /api/community/*）
-  useProfileSync.js     画像分层同步（domainTiers/sourceTiers/specialFollows <-> /api/profile/state）
+  useProfileSync.js     画像分层同步：扩展同步 5 块（domainTiers/sourceTiers/specialFollows + dailyProfileSnapshots/briefingConfig）<-> /api/profile/state。
+                        含纯函数 buildSavePayload（构造 PUT 请求体，仅传今日 snapshot）和 mergeSnapshots（远端+本地合并，本地优先，cap 30）
   useAgentWorkflowRunner.js  智能体工作流运行器（runAgentWorkflow，从 App.jsx 抽离，~578 行）
   useWorkflowActions.js     工作流行动队列（createWorkflowActions/executeWorkflowAction，从 App.jsx 抽离）
   useBriefingOps.js          早报操作（从 App.jsx 抽离）
@@ -322,13 +327,15 @@ Categories, source grades, and tag rules are defined **independently** in both `
 > **Note**: Phase 1 统一了分级色值——App.jsx 和 NewsItem 已改用服务端 `SOURCE_GRADES` 权威色（#dc2626 系）。`api/news.js` 和 `api/meta.js` 已复用 `server/news/config/constants.js`。App.jsx 的 `categories` 现从 `/api/meta` 加载（`serverCategories`），离线时降级到 `FALLBACK_CATEGORIES`——双源问题已消除。
 >
 > **Note**: 前端常量双源问题已消除——`src/constants/index.jsx` 已变为 92 行的 re-export shim，真实定义统一在 `src/constants/appConstants.jsx`。37 个文件仍通过 index.jsx 引用（兼容性保留），但数据源已单一化。新代码应直接 import `appConstants.jsx`。
+>
+> **Note**: specialFollows submit 逻辑双源已消除——App.jsx 内联的 `submitSpecialFollow`/`editSpecialFollow`/`resetSpecialFollowForm` 已删除，ProfilePage.jsx 内部 `submit`/`editFollow`/`resetForm` 为唯一实现。
 
 - **Navigation**: Right context panel (`showRightPanel`) only shows on `nav === 'all'`. Global news search box (`search-wrap` in topbar) also only renders on `all`. Other pages (stock/github/studio/etc) have no right panel and full-width main. `navToPrimary` maps each nav to its primary group; missing entries fall back to `today` (caused stock highlight bug).
 - **Multi-image**: NewsItem renders `item.images` (2-4 imgs) as a 2-col grid; lightbox state is `{ open, src, title, images, index }` supporting prev/next nav. `onOpenLightbox` signature: `(src, title, images, index)`.
 - **GitHub card**: App.jsx has an **inline** `GithubRepoCard` function (NOT a separate file). Inline version uses `inferGithubScenario/Audience/Difficulty/Value` + `buildGithubMaterial`; `deriveRepoInsight` in repoInsight.js is a parallel implementation. AI insight is collapsible by default.
 ## Known Issues
 
-- **Tests limited to pure-logic engines** — 296 unit tests cover workflowEngine.js (80) + profileModel.js (70) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ tests; no integration/E2E tests, no component tests
+- **Tests limited to pure-logic engines** — 347 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15) tests; no integration/E2E tests, no component tests
 - **RSS failure rate ~40-50%** — many sources return 403/404 or HTML instead of RSS
 - **Auth requires PostgreSQL** - register/login/me/logout/profile/interests delegate to server/http/authHandlers.js -> server/auth/authService.js (password hashing + session tokens in sessions table). Dev (server/news/plugin.js) and prod (api/auth/[action].js) share the same handler. Without DATABASE_URL, auth endpoints return 503 DATABASE_UNAVAILABLE.
 - **`package.json` type: "module"** — all `.js` files use ESM; CI workflows using `require()` will crash
