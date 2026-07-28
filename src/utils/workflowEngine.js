@@ -108,9 +108,13 @@ export function buildProfileMemory(items, profile, tracked, bookmarks, materials
   // Build suggestions from derived terms + top categories. ctx is optional
   // (backward compat: existing callers/tests that don't pass ctx keep working).
   if (ctx?.addPendingSuggestions) {
+    const getCategoryLabel = ctx?.getCategoryLabel || (id => id || '未分类');
     const categoryCount = new Map();
     items.forEach(item => {
-      if (item.category) categoryCount.set(item.category, (categoryCount.get(item.category) || 0) + 1);
+      if (item.category) {
+        const label = getCategoryLabel(item.category);
+        categoryCount.set(label, (categoryCount.get(label) || 0) + 1);
+      }
     });
     const topCategories = [...categoryCount.entries()]
       .sort((a, b) => b[1] - a[1]).slice(0, 2);
