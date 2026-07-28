@@ -74,5 +74,29 @@ export function createProfileRepository(db = getPool()) {
         return profile.rows[0]?.version || 1;
       });
     },
+    /**
+     * Phase 3 Task A3: 读取跨设备 LLM 配置。
+     * 返回 {} 表示用户从未同步过 LLM 配置。
+     */
+    async getLlmConfig(userId) {
+      const res = await db.query(
+        'SELECT llm_config FROM user_profiles WHERE user_id = $1',
+        [userId]
+      );
+      return res.rows[0]?.llm_config || {};
+    },
+    /**
+     * Phase 3 Task A3: 写入跨设备 LLM 配置（upsert）。
+     * config 为 plain object，由 service 层负责白名单过滤。
+     */
+    async setLlmConfig(userId, config) {
+      await db.query(
+        `INSERT INTO user_profiles (user_id, llm_config, updated_at)
+         VALUES ($1, $2, now())
+         ON CONFLICT (user_id) DO UPDATE
+         SET llm_config = EXCLUDED.llm_config, updated_at = now()`,
+        [userId, JSON.stringify(config || {})]
+      );
+    },
   };
 }

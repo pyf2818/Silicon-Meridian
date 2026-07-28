@@ -6,7 +6,39 @@ const BRIEFING_LENGTHS = new Set(['compact', 'standard', 'detailed']);
 const SNAPSHOT_SUMMARY_MAX = 500;
 const SNAPSHOT_CAP = 90; // 最多保留 90 天快照（约 3 个月）
 
+/**
+ * Phase 3 Task A3: LLM 配置白名单字段。
+ * 仅这些字段会被持久化到 user_profiles.llm_config（跨设备同步）。
+ * 排除：manualModels（前端 UI 缓存）、presets（前端独立管理）。
+ */
+const LLM_CONFIG_ALLOWED_KEYS = [
+  'baseUrl', 'apiKey', 'selectedModel', 'provider',
+  'tavilyKey', 'doubaoSearchKey', 'webSearchEnabled',
+];
+
 function fail(code, message, status = 400) { throw Object.assign(new Error(message), { code, status }); }
+
+/**
+ * Phase 3 Task A3: 过滤 LLM 配置，仅保留白名单字段。
+ * 字符串字段截断到合理长度，防止过大 payload。
+ */
+export function sanitizeLlmConfig(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+  const safe = {};
+  for (const key of LLM_CONFIG_ALLOWED_KEYS) {
+    if (input[key] === undefined) continue;
+    const value = input[key];
+    if (key === 'webSearchEnabled') {
+      safe[key] = value === true; // 严格 boolean
+    } else if (typeof value === 'string') {
+      safe[key] = value.slice(0, 500);
+    } else {
+      // 其他类型（数字等）原样保留，但 max 200 字符（toString 后）
+      safe[key] = String(value).slice(0, 500);
+    }
+  }
+  return safe;
+}
 
 function normalizeTiers(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('INVALID_PROFILE', '画像等级格式无效');
@@ -106,6 +138,24 @@ export function createProfileService(repository = createProfileRepository()) {
       const others = existingSnapshots.filter(s => s.date !== normalized.date);
       const next = [normalized, ...others].slice(0, SNAPSHOT_CAP);
       return next;
+    },
+    /**
+     * Phase 3 Task A3: 读取跨设备 LLM 配置。
+     * 返回 {} 表示用户从未同步过 LLM 配置。
+     */
+    getLlmConfig(userId) {
+      if (!userId) fail('UNAUTHORIZED', '请先登录', 401);
+      return repository.getLlmConfig(userId);
+    },
+    /**
+     * Phase 3 Task A3: 写入跨设备 LLM 配置（fire-and-forget 用）。
+     * 仅白名单字段会被持久化，apiKey 等敏感字段以明文存储（数据库内不加密）。
+     */
+    async setLlmConfig(userId, config) {
+      if (!userId) fail('UNAUTHORIZED', '请先登录', 401);
+      const safe = sanitizeLlmConfig(config);
+      await repository.setLlmConfig(userId, safe);
+      return safe;
     },
   };
 }
