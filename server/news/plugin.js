@@ -115,6 +115,9 @@ export function newsPlugin() {
         if (requestUrl.pathname === '/api/profile/state') {
           return handleProfileRequest(req, res, { action: 'state' });
         }
+        if (requestUrl.pathname === '/api/profile/llm-config') {
+          return handleProfileRequest(req, res, { action: 'llm-config' });
+        }
         if (requestUrl.pathname.startsWith('/api/agent-memory/')) {
           return handleAgentMemoryRequest(req, res, requestUrl.pathname, req.method);
         }
