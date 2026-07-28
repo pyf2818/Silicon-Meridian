@@ -242,6 +242,19 @@ The v2 features described in `docs/wanban-silicon-valley-v2-blueprint.md` are wi
 - 数据源：复用 `GET /api/profile/snapshots` + `GET /api/agent-memory/persona`（learnedPreferences 字段）+ `POST /api/profile/snapshots/preheat`，不新建端点
 - 测试：新增 12 个纯函数单元测试（buildTrendSeries 6 + buildAiStatusCounts 6），总测试数 398 → 410
 
+**Phase 5 画像进化趋势（已完成）**：personaSummary 进化历史 + 仪表盘第 6 区块。
+- Migration 007：`persona_summary_history` 表（user_id/snapshot jsonb/evolved_at）+ cap 90/用户（同事务清理）
+- `agentMemoryService.mergePersonaSummary` 改造为同事务：UPDATE user_profiles + INSERT persona_summary_history + DELETE cap>90，并清理遗留 `updatedAt` 字段
+- 新增 `getPersonaHistory(userId, limit)` 服务方法 + `GET /api/agent-memory/persona/history?limit=30` 端点
+- `dashboardBuilders.js` 新增 `buildPersonaTrendSeries` + `diffPersonaSnapshots` 纯函数 + 15 个单元测试
+- `useProfileDashboard` 加 `personaHistory` + `loadPersonaHistory`
+- 新增 `PersonaEvolutionSection` + `PersonaDiffCard` 组件，集成到仪表盘第 6 区块
+- `TrendLineChart` 加可选 `onSelect` 回调（不破坏现有调用）
+- Bug 1 修复：`preheatForUser` 内部从 DB 自动读 personaSummary（cron/lazy 路径无前端传入时）
+- Bug 2 修复：`agentContext.js` 字段名 `lp.frequentTopics` → `lp.topics || lp.frequentTopics`
+- Bug 3 修复：`profileStore` 默认值字段名 `updatedAt` → `lastEvolvedAt`（带 fallback 兼容旧 localStorage）
+- 测试：新增 15 个纯函数单元测试（buildPersonaTrendSeries 8 + diffPersonaSnapshots 7），总测试数 410 → 425
+
 ### Stock Market Module (股市动向)
 
 Three-column quote terminal (`src/components/StockPage.jsx`): left list (watchlist/hot tabs) | center chart (timeline/K-line) | right orderbook + metrics. AI diagnosis panel below the three columns.
@@ -391,7 +404,7 @@ Categories, source grades, and tag rules are defined **independently** in both `
 - **GitHub card**: App.jsx has an **inline** `GithubRepoCard` function (NOT a separate file). Inline version uses `inferGithubScenario/Audience/Difficulty/Value` + `buildGithubMaterial`; `deriveRepoInsight` in repoInsight.js is a parallel implementation. AI insight is collapsible by default.
 ## Known Issues
 
-- **Tests limited to pure-logic engines** — 410 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + applySuggestionByType (7) + useAgentMemories (8) + useSnapshotPreheat (7) + dashboardBuilders (12) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15 + snapshotService 4 + aiHandlers 4) tests; no integration/E2E tests, no component tests
+- **Tests limited to pure-logic engines** — 425 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + applySuggestionByType (7) + useAgentMemories (8) + useSnapshotPreheat (7) + dashboardBuilders (27 = Phase 4 12 + Phase 5 15) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15 + snapshotService 4 + aiHandlers 4) tests; no integration/E2E tests, no component tests
 - **RSS failure rate ~40-50%** — many sources return 403/404 or HTML instead of RSS
 - **Auth requires PostgreSQL** - register/login/me/logout/profile/interests delegate to server/http/authHandlers.js -> server/auth/authService.js (password hashing + session tokens in sessions table). Dev (server/news/plugin.js) and prod (api/auth/[action].js) share the same handler. Without DATABASE_URL, auth endpoints return 503 DATABASE_UNAVAILABLE.
 - **`package.json` type: "module"** — all `.js` files use ESM; CI workflows using `require()` will crash
