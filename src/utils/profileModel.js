@@ -362,3 +362,35 @@ export function computeTodayProfileSnapshot({
     sources: sourcePriorityItems.slice(0, 3).map(s => s.name),
   };
 }
+
+/**
+ * Compute calibration signals for the AI prompt layer.
+ *
+ * Returns three booleans used to decide whether the AI should mention
+ * calibration suggestions in its responses. The UI-derived "校准信号卡片数组"
+ * (array of {label, value, desc} cards) is kept inline in App.jsx because
+ * it depends on UI-only state (profilePriorityItems / sourcePriorityItems).
+ *
+ * @param {Object} opts
+ * @param {Object} [opts.intelligenceProfile] - profile with `confidence` field
+ * @param {Object} [opts.recommendationFeedback] - feedback with boostedCategories/mutedSources/trackedTerms
+ * @param {Array}  [opts.dailyProfileSnapshots] - snapshot history array
+ * @returns {{hasFeedbackData: boolean, hasSnapshotHistory: boolean, needsCalibration: boolean}}
+ */
+export function computeCalibrationSignals({
+  intelligenceProfile = {},
+  recommendationFeedback = {},
+  dailyProfileSnapshots = [],
+} = {}) {
+  const confidence = intelligenceProfile?.confidence ?? 0;
+  const hasFeedbackData =
+    Object.keys(recommendationFeedback?.boostedCategories || {}).length > 0 ||
+    Object.keys(recommendationFeedback?.mutedSources || {}).length > 0 ||
+    Object.keys(recommendationFeedback?.trackedTerms || {}).length > 0;
+  const hasSnapshotHistory = (dailyProfileSnapshots?.length || 0) >= 3;
+  return {
+    hasFeedbackData,
+    hasSnapshotHistory,
+    needsCalibration: confidence < 45,
+  };
+}

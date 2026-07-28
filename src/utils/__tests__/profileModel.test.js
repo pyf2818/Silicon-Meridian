@@ -4,6 +4,7 @@ import {
   computeReadingProfile,
   computeProfileLearningEngine,
   computeTodayProfileSnapshot,
+  computeCalibrationSignals,
 } from '../profileModel.js';
 
 // ---------------------------------------------------------------------------
@@ -870,5 +871,62 @@ describe('computeIntelligenceProfile confidence', () => {
     const r = computeIntelligenceProfile({});
     expect(r.confidence).toBe(0);
     expect(r.confidenceLabel).toBe('需要校准');
+  });
+});
+
+// ===========================================================================
+// computeCalibrationSignals (Phase 1.2 Task 9)
+// ===========================================================================
+describe('computeCalibrationSignals', () => {
+  it('returns hasFeedbackData true when any feedback present', () => {
+    const r = computeCalibrationSignals({
+      intelligenceProfile: { confidence: 60 },
+      recommendationFeedback: { boostedCategories: { ai: 1 }, mutedSources: {}, trackedTerms: {} },
+      dailyProfileSnapshots: [],
+    });
+    expect(r.hasFeedbackData).toBe(true);
+  });
+
+  it('returns needsCalibration true when confidence < 45', () => {
+    const r = computeCalibrationSignals({
+      intelligenceProfile: { confidence: 30 },
+      recommendationFeedback: { boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
+      dailyProfileSnapshots: [],
+    });
+    expect(r.needsCalibration).toBe(true);
+  });
+
+  it('returns needsCalibration false when confidence >= 45', () => {
+    const r = computeCalibrationSignals({
+      intelligenceProfile: { confidence: 60 },
+      recommendationFeedback: { boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
+      dailyProfileSnapshots: [],
+    });
+    expect(r.needsCalibration).toBe(false);
+  });
+
+  it('returns hasSnapshotHistory true when >=3 snapshots', () => {
+    const r = computeCalibrationSignals({
+      intelligenceProfile: { confidence: 80 },
+      recommendationFeedback: { boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
+      dailyProfileSnapshots: [{ date: '2026-07-01' }, { date: '2026-07-02' }, { date: '2026-07-03' }],
+    });
+    expect(r.hasSnapshotHistory).toBe(true);
+  });
+
+  it('returns hasSnapshotHistory false when <3 snapshots', () => {
+    const r = computeCalibrationSignals({
+      intelligenceProfile: { confidence: 80 },
+      recommendationFeedback: { boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
+      dailyProfileSnapshots: [{ date: '2026-07-01' }, { date: '2026-07-02' }],
+    });
+    expect(r.hasSnapshotHistory).toBe(false);
+  });
+
+  it('handles null/undefined inputs gracefully', () => {
+    const r = computeCalibrationSignals({});
+    expect(r.hasFeedbackData).toBe(false);
+    expect(r.hasSnapshotHistory).toBe(false);
+    expect(r.needsCalibration).toBe(true); // confidence defaults to 0 < 45
   });
 });
