@@ -121,6 +121,7 @@ export default function ProfilePage({
                   bookmarks={bookmarks}
                   readingHistory={readingHistory}
                   selectedInterests={selectedInterests}
+                  specialFollows={specialFollows}
                 />
               ) : (
                 <>
