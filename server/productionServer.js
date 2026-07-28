@@ -3,9 +3,11 @@ import { stat } from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import cron from 'node-cron';
 import { closePool } from './db/client.js';
 import { createNewsApiMiddleware } from './newsPlugin.js';
 import { updateLastSeen } from './http/lastSeenMiddleware.js';
+import { runDailyPreheat } from './cron/dailyBriefingPreheatJob.js';
 
 const PORT = Number.parseInt(process.env.PORT || '3000', 10);
 const DIST_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist');
@@ -126,6 +128,14 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`SiliconStream listening on http://0.0.0.0:${PORT}`);
+  // Phase 3 Task B5: 注册每日简报预热 cron — 06:00 Asia/Shanghai
+  // 仅在生产环境注册，避免 dev 环境意外触发上游 LLM 调用
+  if (process.env.NODE_ENV === 'production') {
+    cron.schedule('0 6 * * *', () => {
+      runDailyPreheat().catch(err => console.error('[preheat] cron error:', err));
+    }, { timezone: 'Asia/Shanghai' });
+    console.log('[cron] daily preheat registered for 06:00 Asia/Shanghai');
+  }
 });
 
 async function shutdown() {
