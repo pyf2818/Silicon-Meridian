@@ -232,7 +232,7 @@ export default function Topbar({
                   <div className="trending-type-tabs">
                     {TRENDING_TYPES.map(t => (
                       <button key={t.id} className={`trending-type-tab ${trendingType === t.id ? 'active' : ''}`} onClick={() => { setTrendingType(t.id); loadTrending(false, trendingPlatform, t.id); }}>
-                        <span className="trending-type-icon">{t.icon}</span>
+                        <span className="trending-type-icon">{ICONS[t.iconKey] || ICONS.fire}</span>
                         {t.label}
                       </button>
                     ))}

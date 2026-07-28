@@ -64,16 +64,16 @@ export const WORKFLOW_NODE_TYPES = ['input', 'llm', 'skill', 'condition', 'class
 /* ============ 多 agent 编排节点元信息（方案 C Phase 5） ============ */
 
 export const WORKFLOW_NODE_META = {
-  input:       { label: '输入', icon: '📥', color: '#3b82f6', category: 'flow' },
-  llm:         { label: 'LLM', icon: '🤖', color: '#8b5cf6', category: 'agent' },
-  skill:       { label: '技能', icon: '⚡', color: '#f59e0b', category: 'agent' },
-  condition:   { label: '条件', icon: '🔀', color: '#ef4444', category: 'flow' },
-  classifier:  { label: '分类器', icon: '🏷️', color: '#10b981', category: 'flow' },
-  reply:       { label: '回复', icon: '💬', color: '#06b6d4', category: 'output' },
-  output:      { label: '输出', icon: '📤', color: '#06b6d4', category: 'output' },
-  subworkflow: { label: '子工作流', icon: '🧩', color: '#ec4899', category: 'orchestration' },
-  parallel:    { label: '并行', icon: '⚡', color: '#f97316', category: 'orchestration' },
-  router:      { label: '路由', icon: '🧭', color: '#a855f7', category: 'orchestration' },
+  input:       { label: '输入', iconKey: 'incoming', color: '#3b82f6', category: 'flow' },
+  llm:         { label: 'LLM', iconKey: 'robot', color: '#8b5cf6', category: 'agent' },
+  skill:       { label: '技能', iconKey: 'bolt', color: '#f59e0b', category: 'agent' },
+  condition:   { label: '条件', iconKey: 'shuffle', color: '#ef4444', category: 'flow' },
+  classifier:  { label: '分类器', iconKey: 'tag', color: '#10b981', category: 'flow' },
+  reply:       { label: '回复', iconKey: 'chat', color: '#06b6d4', category: 'output' },
+  output:      { label: '输出', iconKey: 'outgoing', color: '#06b6d4', category: 'output' },
+  subworkflow: { label: '子工作流', iconKey: 'puzzle', color: '#ec4899', category: 'orchestration' },
+  parallel:    { label: '并行', iconKey: 'layers', color: '#f97316', category: 'orchestration' },
+  router:      { label: '路由', iconKey: 'compass', color: '#a855f7', category: 'orchestration' },
 };
 
 /* 路由规则支持的比较操作 */

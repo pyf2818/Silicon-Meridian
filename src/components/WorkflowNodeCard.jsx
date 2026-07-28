@@ -3,6 +3,7 @@ import {
   formatWorkflowNodeConfig, getWorkflowSkillMeta, isWorkflowSkillId,
   WORKFLOW_NODE_META,
 } from '../constants/workflowConstants.js';
+import { ICONS } from '../constants/appConstants.jsx';
 
 export default function WorkflowNodeCard({
   node,
@@ -22,7 +23,7 @@ export default function WorkflowNodeCard({
   const config = formatWorkflowNodeConfig(node);
   const skillMeta = node.type === 'skill' ? getWorkflowSkillMeta(node.skillId) : null;
   const isMultiOutput = node.type === 'classifier';
-  const nodeMeta = WORKFLOW_NODE_META[node.type] || { label: node.type, icon: '⚙️' };
+  const nodeMeta = WORKFLOW_NODE_META[node.type] || { label: node.type, iconKey: 'settings' };
 
   const handleToggle = useCallback((e) => {
     e.stopPropagation();
@@ -58,7 +59,7 @@ export default function WorkflowNodeCard({
         className={`workflow-canvas-node tone-${tone || 'slate'} ${selected ? 'active' : ''} ${node.enabled === false ? 'disabled' : ''} ${status ? `status-${status}` : ''}`}
         onClick={() => onSelect?.(node.id)}
       >
-        <span className="workflow-node-icon" aria-hidden="true">{nodeMeta.icon}</span>
+        <span className="workflow-node-icon" aria-hidden="true">{ICONS[nodeMeta.iconKey] || ICONS.settings}</span>
         <span className="workflow-node-index">{String(index + 1).padStart(2, '0')}</span>
         <span className="workflow-node-type">
           {node.type === 'skill' && skillMeta ? skillMeta.label : nodeMeta.label}
