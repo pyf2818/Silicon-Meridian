@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   domainTierScore,
   sourceTierScore,
@@ -9,6 +9,8 @@ import {
   selectBriefingLanes,
 } from '../domain/intelligence/recommendationEngine.js';
 import { buildAlgorithmBriefing } from '../domain/intelligence/briefingEngine.js';
+import { useProfileStore } from '../store';
+import { fetchRelevantMemories } from '../utils/memoryEvolver.js';
 
 // Category groups used for related-category scoring in todayMustRead.
 // Mirrors the App.jsx file-scope constant so the hook stays self-contained
@@ -56,6 +58,36 @@ export function useRecommendationMemos({
   specialFollows,
   selectedNewsDate,
 }) {
+  // Phase 3 Task B12: 异步加载 relevantMemories（基于 top items 的 title+summary 做 query）
+  // 失败静默，不阻塞主推荐流程
+  const [relevantMemories, setRelevantMemories] = useState([]);
+  useEffect(() => {
+    if (items.length === 0) {
+      setRelevantMemories([]);
+      return;
+    }
+    let cancelled = false;
+    const queries = items.slice(0, 5).map(item =>
+      `${item.title} ${item.summary || ''}`.slice(0, 200)
+    );
+    Promise.all(queries.map(q => fetchRelevantMemories(q, 3).catch(() => [])))
+      .then(results => {
+        if (cancelled) return;
+        const seen = new Set();
+        const all = results.flat().filter(m => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        });
+        setRelevantMemories(all.slice(0, 10));
+      })
+      .catch(() => { /* silent */ });
+    return () => { cancelled = true; };
+  }, [items]);
+
+  // Phase 3 Task B12: 读取 personaSummary（直接读不订阅，变化频率低，避免重算）
+  const personaSummary = useProfileStore(s => s.personaSummary);
+
   // 我的关注动态：按关键词分组展示最新匹配的资讯
   const followKeywordUpdates = useMemo(() => {
     if (followKeywords.length === 0) return [];
@@ -133,11 +165,14 @@ export function useRecommendationMemos({
             ? 10
             : Math.min(categoryReadCount * 1.5 + sourceReadCount, 10),
           isNovel: !readIds.has(item.id),
+          // Phase 3 Task B12: 注入 personaSummary + relevantMemories 供推荐算法可选使用
+          personaSummary,
+          relevantMemories,
         });
       })
       .sort((a, b) => b.mustReadScore - a.mustReadScore)
       .slice(0, 80);
-  }, [items, followKeywords, readingHistory, bookmarks, selectedInterests, domainTiers, sourceTiers, specialFollows]);
+  }, [items, followKeywords, readingHistory, bookmarks, selectedInterests, domainTiers, sourceTiers, specialFollows, personaSummary, relevantMemories]);
 
   const recommendationCandidates = useMemo(() => todayMustRead.filter(item =>
     item.publishedAt?.slice(0, 10) === selectedNewsDate
@@ -160,6 +195,9 @@ export function useRecommendationMemos({
     recommendationCandidates,
     recommendationLanes,
     algorithmBriefing,
+    // Phase 3 Task B12: 暴露给下游组件（如 buildSystemPrompt 注入）
+    relevantMemories,
+    personaSummary,
   };
 }
 
