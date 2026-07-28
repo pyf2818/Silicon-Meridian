@@ -16,15 +16,15 @@ export default function PersonaSummaryCard({ personaSummary, loading }) {
         <div className="persona-summary-grid">
           <div className="persona-column">
             <h4>习惯</h4>
-            <ul>{habits.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            <ul>{habits.map((t, i) => <li key={i}>{String(t)}</li>)}</ul>
           </div>
           <div className="persona-column">
             <h4>性格</h4>
-            <ul>{traits.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            <ul>{traits.map((t, i) => <li key={i}>{String(t)}</li>)}</ul>
           </div>
           <div className="persona-column">
             <h4>需求</h4>
-            <ul>{needs.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            <ul>{needs.map((t, i) => <li key={i}>{String(t)}</li>)}</ul>
           </div>
         </div>
       )}

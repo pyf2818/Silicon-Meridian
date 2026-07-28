@@ -25,3 +25,23 @@ export function buildAiStatusCounts(snapshots = []) {
     return acc;
   }, {});
 }
+
+/**
+ * 把任意错误对象规整为字符串，避免 React 渲染对象导致
+ * "Objects are not valid as a React child" 运行时错误
+ * 接受：string | Error | {code, message} | {error: ...} | 任意
+ * @param {*} err
+ * @returns {string}
+ */
+export function normalizeError(err) {
+  if (err == null) return '';
+  if (typeof err === 'string') return err;
+  if (err instanceof Error) return err.message || String(err);
+  if (typeof err === 'object') {
+    if (typeof err.message === 'string') return err.message;
+    if (typeof err.error === 'string') return err.error;
+    if (typeof err.code === 'string') return err.code;
+    try { return JSON.stringify(err); } catch { return String(err); }
+  }
+  return String(err);
+}

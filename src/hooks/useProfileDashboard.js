@@ -4,10 +4,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useProfileStore } from '../store';
-import { buildTrendSeries, buildAiStatusCounts } from '../utils/dashboardBuilders.js';
+import { buildTrendSeries, buildAiStatusCounts, normalizeError } from '../utils/dashboardBuilders.js';
 
 // Re-export 纯函数（便于从 hook 文件统一 import）
-export { buildTrendSeries, buildAiStatusCounts };
+export { buildTrendSeries, buildAiStatusCounts, normalizeError };
 
 /**
  * Phase 4 仪表盘聚合 hook
@@ -37,9 +37,9 @@ export function useProfileDashboard() {
       const resp = await fetch('/api/profile/snapshots');
       const data = await resp.json();
       if (data.ok) setSnapshots(data.snapshots || []);
-      else setSnapshotsError(data.error || '加载失败');
+      else setSnapshotsError(normalizeError(data.error) || '加载失败');
     } catch (err) {
-      setSnapshotsError(err.message || '网络错误');
+      setSnapshotsError(normalizeError(err) || '网络错误');
     } finally {
       setSnapshotsLoading(false);
     }
@@ -70,10 +70,10 @@ export function useProfileDashboard() {
         setPreheatResult({ cached: data.cached, aiStatus: data.aiStatus });
         if (!data.cached) loadSnapshots(); // 重新拉取列表
       } else {
-        setPreheatError(data.error || '预热失败');
+        setPreheatError(normalizeError(data.error) || '预热失败');
       }
     } catch (err) {
-      setPreheatError(err.message || '网络错误');
+      setPreheatError(normalizeError(err) || '网络错误');
     } finally {
       setPreheatLoading(false);
     }

@@ -20,7 +20,7 @@ export default function LearnedPrefsCard({ prefs, loading }) {
             <div className="prefs-row">
               <span className="prefs-label">高频主题</span>
               <div className="prefs-tags">
-                {topics.map((t, i) => <span key={i} className="prefs-tag">{t}</span>)}
+                {topics.map((t, i) => <span key={i} className="prefs-tag">{String(t)}</span>)}
               </div>
             </div>
           )}
