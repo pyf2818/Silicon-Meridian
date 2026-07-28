@@ -1,7 +1,14 @@
 import { ICONS } from '../constants/index.jsx';
 import RecommendationDateRail from './RecommendationDateRail.jsx';
+import { useAiRecommendationEnhance } from '../hooks/useAiRecommendationEnhance.js';
 
 export default function RightPanel({ showRightPanel, panelCollapsed, nav, recommendationSnapshots, selectedNewsDate, setSelectedNewsDate, loading, loadNews, followKeywords, sortedFollowKeywords, matchCountPerKeyword, pinnedKeywords, pinFollowKeyword, unpinFollowKeyword, removeFollowKeyword, newKeyword, setNewKeyword, addFollowKeyword, hotTags, executeSearch, items, setGlobeFullscreenOpen, followKeywordUpdates, todayMustRead, selectedInterests, aiInsights, fetchAiInsights, llmConfig, setShowLlmQuickConfig, llmTesting }) {
+  // Phase 3 Task B16: "重新分析"按钮调用 /api/profile/snapshots/analyze（服务端用用户配置的 LLM，不写库）
+  // 初始展示仍用父组件传入的 aiInsights（legacy /api/ai-insights 自动加载），用户主动点"重新分析"后切换到 enhanced 视图
+  const { enhance, loading: enhanceLoading, error: enhanceError, insights: enhancedInsights } = useAiRecommendationEnhance({ items, llmConfig });
+  const insightsData = enhancedInsights || aiInsights?.data || null;
+  const insightsLoading = enhanceLoading || aiInsights?.loading || false;
+  const insightsError = enhanceError || aiInsights?.error || '';
   if (!showRightPanel) return null;
   return (
     <aside className={`panel ${panelCollapsed ? 'collapsed' : ''} ${nav === 'recommendations' ? 'panel-recommendations' : ''}`}>
@@ -191,43 +198,43 @@ export default function RightPanel({ showRightPanel, panelCollapsed, nav, recomm
             <section className="panel-section">
               <div className="ai-insights-header">
                 <h3 className="panel-title">{ICONS.sparkles}<span>AI 洞察</span></h3>
-                {aiInsights.data && (
-                  <button className="btn-refresh-insights" onClick={fetchAiInsights} disabled={aiInsights.loading} title="重新分析">
+                {insightsData && (
+                  <button className="btn-refresh-insights" onClick={enhance} disabled={insightsLoading} title="重新分析">
                     {ICONS.refresh}
                   </button>
                 )}
               </div>
-              {aiInsights.loading && <div className="ai-insights-loading"><div className="ai-loading-spinner" />正在分析...</div>}
-              {aiInsights.error && <div className="ai-insights-error">{ICONS.x} {aiInsights.error}</div>}
-              {aiInsights.data && (
+              {insightsLoading && <div className="ai-insights-loading"><div className="ai-loading-spinner" />正在分析...</div>}
+              {insightsError && <div className="ai-insights-error">{ICONS.x} {insightsError}</div>}
+              {insightsData && (
                 <div className="ai-insights-content">
-                  {aiInsights.data.trends && (
+                  {insightsData.trends && (
                     <div className="ai-insight-block">
                       <span className="ai-insight-label">{ICONS.chart} 技术趋势</span>
                       <ul className="ai-insight-list">
-                        {aiInsights.data.trends.map((t, i) => <li key={i}>{t}</li>)}
+                        {insightsData.trends.map((t, i) => <li key={i}>{t}</li>)}
                       </ul>
                     </div>
                   )}
-                  {aiInsights.data.correlations && (
+                  {insightsData.correlations && (
                     <div className="ai-insight-block">
                       <span className="ai-insight-label">{ICONS.link} 跨域关联</span>
                       <ul className="ai-insight-list">
-                        {aiInsights.data.correlations.map((c, i) => <li key={i}>{c}</li>)}
+                        {insightsData.correlations.map((c, i) => <li key={i}>{c}</li>)}
                       </ul>
                     </div>
                   )}
-                  {aiInsights.data.signals && (
+                  {insightsData.signals && (
                     <div className="ai-insight-block">
                       <span className="ai-insight-label">{ICONS.bell} 关键信号</span>
                       <ul className="ai-insight-list">
-                        {aiInsights.data.signals.map((s, i) => <li key={i} className="ai-signal-item">{s}</li>)}
+                        {insightsData.signals.map((s, i) => <li key={i} className="ai-signal-item">{s}</li>)}
                       </ul>
                     </div>
                   )}
                 </div>
               )}
-              {!aiInsights.loading && !aiInsights.data && !aiInsights.error && (
+              {!insightsLoading && !insightsData && !insightsError && (
                 <div className="ai-insights-placeholder">
 {!llmConfig.baseUrl ? (
                      <>
@@ -246,7 +253,7 @@ export default function RightPanel({ showRightPanel, panelCollapsed, nav, recomm
                        </div>
                        <p className="ai-insights-hint">已配置 LLM，点击「重新分析」生成当前资讯的洞察</p>
                        <div className="llm-action-row">
-                         <button className="btn-test-inline" onClick={fetchAiInsights} disabled={llmTesting}>{llmTesting ? '...' : '分析'}</button>
+                         <button className="btn-test-inline" onClick={enhance} disabled={enhanceLoading}>{enhanceLoading ? '...' : '分析'}</button>
                          <button className="btn-edit-config" onClick={() => setShowLlmQuickConfig(true)}>{ICONS.settings}<span>修改</span></button>
                        </div>
                      </>
