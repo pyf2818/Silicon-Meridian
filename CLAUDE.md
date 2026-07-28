@@ -10,7 +10,7 @@ npm run dev                              # Dev server on 0.0.0.0:5175 (with API 
 npm run build                            # Production build -> dist/
 npm start                                # Production Node server (dist + full API, default port 3000)
 npm run preview                          # Preview production build (static only, no API)
-npm test                                 # Run unit tests (vitest) — 362 tests across src/utils, src/store, src/domain, src/hooks/__tests__, src/components/profile/__tests__, server/
+npm test                                 # Run unit tests (vitest) — 398 tests across src/utils, src/store, src/domain, src/hooks/__tests__, src/components/profile/__tests__, server/
 npm run test:watch                       # Watch mode
 node node_modules/vitest/vitest.mjs run <file>  # Run a single test file (bin symlink not created on Windows)
 npm run db:migrate
@@ -130,6 +130,8 @@ src/components/
     PendingSuggestionsSection.jsx  AI 建议待确认列表容器（读 useProfileStore.pendingSuggestions）
     PendingSuggestionCard.jsx     单条建议卡片 + SuggestionAcceptEditor + applySuggestionByType 纯函数
     AgentMemorySection.jsx        AI 跨会话记忆列表 + 过滤/搜索/分页/删除
+    PersonaSummarySection.jsx     Phase 3 AI 性格画像展示（habits/traits/needs 三栏，读 profileStore.personaSummary）
+    SnapshotHistorySection.jsx    Phase 3 历史快照展示（GET /api/profile/snapshots 列表 + ?date= 详情）
 ```
 
 **NOT separate files (inline in App.jsx or located elsewhere):**
@@ -174,6 +176,8 @@ src/hooks/
   useGithubInsight.js        GitHub 情报（从 App.jsx 抽离）
   useRecommendationFeedback.js 推荐反馈（从 App.jsx 抽离）
   useCalendarMemos.js        日历备注（从 App.jsx 抽离）
+  useSnapshotPreheat.js      Phase 3 lazy 预热触发 hook（用户登录且今日 snapshot 缺失时触发，30s 超时 + 算法降级）
+  useAiRecommendationEnhance.js Phase 3 实时 AI 重新分析 hook（调 /api/profile/snapshots/analyze，不写库）
 ```
 
 #### Domain Layer (`src/domain/`)
@@ -204,6 +208,20 @@ The v2 features described in `docs/wanban-silicon-valley-v2-blueprint.md` are wi
 - buildSystemPrompt "最近校准"段自动激活（用户接受建议后，后续对话 prompt 注入近 7 天 accepted 建议）
 - applySuggestionByType 纯函数含大小写不敏感幂等检查
 - pendingSuggestions 不同步跨设备（agent_memories 已是 PG 跨设备来源）
+
+**Phase 3 LLM 推荐增强（已完成）**：LLM 推荐增强 + personaSummary 全链路同步 + recommendation_snapshots 三表写入 + cron 预热 + lazy 触发 + fetchRelevantMemories 激活 + mergeAiBriefing 接入。
+- Migration 006：`users.last_seen_at` + `user_profiles.llm_config`（跨设备同步 LLM 设置）
+- `server/cron/dailyBriefingPreheatJob.js`：每日 06:00 Asia/Shanghai 预热（仅 production Node/Docker；Vercel 走 lazy 路径），仅对最近 7 天活跃用户、并发上限 3
+- `server/profile/snapshotService.js`：`preheatForUser` 共享 cron + lazy 路径，三表事务（`recommendation_snapshots` + `briefing_snapshots` + `recommendation_items`）+ ON CONFLICT 策略
+- `src/hooks/useSnapshotPreheat.js`：用户登录且今日 snapshot 缺失时 lazy 触发，30s 超时 + 算法模式降级
+- `src/hooks/useAiRecommendationEnhance.js`：实时 AI 重新分析，调 `/api/profile/snapshots/analyze`（不写库）
+- `src/utils/memoryEvolver.js`：新增 `extractLearnedPreferences` 纯函数 + 写 `learned_preferences`；persona_summary 合并式更新（habits/traits/needs 各 cap 10）
+- `src/hooks/useRecommendationMemos.js`：注入 personaSummary + relevantMemories；暴露 `eventClusters`（替代 App.jsx L1112 内联 `clusterEvents(filtered)` 调用）
+- `src/components/AiChatPanel.jsx`：服务端 agent_memories 异步检索（debounce 500ms，失败静默）；personaSummary 改读 profileStore
+- `src/components/aichat/buildSystemPrompt.js`：新增"相关记忆"段（agent_memories）+"用户性格画像"段（personaSummary）
+- `src/components/profile/PersonaSummarySection.jsx`：读 profileStore.personaSummary，展示用户习惯/性格/需求三栏
+- `src/components/profile/SnapshotHistorySection.jsx`：调 GET /api/profile/snapshots 列表 + ?date= 详情，含原始 JSON 折叠
+- `src/components/RightPanel.jsx`："重新分析"按钮调 `useAiRecommendationEnhance`，初始展示仍用 legacy `/api/ai-insights` 自动加载，enhance 后切换到 `/api/profile/snapshots/analyze` 视图
 
 ### Stock Market Module (股市动向)
 
@@ -299,6 +317,11 @@ server/profile/              profileService + profileRepository
 | `/api/user/{profile,interests}` | POST | `token`(cookie), `displayName`, `avatar`, `signature`, `interests` | Profile/interests update |
 | `/api/community/{...path}` | GET/POST | varies | Posts, comments, likes, bookmarks, follows (PG-backed) |
 | `/api/profile/state` | GET | - | Profile tiers (focus/normal/explore), special follows |
+| `/api/profile/llm-config` | GET/POST | `baseUrl`, `apiKey`, `model`(POST) | Phase 3 LLM 配置跨设备同步（写入 `user_profiles.llm_config`） |
+| `/api/profile/snapshots` | GET | `date`(optional) | Phase 3 推荐快照列表/单条详情 |
+| `/api/profile/snapshots/preheat` | POST | - | Phase 3 触发今日预热（缓存命中直接返回） |
+| `/api/profile/snapshots/analyze` | POST | `items[]` | Phase 3 实时 AI 重新分析（不写库） |
+| `/api/agent-memory/learned-preferences` | PATCH | `topics`, `preferredDepth`, `preferredFormat` | Phase 3 学习偏好合并式更新 |
 | `/api/stock/dashboard` | GET | - | Indices + hot stocks (60s cache, East Money + Tencent fallback) |
 | `/api/stock/realtime` | GET | `code` | Realtime quote with 5-level order book (bids/asks) |
 | `/api/stock/kline` | GET | `code`, `period` (101/102/103), `count` | K-line data (10min cache) |
@@ -318,6 +341,7 @@ server/profile/              profileService + profileRepository
 - `githubCaches`: 30 min TTL, keyed by `${lang}-${since}`
 - `imageResolveCache`: session-scoped (no TTL, in-memory only)
 - Stock caches: realtime 60s, kline 10min, timeline 60s, sectors 60s
+- Phase 3 `recommendation_snapshots`: 每日 06:00 Asia/Shanghai cron 预热（仅 production Node/Docker）；Vercel 部署不跑 cron，只走 lazy 路径（用户登录触发 `useSnapshotPreheat`）
 
 ## Deployment
 
@@ -348,7 +372,7 @@ Categories, source grades, and tag rules are defined **independently** in both `
 - **GitHub card**: App.jsx has an **inline** `GithubRepoCard` function (NOT a separate file). Inline version uses `inferGithubScenario/Audience/Difficulty/Value` + `buildGithubMaterial`; `deriveRepoInsight` in repoInsight.js is a parallel implementation. AI insight is collapsible by default.
 ## Known Issues
 
-- **Tests limited to pure-logic engines** — 362 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + applySuggestionByType (7) + useAgentMemories (8) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15) tests; no integration/E2E tests, no component tests
+- **Tests limited to pure-logic engines** — 398 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + applySuggestionByType (7) + useAgentMemories (8) + useSnapshotPreheat (7) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15 + snapshotService 4 + aiHandlers 4) tests; no integration/E2E tests, no component tests
 - **RSS failure rate ~40-50%** — many sources return 403/404 or HTML instead of RSS
 - **Auth requires PostgreSQL** - register/login/me/logout/profile/interests delegate to server/http/authHandlers.js -> server/auth/authService.js (password hashing + session tokens in sessions table). Dev (server/news/plugin.js) and prod (api/auth/[action].js) share the same handler. Without DATABASE_URL, auth endpoints return 503 DATABASE_UNAVAILABLE.
 - **`package.json` type: "module"** — all `.js` files use ESM; CI workflows using `require()` will crash
