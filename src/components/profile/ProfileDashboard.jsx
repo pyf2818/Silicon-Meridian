@@ -10,6 +10,7 @@ import TrendLineChart from '../TrendLineChart.jsx';
 import PersonaSummaryCard from './PersonaSummaryCard.jsx';
 import LearnedPrefsCard from './LearnedPrefsCard.jsx';
 import PreheatButton from './PreheatButton.jsx';
+import PersonaEvolutionSection from './PersonaEvolutionSection.jsx';
 
 // KPI 卡片：BlockStat 卡片形态（自带 label/value/desc 三段）
 function KpiCard({ label, value, desc }) {
@@ -91,6 +92,13 @@ export default function ProfileDashboard({
         <PersonaSummaryCard personaSummary={dash.personaSummary} loading={false} />
         <LearnedPrefsCard prefs={dash.learnedPrefs} loading={dash.prefsLoading} />
       </div>
+
+      {/* 6. 画像进化趋势（Phase 5） */}
+      <PersonaEvolutionSection
+        history={dash.personaHistory}
+        loading={dash.historyLoading}
+        currentPersonaSummary={dash.personaSummary}
+      />
 
       {/* 5. 手动重跑预热 */}
       <section className="dashboard-section">
