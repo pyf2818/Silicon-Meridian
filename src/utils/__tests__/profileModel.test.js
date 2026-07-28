@@ -775,3 +775,66 @@ describe('computeTodayProfileSnapshot', () => {
     expect(r.sources).toEqual(['A', 'B', 'C']);
   });
 });
+
+// ===========================================================================
+// computeProfileLearningEngine extended fields (Phase 1.2 Task 7)
+// ===========================================================================
+describe('computeProfileLearningEngine extended fields', () => {
+  const baseInput = {
+    readingHistory: [
+      { id: 'r1', category: 'ai', readAt: new Date(Date.now() - 86400e3).toISOString(), imageUrl: 'x' },
+      { id: 'r2', category: 'chips', readAt: new Date().toISOString() },
+    ],
+    bookmarks: [
+      { id: 'b1', category: 'ai', author: 'Author1', mode: 'multimedia' },
+      { id: 'b2', category: 'ai', author: 'Author2' },
+    ],
+    materials: [{ id: 'm1', category: 'ai' }],
+    selectedInterests: ['ai'],
+    domainTiers: { ai: 'focus' },
+    domainPriorities: {},
+    recommendationFeedback: { hiddenIds: [], boostedCategories: { ai: 2 }, mutedSources: {}, trackedTerms: { gpu: 1 } },
+    followKeywords: ['LLM'],
+    sourceTiers: {},
+    sourcePriorities: {},
+  };
+
+  it('returns explanation string', () => {
+    const r = computeProfileLearningEngine(baseInput);
+    expect(typeof r.explanation).toBe('string');
+    expect(r.explanation.length).toBeGreaterThan(0);
+  });
+
+  it('computes savedRatio as bookmarks/readingHistory*100', () => {
+    const r = computeProfileLearningEngine(baseInput);
+    expect(r.savedRatio).toBe(Math.round(2 / 2 * 100));
+  });
+
+  it('computes materialRatio as materials/bookmarks*100', () => {
+    const r = computeProfileLearningEngine(baseInput);
+    expect(r.materialRatio).toBe(Math.round(1 / 2 * 100));
+  });
+
+  it('counts recentReadCount within 7 days', () => {
+    const r = computeProfileLearningEngine(baseInput);
+    expect(r.recentReadCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('counts multimediaReads', () => {
+    const r = computeProfileLearningEngine(baseInput);
+    expect(r.multimediaReads).toBe(1);
+  });
+
+  it('aggregates feedbackLearningCount', () => {
+    const r = computeProfileLearningEngine(baseInput);
+    // hiddenIds(0) + boostedCategories values sum(2) + mutedSources values sum(0) + trackedTerms values sum(1) = 3
+    expect(r.feedbackLearningCount).toBe(3);
+  });
+
+  it('returns topAuthors array', () => {
+    const r = computeProfileLearningEngine(baseInput);
+    expect(Array.isArray(r.topAuthors)).toBe(true);
+    expect(r.topAuthors).toContain('Author1');
+    expect(r.topAuthors).toContain('Author2');
+  });
+});

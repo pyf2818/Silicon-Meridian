@@ -149,6 +149,7 @@ export function computeProfileLearningEngine({
   followKeywords = [],
   sourceTiers = null,
   sourcePriorities = {},
+  categories = null,
 }) {
   const resolvedDomainTiers = domainTiers || domainPriorities;
   const resolvedSourceTiers = sourceTiers || sourcePriorities;
@@ -182,8 +183,10 @@ export function computeProfileLearningEngine({
     .slice(0, 5)
     .map(([id, score]) => {
       const tier = normalizeTier(resolvedDomainTiers[id]);
+      const category = categories?.find(c => c.id === id);
       return {
         id,
+        label: category?.label || id,
         ...(tier ? { tier, tierScore: domainTierScore(tier) } : {}),
         score: Math.round(score),
       };
@@ -247,6 +250,29 @@ export function computeProfileLearningEngine({
   if (!nextActions.length && focusMatchCount(topCategories, selectedInterests) < 3) nextActions.push('扩充关注领域或提高对应领域权重');
   if (!nextActions.length) nextActions.push('今日情报已接入推荐，继续阅读并收藏有价值的内容');
 
+  // extended fields (Phase 1.2 Task 7) — mirror App.jsx inline useMemo behavior
+  const multimediaReads = readingHistory.filter(item => item.imageUrl || item.videoUrl).length;
+  const materialRatio = bookmarks.length
+    ? Math.round(materials.length / Math.max(bookmarks.length, 1) * 100) : 0;
+  const feedbackLearningCount =
+    (recommendationFeedback.hiddenIds || []).length
+    + Object.values(recommendationFeedback.boostedCategories || {}).reduce((sum, v) => sum + v, 0)
+    + Object.values(recommendationFeedback.mutedSources || {}).reduce((sum, v) => sum + v, 0)
+    + Object.values(recommendationFeedback.trackedTerms || {}).reduce((sum, v) => sum + v, 0);
+  const authorMap = new Map();
+  bookmarks.forEach(b => {
+    if (b.author) authorMap.set(b.author, (authorMap.get(b.author) || 0) + 1);
+  });
+  const topAuthors = [...authorMap.entries()]
+    .sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name]) => name);
+  const explanationArr = [
+    topCategories[0] ? `领域权重最高：${topCategories[0].label}` : '',
+    topSources[0] ? `信任来源最高：${topSources[0].name}` : '',
+    topTags.length ? `记忆关键词：${topTags.slice(0, 3).map(i => i.name).join('、')}` : '',
+    recommendationFeedback.mutedSources && Object.keys(recommendationFeedback.mutedSources).length
+      ? `已降低 ${Object.keys(recommendationFeedback.mutedSources).slice(0, 2).join('、')} 的权重` : ''
+  ].filter(Boolean);
+
   return {
     confidence,
     confidenceLabel: confidence >= 75 ? '高可信' : confidence >= 45 ? '持续学习中' : '需要校准',
@@ -261,6 +287,13 @@ export function computeProfileLearningEngine({
       : confidence >= 20
         ? '正在学习你的阅读偏好，多阅读和收藏后会更快收敛。'
         : '行为数据不足，继续进行阅读和收藏动作后系统会更懂你。',
+    explanation: explanationArr.join('；'),
+    savedRatio,
+    materialRatio,
+    recentReadCount: recentReads.length,
+    multimediaReads,
+    feedbackLearningCount,
+    topAuthors,
   };
 }
 
