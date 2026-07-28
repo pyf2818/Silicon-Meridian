@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { closePool } from './db/client.js';
 import { createNewsApiMiddleware } from './newsPlugin.js';
+import { updateLastSeen } from './http/lastSeenMiddleware.js';
 
 const PORT = Number.parseInt(process.env.PORT || '3000', 10);
 const DIST_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist');
@@ -102,6 +103,12 @@ async function serveFrontend(req, res, requestUrl) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // last_seen_at 节流更新：res.on('finish') 在响应结束后异步触发，不阻塞响应
+  if (res.on) {
+    res.on('finish', () => {
+      if (req.userId) updateLastSeen(req.userId);
+    });
+  }
   try {
     const requestUrl = new URL(req.url || '/', 'http://localhost');
     if (requestUrl.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'siliconstream' });

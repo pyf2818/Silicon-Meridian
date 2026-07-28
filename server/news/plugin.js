@@ -17,6 +17,7 @@ import { getNews, warmNewsCache, startNewsWarming } from './services/newsService
 import { getTrending, getGithubTrending } from './services/trendingService.js';
 import { discoverSourceCandidates, validateFeedUrl } from './services/sourceDiscovery.js';
 import { getDashboard, getRealtime, getKline, getTimeline, getSectors, searchStock, resolveSecid } from './services/stockService.js';
+import { createLastSeenHandler } from '../http/lastSeenMiddleware.js';
 
 const E2E_INTELLIGENCE_ITEMS = [
   { id: 'openai-agent-1', canonicalId: 'event-openai-agent', title: 'OpenAI releases a new agent platform today', source: 'OpenAI Blog', category: 'ai', publishedAt: '2026-07-14T01:00:00Z', summary: 'Official agent platform release.', url: 'https://openai.com/index/agents' },
@@ -434,6 +435,7 @@ ${items.map((i, idx) => {
         return next();
       };
 
+      server.middlewares.use(createLastSeenHandler());
       server.middlewares.use(async (req, res, next) => {
         try {
           return await handleApiRequest(req, res, next);
