@@ -12,7 +12,8 @@ import { useProfileStore } from '../../store';
  * @param {Array} opts.workbenchItems 今日资讯列表
  * @param {object} opts.intelligenceContext 情报上下文（含 items/briefing）
  * @param {Array} opts.workspaceFiles 工作空间加入上下文的文件
- * @param {Array} opts.relevantMemories 历史会话相关记忆
+ * @param {Array} opts.relevantMemories 历史会话相关记忆（sessionMemory 本地格式）
+ * @param {Array} opts.agentMemories 服务端 agent_memories（来自 fetchRelevantMemories）
  * @param {Array} opts.recalledFiles 工作空间召回文件
  * @param {object} opts.learnedPrefs 学习画像
  * @param {boolean} opts.excludeAllEvidence 是否排除情报上下文
@@ -29,6 +30,7 @@ export function buildSystemPrompt({
   intelligenceContext,
   workspaceFiles,
   relevantMemories,
+  agentMemories,
   recalledFiles,
   learnedPrefs,
   excludeAllEvidence,
@@ -73,6 +75,16 @@ export function buildSystemPrompt({
       personaSummary.traits?.length ? `  - 用户性格：${personaSummary.traits.join('；')}` : '',
       personaSummary.needs?.length ? `  - 用户需求：${personaSummary.needs.join('；')}` : '',
     ].filter(Boolean).join('\n') : '',
+    // Phase 3 Task B10: 相关记忆段（服务端 agent_memories，来自 fetchRelevantMemories）
+    // 仅当相关时参考，避免重复询问用户已表达过的偏好/需求
+    agentMemories && agentMemories.length > 0
+      ? '【相关记忆】基于当前话题检索的跨会话记忆（仅当相关时参考，避免重复询问）：\n' +
+        agentMemories.slice(0, 5).map(m => {
+          const type = m.memory_type || m.memoryType || '记忆';
+          const content = String(m.content || '').slice(0, 100);
+          return `  - ${type}：${content}`;
+        }).join('\n')
+      : '',
     // 学习画像：从用户行为观测到的偏好
     learnedPrefs.hasData ? [
       '【学习偏好】根据用户历史交互，你观察到以下偏好，回复时主动贴合：',
