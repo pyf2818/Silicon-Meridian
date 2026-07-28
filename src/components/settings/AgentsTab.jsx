@@ -37,7 +37,7 @@ function AgentToolsSelector({ value, onChange }) {
                 checked={checked}
                 onChange={() => toggle(fn.name)}
               />
-              <span className="agent-tool-chip-icon">{entry.meta?.icon || '⚙️'}</span>
+              <span className="agent-tool-chip-icon">{entry.meta?.icon || ICONS.settings}</span>
               <span className="agent-tool-chip-name">{fn.name}</span>
               <span className="agent-tool-chip-desc">{fn.description?.slice(0, 40) || ''}</span>
             </label>
