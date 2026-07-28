@@ -38,7 +38,7 @@ function loadTodos(sessionId) {
 const TABS = [
   { id: 'task', label: '任务', icon: '✓' },
   { id: 'agent', label: '智能体', icon: '⚙' },
-  { id: 'memory', label: '记忆', icon: '✨' },
+  { id: 'memory', label: '记忆', icon: ICONS.sparkles },
 ];
 
 
@@ -441,7 +441,7 @@ export default function AgentPanel({
                 <div className="agent-memory-list">
                   {relevantMemories.map(m => (
                     <div key={m.sessionId} className="agent-memory-item" title={`来自会话：${m.title}`}>
-                      <span className="agent-memory-topic">💭 {m.topic}</span>
+                      <span className="agent-memory-topic">{ICONS.chat} {m.topic}</span>
                       {m.conclusions.map((c, i) => (
                         <span key={i} className="agent-memory-conclusion">{c}</span>
                       ))}
@@ -628,7 +628,7 @@ export default function AgentPanel({
             {/* 空状态 */}
             {relevantMemories.length === 0 && recalledFiles.length === 0 && !learnedPrefs.hasData && (
               <div className="agent-tab-empty">
-                <div className="agent-tab-empty-icon">✨</div>
+                <div className="agent-tab-empty-icon">{ICONS.sparkles}</div>
                 <div className="agent-tab-empty-text">
                   还没有记忆数据。<br />
                   随着你与智能体对话，它会自动总结你的习惯、想法、需求并保留在这里，越来越懂你。
