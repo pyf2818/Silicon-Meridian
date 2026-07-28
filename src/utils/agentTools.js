@@ -562,7 +562,7 @@ function listAvailableTools(ctx) {
   if (names.length === 0) return '当前未配置工具白名单';
   const lines = names.map(name => {
     const meta = getToolMeta(name);
-    return `  ${meta.icon || '⚙️'}  ${name}  - ${meta.label || ''} ${meta.description ? '：' + meta.description : ''}`;
+    return `  ${name}  - ${meta.label || ''} ${meta.description ? '：' + meta.description : ''}`;
   });
   return `当前 agent 可用工具（${names.length} 个）：\n${lines.join('\n')}`;
 }
@@ -826,7 +826,7 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: '读取文件', icon: '📄', description: '读取本地工作空间中已存在的文件内容', category: 'workspace' },
+    meta: { label: '读取文件', iconKey: 'document', description: '读取本地工作空间中已存在的文件内容', category: 'workspace' },
     executor: toolReadWorkspaceFile,
   },
   {
@@ -846,7 +846,7 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: '写入文件', icon: '✍️', description: '将内容写入工作空间的文件', category: 'workspace', requiresApproval: true },
+    meta: { label: '写入文件', iconKey: 'pencil', description: '将内容写入工作空间的文件', category: 'workspace', requiresApproval: true },
     executor: toolWriteWorkspaceFile,
   },
   {
@@ -866,7 +866,7 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: '检索资讯', icon: '🔍', description: '搜索资讯库', category: 'news' },
+    meta: { label: '检索资讯', iconKey: 'search', description: '搜索资讯库', category: 'news' },
     executor: toolSearchNews,
   },
   {
@@ -885,7 +885,7 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: '抓取网页', icon: '🌐', description: '抓取指定 URL 的网页正文', category: 'web', requiresApproval: true },
+    meta: { label: '抓取网页', iconKey: 'globe', description: '抓取指定 URL 的网页正文', category: 'web', requiresApproval: true },
     executor: toolFetchPage,
   },
   {
@@ -905,7 +905,7 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: '联网搜索', icon: '🔎', description: '联网搜索互联网最新信息（豆包搜索 / Tavily / DuckDuckGo）', category: 'web' },
+    meta: { label: '联网搜索', iconKey: 'megaphone', description: '联网搜索互联网最新信息（豆包搜索 / Tavily / DuckDuckGo）', category: 'web' },
     executor: toolWebSearch,
   },
   {
@@ -924,7 +924,7 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: '股票行情', icon: '📈', description: '获取股票实时行情', category: 'stock' },
+    meta: { label: '股票行情', iconKey: 'trendingUp', description: '获取股票实时行情', category: 'stock' },
     executor: toolGetStockQuote,
   },
   {
@@ -945,7 +945,7 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: 'K 线数据', icon: '📊', description: '获取股票 K 线数据', category: 'stock' },
+    meta: { label: 'K 线数据', iconKey: 'chart', description: '获取股票 K 线数据', category: 'stock' },
     executor: toolGetStockKline,
   },
   /* ====== 会话状态管理工具（Phase 3） ====== */
@@ -979,7 +979,7 @@ const BUILTIN_TOOL_DEFS = [
         },
       },
     },
-    meta: { label: '设置计划', icon: '📋', description: '为当前任务设置执行计划', category: 'session' },
+    meta: { label: '设置计划', iconKey: 'list', description: '为当前任务设置执行计划', category: 'session' },
     executor: toolSetPlan,
   },
   {
@@ -1001,7 +1001,7 @@ const BUILTIN_TOOL_DEFS = [
         },
       },
     },
-    meta: { label: '追加任务', icon: '➕', description: '追加一个任务到执行计划', category: 'session' },
+    meta: { label: '追加任务', iconKey: 'plus', description: '追加一个任务到执行计划', category: 'session' },
     executor: toolAddTask,
   },
   {
@@ -1023,7 +1023,7 @@ const BUILTIN_TOOL_DEFS = [
         },
       },
     },
-    meta: { label: '更新任务', icon: '🔄', description: '更新任务状态', category: 'session' },
+    meta: { label: '更新任务', iconKey: 'refresh', description: '更新任务状态', category: 'session' },
     executor: toolUpdateTask,
   },
   {
@@ -1043,7 +1043,7 @@ const BUILTIN_TOOL_DEFS = [
         },
       },
     },
-    meta: { label: '设置变量', icon: '🏷️', description: '设置会话变量', category: 'session' },
+    meta: { label: '设置变量', iconKey: 'tag', description: '设置会话变量', category: 'session' },
     executor: toolSetVariable,
   },
   {
@@ -1063,7 +1063,7 @@ const BUILTIN_TOOL_DEFS = [
         },
       },
     },
-    meta: { label: '写黑板', icon: '📝', description: '写入会话黑板', category: 'session' },
+    meta: { label: '写黑板', iconKey: 'note', description: '写入会话黑板', category: 'session' },
     executor: toolWriteBlackboard,
   },
   /* ====== 命令执行能力（方案 C Phase 4） ====== */
@@ -1086,7 +1086,7 @@ const BUILTIN_TOOL_DEFS = [
         },
       },
     },
-    meta: { label: '执行命令', icon: '⌨️', description: '统一命令入口（shell 风格）', category: 'shell', requiresApproval: true },
+    meta: { label: '执行命令', iconKey: 'terminal', description: '统一命令入口（shell 风格）', category: 'shell', requiresApproval: true },
     executor: toolExecuteCommand,
   },
 ];
