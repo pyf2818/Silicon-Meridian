@@ -4,6 +4,7 @@
 // 每日 06:00 cron 预热写入 recommendation_snapshots + briefing_snapshots + recommendation_items（三表事务）
 import React, { useState, useEffect, useCallback } from 'react';
 import { formatRelative } from '../../utils/format.js';
+import { normalizeError } from '../../utils/dashboardBuilders.js';
 
 export default function SnapshotHistorySection() {
   const [snapshots, setSnapshots] = useState([]);
@@ -19,9 +20,9 @@ export default function SnapshotHistorySection() {
       const resp = await fetch('/api/profile/snapshots');
       const data = await resp.json();
       if (data.ok) setSnapshots(data.snapshots || []);
-      else setError(data.error || '加载失败');
+      else setError(normalizeError(data.error) || '加载失败');
     } catch (err) {
-      setError(err.message);
+      setError(normalizeError(err) || '加载失败');
     } finally {
       setLoading(false);
     }
