@@ -322,7 +322,12 @@ function App() {
   const setSpecialFollowForm = useProfileStore(s => s.setSpecialFollowForm);
   const editingSpecialFollowId = useProfileStore(s => s.editingSpecialFollowId);
   const setEditingSpecialFollowId = useProfileStore(s => s.setEditingSpecialFollowId);
-  useProfileSync({ user, domainTiers, sourceTiers, specialFollows, setDomainTiers, setSourceTiers, setSpecialFollows });
+  useProfileSync({
+    user, domainTiers, sourceTiers, specialFollows,
+    setDomainTiers, setSourceTiers, setSpecialFollows,
+    dailyProfileSnapshots, briefingConfig,
+    setDailyProfileSnapshots, setBriefingConfig,
+  });
 
   // 打开资料弹窗时预填充表单
   useEffect(() => {
