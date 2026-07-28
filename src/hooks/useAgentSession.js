@@ -59,13 +59,13 @@ export function useAgentSession(sessionId) {
   };
 }
 
-/** 把 plan 状态字符串映射为图标 */
+/** 把 plan 状态字符串映射为图标 key（消费端查 ICONS） */
 export const TASK_STATUS_ICON = {
-  pending: '⏳',
-  running: '▶️',
-  done: '✅',
-  failed: '❌',
-  skipped: '⏭️',
+  pending: 'clock',
+  running: 'play',
+  done: 'check',
+  failed: 'x',
+  skipped: 'skip',
 };
 
 /** 状态机：定义合法的状态转换 */
