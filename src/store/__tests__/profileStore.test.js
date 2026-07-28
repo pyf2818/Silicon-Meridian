@@ -83,11 +83,11 @@ describe('personaSummary', () => {
     installLocalStorage();
     // 重置为默认值
     useProfileStore.setState({
-      personaSummary: { habits: [], traits: [], needs: [], updatedAt: null },
+      personaSummary: { habits: [], traits: [], needs: [], lastEvolvedAt: null },
     });
   });
 
-  it('replaces habits/traits/needs and stamps updatedAt', () => {
+  it('replaces habits/traits/needs and stamps lastEvolvedAt', () => {
     useProfileStore.getState().setPersonaSummary({
       habits: ['简洁回复'], traits: ['技术派'], needs: ['GPU 资讯'],
     });
@@ -95,8 +95,8 @@ describe('personaSummary', () => {
     expect(ps.habits).toEqual(['简洁回复']);
     expect(ps.traits).toEqual(['技术派']);
     expect(ps.needs).toEqual(['GPU 资讯']);
-    expect(typeof ps.updatedAt).toBe('string');
-    expect(new Date(ps.updatedAt).getTime()).toBeLessThanOrEqual(Date.now());
+    expect(typeof ps.lastEvolvedAt).toBe('string');
+    expect(new Date(ps.lastEvolvedAt).getTime()).toBeLessThanOrEqual(Date.now());
   });
 
   it('caps habits/traits/needs at 10 each', () => {
@@ -125,6 +125,6 @@ describe('personaSummary', () => {
     expect(ps.habits).toEqual([]);
     expect(ps.traits).toEqual([]);
     expect(ps.needs).toEqual([]);
-    expect(typeof ps.updatedAt).toBe('string');
+    expect(typeof ps.lastEvolvedAt).toBe('string');
   });
 });
