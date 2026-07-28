@@ -62,7 +62,8 @@ export async function buildAgentSystemPrompt({ agentId, userId }) {
     }
     if (persona.learnedPreferences) {
       const lp = persona.learnedPreferences;
-      if (lp.frequentTopics?.length) learnedLines.push(`  - 高频关注主题：${lp.frequentTopics.join('、')}`);
+      const topics = lp.topics || lp.frequentTopics || [];
+      if (topics.length) learnedLines.push(`  - 高频关注主题：${topics.join('、')}`);
       if (lp.preferredFormat) learnedLines.push(`  - 偏好回复格式：${lp.preferredFormat}`);
       if (lp.preferredDepth) learnedLines.push(`  - 偏好深度：${lp.preferredDepth}`);
     }
