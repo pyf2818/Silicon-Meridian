@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
+import { ICONS } from '../../constants/appConstants.jsx';
 
 /* 工具元信息：友好名称 + 简短图标，与 AiChatPanel 内保持一致 */
 const TOOL_META = {
-  read_workspace_file: { label: '读取文件', icon: '📄' },
-  write_workspace_file: { label: '写入文件', icon: '✍️' },
-  search_news: { label: '检索资讯', icon: '🔍' },
-  fetch_page: { label: '抓取网页', icon: '🌐' },
-  get_stock_quote: { label: '股票行情', icon: '📈' },
-  get_stock_kline: { label: 'K 线数据', icon: '📊' },
+  read_workspace_file: { label: '读取文件', iconKey: 'document' },
+  write_workspace_file: { label: '写入文件', iconKey: 'pencil' },
+  search_news: { label: '检索资讯', iconKey: 'search' },
+  fetch_page: { label: '抓取网页', iconKey: 'globe' },
+  get_stock_quote: { label: '股票行情', iconKey: 'trendingUp' },
+  get_stock_kline: { label: 'K 线数据', iconKey: 'chart' },
 };
 
 function summarizeToolArgs(name, args) {
@@ -27,7 +28,7 @@ export function ElfToolCallCard({ tc, meta, summary, statusLabel, statusClass, i
   return (
     <div className={`tool-call tool-call-${statusClass}`}>
       <div className="tool-call-header" onClick={() => setExpanded(v => !v)} role="button" tabIndex={0}>
-        <span className="tool-call-icon">{meta.icon}</span>
+        <span className="tool-call-icon">{ICONS[meta.iconKey] || ICONS.settings}</span>
         <span className="tool-call-name">{meta.label}</span>
         {summary && <span className="tool-call-arg-summary" title={summary}>{summary}</span>}
         <span className={`tool-call-status tool-call-status-${statusClass}`}>{statusLabel}</span>
