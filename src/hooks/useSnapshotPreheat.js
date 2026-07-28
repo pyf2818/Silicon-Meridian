@@ -10,6 +10,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useProfileStore } from '../store';
+import { normalizeError } from '../utils/dashboardBuilders.js';
 
 const PREHEAT_TIMEOUT_MS = 30_000;
 
@@ -51,7 +52,7 @@ export function useSnapshotPreheat({ enabled = false, llmConfig } = {}) {
             );
           }
         } else {
-          setError(data.error || '预热失败');
+          setError(normalizeError(data.error) || '预热失败');
           setStatus('error');
         }
       })
@@ -60,7 +61,7 @@ export function useSnapshotPreheat({ enabled = false, llmConfig } = {}) {
         if (err.name === 'AbortError') {
           setError('预热超时');
         } else {
-          setError(err.message);
+          setError(normalizeError(err) || '预热失败');
         }
         setStatus('error');
       })

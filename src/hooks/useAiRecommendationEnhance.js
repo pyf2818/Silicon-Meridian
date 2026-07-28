@@ -9,6 +9,7 @@
  * 失败时返回 error，不修改原 items
  */
 import { useState, useCallback } from 'react';
+import { normalizeError } from '../utils/dashboardBuilders.js';
 
 export function useAiRecommendationEnhance({ items, llmConfig } = {}) {
   const [loading, setLoading] = useState(false);
@@ -45,10 +46,10 @@ export function useAiRecommendationEnhance({ items, llmConfig } = {}) {
           signals: data.signals || [],
         });
       } else {
-        setError(data.error || '分析失败');
+        setError(normalizeError(data.error) || '分析失败');
       }
     } catch (err) {
-      setError(err.message);
+      setError(normalizeError(err) || '分析失败');
     } finally {
       setLoading(false);
     }
