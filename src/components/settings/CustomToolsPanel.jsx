@@ -7,6 +7,7 @@ import {
   deleteCustomTool, updateCustomHttpTool, testCustomHttpTool,
   setToolEnabled,
 } from '../../utils/toolRegistry.js';
+import { ICONS } from '../../constants/appConstants.jsx';
 
 const EMPTY_TOOL_FORM = {
   name: '',
@@ -92,7 +93,7 @@ export default function CustomToolsPanel() {
     };
     const meta = {
       label: form.label.trim() || form.name,
-      icon: '🔧',
+      icon: ICONS.wrench,
       description: form.description.trim(),
     };
     try {
@@ -172,7 +173,7 @@ export default function CustomToolsPanel() {
               onClick={() => handleEdit(entry)}
             >
               <div className="custom-tool-item-row">
-                <span className="custom-tool-item-icon">{entry.meta?.icon || '🔧'}</span>
+                <span className="custom-tool-item-icon">{entry.meta?.icon || ICONS.wrench}</span>
                 <span className="custom-tool-item-name">{entry.name}</span>
                 <span className={`custom-tool-item-status${entry.enabled ? ' is-on' : ' is-off'}`}>
                   {entry.enabled ? '启用' : '禁用'}
