@@ -165,13 +165,67 @@ export async function setPersonaSummary(userId, personaSummary, learnedPreferenc
 }
 
 /**
- * 合并式更新 personaSummary：读取旧值 → 合并新字段 → 写回
- * 用于「每轮对话后增量深化画像」场景
+ * Phase 5: 合并式更新 personaSummary
+ * - 同事务写入 persona_summary_history
+ * - 同事务清理 cap 90 旧记录
+ * - 统一时间戳字段名为 lastEvolvedAt + lastUpdated（修 Bug 3：清理 updatedAt）
  */
 export async function mergePersonaSummary(userId, patch) {
-  const current = await getPersonaSummary(userId);
-  const next = { ...current.personaSummary, ...patch, lastUpdated: new Date().toISOString() };
-  return setPersonaSummary(userId, next);
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. 读取当前 persona_summary（FOR UPDATE 行锁，防并发）
+    const cur = await client.query(
+      'SELECT persona_summary FROM user_profiles WHERE user_id = $1 FOR UPDATE',
+      [userId]
+    );
+    const current = cur.rows[0]?.persona_summary || {};
+
+    // 2. 合并字段；统一时间戳字段名（清理 updatedAt）
+    const now = new Date().toISOString();
+    const next = {
+      ...current,
+      ...patch,
+      lastEvolvedAt: patch.lastEvolvedAt || now,
+      lastUpdated: now,
+      updatedAt: undefined,  // JSON.stringify 会忽略 undefined，清理遗留字段
+    };
+
+    // 3. UPDATE user_profiles
+    await client.query(
+      `UPDATE user_profiles SET persona_summary = $2, persona_updated_at = now() WHERE user_id = $1`,
+      [userId, JSON.stringify(next)]
+    );
+
+    // 4. INSERT persona_summary_history（同事务）
+    await client.query(
+      `INSERT INTO persona_summary_history (user_id, snapshot, evolved_at)
+       VALUES ($1, $2, $3)`,
+      [userId, JSON.stringify(next), now]
+    );
+
+    // 5. 清理 cap 90（同事务，避免单独 cron）
+    await client.query(
+      `DELETE FROM persona_summary_history
+       WHERE user_id = $1 AND id IN (
+         SELECT id FROM (
+           SELECT id, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY evolved_at DESC) AS rn
+           FROM persona_summary_history WHERE user_id = $1
+         ) t WHERE rn > 90
+       )`,
+      [userId]
+    );
+
+    await client.query('COMMIT');
+    return { personaSummary: next };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**
