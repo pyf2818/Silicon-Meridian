@@ -189,6 +189,10 @@ export function useRecommendationMemos({
     lanes: recommendationLanes,
   }), [selectedNewsDate, recommendationLanes]);
 
+  // Phase 3 Task B17: 暴露 eventClusters 给 App.jsx，避免 L1112 重复调用 clusterEvents
+  // 注意：基于全量 items 聚类（与 todayMustRead 内部一致），App.jsx 用作 eventClusters prop
+  const eventClusters = useMemo(() => clusterEvents(items), [items]);
+
   return {
     followKeywordUpdates,
     todayMustRead,
@@ -198,6 +202,8 @@ export function useRecommendationMemos({
     // Phase 3 Task B12: 暴露给下游组件（如 buildSystemPrompt 注入）
     relevantMemories,
     personaSummary,
+    // Phase 3 Task B17: 暴露给 App.jsx 用作 NewsPage prop + allFeedItems 二级条目过滤
+    eventClusters,
   };
 }
 

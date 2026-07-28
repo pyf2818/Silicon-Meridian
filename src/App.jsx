@@ -82,7 +82,6 @@ import {
   domainTierScore,
   sourceTierScore,
 } from './domain/intelligence/profileTiers.js';
-import { clusterEvents } from './domain/intelligence/recommendationEngine.js';
 import { createSnapshotStore } from './domain/intelligence/snapshotStore.js';
 import { isAiElfAsset, normalizeAsset } from './domain/creative/assetModel.js';
 import { exportDocument } from './domain/creative/exportEngine.js';
@@ -1109,12 +1108,16 @@ function App() {
     bookmarks,
   });
 
+  // Phase 3 Task B17: 删除内联 clusterEvents(filtered)，改用 useRecommendationMemos 暴露的 rawEventClusters
+  // rawEventClusters = clusterEvents(items)（基于全量 items 聚类，与 todayMustRead 内部一致）
+  // 这里仅做展示过滤：nav !== 'all' → 空；>=2 条目；primary item 必须在 filtered 内（避免展示被筛选掉的聚类）
+  const filteredIds = useMemo(() => new Set(filtered.map(i => i.id)), [filtered]);
   const eventClusters = useMemo(() => {
     if (nav !== 'all') return [];
-    return clusterEvents(filtered)
-      .filter(cluster => cluster.items.length >= 2)
+    return rawEventClusters
+      .filter(cluster => cluster.items.length >= 2 && filteredIds.has(cluster.primaryItem?.id))
       .map(cluster => ({ ...cluster, keyword: cluster.primaryItem.title }));
-  }, [filtered, nav]);
+  }, [rawEventClusters, filteredIds, nav]);
 
   const allFeedItems = useMemo(() => {
     if (nav !== 'all' || eventClusters.length === 0) return filtered;
@@ -1162,6 +1165,7 @@ function App() {
     recommendationCandidates,
     recommendationLanes,
     algorithmBriefing,
+    eventClusters: rawEventClusters,
   } = useRecommendationMemos({
     items,
     followKeywords,
