@@ -317,7 +317,7 @@ export function buildSessionContextText(sessionId) {
   if (s.plan.length > 0) {
     lines.push('【执行计划】');
     s.plan.forEach((t, i) => {
-      const statusIcon = { pending: '⏳', running: '▶️', done: '✅', failed: '❌', skipped: '⏭️' }[t.status] || '❓';
+      const statusIcon = { pending: 'clock', running: 'play', done: 'check', failed: 'x', skipped: 'skip' }[t.status] || 'question';
       const deps = t.deps?.length ? ` (依赖: ${t.deps.join(', ')})` : '';
       lines.push(`  ${i + 1}. ${statusIcon} ${t.title}${deps}${t.result ? ` → ${t.result}` : ''}`);
     });
