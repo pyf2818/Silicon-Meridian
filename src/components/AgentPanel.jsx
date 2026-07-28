@@ -15,6 +15,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { setLearningEnabled } from '../utils/profileLearning.js';
 import { AGENT_TOOL_SCHEMAS, getToolMetaByName } from '../utils/agentTools.js';
 import { useAgentSession } from '../hooks/useAgentSession.js';
+import { ICONS } from '../constants/appConstants.jsx';
 import AgentJobsSection from './agent/AgentJobsSection.jsx';
 
 /* 工具元信息：从 toolRegistry 派生，无法找到时使用 fallback */
@@ -236,10 +237,10 @@ export default function AgentPanel({
                   {sessionState.plan.length > 0 && (
                     <ol className="session-plan-list">
                       {sessionState.plan.map(t => {
-                        const icon = { pending: '⏳', running: '▶️', done: '✅', failed: '❌', skipped: '⏭️' }[t.status] || '❓';
+                        const iconKey = { pending: 'clock', running: 'play', done: 'check', failed: 'x', skipped: 'skip' }[t.status] || 'question';
                         return (
                           <li key={t.id} className={`session-plan-item is-${t.status}`}>
-                            <span className="session-plan-icon">{icon}</span>
+                            <span className="session-plan-icon">{ICONS[iconKey] || ICONS.question}</span>
                             <div className="session-plan-text">
                               <div className="session-plan-title">{t.title}</div>
                               {t.result && <div className="session-plan-result">{t.result}</div>}
