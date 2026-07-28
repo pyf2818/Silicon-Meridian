@@ -1108,6 +1108,25 @@ function App() {
     bookmarks,
   });
 
+  const {
+    followKeywordUpdates,
+    todayMustRead,
+    recommendationCandidates,
+    recommendationLanes,
+    algorithmBriefing,
+    eventClusters: rawEventClusters,
+  } = useRecommendationMemos({
+    items,
+    followKeywords,
+    readingHistory,
+    bookmarks,
+    selectedInterests,
+    domainTiers,
+    sourceTiers,
+    specialFollows,
+    selectedNewsDate,
+  });
+
   // Phase 3 Task B17: 删除内联 clusterEvents(filtered)，改用 useRecommendationMemos 暴露的 rawEventClusters
   // rawEventClusters = clusterEvents(items)（基于全量 items 聚类，与 todayMustRead 内部一致）
   // 这里仅做展示过滤：nav !== 'all' → 空；>=2 条目；primary item 必须在 filtered 内（避免展示被筛选掉的聚类）
@@ -1129,11 +1148,11 @@ function App() {
 
   const smartRecommendations = useMemo(() => {
     if (readingHistory.length === 0) return [];
-    
+
     const categoryCounts = {};
     const sourceCounts = {};
     const keywordCounts = {};
-    
+
     readingHistory.forEach(h => {
       if (h.category) categoryCounts[h.category] = (categoryCounts[h.category] || 0) + 1;
       if (h.source) sourceCounts[h.source] = (sourceCounts[h.source] || 0) + 1;
@@ -1158,25 +1177,6 @@ function App() {
     const readIds = new Set(readingHistory.map(h => h.id));
     return scored.filter(i => !readIds.has(i.id) && i.recScore > 20).sort((a, b) => b.recScore - a.recScore).slice(0, 15);
   }, [items, readingHistory, followKeywords]);
-
-  const {
-    followKeywordUpdates,
-    todayMustRead,
-    recommendationCandidates,
-    recommendationLanes,
-    algorithmBriefing,
-    eventClusters: rawEventClusters,
-  } = useRecommendationMemos({
-    items,
-    followKeywords,
-    readingHistory,
-    bookmarks,
-    selectedInterests,
-    domainTiers,
-    sourceTiers,
-    specialFollows,
-    selectedNewsDate,
-  });
 
   const selectedRecommendationSnapshot = useMemo(() => {
     if (!selectedNewsDate) return null;
