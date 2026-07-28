@@ -3,6 +3,7 @@
 
 import { ElfToolCallCard, TOOL_META, summarizeToolArgs } from './ElfToolCard.jsx';
 import { renderMarkdown } from './markdown.js';
+import { ICONS } from '../../constants/appConstants.jsx';
 
 export default function MessageList({
   messages,
@@ -93,7 +94,7 @@ export default function MessageList({
                   </div>
                 )}
                 {msg.toolCalls.map((tc, idx) => {
-                  const meta = TOOL_META[tc.name] || { label: tc.name, icon: '⚙️' };
+                  const meta = TOOL_META[tc.name] || { label: tc.name, icon: ICONS.settings };
                   const summary = summarizeToolArgs(tc.name, tc.args);
                   const isRunning = tc.status === 'running';
                   const isError = !isRunning && typeof tc.result === 'string' &&
