@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useUiStore, useLightboxStore, useWorkflowStore, useMaterialsStore, useProfileStore, useNewsStore, useRecommendStore, useAiStore, useStockStore, useElfStore, useSourceStore } from './store/index.js';
+import { useUiStore, useLightboxStore, useWorkflowStore, useMaterialsStore, useProfileStore, useNewsStore, useRecommendStore, useBehaviorStore, useAiStore, useStockStore, useElfStore, useSourceStore } from './store/index.js';
 import SettingsModal from './components/SettingsModal.jsx';
 import ArticleEditor from './components/ArticleEditor.jsx';
 import CreativeWorkspace from './components/CreativeWorkspace.jsx';
@@ -474,15 +474,15 @@ function App() {
     translatingItems, setTranslatingItems,
     getSummaryEntry, handleSummaryToggle, requestTranslation, getTranslation, toggleGithubTranslation,
   } = useTranslationSummary(llmConfig);
-  // ===== 推荐反馈与追踪状态（迁移自 useState -> Zustand recommendStore）=====
-  const followKeywords = useRecommendStore(s => s.followKeywords);
-  const setFollowKeywords = useRecommendStore(s => s.setFollowKeywords);
+  // ===== 推荐反馈与追踪状态（5 路行为信号已迁移至 useBehaviorStore，其余保留 useRecommendStore）=====
+  const followKeywords = useBehaviorStore(s => s.followKeywords);
+  const setFollowKeywords = useBehaviorStore(s => s.setFollowKeywords);
   const pinnedKeywords = useRecommendStore(s => s.pinnedKeywords);
   const setPinnedKeywords = useRecommendStore(s => s.setPinnedKeywords);
-  const recommendationFeedback = useRecommendStore(s => s.recommendationFeedback);
-  const setRecommendationFeedback = useRecommendStore(s => s.setRecommendationFeedback);
-  const recommendationFeedbackEvents = useRecommendStore(s => s.recommendationFeedbackEvents);
-  const setRecommendationFeedbackEvents = useRecommendStore(s => s.setRecommendationFeedbackEvents);
+  const recommendationFeedback = useBehaviorStore(s => s.recommendationFeedback);
+  const setRecommendationFeedback = useBehaviorStore(s => s.setRecommendationFeedback);
+  const recommendationFeedbackEvents = useBehaviorStore(s => s.recommendationFeedbackEvents);
+  const setRecommendationFeedbackEvents = useBehaviorStore(s => s.setRecommendationFeedbackEvents);
   const snapshotStoreRef = useRef(null);
   if (!snapshotStoreRef.current) snapshotStoreRef.current = createSnapshotStore(localStorage);
   const recommendationSnapshots = useRecommendStore(s => s.recommendationSnapshots);
@@ -512,13 +512,13 @@ function App() {
 
   // customUrl states moved to useCustomUrl hook
   // UI switch states (showFollowDropdown/mobileMenuOpen/showBackToTop) moved to useUI
-  const trackTargets = useRecommendStore(s => s.trackTargets);
-  const setTrackTargets = useRecommendStore(s => s.setTrackTargets);
+  const trackTargets = useBehaviorStore(s => s.trackTargets);
+  const setTrackTargets = useBehaviorStore(s => s.setTrackTargets);
   // briefingConfig 已迁移到 profileStore
   const [newTrackTarget, setNewTrackTarget] = useState('');
-  const readingHistory = useRecommendStore(s => s.readingHistory);
-  const setReadingHistory = useRecommendStore(s => s.setReadingHistory);
-  // recommendationFeedbackEvents 持久化由 recommendStore 的 persist 中间件自动处理
+  const readingHistory = useBehaviorStore(s => s.readingHistory);
+  const setReadingHistory = useBehaviorStore(s => s.setReadingHistory);
+  // recommendationFeedbackEvents 持久化由 useBehaviorStore 的 persist 中间件自动处理
   // ===== AI Insights / Elf 引用上下文（迁移自 useState -> Zustand aiStore）=====
   const aiInsights = useAiStore(s => s.aiInsights);
   const setAiInsights = useAiStore(s => s.setAiInsights);
