@@ -112,6 +112,20 @@ export async function preheatForUser({ userId, personaSummary = null, today, opt
     ? storedLlmConfig
     : defaultLlmConfig();
 
+  // Phase 5 Bug 1 修复：cron/lazy 路径无前端传入 personaSummary 时，从 DB 自动读取
+  // 避免 LLM prompt 缺失用户性格画像
+  let personaSummaryArg = personaSummary;
+  if (!personaSummaryArg) {
+    try {
+      const { getPersonaSummary } = await import('../agent/agentMemoryService.js');
+      const psResult = await getPersonaSummary(userId);
+      personaSummaryArg = psResult?.personaSummary || null;
+    } catch (err) {
+      console.warn('[snapshotService] read personaSummary failed:', err.message);
+      personaSummaryArg = null;
+    }
+  }
+
   // 3. 拉取新闻（最多 500 条用于聚类）
   const newsResult = await getNews(
     [],                                 // blocked
@@ -131,7 +145,7 @@ export async function preheatForUser({ userId, personaSummary = null, today, opt
     domainTiers: Object.fromEntries((profile.domains || []).map(d => [d.id, d.tier])),
     sourceTiers: Object.fromEntries((profile.sources || []).map(s => [s.id, s.tier])),
     specialFollows: profile.specialFollows || [],
-    personaSummary,
+    personaSummary: personaSummaryArg,
     relevantMemories: [],
   }));
   const lanes = selectBriefingLanes(scored);
@@ -143,7 +157,7 @@ export async function preheatForUser({ userId, personaSummary = null, today, opt
     try {
       aiInsights = await callAiInsightsInternal({
         items: selectItemsForAiInsights(lanes),
-        personaSummary,
+        personaSummary: personaSummaryArg,
         llmConfig,
       });
       aiStatus = 'generated';
@@ -166,7 +180,7 @@ export async function preheatForUser({ userId, personaSummary = null, today, opt
     try {
       aiPayload = await callAiBriefingGenerator({
         algorithmBriefing,
-        personaSummary,
+        personaSummary: personaSummaryArg,
         llmConfig,
       });
       mergedBriefing = mergeAiBriefing(algorithmBriefing, aiPayload);
