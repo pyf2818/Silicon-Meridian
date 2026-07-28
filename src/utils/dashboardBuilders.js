@@ -100,7 +100,7 @@ export function diffPersonaSnapshots(prev = {}, current = {}) {
  * @param {string} iso - ISO 时间字符串
  * @returns {string}
  */
-function formatEvolvedAt(iso) {
+export function formatEvolvedAt(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
