@@ -10,7 +10,7 @@ npm run dev                              # Dev server on 0.0.0.0:5175 (with API 
 npm run build                            # Production build -> dist/
 npm start                                # Production Node server (dist + full API, default port 3000)
 npm run preview                          # Preview production build (static only, no API)
-npm test                                 # Run unit tests (vitest) — 398 tests across src/utils, src/store, src/domain, src/hooks/__tests__, src/components/profile/__tests__, server/
+npm test                                 # Run unit tests (vitest) — 410 tests across src/utils, src/store, src/domain, src/hooks/__tests__, src/components/profile/__tests__, server/
 npm run test:watch                       # Watch mode
 node node_modules/vitest/vitest.mjs run <file>  # Run a single test file (bin symlink not created on Windows)
 npm run db:migrate
@@ -132,6 +132,10 @@ src/components/
     AgentMemorySection.jsx        AI 跨会话记忆列表 + 过滤/搜索/分页/删除
     PersonaSummarySection.jsx     Phase 3 AI 性格画像展示（habits/traits/needs 三栏，读 profileStore.personaSummary）
     SnapshotHistorySection.jsx    Phase 3 历史快照展示（GET /api/profile/snapshots 列表 + ?date= 详情）
+    ProfileDashboard.jsx         Phase 4 仪表盘主组件（5 区块：KPI / 趋势 / 画像 / 行为观测 / 预热）
+    PersonaSummaryCard.jsx       Phase 4 紧凑画像卡片（habits/traits/needs 三栏并排，仪表盘专用）
+    LearnedPrefsCard.jsx         Phase 4 行为观测卡片（topics/preferredDepth/preferredFormat）
+    PreheatButton.jsx            Phase 4 手动重跑预热按钮（loading/error/success 状态）
 ```
 
 **NOT separate files (inline in App.jsx or located elsewhere):**
@@ -150,6 +154,7 @@ src/utils/
   githubMaterial.js     buildGithubMaterial (construct material from GitHub repo)
   workflowEngine.js     Pure-logic DAG executor. LLM nodes call POST /api/ai-generate (chat action); local nodes (input/classifier/condition/skill/output/reply) run synchronously with no React dependency. Condition nodes halt the rest of the chain on failure.
   profileModel.js       computeIntelligenceProfile / computeReadingProfile / computeProfileLearningEngine / computeTodayProfileSnapshot - derive profile from bookmarks, reading history, materials, interests
+  dashboardBuilders.js Phase 4 仪表盘纯函数（buildTrendSeries / buildAiStatusCounts）
 src/constants/
   appConstants.jsx      权威常量源：PRODUCT_NAME, NAV_ITEMS, FALLBACK_CATEGORIES, CATEGORY_GROUPS, VERTICAL_CHANNELS, LLM_PRESETS, SCROLLING_NEWS_ITEMS, AGENT_categories, MODES, VIEW_MODES, TRENDING_TYPES, GITHUB_LANGS/PERIODS, REGION_MAP, MODE_MAP, MATERIAL_TYPES, ARTICLE_STATUS/TEMPLATES/TEMPLATE_CONTENT, WEEKDAYS, MONTHS, ICONS, WORKFLOW_SKILL_CATALOG, WORKFLOW_CONDITION_METRICS/OPERATORS, getWorkflowSkillMeta, isWorkflowSkillId, formatWorkflowNodeConfig
   index.jsx             兼容 shim（92 行）：re-export appConstants.jsx 的 22 个常量，保留死代码 NAV_GROUPS/CATEGORIES/DEFAULT_AGENTS 供历史引用。新代码应直接 import appConstants.jsx
@@ -178,6 +183,7 @@ src/hooks/
   useCalendarMemos.js        日历备注（从 App.jsx 抽离）
   useSnapshotPreheat.js      Phase 3 lazy 预热触发 hook（用户登录且今日 snapshot 缺失时触发，30s 超时 + 算法降级）
   useAiRecommendationEnhance.js Phase 3 实时 AI 重新分析 hook（调 /api/profile/snapshots/analyze，不写库）
+  useProfileDashboard.js    Phase 4 仪表盘聚合 hook（snapshots/learnedPreferences/personaSummary/preheat 触发）
 ```
 
 #### Domain Layer (`src/domain/`)
@@ -222,6 +228,19 @@ The v2 features described in `docs/wanban-silicon-valley-v2-blueprint.md` are wi
 - `src/components/profile/PersonaSummarySection.jsx`：读 profileStore.personaSummary，展示用户习惯/性格/需求三栏
 - `src/components/profile/SnapshotHistorySection.jsx`：调 GET /api/profile/snapshots 列表 + ?date= 详情，含原始 JSON 折叠
 - `src/components/RightPanel.jsx`："重新分析"按钮调 `useAiRecommendationEnhance`，初始展示仍用 legacy `/api/ai-insights` 自动加载，enhance 后切换到 `/api/profile/snapshots/analyze` 视图
+
+**Phase 4 画像仪表盘（已完成）**：纯前端仪表盘聚合 Phase 3 已沉淀数据，零后端改动，零新表/端点/cron。ProfilePage 默认进入仪表盘 Tab，5 个区块一目了然。
+- `src/components/profile/ProfileDashboard.jsx`：主组件，5 个区块（KPI 卡片 / 推荐历史趋势 / 当前画像 / 行为观测 / 手动重跑预热）
+- `src/hooks/useProfileDashboard.js`：聚合 hook，加载 snapshots + learnedPreferences + personaSummary，暴露 `preheat()` 触发今日预热
+- `src/utils/dashboardBuilders.js`：纯函数 `buildTrendSeries` + `buildAiStatusCounts`（无副作用，可单元测试）
+- `src/components/profile/PersonaSummaryCard.jsx`：紧凑版画像卡片，habits/traits/needs 三栏并排（区别于 PersonaSummarySection 的全宽布局）
+- `src/components/profile/LearnedPrefsCard.jsx`：行为观测卡片，展示高频主题/偏好深度/偏好格式
+- `src/components/profile/PreheatButton.jsx`：手动重跑预热按钮，含 loading/error/success 状态
+- `src/store/index.js` `useUiStore` 新增 `profileTab` 字段（'dashboard' | 'settings'，默认 'dashboard'，非持久化）
+- `src/components/ProfilePage.jsx`：顶部加 Tab 切换器，dashboard 渲染 ProfileDashboard，settings 渲染原有所有 section（hero 公共保留）
+- `src/styles.css` 追加 `.profile-tabs` / `.profile-dashboard` / `.dashboard-card` / `.ai-status-badge` / `.preheat-btn` 等样式
+- 数据源：复用 `GET /api/profile/snapshots` + `GET /api/agent-memory/persona`（learnedPreferences 字段）+ `POST /api/profile/snapshots/preheat`，不新建端点
+- 测试：新增 12 个纯函数单元测试（buildTrendSeries 6 + buildAiStatusCounts 6），总测试数 398 → 410
 
 ### Stock Market Module (股市动向)
 
@@ -372,7 +391,7 @@ Categories, source grades, and tag rules are defined **independently** in both `
 - **GitHub card**: App.jsx has an **inline** `GithubRepoCard` function (NOT a separate file). Inline version uses `inferGithubScenario/Audience/Difficulty/Value` + `buildGithubMaterial`; `deriveRepoInsight` in repoInsight.js is a parallel implementation. AI insight is collapsible by default.
 ## Known Issues
 
-- **Tests limited to pure-logic engines** — 398 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + applySuggestionByType (7) + useAgentMemories (8) + useSnapshotPreheat (7) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15 + snapshotService 4 + aiHandlers 4) tests; no integration/E2E tests, no component tests
+- **Tests limited to pure-logic engines** — 410 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + applySuggestionByType (7) + useAgentMemories (8) + useSnapshotPreheat (7) + dashboardBuilders (12) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15 + snapshotService 4 + aiHandlers 4) tests; no integration/E2E tests, no component tests
 - **RSS failure rate ~40-50%** — many sources return 403/404 or HTML instead of RSS
 - **Auth requires PostgreSQL** - register/login/me/logout/profile/interests delegate to server/http/authHandlers.js -> server/auth/authService.js (password hashing + session tokens in sessions table). Dev (server/news/plugin.js) and prod (api/auth/[action].js) share the same handler. Without DATABASE_URL, auth endpoints return 503 DATABASE_UNAVAILABLE.
 - **`package.json` type: "module"** — all `.js` files use ESM; CI workflows using `require()` will crash

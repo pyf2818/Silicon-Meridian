@@ -132,6 +132,10 @@ export const useUiStore = create(
       showBackToTop: false,
       setShowBackToTop: (v) => set({ showBackToTop: v }),
 
+      // Phase 4: ProfilePage Tab 切换（'dashboard' 默认 / 'settings'）
+      profileTab: 'dashboard',
+      setProfileTab: (tab) => set({ profileTab: tab }),
+
       // 滚动资讯暂停
       scrollingNewsPaused: false,
       setScrollingNewsPaused: (v) => set({ scrollingNewsPaused: v }),

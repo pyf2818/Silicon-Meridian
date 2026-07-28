@@ -7,10 +7,12 @@ import {
 } from '../domain/intelligence/profileTiers.js';
 import { ICONS } from '../constants/index.jsx';
 import { showToast } from '../utils/toast.js';
+import { useUiStore } from '../store';
 import PendingSuggestionsSection from './profile/PendingSuggestionsSection.jsx';
 import AgentMemorySection from './profile/AgentMemorySection.jsx';
 import PersonaSummarySection from './profile/PersonaSummarySection.jsx';
 import SnapshotHistorySection from './profile/SnapshotHistorySection.jsx';
+import ProfileDashboard from './profile/ProfileDashboard.jsx';
 
 export default function ProfilePage({
   intelligenceProfile,
@@ -74,6 +76,10 @@ export default function ProfilePage({
     setSpecialFollowForm({ type: item.type, target: item.target, note: item.note || '' });
   };
 
+  // Phase 4: Tab 切换（仪表盘 / 设置）
+  const profileTab = useUiStore(s => s.profileTab);
+  const setProfileTab = useUiStore(s => s.setProfileTab);
+
   return (
     <div className="product-page profile-center-page">
               <section className="product-hero profile-hero">
@@ -88,6 +94,36 @@ export default function ProfilePage({
                 </div>
               </section>
 
+              <div className="profile-tabs" role="tablist" aria-label="Profile view tabs">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={profileTab === 'dashboard'}
+                  className={`profile-tab ${profileTab === 'dashboard' ? 'active' : ''}`}
+                  onClick={() => setProfileTab('dashboard')}
+                >
+                  仪表盘
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={profileTab === 'settings'}
+                  className={`profile-tab ${profileTab === 'settings' ? 'active' : ''}`}
+                  onClick={() => setProfileTab('settings')}
+                >
+                  设置
+                </button>
+              </div>
+
+              {profileTab === 'dashboard' ? (
+                <ProfileDashboard
+                  intelligenceProfile={intelligenceProfile}
+                  bookmarks={bookmarks}
+                  readingHistory={readingHistory}
+                  selectedInterests={selectedInterests}
+                />
+              ) : (
+                <>
               <PersonaSummarySection />
               <PendingSuggestionsSection />
 
@@ -266,6 +302,8 @@ export default function ProfilePage({
 
               <AgentMemorySection />
               <SnapshotHistorySection />
+                </>
+              )}
             </div>
   );
 }
