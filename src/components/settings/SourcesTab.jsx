@@ -383,7 +383,7 @@ export default function SourcesTab({
                         {monitorAlerts.length > 0 && (
                           <div className="monitor-alerts-panel">
                             <div className="alerts-header">
-                              <span className="alerts-title">⚠️ 健康警告 ({monitorAlerts.length})</span>
+                              <span className="alerts-title">{ICONS.alert} 健康警告 ({monitorAlerts.length})</span>
                               <button className="alerts-clear-btn" onClick={clearAlerts}>清除</button>
                             </div>
                             <div className="alerts-list">
