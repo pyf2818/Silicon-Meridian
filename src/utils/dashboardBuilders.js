@@ -45,3 +45,68 @@ export function normalizeError(err) {
   }
   return String(err);
 }
+
+/* ============ Phase 5: personaSummary 进化趋势 ============ */
+
+/**
+ * 趋势图数据：persona 数组长度随时间变化
+ * @param {Array<{ snapshot?: { habits?: any[], traits?: any[], needs?: any[] }, evolved_at?: string }>} history - API 返回的 DESC 历史列表
+ * @returns {{ labels: string[], series: Array<{ name: string, values: number[] }> }}
+ */
+export function buildPersonaTrendSeries(history = []) {
+  if (!Array.isArray(history)) return { labels: [], series: [
+    { name: '习惯', values: [] },
+    { name: '性格', values: [] },
+    { name: '需求', values: [] },
+  ] };
+  // 倒序（DESC）转正序（ASC），X 轴从左到右时间递进
+  const sorted = [...history].reverse();
+  return {
+    labels: sorted.map(h => formatEvolvedAt(h.evolved_at)),
+    series: [
+      { name: '习惯', values: sorted.map(h => Array.isArray(h?.snapshot?.habits) ? h.snapshot.habits.length : 0) },
+      { name: '性格', values: sorted.map(h => Array.isArray(h?.snapshot?.traits) ? h.snapshot.traits.length : 0) },
+      { name: '需求', values: sorted.map(h => Array.isArray(h?.snapshot?.needs) ? h.snapshot.needs.length : 0) },
+    ],
+  };
+}
+
+/**
+ * 两个快照的 diff（新增/删除项）
+ * @param {{ habits?: any[], traits?: any[], needs?: any[] }|undefined} prev
+ * @param {{ habits?: any[], traits?: any[], needs?: any[] }|undefined} current
+ * @returns {{ habits: { added: any[], removed: any[] }, traits: { added: any[], removed: any[] }, needs: { added: any[], removed: any[] } }}
+ */
+export function diffPersonaSnapshots(prev = {}, current = {}) {
+  const diffList = (key) => {
+    const prevArr = Array.isArray(prev?.[key]) ? prev[key] : [];
+    const curArr = Array.isArray(current?.[key]) ? current[key] : [];
+    const prevSet = new Set(prevArr.map(x => String(x)));
+    const curSet = new Set(curArr.map(x => String(x)));
+    return {
+      added: curArr.filter(x => !prevSet.has(String(x))),
+      removed: prevArr.filter(x => !curSet.has(String(x))),
+    };
+  };
+  return {
+    habits: diffList('habits'),
+    traits: diffList('traits'),
+    needs: diffList('needs'),
+  };
+}
+
+/**
+ * 格式化 evolved_at 为 "MM-DD HH:mm"（X 轴 label，UTC 解析保证跨时区一致）
+ * @param {string} iso - ISO 时间字符串
+ * @returns {string}
+ */
+function formatEvolvedAt(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mi = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${mm}-${dd} ${hh}:${mi}`;
+}
