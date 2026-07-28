@@ -1,114 +1,84 @@
 // src/components/profile/ProfileDashboard.jsx
-// Phase 4 D6: 画像仪表盘主组件
-// 5 个区块：KPI 卡片 / 推荐历史趋势 / 当前画像 / 行为观测 / 手动重跑预热
-// 纯前端聚合：复用 useProfileDashboard hook + props 传入的 intelligence/bookmarks 等
-
+// Phase 6: 双栏布局容器，管理 selectedIdx 状态联动时间轴与趋势图
+import { useState, useCallback } from 'react';
 import { useProfileDashboard } from '../../hooks/useProfileDashboard.js';
-import { buildTrendSeries, buildAiStatusCounts } from '../../utils/dashboardBuilders.js';
-import { BlockGrid, BlockStat } from '../../blocks/index.js';
-import TrendLineChart from '../TrendLineChart.jsx';
-import PersonaSummaryCard from './PersonaSummaryCard.jsx';
-import LearnedPrefsCard from './LearnedPrefsCard.jsx';
-import PreheatButton from './PreheatButton.jsx';
-import PersonaEvolutionSection from './PersonaEvolutionSection.jsx';
-
-// KPI 卡片：BlockStat 卡片形态（自带 label/value/desc 三段）
-function KpiCard({ label, value, desc }) {
-  return (
-    <BlockGrid.Card>
-      <BlockStat variant="card" label={label} value={value} desc={desc} />
-    </BlockGrid.Card>
-  );
-}
+import { useProfileStore } from '../../store';
+import { diffPersonaSnapshots } from '../../utils/dashboardBuilders.js';
+import PersonaTimelineRail from './PersonaTimelineRail.jsx';
+import PersonaHeroCard from './PersonaHeroCard.jsx';
+import BehaviorObservedCard from './BehaviorObservedCard.jsx';
+import PreheatCard from './PreheatCard.jsx';
+import KpiStrip from './KpiStrip.jsx';
+import PersonaEvolutionMiniChart from './PersonaEvolutionMiniChart.jsx';
 
 export default function ProfileDashboard({
   intelligenceProfile,
   bookmarks,
   readingHistory,
   selectedInterests,
+  specialFollows,
 }) {
   const dash = useProfileDashboard();
+  const personaSummary = useProfileStore(s => s.personaSummary);
 
-  // 趋势图数据 + ai_status 分布（纯函数转换）
-  const { labels: trendLabels, series: trendSeries } = buildTrendSeries(dash.snapshots);
-  const aiStatusCounts = buildAiStatusCounts(dash.snapshots);
+  // 时间轴/趋势图节点选择 → 切换 diff 模式
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const handleSelectNode = useCallback((idx) => {
+    setSelectedIdx(prev => (prev === idx ? null : idx));
+  }, []);
+
+  // 计算 diff：当前画像 vs 历史快照
+  const history = dash.personaHistory || [];
+  const selectedSnapshot = selectedIdx != null && history[selectedIdx]
+    ? history[selectedIdx].snapshot
+    : null;
+  const diff = selectedSnapshot
+    ? diffPersonaSnapshots(selectedSnapshot, personaSummary || {})
+    : null;
+  const diffLabel = selectedIdx != null && history[selectedIdx]
+    ? history[selectedIdx].evolved_at
+    : null;
 
   return (
-    <div className="profile-dashboard">
-      {/* 1. KPI 卡片区 */}
-      <BlockGrid columns={4}>
-        <KpiCard
-          label="关注领域"
-          value={selectedInterests?.length ?? 0}
-          desc={intelligenceProfile?.focusLabels?.slice(0, 3).join('、') || '未设置'}
+    <div className="profile-dashboard profile-dashboard-v2">
+      <div className="dashboard-layout">
+        <PersonaTimelineRail
+          history={history}
+          loading={dash.historyLoading}
+          selectedIdx={selectedIdx}
+          onSelectNode={handleSelectNode}
         />
-        <KpiCard
-          label="阅读点击"
-          value={readingHistory?.length ?? 0}
-          desc="近 100 条点击记录"
-        />
-        <KpiCard
-          label="收藏资讯"
-          value={bookmarks?.length ?? 0}
-          desc="收藏提高相似主题权重"
-        />
-        <KpiCard
-          label="画像置信度"
-          value={`${intelligenceProfile?.confidence ?? 0}%`}
-          desc={intelligenceProfile?.confidenceLabel || '需要校准'}
-        />
-      </BlockGrid>
-
-      {/* 2. 推荐历史趋势图 */}
-      <section className="dashboard-section">
-        <div className="section-header">
-          <h2 className="section-title">推荐历史趋势</h2>
-          <p className="section-desc">最近 {dash.snapshots.length} 天的推荐快照</p>
-        </div>
-        {dash.snapshotsLoading ? (
-          <div className="dashboard-loading">加载中...</div>
-        ) : dash.snapshotsError ? (
-          <div className="dashboard-error">{dash.snapshotsError}</div>
-        ) : dash.snapshots.length === 0 ? (
-          <div className="dashboard-empty">暂无历史快照</div>
-        ) : (
-          <>
-            <TrendLineChart labels={trendLabels} series={trendSeries} />
-            {Object.keys(aiStatusCounts).length > 0 && (
-              <div className="ai-status-distribution">
-                {Object.entries(aiStatusCounts).map(([status, count]) => (
-                  <span key={status} className={`ai-status-badge status-${status}`}>
-                    {status}: {count}
-                  </span>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </section>
-
-      {/* 3. 当前画像 + 4. 行为观测 并排 */}
-      <div className="dashboard-row">
-        <PersonaSummaryCard personaSummary={dash.personaSummary} loading={false} />
-        <LearnedPrefsCard prefs={dash.learnedPrefs} loading={dash.prefsLoading} />
+        <main className="dashboard-content">
+          <PersonaHeroCard
+            personaSummary={personaSummary}
+            confidence={intelligenceProfile.confidence}
+            diff={diff}
+            diffLabel={diffLabel}
+            onClearDiff={() => setSelectedIdx(null)}
+          />
+          <div className="dashboard-row-2">
+            <BehaviorObservedCard prefs={dash.learnedPrefs} loading={dash.prefsLoading} />
+            <PreheatCard
+              onPreheat={dash.preheat}
+              loading={dash.preheatLoading}
+              result={dash.preheatResult}
+              error={dash.preheatError}
+            />
+          </div>
+          <KpiStrip
+            focusCount={selectedInterests.length}
+            readingCount={readingHistory.length}
+            bookmarkCount={bookmarks.length}
+            specialFollowCount={specialFollows.length}
+          />
+          <PersonaEvolutionMiniChart
+            history={history}
+            loading={dash.historyLoading}
+            selectedIdx={selectedIdx}
+            onSelectNode={handleSelectNode}
+          />
+        </main>
       </div>
-
-      {/* 6. 画像进化趋势（Phase 5） */}
-      <PersonaEvolutionSection
-        history={dash.personaHistory}
-        loading={dash.historyLoading}
-        currentPersonaSummary={dash.personaSummary}
-      />
-
-      {/* 5. 手动重跑预热 */}
-      <section className="dashboard-section">
-        <PreheatButton
-          onPreheat={dash.preheat}
-          loading={dash.preheatLoading}
-          result={dash.preheatResult}
-          error={dash.preheatError}
-        />
-      </section>
     </div>
   );
 }
