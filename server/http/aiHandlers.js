@@ -446,3 +446,79 @@ export async function handleAiInsightsRequest(req, res) {
     return sendJsonResponse(res, status, { ok: false, error: message, errorCode: code });
   }
 }
+
+/**
+ * Phase 3 Task B4: 不绑定 req/res 的 ai-insights 内部调用。
+ * 供 snapshotService.preheatForUser 与 /api/profile/snapshots/analyze 复用。
+ *
+ * @param {Object} params
+ * @param {Array}  params.items - top N 资讯
+ * @param {Object|null} [params.personaSummary] - { habits, traits, needs }
+ * @param {Array}  [params.relevantMemories] - [{content, memoryType, ...}]，会拼到 prompt 末尾作为「相关记忆」段
+ * @param {Object} params.llmConfig - { baseUrl, apiKey, selectedModel }
+ * @returns {Promise<Object>} LLM 返回的 insights 对象（{ trends, correlations, signals, itemScores }）
+ */
+export async function handleAiInsightsInternal({ items, personaSummary = null, relevantMemories = [], llmConfig }) {
+  if (!llmConfig?.baseUrl || !llmConfig?.selectedModel) {
+    throw Object.assign(new Error('llmConfig missing baseUrl or selectedModel'), { code: 'INVALID_AI_CONFIG', status: 400 });
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    throw Object.assign(new Error('items required'), { code: 'INVALID_ITEMS', status: 400 });
+  }
+
+  const prompt = buildAiInsightsPrompt(items.slice(0, 30), personaSummary);
+  // 追加相关记忆段（来自 agent_memories 全文检索）
+  const mems = Array.isArray(relevantMemories) ? relevantMemories.filter(m => m && m.content).slice(0, 5) : [];
+  const finalPrompt = mems.length
+    ? `${prompt}\n\n【相关记忆】\n${mems.map((m, i) => `${i + 1}. [${m.memoryType || 'memory'}] ${String(m.content).slice(0, 200)}`).join('\n')}`
+    : prompt;
+
+  const cleanBaseUrl = String(llmConfig.baseUrl).replace(/\/+$/, '');
+  const apiUrl = /\/v[1-4]$/.test(cleanBaseUrl) ? `${cleanBaseUrl}/chat/completions` : `${cleanBaseUrl}/v1/chat/completions`;
+  const headers = { 'Content-Type': 'application/json' };
+  if (llmConfig.apiKey) headers.Authorization = `Bearer ${llmConfig.apiKey}`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const response = await fetchWithRetry(apiUrl, {
+      allowPrivate: allowPrivateAiNetwork(),
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: llmConfig.selectedModel,
+        messages: [{ role: 'user', content: finalPrompt }],
+        max_tokens: 2500,
+        temperature: 0.5,
+      }),
+      signal: controller.signal,
+    }, { retries: 1, baseDelay: 1200 });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      const isRateLimited = response.status === 429;
+      throw Object.assign(new Error(`ai-insights failed: ${response.status} ${errText.slice(0, 200)}`), {
+        code: isRateLimited ? 'UPSTREAM_RATE_LIMITED' : 'UPSTREAM_AI_ERROR',
+        status: isRateLimited ? 429 : 502,
+      });
+    }
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+
+    let cleaned = String(content).trim();
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const start = cleaned.indexOf('{');
+    let end = cleaned.lastIndexOf('}');
+    if (start === -1) {
+      throw Object.assign(new Error('AI 响应缺少 JSON 开始标记'), { code: 'AI_PARSE_ERROR' });
+    }
+    if (end === -1 || end <= start) {
+      // 响应被截断，尝试补全闭合括号
+      end = cleaned.length - 1;
+      cleaned = cleaned + ']}]}'.repeat(3);
+    }
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } finally {
+    clearTimeout(timeout);
+  }
+}

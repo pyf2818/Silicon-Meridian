@@ -173,3 +173,48 @@ export async function mergePersonaSummary(userId, patch) {
   const next = { ...current.personaSummary, ...patch, lastUpdated: new Date().toISOString() };
   return setPersonaSummary(userId, next);
 }
+
+/**
+ * Phase 3 Task B4: 为一批资讯条目拉取相关 agent 记忆。
+ * 取每条 item 的 title+summary 作为 query 调用 searchAgentMemories（top 3），
+ * 合并后按 weight+createdAt 去重排序，最多返回 5 条。
+ *
+ * 用于 /api/profile/snapshots/analyze 与 preheat 流程注入 LLM prompt。
+ *
+ * @param {string} userId
+ * @param {Array<{title?:string, summary?:string}>} items
+ * @returns {Promise<Array>} 去重后的相关记忆数组
+ */
+export async function fetchRelevantMemoriesForItems(userId, items) {
+  if (!userId || !Array.isArray(items) || items.length === 0) return [];
+  const queries = items.slice(0, 3).map(item => {
+    const t = String(item?.title || '').slice(0, 100);
+    const s = String(item?.summary || '').slice(0, 100);
+    return `${t} ${s}`.trim();
+  }).filter(Boolean);
+  if (queries.length === 0) return [];
+
+  const seen = new Set();
+  const all = [];
+  for (const q of queries) {
+    try {
+      const results = await searchAgentMemories(userId, q, { limit: 3 });
+      for (const m of results) {
+        if (seen.has(m.id)) continue;
+        seen.add(m.id);
+        all.push(m);
+      }
+    } catch {
+      // 单次检索失败不影响整体
+    }
+  }
+  // 按 weight desc, createdAt desc 排序，取 top 5
+  all.sort((a, b) => {
+    const w = (b.weight || 0) - (a.weight || 0);
+    if (w !== 0) return w;
+    const t1 = new Date(a.createdAt || 0).getTime();
+    const t2 = new Date(b.createdAt || 0).getTime();
+    return t2 - t1;
+  });
+  return all.slice(0, 5);
+}

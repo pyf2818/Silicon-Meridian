@@ -118,6 +118,16 @@ export function newsPlugin() {
         if (requestUrl.pathname === '/api/profile/llm-config') {
           return handleProfileRequest(req, res, { action: 'llm-config' });
         }
+        // Phase 3 Task B4: 推荐快照路由（preheat / analyze / list）
+        if (requestUrl.pathname === '/api/profile/snapshots/preheat') {
+          return handleProfileRequest(req, res, { action: 'snapshots-preheat' });
+        }
+        if (requestUrl.pathname === '/api/profile/snapshots/analyze') {
+          return handleProfileRequest(req, res, { action: 'snapshots-analyze' });
+        }
+        if (requestUrl.pathname === '/api/profile/snapshots') {
+          return handleProfileRequest(req, res, { action: 'snapshots' });
+        }
         if (requestUrl.pathname.startsWith('/api/agent-memory/')) {
           return handleAgentMemoryRequest(req, res, requestUrl.pathname, req.method);
         }
