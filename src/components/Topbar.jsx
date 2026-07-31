@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import LanguageSwitcher from './LanguageSwitcher.jsx';
 import {
   PRODUCT_NAME,
@@ -71,8 +72,17 @@ export default function Topbar({
   loadTrending,
   newSinceLastVisit = 0,
 }) {
+  // 滚动毛玻璃化：页面滚动 >10px 时 topbar 加 scrolled 类
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 10);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
-    <header className={`topbar ${nav === 'all' ? 'topbar-all' : ''} ${nav === 'stock' ? 'topbar-stock' : ''} ${(nav === 'trending' || nav === 'recommendations') ? 'topbar-trending' : ''}`}>
+    <header className={`topbar ${nav === 'all' ? 'topbar-all' : ''} ${nav === 'stock' ? 'topbar-stock' : ''} ${(nav === 'trending' || nav === 'recommendations') ? 'topbar-trending' : ''} ${scrolled ? 'topbar-scrolled' : ''}`}>
       {/* 滚动资讯热点区域 - 置于最顶部，连续滚动 + 可手动拖动 */}
       {nav === 'all' && scrollingNews.length > 0 && (
         <div className="scrolling-news-container">

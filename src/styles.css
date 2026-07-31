@@ -266,7 +266,23 @@ body {
 }
 
 /* Topbar */
-.topbar { position: sticky; top: 0; z-index: 50; padding: 12px 20px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px; }
+.topbar { position: sticky; top: 0; z-index: 50; padding: 12px 20px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px; transition: background .3s, backdrop-filter .3s, border-color .3s; }
+/* 滚动时毛玻璃化 + 底部金色渐变线 */
+.topbar.topbar-scrolled {
+  background: color-mix(in srgb, var(--bg-secondary) 75%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom-color: rgba(201,169,97,.35);
+  box-shadow: 0 1px 0 0 rgba(201,169,97,.15);
+}
+:root[data-mode="light"] .topbar.topbar-scrolled {
+  background: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+  border-bottom-color: rgba(154,123,63,.3);
+  box-shadow: 0 1px 0 0 rgba(154,123,63,.12);
+}
+@supports not ((backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px))) {
+  .topbar.topbar-scrolled { background: var(--bg-secondary); }
+}
 .topbar-all { padding: 6px 20px 5px; gap: 2px; }
 .topbar-brand { display: flex; align-items: center; min-height: 34px; }
 .topbar-main-row-all .topbar-brand { position: static; top: auto; margin-bottom: 0; align-self: flex-end; padding-bottom: 2px; }
@@ -2328,7 +2344,14 @@ body {
 .cluster-items { border-top: 1px solid var(--border-color); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 
 /* News Item - 轻量化边框：平时淡边框，hover 才浮起 */
-.news-item { display: flex; gap: 16px; padding: 14px 16px; background: var(--bg-card-solid); border: 1px solid var(--border-color); border-radius: 10px; transition: border-color .2s, transform .2s, box-shadow .2s; animation: fadeUp .4s ease backwards; position: relative; }
+.news-item { display: flex; gap: 16px; padding: 14px 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; transition: border-color .2s, transform .2s, box-shadow .2s; position: relative; }
+/* 视口淡入：默认隐藏，进入视口后加 news-item-visible 触发动画 */
+.news-item.news-item-hidden { opacity: 0; transform: translateY(12px); }
+.news-item.news-item-visible { animation: fadeUp .4s ease forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .news-item.news-item-hidden { opacity: 1; transform: none; }
+  .news-item.news-item-visible { animation: none; }
+}
 .news-item:hover { border-color: var(--border-active); transform: translateY(-2px); box-shadow: 0 4px 14px var(--border-glow); }
 .news-item.focused { border-color: var(--accent-cyan); box-shadow: 0 0 0 1px var(--accent-cyan), 0 0 18px var(--border-glow); }
 .news-item.followed { border-left: 3px solid var(--accent-amber); }
@@ -3644,7 +3667,10 @@ body {
 .line-chart-labels { display: grid; grid-template-columns: repeat(auto-fit, minmax(28px, 1fr)); gap: 6px; font-size: 11px; color: var(--text-muted); }
 
 /* Right Panel */
-.panel { position: fixed; right: 0; top: 0; bottom: 0; width: var(--panel-w); border-left: 1px solid var(--border-color); background: linear-gradient(180deg, rgba(56, 189, 248, .06), transparent 25%), var(--bg-secondary); min-height: 100vh; display: flex; flex-direction: column; transition: width .3s ease; z-index: 100; overflow-y: auto; overflow-x: hidden; }
+.panel { position: fixed; right: 0; top: 0; bottom: 0; width: var(--panel-w); border-left: 1px solid var(--border-color); background: linear-gradient(180deg, rgba(56, 189, 248, .06), transparent 25%), color-mix(in srgb, var(--bg-secondary) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); min-height: 100vh; display: flex; flex-direction: column; transition: width .3s ease; z-index: 100; overflow-y: auto; overflow-x: hidden; }
+@supports not ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
+  .panel { background: linear-gradient(180deg, rgba(56, 189, 248, .06), transparent 25%), var(--bg-secondary); }
+}
 .panel.collapsed { width: var(--panel-collapsed-w); overflow: hidden; }
 .panel-section { padding: 14px 14px 16px; border-bottom: 1px solid var(--border-color); }
 .panel-title { display: flex; align-items: center; gap: var(--space-sm); font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; }
@@ -21171,7 +21197,7 @@ body {
 
 /* 卡片微玻璃态：--bg-card 已是 rgba，配合 backdrop-filter */
 .card,
-.news-card,
+.news-item,
 .workspace-panel,
 .agent-panel,
 .skills-panel,
@@ -21183,14 +21209,14 @@ body {
 }
 
 /* 卡片 hover：边框金色加深 + 上浮 + 阴影加深 */
-.news-card:hover,
+.news-item:hover,
 .workspace-panel:hover,
 .skills-panel-section:hover {
   border-color: rgba(201,169,97,.5);
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0,0,0,.25), 0 0 0 1px rgba(201,169,97,.15);
 }
-:root[data-mode="light"] .news-card:hover,
+:root[data-mode="light"] .news-item:hover,
 :root[data-mode="light"] .workspace-panel:hover,
 :root[data-mode="light"] .skills-panel-section:hover {
   border-color: rgba(154,123,63,.45);
@@ -21200,7 +21226,7 @@ body {
 /* 低端设备降级：不支持 backdrop-filter 时移除玻璃态 */
 @supports not ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {
   .card,
-  .news-card,
+  .news-item,
   .workspace-panel,
   .agent-panel,
   .skills-panel,

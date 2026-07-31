@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useRef, useEffect, useState } from 'react';
 import { ICONS, MODE_MAP, REGION_MAP } from '../constants/index.jsx';
 import { getGradeColors, isEnglishText, formatRelative, isFreshNews } from '../utils/format.js';
 
@@ -6,6 +6,29 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
   const isCompact = viewMode === 'compact';
   const isCard = viewMode === 'card';
   const hasMedia = item.imageUrl || item.videoUrl;
+  // 视口淡入：卡片进入视口时才触发 fadeUp 动画
+  const itemRef = useRef(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = itemRef.current;
+    if (!el) return;
+    // prefers-reduced-motion 时直接显示，不动画
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: '50px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   const trimBrief = (text = '', max = 132) => {
     const normalized = String(text || '')
       .replace(/arXiv:\S+\s+Announce Type:\s*\w+\s+Abstract:\s*/i, '')
@@ -97,8 +120,8 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
 
   return (
     <article
-      className={`news-item view-${viewMode} ${isFocused ? 'focused' : ''} ${isFollowed ? 'followed' : ''}`}
-      style={{ animationDelay: `${Math.min(index * 40, 600)}ms` }}
+      ref={itemRef}
+      className={`news-item view-${viewMode} ${isFocused ? 'focused' : ''} ${isFollowed ? 'followed' : ''} ${visible ? 'news-item-visible' : 'news-item-hidden'}`}
       data-index={index}
       data-testid="news-item"
       data-item-id={item.id || ''}
