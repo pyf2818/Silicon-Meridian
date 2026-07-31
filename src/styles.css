@@ -21141,4 +21141,20 @@ body {
   .visual-bg-glow { animation: none; opacity: .85; }
 }
 
+/* NoiseLayer：宣纸噪点质感 */
+.visual-noise-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  opacity: 0.03;
+  background-repeat: repeat;
+  background-size: 80px 80px;
+  mix-blend-mode: overlay;
+}
+:root[data-mode="light"] .visual-noise-layer {
+  opacity: 0.04;
+  mix-blend-mode: multiply;
+}
+
 
