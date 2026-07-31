@@ -11939,6 +11939,11 @@ body {
   color: var(--accent-cyan);
   border-color: var(--accent-cyan-border);
 }
+.chat-header-btn svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
 
 .chat-header-btn:disabled {
   opacity: .35;
@@ -12308,6 +12313,11 @@ body {
   background: var(--bg-secondary);
   color: var(--accent-cyan);
   border-color: var(--accent-cyan-border);
+}
+.chat-action-btn svg {
+  width: 11px;
+  height: 11px;
+  display: block;
 }
 .chat-action-btn:disabled { opacity: .4; cursor: not-allowed; }
 
@@ -12825,9 +12835,16 @@ body {
   background: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 14px;
   padding: 0 2px;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chat-attachment-chip button svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .chat-composer-top {
@@ -12864,6 +12881,23 @@ body {
   cursor: pointer;
   transition: all .15s ease;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-quick-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: var(--accent-cyan);
+  flex-shrink: 0;
+}
+.chat-quick-pill-icon svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .chat-quick-pill:hover:not(:disabled) {
@@ -12943,6 +12977,11 @@ body {
   flex-shrink: 0;
   transition: all .15s ease;
 }
+.chat-attach-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
 
 .chat-attach-btn:hover:not(:disabled) {
   background: var(--bg-secondary);
@@ -12986,6 +13025,11 @@ body {
   flex-shrink: 0;
   transition: all .15s ease;
 }
+.chat-send-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
 
 .chat-send-btn:hover:not(:disabled) {
   filter: brightness(1.1);
@@ -13013,6 +13057,9 @@ body {
   animation: chatQueuePulse 1.5s ease-in-out infinite;
 }
 .chat-queue-indicator svg {
+  width: 10px;
+  height: 10px;
+  display: block;
   animation: spin 2s linear infinite;
 }
 @keyframes chatQueuePulse {
@@ -13034,6 +13081,11 @@ body {
   flex-shrink: 0;
   transition: all .15s ease;
   animation: chatStopAppear .2s ease-out;
+}
+.chat-stop-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 .chat-stop-btn:hover {
   opacity: .85;
@@ -16435,10 +16487,18 @@ body {
   border-radius: 5px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 14px;
   cursor: pointer;
   opacity: 0;
   transition: opacity .12s, background .12s, color .12s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.session-item-del svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 .session-item:hover .session-item-del { opacity: 1; }
 .session-item-del:hover { background: rgba(239,68,68,.15); color: var(--accent-rose, #f87171); }
@@ -16584,7 +16644,23 @@ body {
   font-weight: 600;
 }
 .agent-tab-icon {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.agent-tab-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.agent-tab-empty-icon svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+  margin: 0 auto 8px;
 }
 .agent-tab-label {
   font-size: 11px;
@@ -16706,8 +16782,33 @@ body {
 }
 
 .agent-capability-icon {
-  font-size: 12px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--accent-cyan, #06b6d4);
+}
+.agent-capability-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+/* 小尺寸 SVG 图标容器：用于上下文召回等需要行内嵌入 SVG 的位置 */
+.icon-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.icon-sm svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .agent-capability-name {
@@ -16780,7 +16881,6 @@ body {
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 22px;
   cursor: pointer;
   width: 30px;
   height: 30px;
@@ -16789,6 +16889,12 @@ body {
   align-items: center;
   justify-content: center;
   transition: all .15s;
+  padding: 0;
+}
+.persona-drawer-close svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 .persona-drawer-close:hover {
   background: var(--bg-elevated, rgba(0,0,0,.06));
@@ -16819,6 +16925,9 @@ body {
   font-weight: 500;
   border: 1px solid var(--border-color);
   transition: all .15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .persona-drawer-btn-cancel {
@@ -17828,11 +17937,15 @@ body {
   border-radius: 50%;
   background: rgba(125,125,125,.25);
   color: inherit;
-  font-size: 9px;
-  line-height: 1;
   cursor: pointer;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chat-context-pill-clear svg {
+  width: 9px;
+  height: 9px;
+  display: block;
 }
 .chat-context-pill-clear:hover { background: rgba(239,68,68,.3); }
 

@@ -29,6 +29,7 @@ import { buildQuickActions } from './aichat/buildQuickActions.js';
 import { runAgentLoop as runAgentLoopImpl } from './aichat/runAgentLoop.js';
 import { useInputHistory } from './aichat/useInputHistory.js';
 import { useProfileStore } from '../store';
+import { ICONS } from '../constants/appConstants.jsx';
 import ChatHeader from './aichat/ChatHeader.jsx';
 
 // 模块级 abortController，跨组件生命周期保持
@@ -681,15 +682,15 @@ export default function AiChatPanel({
             {msg.role === 'assistant' && !msg.loading && !msg.error && (
               <div className="chat-msg-actions">
                 <button type="button" className="chat-action-btn" title="复制" onClick={e => copyMessage(msg.content, e)}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span className="icon-sm">{ICONS.copy}</span>
                   复制
                 </button>
                 <button type="button" className="chat-action-btn" title="重新生成" onClick={() => regenerateLast()} disabled={isStreaming}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <span className="icon-sm">{ICONS.refresh}</span>
                   重新生成
                 </button>
                 <button type="button" className="chat-action-btn" title="引用追问" onClick={() => quoteReply(msg.content)}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <span className="icon-sm">{ICONS.quote}</span>
                   引用追问
                 </button>
               </div>
@@ -737,7 +738,7 @@ export default function AiChatPanel({
           {attachments.map((att, i) => (
             <div key={i} className="chat-attachment-chip">
               <span>{att.name}</span>
-              <button onClick={() => removeAttachment(i)}>×</button>
+              <button onClick={() => removeAttachment(i)} title="移除">{ICONS.x}</button>
             </div>
           ))}
         </div>
@@ -751,21 +752,21 @@ export default function AiChatPanel({
             {intelligenceContext?.items?.length > 0 && (
               <div className="chat-context-wrap">
                 <button type="button" className={`chat-context-pill chat-context-pill-toggle ${excludeAllEvidence ? 'excluded' : ''}`} onClick={() => setExcludeAllEvidence(v => !v)} title={excludeAllEvidence ? '已排除情报上下文，点击恢复' : '已附加情报上下文，点击排除'}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span className="icon-sm">{ICONS.messageSquare}</span>
                 {excludeAllEvidence ? '已排除情报上下文' : `已附加 ${intelligenceContext.items.length} 条情报`}
                 </button>
               </div>
             )}
             {workspaceFiles.length > 0 && (
               <div className="chat-context-pill chat-context-pill-file" title={workspaceFiles.map(f => f.name).join(', ')}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span className="icon-sm">{ICONS.document}</span>
                 工作空间文件 {workspaceFiles.length}
-                <button type="button" className="chat-context-pill-clear" onClick={() => setWorkspaceFiles([])} title="清除">✕</button>
+                <button type="button" className="chat-context-pill-clear" onClick={() => setWorkspaceFiles([])} title="清除">{ICONS.x}</button>
               </div>
             )}
             {materialContext.total > 0 && (
               <div className={`chat-context-pill chat-context-pill-material ${materialContext.hasElf ? 'has-elf' : ''}`} title={`已附加 ${materialContext.selected.length} 条素材上下文`}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+                <span className="icon-sm">{ICONS.layers}</span>
                 {materialContext.hasElf ? `AI 精灵素材 ${materialContext.elfCount}` : `素材库 ${materialContext.total}`}
               </div>
             )}
@@ -773,7 +774,8 @@ export default function AiChatPanel({
           {messages.length > 0 && (
             <div className="chat-quick-bar">
               {quickActions.map(action => (
-                <button key={action.label} className="chat-quick-pill" onClick={() => sendMessage(action.prompt)} disabled={isStreaming}>
+                <button key={action.label} className="chat-quick-pill" onClick={() => sendMessage(action.prompt)} disabled={isStreaming} title={action.desc}>
+                  <span className="chat-quick-pill-icon">{SUGGEST_ICONS[action.icon] || SUGGEST_ICONS.sparkle}</span>
                   {action.label}
                 </button>
               ))}
@@ -783,26 +785,22 @@ export default function AiChatPanel({
         <div className="chat-input-area">
           <input ref={fileInputRef} type="file" accept="image/*,.pdf,.txt,.md" style={{ display: 'none' }} onChange={handleFileUpload} />
           <button className="chat-attach-btn" onClick={() => fileInputRef.current?.click()} title="上传附件" disabled={!hasConfig}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-            </svg>
+            {ICONS.paperclip}
           </button>
           <textarea ref={inputRef} className="chat-input" value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder={hasConfig ? (isStreaming ? "正在生成中，输入下一条消息自动排队…" : "给智能体发消息…  (Shift+Enter 换行)") : "请先配置大模型"} rows={1} disabled={!hasConfig} />
           {queueCount > 0 && (
             <span className="chat-queue-indicator" title={`${queueCount} 条消息排队中`}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span className="icon-sm">{ICONS.history}</span>
               {queueCount}
             </span>
           )}
           {isStreaming && (
             <button className="chat-stop-btn" onClick={stopGeneration} title="停止生成" aria-label="停止生成">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              {ICONS.stopSquare}
             </button>
           )}
           <button className="chat-send-btn" onClick={() => sendMessage()} disabled={!input.trim() || !hasConfig} title={isStreaming ? '排队发送' : '发送'}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
+            {ICONS.send}
           </button>
         </div>
       </div>

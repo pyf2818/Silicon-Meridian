@@ -9,6 +9,7 @@
  */
 import { useMemo, useState } from 'react';
 import WorkspacePanel from './WorkspacePanel.jsx';
+import { ICONS } from '../constants/appConstants.jsx';
 
 function timeGroup(ts) {
   const now = new Date();
@@ -109,7 +110,7 @@ export default function SessionSidebar({
                     className="session-item-del"
                     onClick={e => { e.stopPropagation(); onDelete(s.id); }}
                     title="删除"
-                  >×</button>
+                  >{ICONS.x}</button>
                 </div>
               ))}
             </div>

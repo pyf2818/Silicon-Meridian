@@ -18,10 +18,10 @@ import { useAgentSession } from '../hooks/useAgentSession.js';
 import { ICONS } from '../constants/appConstants.jsx';
 import AgentJobsSection from './agent/AgentJobsSection.jsx';
 
-/* 工具元信息：从 toolRegistry 派生，无法找到时使用 fallback */
+/* 工具元信息：从 toolRegistry 派生，返回 iconKey 供 ICONS 查表渲染 SVG */
 function getToolDisplay(name) {
   const meta = getToolMetaByName(name);
-  return { label: meta?.label || name, icon: meta?.icon || '⚙️' };
+  return { label: meta?.label || name, iconKey: meta?.iconKey || 'settings' };
 }
 
 function todosKey(sessionId) { return `aiTodos_${sessionId || 'default'}`; }
@@ -36,8 +36,8 @@ function loadTodos(sessionId) {
 
 /* Tab 配置：图标 + label + 可见的 badge 计算 */
 const TABS = [
-  { id: 'task', label: '任务', icon: '✓' },
-  { id: 'agent', label: '智能体', icon: '⚙' },
+  { id: 'task', label: '任务', icon: ICONS.check },
+  { id: 'agent', label: '智能体', icon: ICONS.settings },
   { id: 'memory', label: '记忆', icon: ICONS.sparkles },
 ];
 
@@ -113,7 +113,7 @@ export default function AgentPanel({
       .map(name => {
         const schema = AGENT_TOOL_SCHEMAS.find(s => s.function.name === name);
         const display = getToolDisplay(name);
-        return schema ? { name, label: display.label, icon: display.icon, desc: schema.function.description || '' } : null;
+        return schema ? { name, label: display.label, iconKey: display.iconKey, desc: schema.function.description || '' } : null;
       })
       .filter(Boolean);
   }, [agent]);
@@ -343,7 +343,7 @@ export default function AgentPanel({
                 <div className="agent-capabilities">
                   {agentTools.map(t => (
                     <div key={t.name} className="agent-capability-chip" title={t.desc}>
-                      <span className="agent-capability-icon">{t.icon}</span>
+                      <span className="agent-capability-icon">{ICONS[t.iconKey] || ICONS.settings}</span>
                       <span className="agent-capability-name">{t.label}</span>
                     </div>
                   ))}
@@ -441,7 +441,7 @@ export default function AgentPanel({
                 <div className="agent-memory-list">
                   {relevantMemories.map(m => (
                     <div key={m.sessionId} className="agent-memory-item" title={`来自会话：${m.title}`}>
-                      <span className="agent-memory-topic">{ICONS.chat} {m.topic}</span>
+                      <span className="agent-memory-topic"><span className="icon-sm">{ICONS.chat}</span> {m.topic}</span>
                       {m.conclusions.map((c, i) => (
                         <span key={i} className="agent-memory-conclusion">{c}</span>
                       ))}
@@ -450,7 +450,7 @@ export default function AgentPanel({
                   ))}
                   {recalledFiles.map(f => (
                     <div key={f.path} className="agent-recall-item" title={f.path}>
-                      <span className="agent-recall-name">📄 {f.name}</span>
+                      <span className="agent-recall-name"><span className="icon-sm">{ICONS.document}</span> {f.name}</span>
                       <button
                         type="button"
                         className="agent-recall-add"

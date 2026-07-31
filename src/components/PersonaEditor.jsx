@@ -87,7 +87,7 @@ export default function PersonaEditor({ value, onChange, agentName }) {
 
         <section className="persona-section">
           <div className="persona-section-title">
-            <span className="persona-section-icon">🎙️</span>
+            <span className="persona-section-icon">{ICONS.mic}</span>
             <span>语气（voice）</span>
           </div>
           <div className="persona-voice-grid">
@@ -191,7 +191,7 @@ export function PersonaDrawer({ open, onClose, agent, onChange }) {
             <span className="persona-drawer-icon">{ICONS.settings}</span>
             <span>角色设定 · {agent.name}</span>
           </div>
-          <button className="persona-drawer-close" onClick={onClose} title="关闭（Esc）">×</button>
+          <button className="persona-drawer-close" onClick={onClose} title="关闭（Esc）">{ICONS.x}</button>
         </div>
         <div className="persona-drawer-content custom-scrollbar">
           {draft && (
@@ -203,8 +203,12 @@ export function PersonaDrawer({ open, onClose, agent, onChange }) {
           )}
         </div>
         <div className="persona-drawer-footer">
-          <button className="persona-drawer-btn persona-drawer-btn-save" onClick={handleSave}>确定</button>
-          <button className="persona-drawer-btn persona-drawer-btn-cancel" onClick={onClose}>取消</button>
+          <button className="persona-drawer-btn persona-drawer-btn-save" onClick={handleSave}>
+            <span className="icon-sm">{ICONS.check}</span> 确定
+          </button>
+          <button className="persona-drawer-btn persona-drawer-btn-cancel" onClick={onClose}>
+            <span className="icon-sm">{ICONS.x}</span> 取消
+          </button>
         </div>
       </div>
     </div>
