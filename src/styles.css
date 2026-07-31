@@ -52,6 +52,13 @@
   --bg-glow-2: rgba(140,140,140,.07);
   --particle-c1: rgba(201,169,97,.5);
   --particle-c2: rgba(212,181,118,.42);
+  /* 水墨氛围光晕：BackgroundLayer 多层 radial-gradient 使用 */
+  --ink-glow-1: rgba(201,169,97,.10);   /* 左上金色光晕 */
+  --ink-glow-2: rgba(201,169,97,.07);   /* 右下金色光晕 */
+  --ink-glow-3: rgba(60,55,75,.08);     /* 中下灰紫光晕 */
+  --particle-count: 40;
+  --particle-size-min: 0.5px;
+  --particle-size-max: 2px;
   --shadow-card: 0 16px 40px rgba(0,0,0,.5);
   --surface-workbench-ai: linear-gradient(135deg, rgba(201,169,97,.105), rgba(184,151,82,.055)), rgba(20,24,28,.88);
   --workbench-page-wash: linear-gradient(180deg, rgba(201,169,97,.055), transparent 250px);
@@ -96,6 +103,13 @@
   --bg-glow-2: rgba(120,120,120,.05);
   --particle-c1: rgba(154,123,63,.3);
   --particle-c2: rgba(184,148,62,.24);
+  /* 水墨氛围光晕（浅主题：降低饱和度，提高背景明度） */
+  --ink-glow-1: rgba(154,123,63,.09);
+  --ink-glow-2: rgba(154,123,63,.06);
+  --ink-glow-3: rgba(120,110,90,.05);
+  --particle-count: 36;
+  --particle-size-min: 0.5px;
+  --particle-size-max: 1.8px;
   --shadow-card: 0 16px 34px rgba(26,29,33,.08);
   --surface-workbench-ai: linear-gradient(135deg, rgba(154,123,63,.1), rgba(138,111,58,.05)), rgba(255,253,248,.98);
   --workbench-page-wash: linear-gradient(180deg, rgba(154,123,63,.07), rgba(255,244,224,.18) 210px, transparent 310px);
