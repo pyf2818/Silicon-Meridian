@@ -21093,4 +21093,52 @@ body {
   vertical-align: middle;
 }
 
+/* ============ 水墨氛围视觉层 ============ */
+
+/* BackgroundLayer：墨色渐变背景 */
+.visual-bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+.visual-bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  animation: visual-bg-breathe 25s ease-in-out infinite;
+}
+.visual-bg-glow-1 {
+  top: -15%;
+  left: -10%;
+  width: 55%;
+  height: 55%;
+  background: radial-gradient(circle, var(--ink-glow-1) 0%, transparent 70%);
+}
+.visual-bg-glow-2 {
+  bottom: -20%;
+  right: -10%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, var(--ink-glow-2) 0%, transparent 70%);
+  animation-delay: -8s;
+}
+.visual-bg-glow-3 {
+  top: 40%;
+  left: 30%;
+  width: 45%;
+  height: 45%;
+  background: radial-gradient(circle, var(--ink-glow-3) 0%, transparent 70%);
+  animation-delay: -16s;
+}
+@keyframes visual-bg-breathe {
+  0%, 100% { opacity: .7; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .visual-bg-glow { animation: none; opacity: .85; }
+}
+
 
