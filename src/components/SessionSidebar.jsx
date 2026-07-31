@@ -4,10 +4,11 @@
  * 从 AiChatPanel 抽出的独立左栏：
  * - 顶部：搜索框 + 新建对话按钮
  * - 列表：按时间分组（今天/昨天/7 天内/更早），当前会话高亮
- * - 双击重命名、单击切换、右侧删除
+ * - 单击切换、hover 显示重命名/删除按钮、双击也可重命名
+ * - 重命名为 inline 编辑模式（input 替换标题，回车保存/Esc 取消）
  * - 底部：今日速报入口（展开完整日报）
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import WorkspacePanel from './WorkspacePanel.jsx';
 import { ICONS } from '../constants/appConstants.jsx';
 
@@ -24,6 +25,89 @@ function timeGroup(ts) {
 
 function formatTime(ts) {
   return new Date(ts).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/* 会话项：管理 inline 重命名编辑态，避免整个列表 re-render */
+function SessionItem({ session, isActive, onSwitch, onRename, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.title || '');
+  const inputRef = useRef(null);
+
+  // 进入编辑模式时聚焦 + 选中全部
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  // session 标题外部变更时同步草稿（非编辑态）
+  useEffect(() => {
+    if (!editing) setDraft(session.title || '');
+  }, [session.title, editing]);
+
+  const startEdit = (e) => {
+    e?.stopPropagation?.();
+    setDraft(session.title || '');
+    setEditing(true);
+  };
+  const cancelEdit = () => {
+    setDraft(session.title || '');
+    setEditing(false);
+  };
+  const commitEdit = () => {
+    const next = draft.trim();
+    if (next && next !== session.title) {
+      onRename(session.id, next);
+    }
+    setEditing(false);
+  };
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+  };
+
+  return (
+    <div
+      className={`session-item ${isActive ? 'active' : ''} ${editing ? 'is-editing' : ''}`}
+      onClick={() => !editing && onSwitch(session.id)}
+      onDoubleClick={startEdit}
+      title={editing ? '回车保存 · Esc 取消' : '双击或点编辑按钮重命名'}
+    >
+      {editing ? (
+        <input
+          ref={inputRef}
+          className="session-item-edit-input"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onClick={e => e.stopPropagation()}
+          onDoubleClick={e => e.stopPropagation()}
+          onKeyDown={onKeyDown}
+          onBlur={commitEdit}
+          placeholder="输入新名称"
+        />
+      ) : (
+        <>
+          <span className="session-item-title">{session.title || '新对话'}</span>
+          <span className="session-item-meta">{formatTime(session.updatedAt)}</span>
+          <div className="session-item-actions">
+            <button
+              className="session-item-btn session-item-rename"
+              onClick={startEdit}
+              title="重命名"
+              aria-label="重命名会话"
+            >{ICONS.edit}</button>
+            <button
+              className="session-item-btn session-item-del"
+              onClick={e => { e.stopPropagation(); onDelete(session.id); }}
+              title="删除"
+              aria-label="删除会话"
+            >{ICONS.x}</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function SessionSidebar({
@@ -97,21 +181,14 @@ export default function SessionSidebar({
             <div key={group} className="session-group">
               <div className="session-group-label">{group}</div>
               {items.map(s => (
-                <div
+                <SessionItem
                   key={s.id}
-                  className={`session-item ${s.id === activeSessionId ? 'active' : ''}`}
-                  onClick={() => onSwitch(s.id)}
-                  onDoubleClick={() => onRename(s.id, s.title)}
-                  title="双击重命名"
-                >
-                  <span className="session-item-title">{s.title || '新对话'}</span>
-                  <span className="session-item-meta">{formatTime(s.updatedAt)}</span>
-                  <button
-                    className="session-item-del"
-                    onClick={e => { e.stopPropagation(); onDelete(s.id); }}
-                    title="删除"
-                  >{ICONS.x}</button>
-                </div>
+                  session={s}
+                  isActive={s.id === activeSessionId}
+                  onSwitch={onSwitch}
+                  onRename={onRename}
+                  onDelete={onDelete}
+                />
               ))}
             </div>
           ))}

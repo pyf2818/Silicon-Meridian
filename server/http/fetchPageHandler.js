@@ -1,20 +1,47 @@
 import { safeExternalFetch } from '../security/urlSafety.js';
 import { routeError, sendJsonResponse } from './httpUtils.js';
 
+/**
+ * 从 Content-Type 和 HTML meta 标签检测字符编码
+ * 支持 gbk/gb2312/gb18030/utf-8 等常见中文编码
+ */
+function detectCharset(contentType, buffer) {
+  // 1. 从 Content-Type: text/html; charset=gbk 读取
+  const ctMatch = /charset=["']?([\w-]+)/i.exec(contentType || '');
+  if (ctMatch) return ctMatch[1].toLowerCase();
+  // 2. 从 HTML meta 标签检测（前 4KB 内查找）
+  const head = buffer.slice(0, 4096).toString('ascii');
+  const metaMatch = /charset=["']?([\w-]+)/i.exec(head);
+  if (metaMatch) return metaMatch[1].toLowerCase();
+  // 3. 默认 utf-8
+  return 'utf-8';
+}
+
 async function readLimitedText(response, maxBytes = 1_000_000) {
   const reader = response.body?.getReader();
   if (!reader) return '';
-  const decoder = new TextDecoder();
+  const chunks = [];
   let total = 0;
-  let output = '';
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) { await reader.cancel(); throw Object.assign(new Error('网页内容超过读取上限'), { code: 'PAGE_TOO_LARGE', status: 413 }); }
-    output += decoder.decode(value, { stream: true });
+    chunks.push(value);
   }
-  return output + decoder.decode();
+  const buffer = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
+  const contentType = String(response.headers.get('content-type') || '');
+  const charset = detectCharset(contentType, buffer);
+  try {
+    const decoder = new TextDecoder(charset);
+    return decoder.decode(buffer);
+  } catch {
+    // 不支持的编码，降级为 utf-8
+    const fallback = new TextDecoder('utf-8');
+    return fallback.decode(buffer);
+  }
 }
 
 export async function handleFetchPageRequest(req, res) {

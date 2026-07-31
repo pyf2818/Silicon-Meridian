@@ -2116,6 +2116,7 @@ ${signals}
               materials={materials}
               agent={agents.find(a => a.id === currentAgent) || agents[0]}
               onUpdateAgent={updateAgent}
+              setLlmConfig={setLlmConfig}
             />
           )}
 

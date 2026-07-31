@@ -158,6 +158,13 @@ export const useUiStore = create(
       draggingWorkflowNodeId: '',
       setDraggingWorkflowNodeId: (v) => set({ draggingWorkflowNodeId: v }),
 
+      // Agent 权限模式（assist 协助 / autonomous 自主 / plan 计划）：非持久化，会话级
+      // assist：每步工具调用前征求用户同意（高透明、低自主）
+      // autonomous：在 allow 列表内的工具自动执行，仅 deny 列表才询问（高自主）
+      // plan：仅生成计划与思路，不实际调用任何外部工具（纯推理模式）
+      agentPermissionMode: 'assist',
+      setAgentPermissionMode: (mode) => set({ agentPermissionMode: mode }),
+
       // 最近访问（type/value/label/timestamp 对象数组，最多 3 条）
       recentVisits: (() => {
         try { return JSON.parse(localStorage.getItem('recentVisits')) || []; }

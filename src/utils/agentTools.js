@@ -75,6 +75,67 @@ async function toolWriteWorkspaceFile(args, ctx) {
   return `已写入文件：${path}（${content.length} 字符）`;
 }
 
+/**
+ * 编辑已有文件：支持两种模式
+ * 1. 精准替换：提供 old_string + new_string，在文件中找到 old_string 替换为 new_string
+ * 2. 全量重写：只提供 content，覆盖整个文件（与 write_workspace_file 等价，但语义更明确）
+ *
+ * 优先使用精准替换模式，避免重写整个文件（减少 token 消耗和意外修改）
+ */
+async function toolEditFile(args, ctx) {
+  if (!ctx?.rootHandle) {
+    return '错误：用户未连接工作空间。请提示用户在左侧"工作空间"tab 选择文件夹后再试。';
+  }
+  const path = String(args?.path || '').trim();
+  if (!path) return '错误：path 参数不能为空';
+  const check = validateWorkspacePath(path);
+  if (!check.ok) return `错误：${check.error}`;
+  const segments = check.segments;
+
+  // 先读取现有内容
+  let original;
+  try {
+    original = await readFile(ctx.rootHandle, segments.slice(0, -1).concat([segments[segments.length - 1]]));
+  } catch {
+    return `错误：文件不存在或无法读取：${path}`;
+  }
+
+  const oldStr = String(args?.old_string ?? '');
+  const newStr = String(args?.new_string ?? '');
+  const fullContent = args?.content;
+
+  if (oldStr) {
+    // 精准替换模式
+    if (!original.includes(oldStr)) {
+      // 提供上下文帮助 LLM 定位
+      const preview = original.slice(0, 500);
+      return `错误：在文件中未找到 old_string。请确认 old_string 与文件内容完全一致（含空白符）。\n\n文件开头预览：\n${preview}`;
+    }
+    const occurrences = original.split(oldStr).length - 1;
+    if (occurrences > 1 && !args?.replace_all) {
+      return `错误：old_string 在文件中出现 ${occurrences} 次。请提供更长的上下文使其唯一匹配，或设置 replace_all=true 替换全部。`;
+    }
+    const updated = args?.replace_all
+      ? original.split(oldStr).join(newStr)
+      : original.replace(oldStr, newStr);
+    await writeFile(ctx.rootHandle, segments.slice(0, -1), segments[segments.length - 1], updated);
+    const changeSummary = oldStr.length === newStr.length
+      ? `${occurrences} 处替换`
+      : `${oldStr.length} → ${newStr.length} 字符`;
+    return `已编辑文件：${path}（${changeSummary}，文件总长 ${updated.length} 字符）`;
+  }
+
+  if (fullContent !== undefined) {
+    // 全量重写模式
+    const content = String(fullContent);
+    await writeFile(ctx.rootHandle, segments.slice(0, -1), segments[segments.length - 1], content);
+    const delta = content.length - original.length;
+    return `已重写文件：${path}（原 ${original.length} 字符 → 新 ${content.length} 字符，${delta >= 0 ? '+' : ''}${delta}）`;
+  }
+
+  return '错误：必须提供 old_string+new_string（精准替换）或 content（全量重写）之一';
+}
+
 async function toolSearchNews(args, ctx) {
   const keyword = String(args?.keyword || '').trim();
   if (!keyword) return '错误：keyword 参数不能为空';
@@ -83,8 +144,41 @@ async function toolSearchNews(args, ctx) {
   if (!res.ok) return `错误：资讯接口返回 ${res.status}`;
   const data = await res.json();
   if (!data?.ok) return `错误：${data?.error || '资讯查询失败'}`;
-  const items = Array.isArray(data.items) ? data.items : [];
-  if (items.length === 0) return `未找到与 "${keyword}" 相关的资讯`;
+  let items = Array.isArray(data.items) ? data.items : [];
+  // 缓存未命中或结果为空时，尝试增大 pageSize 重新搜索
+  if (items.length === 0) {
+    const retryRes = await fetch(`/api/news?search=${encodeURIComponent(keyword)}&pageSize=40`);
+    if (retryRes.ok) {
+      const retryData = await retryRes.json();
+      if (retryData?.ok) {
+        const allItems = Array.isArray(retryData.items) ? retryData.items : [];
+        // 客户端关键词匹配 fallback
+        const kw = keyword.toLowerCase();
+        items = allItems.filter(item =>
+          (item.title || '').toLowerCase().includes(kw) ||
+          (item.summary || '').toLowerCase().includes(kw)
+        ).slice(0, pageSize);
+      }
+    }
+  }
+  if (items.length === 0) {
+    // 最后 fallback：尝试联网搜索
+    const webRes = await fetch('/api/web-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: keyword, max_results: 6 }),
+    });
+    if (webRes.ok) {
+      const webData = await webRes.json();
+      if (webData?.ok && Array.isArray(webData.results) && webData.results.length > 0) {
+        const lines = webData.results.map((item, i) =>
+          `${i + 1}. ${item.title || '(无标题)'}\n   链接：${item.url || ''}\n   摘要：${String(item.snippet || '').slice(0, 200)}`
+        );
+        return `资讯库中未找到 "${keyword}"，已通过联网搜索补充 ${webData.results.length} 条结果：\n\n${lines.join('\n\n')}`;
+      }
+    }
+    return `未找到与 "${keyword}" 相关的资讯`;
+  }
   const lines = items.map((item, i) =>
     `${i + 1}. ${item.title}\n   来源：${item.source || '未知'} | ${item.publishedAt ? new Date(item.publishedAt).toLocaleString('zh-CN') : '时间未知'}\n   摘要：${String(item.summary || '').slice(0, 200)}`
   );
@@ -110,6 +204,74 @@ async function toolFetchPage(args, ctx) {
     return text.slice(0, max) + `\n\n[正文过长，已截断，原长度 ${text.length} 字符]`;
   }
   return text || '(网页正文为空)';
+}
+
+/**
+ * 创建/更新技能：让 AI 在对话中主动沉淀经验为 skill
+ * - source 默认 'work'（工作沉淀），用户主动调用时可指定 'user'
+ * - builtin 拒绝写入（后端兜底校验）
+ * - 写入后通过 ctx.onSkillCreated 回调通知前端刷新 skillsHook（与右侧边栏面板同步）
+ */
+async function toolCreateSkill(args, ctx) {
+  const title = String(args?.title || '').trim();
+  if (!title) return '错误：title 不能为空（请给技能起一个简短的名字）';
+  const body = String(args?.body || '').trim();
+  if (!body) return '错误：body 不能为空（请提供 Prompt 模板或技能说明）';
+
+  // id 由标题生成 kebab-case + 短随机后缀（避免冲突）
+  const baseId = title.toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24) || 'work-skill';
+  const id = `${baseId}-${Math.random().toString(36).slice(2, 6)}`;
+
+  // 触发词：可选，逗号分隔字符串或数组
+  const triggersRaw = args?.triggers;
+  const triggers = Array.isArray(triggersRaw)
+    ? triggersRaw.map(s => String(s).trim()).filter(Boolean)
+    : String(triggersRaw || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  // 依赖工具：可选
+  const toolsRaw = args?.tools;
+  const tools = Array.isArray(toolsRaw)
+    ? toolsRaw.map(s => String(s).trim()).filter(Boolean)
+    : String(toolsRaw || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  // source：默认 work，用户可在 args 显式指定 user
+  const source = (args?.source === 'user') ? 'user' : 'work';
+
+  const skill = {
+    id,
+    title: title.slice(0, 60),
+    description: String(args?.description || '').slice(0, 200) || `由对话沉淀的技能：${title.slice(0, 30)}`,
+    category: String(args?.category || 'work').slice(0, 32),
+    triggers,
+    tools,
+    tags: [],
+    version: '0.1.0',
+    author: source === 'user' ? '用户创建' : '工作沉淀',
+    body,
+    source,
+  };
+
+  try {
+    const res = await fetch('/api/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(skill),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) {
+      return `错误：${data?.error || `http ${res.status}`}`;
+    }
+    // 通知前端刷新 skillsHook 缓存（与右侧边栏面板同步）
+    if (typeof ctx?.onSkillCreated === 'function') {
+      try { ctx.onSkillCreated(data.skill); } catch { /* noop */ }
+    }
+    return `已${source === 'user' ? '创建用户技能' : '沉淀工作技能'}：${skill.title}\nID：${skill.id}\n触发词：${triggers.length ? triggers.join(', ') : '(无)'}\n依赖工具：${tools.length ? tools.join(', ') : '(无)'}\n\n可在右侧边栏「技能」tab 查看与编辑。`;
+  } catch (err) {
+    return `错误：${err?.message || '创建失败'}`;
+  }
 }
 
 /**
@@ -850,6 +1012,29 @@ const BUILTIN_TOOL_DEFS = [
     executor: toolWriteWorkspaceFile,
   },
   {
+    name: 'edit_file',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'edit_file',
+        description: '编辑工作空间中的已有文件。优先使用精准替换模式（old_string→new_string），避免重写整个文件。当 old_string 在文件中出现多次时，需提供更长上下文使其唯一匹配，或设置 replace_all=true。也可只提供 content 做全量重写（与 write_workspace_file 等价）。',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: '相对于工作空间根目录的文件路径' },
+            old_string: { type: 'string', description: '要被替换的原文（必须与文件内容完全一致，含空白符）。留空则走全量重写模式' },
+            new_string: { type: 'string', description: '替换后的新文本' },
+            content: { type: 'string', description: '全量重写模式：覆盖整个文件的新内容（仅当不提供 old_string 时使用）' },
+            replace_all: { type: 'boolean', description: '当 old_string 出现多次时，true=全部替换，false(默认)=报错要求唯一匹配' },
+          },
+          required: ['path'],
+        },
+      },
+    },
+    meta: { label: '编辑文件', iconKey: 'pencil', description: '精准修改已有文件（局部替换或全量重写）', category: 'workspace', requiresApproval: true },
+    executor: toolEditFile,
+  },
+  {
     name: 'search_news',
     schema: {
       type: 'function',
@@ -887,6 +1072,39 @@ const BUILTIN_TOOL_DEFS = [
     },
     meta: { label: '抓取网页', iconKey: 'globe', description: '抓取指定 URL 的网页正文', category: 'web', requiresApproval: true },
     executor: toolFetchPage,
+  },
+  {
+    name: 'create_skill',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'create_skill',
+        description: '将当前对话中产生的有效经验、方法论、Prompt 模板沉淀为技能（SKILL.md），后续可被 triggers 自动匹配复用。适用于：用户明确说"把这个保存为技能"、AI 完成有价值的结构化输出后主动沉淀、形成可复用的工作流模板',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: '技能标题（简短，最多 60 字）' },
+            body: { type: 'string', description: 'Prompt 模板或技能说明（Markdown）' },
+            description: { type: 'string', description: '一句话说明技能用途（可选，默认从 body 派生）' },
+            triggers: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '触发词列表（命中时自动推荐此技能）',
+            },
+            tools: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '依赖的工具名列表（如 search_news, fetch_page）',
+            },
+            source: { type: 'string', enum: ['work', 'user'], description: '技能来源：work（默认，工作沉淀）/ user（用户主动创建）' },
+            category: { type: 'string', description: '技能分类（如 research/writing/analysis，默认 work）' },
+          },
+          required: ['title', 'body'],
+        },
+      },
+    },
+    meta: { label: '沉淀技能', iconKey: 'bookmark', description: '将对话经验沉淀为可复用技能', category: 'skills' },
+    executor: toolCreateSkill,
   },
   {
     name: 'web_search',

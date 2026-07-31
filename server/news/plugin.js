@@ -13,6 +13,7 @@ import { handleAiGenerateRequest, handleAiInsightsRequest } from '../http/aiHand
 import { handleFetchPageRequest } from '../http/fetchPageHandler.js';
 import { handleWebSearchRequest } from '../http/webSearchHandler.js';
 import { handleIntelligenceRequest } from '../http/intelligenceHandlers.js';
+import { listSkills, getSkillById, matchSkillsByTriggers, listSkillsBySource, SKILL_SOURCES, saveSkill, saveSkillRaw, createSkill, deleteSkill } from '../skills/skillLoader.js';
 import { getNews, warmNewsCache, startNewsWarming } from './services/newsService.js';
 import { getTrending, getGithubTrending } from './services/trendingService.js';
 import { discoverSourceCandidates, validateFeedUrl } from './services/sourceDiscovery.js';
@@ -93,6 +94,63 @@ export function newsPlugin() {
             }),
             sourceGrades: SOURCE_GRADES
           });
+        }
+
+        // P5 Skills 文件夹生态：读取 skills 下三源（builtin/work/user）的 SKILL.md
+        // 注意：必须先匹配 POST/PUT/DELETE，否则 GET 分支会拦截所有 method
+        if (requestUrl.pathname === '/api/skills' && req.method === 'POST') {
+          const body = await parseBody(req);
+          try {
+            const created = createSkill(body);
+            return sendJson(res, { ok: true, skill: created });
+          } catch (err) {
+            return sendJson(res, { ok: false, error: err?.message || 'create failed' }, 400);
+          }
+        }
+        if (requestUrl.pathname === '/api/skills' && req.method === 'PUT') {
+          const body = await parseBody(req);
+          try {
+            const saved = saveSkill(body);
+            return sendJson(res, { ok: true, skill: saved });
+          } catch (err) {
+            return sendJson(res, { ok: false, error: err?.message || 'save failed' }, 400);
+          }
+        }
+        if (requestUrl.pathname.startsWith('/api/skills/') && req.method === 'DELETE') {
+          const id = requestUrl.pathname.slice('/api/skills/'.length);
+          try {
+            const result = deleteSkill(id);
+            return sendJson(res, { ok: true, ...result });
+          } catch (err) {
+            return sendJson(res, { ok: false, error: err?.message || 'delete failed' }, 400);
+          }
+        }
+        // 保存原始 SKILL.md 文本（源码模式编辑）：PUT /api/skills/:id/raw?source=work
+        if (requestUrl.pathname.endsWith('/raw') && requestUrl.pathname.startsWith('/api/skills/') && req.method === 'PUT') {
+          const id = requestUrl.pathname.slice('/api/skills/'.length, -'/raw'.length);
+          const source = requestUrl.searchParams.get('source') || '';
+          const body = await parseBody(req);
+          try {
+            const saved = saveSkillRaw(source, id, body?.rawText || body?.raw || '');
+            return sendJson(res, { ok: true, skill: saved });
+          } catch (err) {
+            return sendJson(res, { ok: false, error: err?.message || 'save raw failed' }, 400);
+          }
+        }
+        if (requestUrl.pathname === '/api/skills' && req.method === 'GET') {
+          const refresh = requestUrl.searchParams.get('refresh') === '1';
+          const grouped = requestUrl.searchParams.get('grouped') === '1';
+          if (grouped) {
+            const bySource = listSkillsBySource(refresh);
+            return sendJson(res, { ok: true, bySource, sources: SKILL_SOURCES });
+          }
+          const skills = listSkills(refresh);
+          return sendJson(res, { ok: true, skills, count: skills.length, sources: SKILL_SOURCES });
+        }
+        if (requestUrl.pathname === '/api/skills/match') {
+          const query = requestUrl.searchParams.get('q') || '';
+          const matched = matchSkillsByTriggers(query);
+          return sendJson(res, { ok: true, skills: matched, count: matched.length });
         }
 
         // 认证、社区使用同一组 service/handler，避免开发环境和生产函数行为分叉。

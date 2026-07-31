@@ -225,3 +225,74 @@ export async function fetchPersonaSummary() {
     return null;
   }
 }
+
+/**
+ * 计算单条记忆的置信度（0-100）：weight + 时间衰减 + 命中强化
+ * P4 自进化记忆置信度演化：纯函数，无副作用
+ *
+ * 公式：confidence = clamp(weight * 10 - daysSinceCreated * 0.4 + hitBoost, 1, 100)
+ *   - weight (1-10)：LLM 总结时赋予的权重，多次提及 → 高权重
+ *   - daysSinceCreated：自创建以来的天数，线性衰减（每天 -0.4）
+ *   - hitBoost：被检索命中次数 * 3（强化因子）
+ *
+ * @param {{weight?:number, createdAt?:string|number, hitCount?:number}} memory
+ * @param {Date} [now=new Date()] 当前时间（可注入用于测试）
+ * @returns {number} 0-100 的整数
+ */
+export function computeMemoryConfidence(memory = {}, now = new Date()) {
+  const weight = Math.max(1, Math.min(10, Number(memory?.weight) || 1));
+  const hitCount = Math.max(0, Number(memory?.hitCount) || 0);
+
+  const created = memory?.createdAt ? new Date(memory.createdAt) : now;
+  const daysSinceCreated = Math.max(0, (now - created) / 86400000);
+
+  const raw = weight * 10 - daysSinceCreated * 0.4 + hitCount * 3;
+  return Math.max(1, Math.min(100, Math.round(raw)));
+}
+
+/**
+ * 按置信度对记忆列表排序（降序），并附加 confidence 字段
+ * @param {Array} memories 记忆数组
+ * @param {Date} [now] 当前时间
+ * @returns {Array} 新数组，每项附加 confidence 字段
+ */
+export function rankMemoriesByConfidence(memories = [], now) {
+  const referenceNow = now || new Date();
+  return (Array.isArray(memories) ? memories : [])
+    .map(m => ({ ...m, confidence: computeMemoryConfidence(m, referenceNow) }))
+    .sort((a, b) => b.confidence - a.confidence);
+}
+
+/**
+ * 计算记忆集合的整体健康度（用于 UI 仪表盘）
+ * - total: 总记忆数
+ * - avgConfidence: 平均置信度
+ * - highConfidenceCount: confidence >= 70 的数量
+ * - staleCount: confidence < 20 的数量（建议清理或重新激活）
+ * - typeDistribution: 按 memory_type 分组的数量
+ *
+ * @param {Array} memories
+ * @param {Date} [now]
+ */
+export function computeMemoryHealth(memories = [], now) {
+  const ranked = rankMemoriesByConfidence(memories, now);
+  const total = ranked.length;
+  if (total === 0) {
+    return { total: 0, avgConfidence: 0, highConfidenceCount: 0, staleCount: 0, typeDistribution: {} };
+  }
+  const sum = ranked.reduce((s, m) => s + m.confidence, 0);
+  const high = ranked.filter(m => m.confidence >= 70).length;
+  const stale = ranked.filter(m => m.confidence < 20).length;
+  const typeDistribution = ranked.reduce((acc, m) => {
+    const t = m.memory_type || m.memoryType || 'unknown';
+    acc[t] = (acc[t] || 0) + 1;
+    return acc;
+  }, {});
+  return {
+    total,
+    avgConfidence: Math.round(sum / total),
+    highConfidenceCount: high,
+    staleCount: stale,
+    typeDistribution,
+  };
+}

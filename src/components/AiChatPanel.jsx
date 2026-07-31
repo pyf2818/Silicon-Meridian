@@ -7,6 +7,7 @@
  * - 接收 pendingMessage（来自右栏「剖析」或其它入口）做深度分析
  */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { renderMarkdown } from '../utils/markdown.jsx';
 import SessionSidebar from './SessionSidebar.jsx';
 import AgentPanel from './AgentPanel.jsx';
@@ -28,7 +29,10 @@ import { buildSystemPrompt } from './aichat/buildSystemPrompt.js';
 import { buildQuickActions } from './aichat/buildQuickActions.js';
 import { runAgentLoop as runAgentLoopImpl } from './aichat/runAgentLoop.js';
 import { useInputHistory } from './aichat/useInputHistory.js';
-import { useProfileStore } from '../store';
+import { useSelfEvolution } from '../hooks/useSelfEvolution.js';
+import { useSkills } from '../hooks/useSkills.js';
+import { showToast } from '../utils/toast.js';
+import { useProfileStore, useUiStore } from '../store';
 import { ICONS } from '../constants/appConstants.jsx';
 import ChatHeader from './aichat/ChatHeader.jsx';
 
@@ -53,6 +57,7 @@ export default function AiChatPanel({
   materials,
   agent,
   onUpdateAgent,
+  setLlmConfig,
   variant = 'copilot',
 }) {
   // 订阅模块级 sessionsStore：组件 unmount 后流式 fetch 继续更新 store，
@@ -77,6 +82,7 @@ export default function AiChatPanel({
   const [learnedVersion, setLearnedVersion] = useState(0); // 学习画像版本（观测后刷新）
   const [autoTodos, setAutoTodos] = useState([]); // 对话自动提取的行动项
   const [excludeAllEvidence, setExcludeAllEvidence] = useState(false); // 一键排除全部情报上下文
+  const [excludeAllMaterials, setExcludeAllMaterials] = useState(false); // 一键排除全部素材库上下文
 
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState(llmConfig?.selectedModel || '');
@@ -162,6 +168,153 @@ export default function AiChatPanel({
   // 服务端 persona_summary 仍由 fetchPersonaSummary 拉取并写入 store
   const personaSummary = useProfileStore(s => s.personaSummary);
   const setPersonaSummary = useProfileStore(s => s.setPersonaSummary);
+
+  // Agent 权限模式：assist / autonomous / plan（会话级，非持久化）
+  const agentPermissionMode = useUiStore(s => s.agentPermissionMode);
+  const setAgentPermissionMode = useUiStore(s => s.setAgentPermissionMode);
+
+  // 联网搜索切换：直接打补丁到 llmConfig（持久化由 useLlmConfig effect 负责）
+  const webSearchEnabled = llmConfig?.webSearchEnabled !== false;
+  const toggleWebSearch = useCallback(() => {
+    if (!setLlmConfig) return;
+    setLlmConfig(prev => ({ ...prev, webSearchEnabled: prev?.webSearchEnabled === false }));
+  }, [setLlmConfig]);
+
+  // P4 自进化记忆：暴露健康度给 AgentPanel（轻量，仅 variant==='main' 时启用）
+  const selfEvolution = useSelfEvolution({
+    llmConfig,
+    personaSummary,
+    enabled: variant === 'main',
+  });
+  const memoryHealth = selfEvolution.health;
+  const lastEvolvedAt = selfEvolution.lastEvolvedAt;
+
+  // P5 Skills：左上角 skill 按钮弹出的可滚动菜单（portal 渲染到 body，向上弹出）
+  const skillsHook = useSkills({ enabled: true });
+  const [showSkillMenu, setShowSkillMenu] = useState(false);
+  const [activeSkill, setActiveSkill] = useState(null);
+  const [skillMenuPos, setSkillMenuPos] = useState(null);
+  const skillBtnRef = useRef(null);
+  const skillMenuRef = useRef(null);
+
+  // 打开菜单时计算位置（按钮左下角为锚点，菜单向上展开）
+  const openSkillMenu = useCallback(() => {
+    if (!skillBtnRef.current) return;
+    const rect = skillBtnRef.current.getBoundingClientRect();
+    setSkillMenuPos({
+      left: rect.left,
+      bottom: window.innerHeight - rect.top + 6, // 菜单底部距按钮顶部 6px
+    });
+    setShowSkillMenu(true);
+  }, []);
+
+  const toggleSkillMenu = useCallback(() => {
+    if (showSkillMenu) setShowSkillMenu(false);
+    else openSkillMenu();
+  }, [showSkillMenu, openSkillMenu]);
+
+  // 点击外部关闭 skill 菜单
+  useEffect(() => {
+    if (!showSkillMenu) return;
+    const handler = (e) => {
+      if (skillMenuRef.current && !skillMenuRef.current.contains(e.target) &&
+          skillBtnRef.current && !skillBtnRef.current.contains(e.target)) {
+        setShowSkillMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showSkillMenu]);
+
+  // 窗口滚动/resize 时更新位置
+  useEffect(() => {
+    if (!showSkillMenu) return;
+    const update = () => {
+      if (!skillBtnRef.current) return;
+      const rect = skillBtnRef.current.getBoundingClientRect();
+      setSkillMenuPos({
+        left: rect.left,
+        bottom: window.innerHeight - rect.top + 6,
+      });
+    };
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [showSkillMenu]);
+
+  // 选中 skill：把 skill 的 prompt 模板注入到输入框（或作为 systemPrompt 追加）
+  const applySkill = useCallback((skill) => {
+    setActiveSkill(skill.id);
+    setShowSkillMenu(false);
+    // 把 skill body 的前 200 字作为引导注入输入框（轻量，不覆盖已有输入）
+    const hint = skill.triggers?.[0] ? `【技能：${skill.title}】` : '';
+    if (hint && !input.trim()) {
+      setInput(hint);
+      inputRef.current?.focus();
+    } else if (hint) {
+      setInput(prev => prev + ' ' + hint);
+      inputRef.current?.focus();
+    }
+  }, [input]);
+
+  // 工作沉淀：把当前 assistant 回复存为 work 来源的 skill
+  // 提取标题/正文/触发词/使用工具，调用 createSkill 落地到 skills/work/<id>/SKILL.md
+  const saveAsSkill = useCallback(async (msg, idx) => {
+    if (!msg?.content) {
+      showToast('回复内容为空，无法沉淀');
+      return;
+    }
+    // 标题：取正文首行非空文本（去掉 markdown 标记），最多 30 字
+    const firstLine = String(msg.content)
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean)[0] || '工作沉淀技能';
+    const cleanTitle = firstLine
+      .replace(/^#+\s*/, '')
+      .replace(/^\s*[-*]\s+/, '')
+      .replace(/[`*_~]/g, '')
+      .slice(0, 30);
+    // id：基于标题生成 kebab-case，避免冲突加 4 位随机后缀
+    const baseId = (cleanTitle.toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 24) || 'work-skill');
+    const id = `${baseId}-${Math.random().toString(36).slice(2, 6)}`;
+    // 触发词：从前一条用户消息提取关键词（去停用词，取前 5 个）
+    const prevUserMsg = messages.slice(0, idx).reverse().find(m => m.role === 'user');
+    const stopWords = new Set(['的', '了', '是', '在', '和', '与', '或', '一个', '一些', '我', '你', '他', '她', '它', '这', '那', '请', '帮', '给', '把', '让', 'the', 'a', 'an', 'is', 'are', 'to', 'of', 'in', 'on', 'for', 'with', 'and', 'or']);
+    const triggers = (prevUserMsg?.content || '')
+      .split(/[\s,，。.;；!！?？::]+/)
+      .map(s => s.trim().toLowerCase())
+      .filter(s => s.length >= 2 && s.length <= 12 && !stopWords.has(s))
+      .slice(0, 5);
+    // 工具：取本条消息调用的工具名（去重）
+    const tools = Array.isArray(msg.toolCalls)
+      ? [...new Set(msg.toolCalls.map(tc => tc?.name || tc?.toolName).filter(Boolean))]
+      : [];
+    const skill = {
+      id,
+      title: cleanTitle,
+      description: prevUserMsg?.content?.slice(0, 60) || '从对话中沉淀的工作技能',
+      category: 'work',
+      triggers,
+      tools,
+      tags: [],
+      version: '0.1.0',
+      author: '工作沉淀',
+      body: `# ${cleanTitle}\n\n> 由对话沉淀自动生成，可基于此模板继续编辑。\n\n## Prompt 模板\n\n用户原始问题：\n\n${prevUserMsg?.content || '（无）'}\n\n## 回复内容（可作为输出参考）\n\n${msg.content}`,
+      source: 'work',
+    };
+    try {
+      await skillsHook.createSkill(skill);
+      showToast(`已沉淀为技能：${cleanTitle}`);
+    } catch (err) {
+      showToast(`沉淀失败：${err?.message || '未知错误'}`);
+    }
+  }, [messages, skillsHook]);
   useEffect(() => {
     let cancelled = false;
     fetchPersonaSummary().then(ps => {
@@ -193,8 +346,8 @@ export default function AiChatPanel({
   const systemPrompt = useMemo(() => buildSystemPrompt({
     selectedInterests, categories, intelligenceProfile, workbenchItems, intelligenceContext,
     workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs,
-    excludeAllEvidence, materialContext, agent, personaSummary,
-  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, excludeAllEvidence, materialContext, agent, personaSummary]);
+    excludeAllEvidence, excludeAllMaterials, materialContext, agent, personaSummary,
+  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, excludeAllEvidence, excludeAllMaterials, materialContext, agent, personaSummary]);
 
   // 情境化快捷建议：已抽离至 aichat/buildQuickActions.js
   const quickActions = useMemo(() => buildQuickActions(intelligenceContext, workbenchItems, materialContext), [intelligenceContext, workbenchItems, materialContext]);
@@ -234,12 +387,11 @@ export default function AiChatPanel({
     setActiveSessionId(id);
   }, []);
 
-  // 双击会话项重命名
+  // 重命名会话（由 SessionSidebar inline 编辑后回调，title 已是用户输入的新值）
   const renameSession = useCallback((id, title) => {
-    const next = window.prompt('重命名对话', title);
-    if (next !== null && next.trim()) {
-      setSessions(prev => prev.map(s => s.id === id ? { ...s, title: next.trim() } : s));
-    }
+    const next = String(title || '').trim();
+    if (!next) return;
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, title: next } : s));
   }, []);
 
   // Agent loop：tool_calls 循环执行（已抽离至 aichat/runAgentLoop.js）
@@ -249,8 +401,11 @@ export default function AiChatPanel({
       systemPrompt, llmConfig, selectedModel,
       intelligenceContext, agent, sessions, messages,
       setSessions, setLearnedVersion, setAutoTodos, setMemoriesVersion,
+      permissionMode: agentPermissionMode,
+      // 技能创建成功回调：toolCreateSkill 写盘后立即刷新 skillsHook，与右侧边栏面板同步
+      onSkillCreated: () => skillsHook.refresh(),
     });
-  }, [llmConfig, selectedModel, systemPrompt, intelligenceContext, sessions, messages, setSessions, setLearnedVersion, setAutoTodos, setMemoriesVersion]);
+  }, [llmConfig, selectedModel, systemPrompt, intelligenceContext, sessions, messages, setSessions, setLearnedVersion, setAutoTodos, setMemoriesVersion, agentPermissionMode, skillsHook]);
 
   const sendMessage = useCallback(async (text) => {
     const msg = text || input.trim();
@@ -320,6 +475,13 @@ export default function AiChatPanel({
       if (llmConfig?.webSearchEnabled === false) {
         toolSchemas = toolSchemas.filter(s => s?.function?.name !== 'web_search');
       }
+      // plan 模式：仅生成计划与思路，不实际调用任何工具
+      // 通过清空 toolSchemas 强制走流式回复，并在 systemPrompt 后追加计划模式约束
+      const planMode = agentPermissionMode === 'plan';
+      const finalSystemPrompt = planMode && toolSchemas.length > 0
+        ? `${systemPrompt}\n\n【当前为计划模式】请仅输出详细执行计划与思路，不要尝试调用任何工具。分步骤说明你将如何完成用户请求，包括需要哪些工具/数据/步骤，以及预期产出。`
+        : systemPrompt;
+      if (planMode) toolSchemas = [];
       if (toolSchemas.length > 0) {
         await runAgentLoop({
           targetId,
@@ -340,7 +502,7 @@ export default function AiChatPanel({
           apiKey: llmConfig.apiKey,
           model: selectedModel,
           action: 'chat',
-          systemPrompt,
+          systemPrompt: finalSystemPrompt,
           messages: [...messages, userMessage].slice(-20).map(m => ({ role: m.role, content: m.content })),
           max_tokens: 4000,
           stream: true,
@@ -504,14 +666,6 @@ export default function AiChatPanel({
     // 用上一条 user 消息重新发送（不带 input，避免清空逻辑干扰）
     sendMessage(lastUser.content);
   }, [isStreaming, activeSessionId, sessions, sendMessage]);
-
-  // 引用追问：直接发送带引用的追问消息（不再填入输入框，避免长内容污染输入区）
-  // 走 sendMessage，自动复用队列逻辑：流式中自动排队，空闲时立即发送
-  const quoteReply = useCallback((content) => {
-    const snippet = content.length > 300 ? content.slice(0, 300) + '…' : content;
-    // 直接发起一次追问，引用原文并要求深入分析
-    sendMessage(`请基于以下内容深入分析，提炼关键信息、影响和后续值得关注的信号：\n\n> ${snippet}`);
-  }, [sendMessage]);
 
   // 工作空间文件加入对话上下文
   const handleAddContextFiles = useCallback((files) => {
@@ -685,13 +839,13 @@ export default function AiChatPanel({
                   <span className="icon-sm">{ICONS.copy}</span>
                   复制
                 </button>
+                <button type="button" className="chat-action-btn" title="存为技能（沉淀到 skills/work）" onClick={() => saveAsSkill(msg, i)}>
+                  <span className="icon-sm">{ICONS.bookmark}</span>
+                  存为技能
+                </button>
                 <button type="button" className="chat-action-btn" title="重新生成" onClick={() => regenerateLast()} disabled={isStreaming}>
                   <span className="icon-sm">{ICONS.refresh}</span>
                   重新生成
-                </button>
-                <button type="button" className="chat-action-btn" title="引用追问" onClick={() => quoteReply(msg.content)}>
-                  <span className="icon-sm">{ICONS.quote}</span>
-                  引用追问
                 </button>
               </div>
             )}
@@ -744,32 +898,27 @@ export default function AiChatPanel({
         </div>
       )}
 
-      {/* Input - ChatGPT 风格大圆角容器，工具按钮内嵌底部 */}
+      {/* Input - ChatGPT 风格大圆角容器
+          上方一行：skill 按钮 + 快捷指令（分析素材库、信源对比等）
+          中间：输入框
+          下方一行：上下文胶囊 + 联网搜索 + 权限模式（单行并排） */}
       <div className="chat-composer">
-        {/* 顶部行：左侧情报上下文胶囊 + 右侧快捷指令，同一高度 */}
+        {/* 上方工具栏：skill 按钮 + 快捷指令 */}
         <div className="chat-composer-top">
-          <div className="chat-context-group">
-            {intelligenceContext?.items?.length > 0 && (
-              <div className="chat-context-wrap">
-                <button type="button" className={`chat-context-pill chat-context-pill-toggle ${excludeAllEvidence ? 'excluded' : ''}`} onClick={() => setExcludeAllEvidence(v => !v)} title={excludeAllEvidence ? '已排除情报上下文，点击恢复' : '已附加情报上下文，点击排除'}>
-                <span className="icon-sm">{ICONS.messageSquare}</span>
-                {excludeAllEvidence ? '已排除情报上下文' : `已附加 ${intelligenceContext.items.length} 条情报`}
-                </button>
-              </div>
-            )}
-            {workspaceFiles.length > 0 && (
-              <div className="chat-context-pill chat-context-pill-file" title={workspaceFiles.map(f => f.name).join(', ')}>
-                <span className="icon-sm">{ICONS.document}</span>
-                工作空间文件 {workspaceFiles.length}
-                <button type="button" className="chat-context-pill-clear" onClick={() => setWorkspaceFiles([])} title="清除">{ICONS.x}</button>
-              </div>
-            )}
-            {materialContext.total > 0 && (
-              <div className={`chat-context-pill chat-context-pill-material ${materialContext.hasElf ? 'has-elf' : ''}`} title={`已附加 ${materialContext.selected.length} 条素材上下文`}>
-                <span className="icon-sm">{ICONS.layers}</span>
-                {materialContext.hasElf ? `AI 精灵素材 ${materialContext.elfCount}` : `素材库 ${materialContext.total}`}
-              </div>
-            )}
+          <div className="chat-skill-wrap">
+            <button
+              ref={skillBtnRef}
+              type="button"
+              className={`chat-skill-btn ${activeSkill ? 'active' : ''} ${showSkillMenu ? 'open' : ''}`}
+              onClick={toggleSkillMenu}
+              title="选择技能"
+              disabled={skillsHook.loading || skillsHook.skills.length === 0}
+            >
+              <span className="icon-sm">{ICONS.sparkles || ICONS.star}</span>
+              技能
+              {activeSkill && <span className="chat-skill-badge" />}
+              <span className="chat-skill-caret">{ICONS.chevronUp || '▴'}</span>
+            </button>
           </div>
           {messages.length > 0 && (
             <div className="chat-quick-bar">
@@ -782,6 +931,7 @@ export default function AiChatPanel({
             </div>
           )}
         </div>
+        {/* 输入框 */}
         <div className="chat-input-area">
           <input ref={fileInputRef} type="file" accept="image/*,.pdf,.txt,.md" style={{ display: 'none' }} onChange={handleFileUpload} />
           <button className="chat-attach-btn" onClick={() => fileInputRef.current?.click()} title="上传附件" disabled={!hasConfig}>
@@ -803,14 +953,163 @@ export default function AiChatPanel({
             {ICONS.send}
           </button>
         </div>
+        {/* 底部一行：上下文胶囊 + 联网搜索 + 权限模式（单行并排，溢出滚动） */}
+        <div className="chat-composer-bottom">
+          <div className="chat-context-group">
+            {intelligenceContext?.items?.length > 0 && (
+              <button type="button" className={`chat-context-pill chat-context-pill-toggle ${excludeAllEvidence ? 'excluded' : ''}`} onClick={() => setExcludeAllEvidence(v => !v)} title={excludeAllEvidence ? '已排除情报上下文，点击恢复' : '已附加情报上下文，点击排除'}>
+                <span className="icon-sm">{ICONS.messageSquare}</span>
+                {excludeAllEvidence ? '已排除情报' : `情报 ${intelligenceContext.items.length}`}
+              </button>
+            )}
+            {workspaceFiles.length > 0 && (
+              <div className="chat-context-pill chat-context-pill-file" title={workspaceFiles.map(f => f.name).join(', ')}>
+                <span className="icon-sm">{ICONS.document}</span>
+                文件 {workspaceFiles.length}
+                <button type="button" className="chat-context-pill-clear" onClick={() => setWorkspaceFiles([])} title="清除">{ICONS.x}</button>
+              </div>
+            )}
+            {materialContext.total > 0 && (
+              <button type="button" className={`chat-context-pill chat-context-pill-toggle chat-context-pill-material ${excludeAllMaterials ? 'excluded' : ''} ${materialContext.hasElf ? 'has-elf' : ''}`} onClick={() => setExcludeAllMaterials(v => !v)} title={excludeAllMaterials ? '已排除素材库上下文，点击恢复' : '已附加素材库上下文，点击排除'}>
+                <span className="icon-sm">{ICONS.layers}</span>
+                {excludeAllMaterials ? '已排除素材' : (materialContext.hasElf ? `精灵素材 ${materialContext.elfCount}` : `素材 ${materialContext.total}`)}
+              </button>
+            )}
+            <button
+              type="button"
+              className={`chat-context-pill chat-websearch-toggle ${webSearchEnabled ? 'active' : 'inactive'}`}
+              onClick={toggleWebSearch}
+              title={webSearchEnabled ? '联网搜索已开启，点击关闭' : '联网搜索已关闭，点击开启'}
+            >
+              <span className="icon-sm">{ICONS.globe || ICONS.compass}</span>
+              {webSearchEnabled ? '联网' : '离线'}
+            </button>
+          </div>
+          <div className="chat-permission-mode" role="group" aria-label="Agent 权限模式">
+            {[
+              { id: 'assist', label: '协助', title: '协助模式：每步工具调用前征求同意' },
+              { id: 'autonomous', label: '自主', title: '自主模式：白名单工具自动执行' },
+              { id: 'plan', label: '计划', title: '计划模式：仅生成思路，不调用工具' },
+            ].map(m => (
+              <button
+                key={m.id}
+                type="button"
+                className={`chat-permission-pill ${agentPermissionMode === m.id ? 'active' : ''}`}
+                onClick={() => setAgentPermissionMode(m.id)}
+                title={m.title}
+                aria-pressed={agentPermissionMode === m.id}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
+      {/* P5 Skills 菜单：portal 渲染到 body，向上弹出，避免被父容器 overflow 裁剪 */}
+      {showSkillMenu && skillMenuPos && createPortal(
+        <div
+          ref={skillMenuRef}
+          className="chat-skill-menu custom-scrollbar"
+          role="menu"
+          style={{ position: 'fixed', left: skillMenuPos.left, bottom: skillMenuPos.bottom }}
+        >
+          <div className="chat-skill-menu-head">
+            <span className="chat-skill-menu-title">技能库</span>
+            <button
+              type="button"
+              className="chat-skill-menu-refresh"
+              onClick={() => skillsHook.refresh()}
+              title="重新扫描 skills 目录"
+            >
+              {ICONS.refresh || ICONS.history}
+            </button>
+          </div>
+          {skillsHook.bySource.builtin.length > 0 && (
+            <div className="chat-skill-group">
+              <div className="chat-skill-group-label">
+                <span className="chat-skill-group-tag chat-skill-source-builtin">内置</span>
+                <span className="chat-skill-group-count">{skillsHook.bySource.builtin.length}</span>
+              </div>
+              {skillsHook.bySource.builtin.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`chat-skill-item ${activeSkill === s.id ? 'selected' : ''}`}
+                  onClick={() => applySkill(s)}
+                  title={s.description}
+                >
+                  <span className="chat-skill-item-title">{s.title}</span>
+                  {s.description && <span className="chat-skill-item-desc">{s.description}</span>}
+                  {s.triggers?.length > 0 && (
+                    <span className="chat-skill-item-triggers">{s.triggers.slice(0, 3).join(' · ')}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          {skillsHook.bySource.work.length > 0 && (
+            <div className="chat-skill-group">
+              <div className="chat-skill-group-label">
+                <span className="chat-skill-group-tag chat-skill-source-work">工作沉淀</span>
+                <span className="chat-skill-group-count">{skillsHook.bySource.work.length}</span>
+              </div>
+              {skillsHook.bySource.work.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`chat-skill-item ${activeSkill === s.id ? 'selected' : ''}`}
+                  onClick={() => applySkill(s)}
+                  title={s.description}
+                >
+                  <span className="chat-skill-item-title">{s.title}</span>
+                  {s.description && <span className="chat-skill-item-desc">{s.description}</span>}
+                  {s.triggers?.length > 0 && (
+                    <span className="chat-skill-item-triggers">{s.triggers.slice(0, 3).join(' · ')}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          {skillsHook.bySource.user.length > 0 && (
+            <div className="chat-skill-group">
+              <div className="chat-skill-group-label">
+                <span className="chat-skill-group-tag chat-skill-source-user">用户创建</span>
+                <span className="chat-skill-group-count">{skillsHook.bySource.user.length}</span>
+              </div>
+              {skillsHook.bySource.user.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`chat-skill-item ${activeSkill === s.id ? 'selected' : ''}`}
+                  onClick={() => applySkill(s)}
+                  title={s.description}
+                >
+                  <span className="chat-skill-item-title">{s.title}</span>
+                  {s.description && <span className="chat-skill-item-desc">{s.description}</span>}
+                  {s.triggers?.length > 0 && (
+                    <span className="chat-skill-item-triggers">{s.triggers.slice(0, 3).join(' · ')}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          {skillsHook.skills.length === 0 && !skillsHook.loading && (
+            <div className="chat-skill-empty">
+              暂无可用技能。在项目根 <code>skills/builtin/</code> 目录下创建 SKILL.md 即可。
+            </div>
+          )}
+          {skillsHook.error && (
+            <div className="chat-skill-error">加载失败：{skillsHook.error}</div>
+          )}
+        </div>,
+        document.body
+      )}
       </div>{/* /.chat-main-col */}
 
       {/* 右栏：智能管理面板 */}
       {variant === 'main' && (
         <AgentPanel
           messages={messages}
-          activeSessionId={activeSessionId}
           llmConfig={llmConfig}
           selectedModel={selectedModel}
           isStreaming={isStreaming}
@@ -819,8 +1118,11 @@ export default function AiChatPanel({
           recalledFiles={recalledFiles}
           onAddContextFiles={handleAddContextFiles}
           learnedPrefs={learnedPrefs}
-          autoTodos={autoTodos}
           agent={agent}
+          memoryHealth={memoryHealth}
+          lastEvolvedAt={lastEvolvedAt}
+          skillsHook={skillsHook}
+          input={input}
         />
       )}
       <PersonaDrawer

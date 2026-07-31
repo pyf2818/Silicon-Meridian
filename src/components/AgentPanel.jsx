@@ -2,21 +2,22 @@
  * AgentPanel - AI 工作站右侧智能管理面板
  *
  * 三层布局（方案 C）：
- * 1. 顶部固定卡：当前任务 + 智能体状态（运行时高频，永远可见）
- * 2. 中部 Tab 区：任务｜智能体｜记忆（按需切换，避免堆砌）
- *    - 任务 tab：待办清单（移到此处，不再 sticky 底部）+ 执行计划（仅 agent loop 模式）
- *    - 智能体 tab：工具能力 + 定时任务 + 用户画像（平台主体依据）
+ * 1. 顶部固定卡：当前任务摘要（轮次/回复/工具/tokens/模型 LED，永远可见）
+ * 2. 中部 Tab 区：技能｜智能体｜记忆（按需切换，避免堆砌）
+ *    - 技能 tab：Skills 生态管理（列表/详情/编辑保存/新建）
+ *    - 智能体 tab：工具能力清单 + 定时任务 + 用户画像（聚焦配置态，运行态信息已在顶部卡呈现）
  *    - 记忆 tab：上下文召回（相关记忆 + 工作空间文件，合并）+ 学习偏好（基于对话总结的习惯）
- * 3. 无底部 sticky：待办已在「任务」tab 内常驻
+ * 3. 无底部 sticky
  *
  * 角色/灵魂设定入口已移至 chat-header 的 PersonaDrawer，本面板不承载
  */
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { setLearningEnabled } from '../utils/profileLearning.js';
 import { AGENT_TOOL_SCHEMAS, getToolMetaByName } from '../utils/agentTools.js';
-import { useAgentSession } from '../hooks/useAgentSession.js';
+import { useSkills } from '../hooks/useSkills.js';
 import { ICONS } from '../constants/appConstants.jsx';
 import AgentJobsSection from './agent/AgentJobsSection.jsx';
+import SkillsPanel from './SkillsPanel.jsx';
 
 /* 工具元信息：从 toolRegistry 派生，返回 iconKey 供 ICONS 查表渲染 SVG */
 function getToolDisplay(name) {
@@ -24,27 +25,31 @@ function getToolDisplay(name) {
   return { label: meta?.label || name, iconKey: meta?.iconKey || 'settings' };
 }
 
-function todosKey(sessionId) { return `aiTodos_${sessionId || 'default'}`; }
-
-function loadTodos(sessionId) {
-  if (!sessionId) return [];
-  try {
-    const raw = localStorage.getItem(todosKey(sessionId));
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+/* 自进化记忆相对时间格式化：刚刚 / N 分钟前 / N 小时前 / N 天前 */
+function formatRelativeEvolution(iso) {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (!t) return '';
+  const diff = Date.now() - t;
+  if (diff < 60_000) return '刚刚进化';
+  if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)} 小时前`;
+  return `${Math.floor(diff / 86400_000)} 天前`;
 }
 
-/* Tab 配置：图标 + label + 可见的 badge 计算 */
+/* Tab 配置：图标 + label
+ * 注：原 task tab 已替换为 skills tab（任务模块功能不大，改为 Skills 生态管理）
+ * 智能体 tab 已精简：去掉执行计划/智能体状态两个 section，聚焦于「配置/能力」维度
+ */
 const TABS = [
-  { id: 'task', label: '任务', icon: ICONS.check },
+  { id: 'skills', label: '技能', icon: ICONS.sparkles },
   { id: 'agent', label: '智能体', icon: ICONS.settings },
-  { id: 'memory', label: '记忆', icon: ICONS.sparkles },
+  { id: 'memory', label: '记忆', icon: ICONS.bookmark },
 ];
 
 
 export default function AgentPanel({
   messages = [],
-  activeSessionId,
   llmConfig,
   selectedModel,
   isStreaming,
@@ -53,38 +58,18 @@ export default function AgentPanel({
   recalledFiles = [],
   onAddContextFiles,
   learnedPrefs = {},
-  autoTodos = [],
   agent,
+  memoryHealth,
+  lastEvolvedAt,
+  skillsHook,
+  input = '',
 }) {
-  const [manualTodos, setManualTodos] = useState(() => loadTodos(activeSessionId));
-  const [todoInput, setTodoInput] = useState('');
-  const [activeTab, setActiveTab] = useState('task'); // task | agent | memory
+  const [activeTab, setActiveTab] = useState('skills'); // skills | agent | memory
 
-  // 订阅会话状态（执行计划 / 变量 / 黑板），仅展示
-  const sessionState = useAgentSession(activeSessionId);
-
-  // 切换会话时重新加载手动待办
-  useEffect(() => {
-    setManualTodos(loadTodos(activeSessionId));
-  }, [activeSessionId]);
-
-  useEffect(() => {
-    if (!activeSessionId) return;
-    try { localStorage.setItem(todosKey(activeSessionId), JSON.stringify(manualTodos)); } catch {}
-  }, [manualTodos, activeSessionId]);
-
-  // 合并待办：自动提取的 + 手动添加的（去重）
-  const todos = useMemo(() => {
-    const seen = new Set();
-    const merged = [];
-    for (const t of autoTodos) {
-      if (!seen.has(t.text)) { seen.add(t.text); merged.push({ ...t, id: `auto_${t.text.slice(0, 12)}` }); }
-    }
-    for (const t of manualTodos) {
-      if (!seen.has(t.text)) { seen.add(t.text); merged.push(t); }
-    }
-    return merged;
-  }, [autoTodos, manualTodos]);
+  // Skills hook：优先复用外层传入的实例（与左上角技能菜单 + 对话沉淀共享同一缓存）
+  // 仅当外层未传入时才启用本地实例，避免重复 fetch
+  const localSkillsHook = useSkills({ enabled: !skillsHook });
+  const skills = skillsHook || localSkillsHook;
 
   const stats = useMemo(() => {
     const userMsgs = messages.filter(m => m.role === 'user');
@@ -105,6 +90,21 @@ export default function AgentPanel({
 
   const hasConfig = Boolean(llmConfig?.baseUrl && selectedModel);
 
+  /* 当前任务标签：用户正在输入时实时显示输入预览（截断 80 字符），
+   * 否则回退到首条用户问题，都没有则显示"新对话"。
+   * taskFull 为完整内容用于 title 悬停。 */
+  const taskView = useMemo(() => {
+    const draft = String(input || '').trim();
+    if (draft) {
+      return { label: '正在输入', text: draft.slice(0, 80), full: draft, isDraft: true };
+    }
+    const first = stats.firstQuestion;
+    if (first && first !== '—') {
+      return { label: '当前任务', text: first, full: first, isDraft: false };
+    }
+    return { label: '当前任务', text: '新对话', full: '新对话', isDraft: false };
+  }, [input, stats.firstQuestion]);
+
   // 当前 agent 的工具能力清单（用于右栏展示）
   const agentTools = useMemo(() => {
     const names = Array.isArray(agent?.tools) ? agent.tools : [];
@@ -118,80 +118,82 @@ export default function AgentPanel({
       .filter(Boolean);
   }, [agent]);
 
-  // agent loop 模式：plan/variables/blackboard 任一有内容则视为活跃
-  const hasSessionState = sessionState.plan.length > 0
-    || Object.keys(sessionState.variables).length > 0
-    || Object.keys(sessionState.blackboard).length > 0;
-
-  const addTodo = () => {
-    const text = todoInput.trim();
-    if (!text) return;
-    setManualTodos(prev => [...prev, { id: Date.now(), text, done: false, source: 'manual' }]);
-    setTodoInput('');
-  };
-  const toggleTodo = id => {
-    // auto 待办切换时自动转为手动持久化
-    setManualTodos(prev => {
-      const existing = prev.find(t => t.id === id);
-      if (existing) return prev.map(t => t.id === id ? { ...t, done: !t.done } : t);
-      const autoItem = todos.find(t => t.id === id);
-      if (autoItem) return [...prev, { ...autoItem, id: Date.now(), done: true, source: 'manual' }];
-      return prev;
-    });
-  };
-  const removeTodo = id => setManualTodos(prev => prev.filter(t => t.id !== id));
-  const adoptTodo = id => {
-    const autoItem = todos.find(t => t.id === id);
-    if (autoItem) setManualTodos(prev => [...prev, { ...autoItem, id: Date.now(), source: 'manual' }]);
-  };
-
-  const pendingCount = todos.filter(t => !t.done).length;
-
   // 各 tab 的 badge 计算（用于 tab 标题右上角小红点）
   const tabBadges = useMemo(() => ({
-    task: pendingCount,
+    skills: skills.skills.length,
     agent: 0, // 智能体配置类，无未读概念
     memory: relevantMemories.length + recalledFiles.length,
-  }), [pendingCount, relevantMemories.length, recalledFiles.length]);
-
-  // 自动切换 tab 的策略：agent loop 启动时切到「任务」tab（让用户看到执行计划展开）
-  useEffect(() => {
-    if (hasSessionState && activeTab !== 'task') setActiveTab('task');
-  }, [hasSessionState]);
+  }), [skills.skills.length, relevantMemories.length, recalledFiles.length]);
 
   return (
     <aside className="agent-panel custom-scrollbar">
-      {/* ============ 顶部固定卡：当前任务 + 智能体状态合并（永远可见） ============ */}
-      <div className="agent-topcard">
-        <div className="agent-topcard-head">
-          <span className="agent-topcard-label">当前任务</span>
-          {isStreaming && <span className="agent-live-dot" title="生成中">运行中</span>}
-        </div>
-        <p className="agent-topcard-title" title={stats.firstQuestion}>{stats.firstQuestion}</p>
-        <div className="agent-topcard-stats">
-          <div className="agent-topcard-stat" title="对话轮次">
-            <span className="agent-topcard-stat-value">{stats.rounds}</span>
-            <span className="agent-topcard-stat-label">轮次</span>
-          </div>
-          <div className="agent-topcard-stat" title="AI 回复数">
-            <span className="agent-topcard-stat-value">{stats.aiReplies}</span>
-            <span className="agent-topcard-stat-label">回复</span>
-          </div>
-          {stats.toolCallTotal > 0 && (
-            <div className="agent-topcard-stat" title="工具调用次数">
-              <span className="agent-topcard-stat-value">{stats.toolCallTotal}</span>
-              <span className="agent-topcard-stat-label">工具</span>
+      {/* ============ 顶部固定卡：当前任务摘要（永远可见，含模型连接 LED） ============ */}
+      <div className={`agent-topcard ${isStreaming ? 'is-streaming' : ''} ${taskView.isDraft ? 'is-draft' : ''} ${!hasConfig ? 'is-warn' : ''}`}>
+        <span className="agent-topcard-stripe" aria-hidden="true" />
+        <div className="agent-topcard-main">
+          <div className="agent-topcard-head">
+            <div className="agent-topcard-head-left">
+              <span className="agent-topcard-label">
+                <span className="agent-topcard-led" title={isStreaming ? '生成中' : (hasConfig ? '已连接' : '未配置')} />
+                {isStreaming ? '生成中' : taskView.label}
+              </span>
             </div>
-          )}
-          <div className="agent-topcard-stat" title="估算 token 用量">
-            <span className="agent-topcard-stat-value">~{stats.estTokens}</span>
-            <span className="agent-topcard-stat-label">tokens</span>
+            {isStreaming && <span className="agent-topcard-badge is-running" title="模型正在生成回复">运行中</span>}
+            {taskView.isDraft && !isStreaming && <span className="agent-topcard-badge is-draft" title="输入预览（未发送）">草稿</span>}
           </div>
-          <div className="agent-topcard-stat agent-topcard-stat-status" title="模型与连接状态">
-            <span className={`agent-status-led ${hasConfig ? 'ok' : 'warn'}`} />
-            <span className="agent-topcard-stat-label">{selectedModel ? selectedModel.split('/').pop() : '未配置'}</span>
+          <p className={`agent-topcard-title ${taskView.isDraft ? 'is-draft' : ''}`} title={taskView.full}>{taskView.text}</p>
+          <div className="agent-topcard-model-row">
+            <span className="agent-topcard-model" title={selectedModel || '未配置模型'}>
+              <span className="agent-topcard-model-dot" />
+              {selectedModel ? selectedModel.split('/').pop() : '未配置'}
+            </span>
           </div>
         </div>
+        <div className="agent-topcard-metrics">
+          <div className="agent-topcard-metric" title="对话轮次">
+            <span className="agent-topcard-metric-value">{stats.rounds}</span>
+            <span className="agent-topcard-metric-label">轮次</span>
+          </div>
+          <div className="agent-topcard-metric" title="AI 回复数">
+            <span className="agent-topcard-metric-value">{stats.aiReplies}</span>
+            <span className="agent-topcard-metric-label">回复</span>
+          </div>
+          <div className="agent-topcard-metric" title="工具调用次数">
+            <span className="agent-topcard-metric-value">{stats.toolCallTotal}</span>
+            <span className="agent-topcard-metric-label">工具</span>
+          </div>
+          <div className="agent-topcard-metric" title="估算 token 用量">
+            <span className="agent-topcard-metric-value">~{stats.estTokens}</span>
+            <span className="agent-topcard-metric-label">tokens</span>
+          </div>
+        </div>
+        {memoryHealth && memoryHealth.total > 0 && (
+          <div className="agent-topcard-evolution" title="自进化记忆健康度：总记忆数 / 平均置信度 / 高置信记忆数">
+            <span className="agent-evolution-label">自进化</span>
+            <span className="agent-evolution-stat">
+              <span className="agent-evolution-value">{memoryHealth.total}</span>
+              <span className="agent-evolution-unit">条</span>
+            </span>
+            <span className="agent-evolution-divider" />
+            <span className="agent-evolution-stat" title={`平均置信度 ${memoryHealth.avgConfidence}/100`}>
+              <span className="agent-evolution-value">{memoryHealth.avgConfidence}</span>
+              <span className="agent-evolution-unit">/100</span>
+            </span>
+            <span className="agent-evolution-divider" />
+            <span className="agent-evolution-stat" title={`高置信记忆 ${memoryHealth.highConfidenceCount} 条`}>
+              <span className="agent-evolution-value">{memoryHealth.highConfidenceCount}</span>
+              <span className="agent-evolution-unit">高</span>
+            </span>
+            {lastEvolvedAt && (
+              <>
+                <span className="agent-evolution-divider" />
+                <span className="agent-evolution-time" title={`最近一次进化：${new Date(lastEvolvedAt).toLocaleString()}`}>
+                  {formatRelativeEvolution(lastEvolvedAt)}
+                </span>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ============ Tab 导航 ============ */}
@@ -219,118 +221,14 @@ export default function AgentPanel({
 
       {/* ============ Tab 内容区 ============ */}
       <div className="agent-tab-panes custom-scrollbar">
-        {/* ---------- 任务 tab ---------- */}
-        {activeTab === 'task' && (
-          <div className="agent-tab-pane" role="tabpanel">
-            {/* 执行计划：仅 agent loop 模式有内容时显示 */}
-            {hasSessionState && (
-              <section className="agent-section">
-                <header className="agent-section-head">
-                  <h3>执行计划</h3>
-                  {sessionState.plan.length > 0 && (
-                    <span className="agent-badge">
-                      {sessionState.plan.filter(t => t.status === 'done').length}/{sessionState.plan.length}
-                    </span>
-                  )}
-                </header>
-                <div className="session-state-panel">
-                  {sessionState.plan.length > 0 && (
-                    <ol className="session-plan-list">
-                      {sessionState.plan.map(t => {
-                        const iconKey = { pending: 'clock', running: 'play', done: 'check', failed: 'x', skipped: 'skip' }[t.status] || 'question';
-                        return (
-                          <li key={t.id} className={`session-plan-item is-${t.status}`}>
-                            <span className="session-plan-icon">{ICONS[iconKey] || ICONS.question}</span>
-                            <div className="session-plan-text">
-                              <div className="session-plan-title">{t.title}</div>
-                              {t.result && <div className="session-plan-result">{t.result}</div>}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-                  {Object.keys(sessionState.variables).length > 0 && (
-                    <div className="session-variables">
-                      <div className="session-state-label">变量空间</div>
-                      <ul className="session-variable-list">
-                        {Object.entries(sessionState.variables).slice(0, 10).map(([k, v]) => (
-                          <li key={k} className="session-variable-item">
-                            <span className="session-variable-key">{k}</span>
-                            <span className="session-variable-value">{typeof v === 'string' ? v.slice(0, 80) : JSON.stringify(v).slice(0, 80)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {Object.keys(sessionState.blackboard).length > 0 && (
-                    <div className="session-blackboard">
-                      <div className="session-state-label">黑板（工具产出共享）</div>
-                      <ul className="session-variable-list">
-                        {Object.entries(sessionState.blackboard).slice(0, 10).map(([k, entry]) => (
-                          <li key={k} className="session-variable-item">
-                            <span className="session-variable-key">{k}</span>
-                            <span className="session-variable-value">
-                              {typeof entry?.value === 'string' ? entry.value.slice(0, 80) : JSON.stringify(entry?.value).slice(0, 80)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {sessionState.history.length > 0 && (
-                    <div className="session-history">
-                      <div className="session-state-label">最近工具调用（{sessionState.history.length}）</div>
-                      <ul className="session-history-list">
-                        {sessionState.history.slice(-3).reverse().map(h => (
-                          <li key={h.id} className="session-history-item">
-                            <span className="session-history-tool">{h.toolName}</span>
-                            <span className="session-history-status">{h.status}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {/* 待办清单 */}
-            <section className="agent-section">
-              <header className="agent-section-head">
-                <h3>待办清单</h3>
-                {pendingCount > 0 && <span className="agent-badge">{pendingCount}</span>}
-              </header>
-              <div className="agent-todo-input-row">
-                <input
-                  className="agent-todo-input"
-                  value={todoInput}
-                  onChange={e => setTodoInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addTodo()}
-                  placeholder="添加待办..."
-                />
-                <button type="button" className="agent-todo-add" onClick={addTodo}>+</button>
-              </div>
-              <ul className="agent-todo-list">
-                {todos.length === 0 && <li className="agent-todo-empty">对话中 AI 提出的行动项会自动出现在这里，也可手动添加</li>}
-                {todos.map(t => (
-                  <li key={t.id} className={`agent-todo-item ${t.done ? 'done' : ''} ${t.source === 'auto' ? 'auto' : ''}`}>
-                    <button type="button" className="agent-todo-check" onClick={() => toggleTodo(t.id)} title={t.done ? '标记未完成' : '标记完成'}>
-                      {t.done && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                    </button>
-                    <span className="agent-todo-text">{t.text}</span>
-                    {t.source === 'auto' && !t.done && (
-                      <button type="button" className="agent-todo-adopt" onClick={() => adoptTodo(t.id)} title="采纳为我的待办">采纳</button>
-                    )}
-                    <button type="button" className="agent-todo-del" onClick={() => removeTodo(t.id)} title="删除">×</button>
-                  </li>
-                ))}
-              </ul>
-            </section>
+        {/* ---------- 技能 tab（取代原任务 tab）---------- */}
+        {activeTab === 'skills' && (
+          <div className="agent-tab-pane agent-tab-pane-skills" role="tabpanel">
+            <SkillsPanel skillsHook={skills} />
           </div>
         )}
 
-        {/* ---------- 智能体 tab ---------- */}
+        {/* ---------- 智能体 tab：能力清单 + 定时任务 + 用户画像 ---------- */}
         {activeTab === 'agent' && (
           <div className="agent-tab-pane" role="tabpanel">
             {/* Agent 工具能力：当智能体配置了 tools 白名单时展示 */}
@@ -347,9 +245,6 @@ export default function AgentPanel({
                       <span className="agent-capability-name">{t.label}</span>
                     </div>
                   ))}
-                  <p className="agent-capabilities-hint">
-                    该智能体走 Agent Loop 模式：可主动调用工具并基于返回结果继续推理。
-                  </p>
                 </div>
               </section>
             )}
@@ -399,30 +294,16 @@ export default function AgentPanel({
               </section>
             )}
 
-            {/* 智能体状态：在智能体 tab 内更详细展示 */}
-            <section className="agent-section">
-              <header className="agent-section-head"><h3>智能体状态</h3></header>
-              <div className="agent-status-card">
-                <div className="agent-status-row">
-                  <span className="agent-status-label">当前模型</span>
-                  <span className="agent-status-value">{selectedModel || '未选择'}</span>
-                </div>
-                <div className="agent-status-row">
-                  <span className="agent-status-label">连接状态</span>
-                  <span className={`agent-status-value agent-status-pill ${hasConfig ? 'ok' : 'warn'}`}>
-                    <span className="agent-status-led" />
-                    {hasConfig ? '已连接' : '未配置'}
-                  </span>
-                </div>
-                <div className="agent-status-row">
-                  <span className="agent-status-label">运行状态</span>
-                  <span className={`agent-status-value agent-status-pill ${isStreaming ? 'run' : 'idle'}`}>
-                    <span className="agent-status-led" />
-                    {isStreaming ? '生成中' : '空闲'}
-                  </span>
+            {/* 空状态 */}
+            {agentTools.length === 0 && !intelligenceProfile && (
+              <div className="agent-tab-empty">
+                <div className="agent-tab-empty-icon">{ICONS.sparkles}</div>
+                <div className="agent-tab-empty-text">
+                  当前智能体未配置工具，也暂无用户画像。<br />
+                  可在「设置 → 智能体」中给当前 agent 分配工具能力，或在对话中让智能体学习你的偏好。
                 </div>
               </div>
-            </section>
+            )}
           </div>
         )}
 

@@ -10,6 +10,7 @@ import { extractTodos } from '../../utils/todoExtractor.js';
 import { executeAgentTool } from '../../utils/agentTools.js';
 import { getRootHandle } from '../../utils/workspaceHandleStore.js';
 import { buildSessionContextText, appendHistory } from '../../utils/sessionStore.js';
+import { requestApproval } from '../../utils/sandbox.js';
 
 /**
  * @param {object} opts
@@ -29,6 +30,8 @@ import { buildSessionContextText, appendHistory } from '../../utils/sessionStore
  * @param {(v:any)=>any} opts.setLearnedVersion 学习画像版本 setter
  * @param {(v:any)=>any} opts.setAutoTodos 自动待办 setter
  * @param {(v:any)=>any} opts.setMemoriesVersion 记忆版本 setter
+ * @param {'assist'|'autonomous'|'plan'} opts.permissionMode Agent 权限模式
+ * @param {(skill:object)=>void} [opts.onSkillCreated] 技能创建成功回调（用于刷新 skillsHook 缓存）
  */
 export async function runAgentLoop({
   targetId,
@@ -47,6 +50,8 @@ export async function runAgentLoop({
   setLearnedVersion,
   setAutoTodos,
   setMemoriesVersion,
+  permissionMode = 'autonomous',
+  onSkillCreated,
 }) {
   const MAX_ITERATIONS = 6; // 防止无限循环
   const toolCtx = {
@@ -59,6 +64,8 @@ export async function runAgentLoop({
     tavilyKey: llmConfig?.tavilyKey || '',
     doubaoSearchKey: llmConfig?.doubaoSearchKey || '',
     llmConfig,
+    // 技能创建回调：toolCreateSkill 成功后通知前端刷新 skillsHook 缓存
+    onSkillCreated,
   };
   // 工作中的消息列表（包含 user / assistant / tool 三种角色），逐步累积
   const conversationMessages = baseMessages.map(m => ({ role: m.role, content: m.content }));
@@ -157,6 +164,56 @@ export async function runAgentLoop({
         // 执行工具（executeAgentTool 内部已 try/catch，不抛异常；但 fetch 自身可能因 abort 抛出）
         let result;
         try {
+          // assist 模式：每个工具调用前请求用户审批（用户可 allow-once / allow-always / deny）
+          // allow-always 会写入 session 级 grant，本会话内同工具免问
+          if (permissionMode === 'assist') {
+            try {
+              await requestApproval({
+                sessionId: targetId,
+                toolName,
+                args,
+                reason: `协助模式：智能体请求调用工具 "${toolName}"`,
+              });
+            } catch (denyErr) {
+              if (denyErr?.code === 'USER_DENIED') {
+                result = `用户拒绝授权工具 "${toolName}"，已跳过执行。`;
+              } else if (denyErr?.code === 'CANCELLED') {
+                const cancelErr = new Error('cancelled');
+                cancelErr.name = 'AbortError';
+                throw cancelErr;
+              } else {
+                result = `工具审批失败：${denyErr?.message || String(denyErr)}`;
+              }
+              // 跳过实际执行，直接进入结果回灌
+              const traceItem = toolCallTrace.find(t => t.id === tc.id);
+              if (traceItem) {
+                traceItem.status = 'skipped';
+                traceItem.result = String(result).slice(0, 8000);
+                traceItem.completedAt = Date.now();
+              }
+              updateAssistantMsg({
+                content: finalContent,
+                toolCalls: toolCallTrace.slice(),
+                thinking: `工具 ${toolName} 审批未通过，继续推理...`,
+                toolCallCount: toolCallTrace.length,
+              });
+              try {
+                appendHistory(targetId, {
+                  toolName,
+                  args,
+                  result: String(result).slice(0, 2000),
+                  status: 'skipped',
+                });
+              } catch { /* ignore */ }
+              conversationMessages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: String(result).slice(0, 20000),
+              });
+              if (controller.signal.aborted) { aborted = true; break; }
+              continue;
+            }
+          }
           result = await executeAgentTool(toolName, args, toolCtx);
         } catch (err) {
           // abort 时 fetch 抛 AbortError，向上传播让外层捕获
@@ -168,7 +225,7 @@ export async function runAgentLoop({
         const traceItem = toolCallTrace.find(t => t.id === tc.id);
         if (traceItem) {
           traceItem.status = 'done';
-          traceItem.result = String(result).slice(0, 4000);
+          traceItem.result = String(result).slice(0, 8000);
           traceItem.completedAt = Date.now();
         }
         updateAssistantMsg({
@@ -183,7 +240,7 @@ export async function runAgentLoop({
           appendHistory(targetId, {
             toolName,
             args,
-            result: String(result).slice(0, 1000),
+            result: String(result).slice(0, 2000),
             status: String(result).startsWith('错误：') ? 'failed' : 'done',
           });
         } catch { /* ignore */ }
