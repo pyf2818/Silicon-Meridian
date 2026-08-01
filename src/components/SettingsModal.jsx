@@ -75,7 +75,17 @@ export default function SettingsModal({
   showLlmQuickConfig, setShowLlmQuickConfig,
   allLlmModels,
   fetchLlmModels, addManualModel, removeManualModel, testLlmConnection,
-  handleSelectPreset, handleQuickSave, handleQuickTest,
+  // 新版预设四件套（SettingsModal > LlmTab 顶部 2 段 UI 使用）
+  LLM_PRESETS,
+  llmPresets,
+  activePresetId,
+  currentPresetId,
+  applyBuiltinTemplate,
+  applyUserPreset,
+  saveAsPreset,
+  deletePreset,
+  savePresetName,
+  setSavePresetName,
 
   // Agents
   agents, setAgents, currentAgent, setCurrentAgent,
@@ -190,6 +200,17 @@ export default function SettingsModal({
                     testLlmConnection={testLlmConnection}
                     llmTesting={llmTesting}
                     llmTestResult={llmTestResult}
+                    // 新版预设 props（顶部 2 段 UI）
+                    LLM_PRESETS={LLM_PRESETS}
+                    llmPresets={llmPresets}
+                    activePresetId={activePresetId}
+                    currentPresetId={currentPresetId}
+                    applyBuiltinTemplate={applyBuiltinTemplate}
+                    applyUserPreset={applyUserPreset}
+                    saveAsPreset={saveAsPreset}
+                    deletePreset={deletePreset}
+                    savePresetName={savePresetName}
+                    setSavePresetName={setSavePresetName}
                   />
                 )}
 

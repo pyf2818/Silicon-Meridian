@@ -25,6 +25,11 @@ export {
   WEEKDAYS,
   MONTHS,
   ICONS,
+  SOURCE_TYPES,
+  SOURCE_TYPE_META,
+  AI_SUBDOMAINS,
+  GRADE_PRESET_TIERS,
+  REGION_PRESETS,
 } from './appConstants.jsx';
 
 // index.jsx 历史独有的死代码（无任何文件引用），仅为兼容性保留

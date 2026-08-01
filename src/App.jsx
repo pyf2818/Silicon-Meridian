@@ -197,6 +197,10 @@ function App() {
   const setRenderLimit = useNewsStore(s => s.setRenderLimit);
   // 同步跟踪 filtered.length 给 IntersectionObserver 用（避免 observer 依赖 filtered 触发重建）
   const filteredLengthRef = useRef(0);
+  // 无限加载保护：① 进入 all/recommendations 首帧 300ms 内不触发预加载（防止首帧 sentinel 初始 intersect 连环 setRenderLimit → 滚动条抖动 + 40→60→80 反复拉长
+  //                ② 120ms 节流（避免 observer 重注册时密集回调重复触发）
+  const navEnterAtRef = useRef(Date.now());
+  const lastIntersectRunAtRef = useRef(0);
   const debouncedQuery = useNewsStore(s => s.debouncedQuery);
   const setDebouncedQuery = useNewsStore(s => s.setDebouncedQuery);
   const error = useNewsStore(s => s.error);
@@ -282,19 +286,17 @@ function App() {
 
   const {
     llmConfig, setLlmConfig,
-    llmModels, setLlmModels,
-    llmFetching, setLlmFetching,
-    llmFetchError, setLlmFetchError,
-    llmTestResult, setLlmTestResult,
-    llmTesting, setLlmTesting,
+    llmModels,
+    llmFetching, llmFetchError,
+    llmTestResult, llmTesting,
     llmManualInput, setLlmManualInput,
     showLlmQuickConfig, setShowLlmQuickConfig,
-    llmPresetName, setLlmPresetName,
+    savePresetName, setSavePresetName,
     allLlmModels,
-    llmPresets, upsertPreset, removePreset, activatePreset, activePresetId, setActivePresetId,
+    llmPresets, deletePreset, applyUserPreset, activePresetId, setActivePresetId, currentPresetId,
     fetchLlmModels, addManualModel, removeManualModel, testLlmConnection,
-    handleSelectPreset, handleQuickSave, handleQuickTest,
-  } = useLlmConfig({ LLM_PRESETS, user, onQuickSaveSuccess: () => setAiInsights({ loading: false, data: null, error: '' }) });
+    applyBuiltinTemplate, saveAsPreset,
+  } = useLlmConfig({ LLM_PRESETS, user, onPresetAction: (_action, _payload) => { /* hook 已自动保存到 LS，此处不做任何事；保留参数位置以便未来埋点 */ } });
 
   // profilePage 已从 useUiStore 订阅（见上方 UI 状态区）
   // ===== AI 助手与简报状态（迁移自 useState -> Zustand aiStore）=====
@@ -767,27 +769,42 @@ function App() {
     return () => el.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // 导航从非 feed 页切回 feed 页：① 记录进入时间戳；② 重置焦点索引复位（防止历史会话脏状态残留时的非持久化，但再次切回不会触发）
+  useEffect(() => {
+    if (nav === 'all' || nav === 'recommendations') {
+      navEnterAtRef.current = Date.now();
+    }
+    // 仅在进入 feed 导航（非 persistent）时清零焦点，避免回到顶栏高度改变引发 scrollIntoView 带动滚动条
+    if (focusedIndex !== -1) setFocusedIndex(-1);
+  }, [nav, focusedIndex, setFocusedIndex]);
+
   useEffect(() => {
     if (nav !== 'all' && nav !== 'recommendations') return;
     const el = feedRef.current;
     if (!el || loading) return;
+    // 每次挂载立刻更新 enter 时间（observe 前先更新，避免 observer 首次回调立即触发 sentinel intersect
+    navEnterAtRef.current = Date.now();
+    lastIntersectRunAtRef.current = 0;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0].isIntersecting) return;
-        // 滚动接近底部时同时做两件事（不互斥）：
-        // 1) 渲染分页：每批 +20 让 DOM 增长平滑，避免一次 +40 卡顿
-        // 2) 后端预加载：在用户看到底部前提前请求下一页
+        const now = Date.now();
+        // 节流：首帧 300ms 内（还没开始手动/滚动过，不做预加载（observer 注册的首次回调会立刻触发，避免 feed.scrollHeight 的拉伸
+        if (now - navEnterAtRef.current < 300 && (el.scrollTop ?? 0) < 8) return;
+        if (now - lastIntersectRunAtRef.current < 120) return;
+        lastIntersectRunAtRef.current = now;
         setRenderLimit(r => (filteredLengthRef.current > r ? r + 20 : r));
         if (newsHasMore && !loadingMore) {
           loadMoreNews();
         }
       },
-      { root: el, rootMargin: '800px 0px' }
+      { root: el, rootMargin: '800px 0px', threshold: 0 }
     );
     const sentinel = document.getElementById('load-more-sentinel');
     if (sentinel) observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [nav, newsHasMore, loadingMore, loading, renderLimit]);
+  // renderLimit 绝不能放进 deps：setRenderLimit 已用函数式读取最新 r，放了 deps 会 observer 每 +20 重建再触发初始 intersect → 连环触发 → 滚动条拉长循环
+  }, [nav, newsHasMore, loadingMore, loading]);
 
   const scrollToTop = () => {
     feedRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2565,9 +2582,17 @@ ${signals}
           addManualModel={addManualModel}
           removeManualModel={removeManualModel}
           testLlmConnection={testLlmConnection}
-          handleSelectPreset={handleSelectPreset}
-          handleQuickSave={handleQuickSave}
-          handleQuickTest={handleQuickTest}
+          // 新版 LLM 预设 props（SettingsTab 顶部的模板区 + 我的预设区）
+          LLM_PRESETS={LLM_PRESETS}
+          llmPresets={llmPresets}
+          activePresetId={activePresetId}
+          currentPresetId={currentPresetId}
+          applyBuiltinTemplate={applyBuiltinTemplate}
+          applyUserPreset={applyUserPreset}
+          saveAsPreset={saveAsPreset}
+          deletePreset={deletePreset}
+          savePresetName={savePresetName}
+          setSavePresetName={setSavePresetName}
           agents={agents}
           setAgents={setAgents}
           currentAgent={currentAgent}
@@ -2612,7 +2637,32 @@ ${signals}
       <ShortcutsModal showShortcuts={showShortcuts} setShowShortcuts={setShowShortcuts} />
 
       {/* LLM Quick Config Modal */}
-      <LlmQuickConfigModal showLlmQuickConfig={showLlmQuickConfig} setShowLlmQuickConfig={setShowLlmQuickConfig} llmConfig={llmConfig} setLlmConfig={setLlmConfig} allLlmModels={allLlmModels} fetchLlmModels={fetchLlmModels} llmFetching={llmFetching} llmFetchError={llmFetchError} llmTestResult={llmTestResult} llmTesting={llmTesting} handleSelectPreset={handleSelectPreset} handleQuickSave={handleQuickSave} handleQuickTest={handleQuickTest} llmPresets={llmPresets} activePresetId={activePresetId} activatePreset={activatePreset} removePreset={removePreset} upsertPreset={upsertPreset} llmPresetName={llmPresetName} setLlmPresetName={setLlmPresetName} />
+      <LlmQuickConfigModal
+        showLlmQuickConfig={showLlmQuickConfig}
+        setShowLlmQuickConfig={setShowLlmQuickConfig}
+        llmConfig={llmConfig}
+        setLlmConfig={setLlmConfig}
+        allLlmModels={allLlmModels}
+        fetchLlmModels={fetchLlmModels}
+        llmFetching={llmFetching}
+        llmFetchError={llmFetchError}
+        llmTestResult={llmTestResult}
+        llmTesting={llmTesting}
+        testLlmConnection={testLlmConnection}
+        llmManualInput={llmManualInput}
+        setLlmManualInput={setLlmManualInput}
+        addManualModel={addManualModel}
+        removeManualModel={removeManualModel}
+        llmPresets={llmPresets}
+        activePresetId={activePresetId}
+        currentPresetId={currentPresetId}
+        applyBuiltinTemplate={applyBuiltinTemplate}
+        applyUserPreset={applyUserPreset}
+        saveAsPreset={saveAsPreset}
+        deletePreset={deletePreset}
+        savePresetName={savePresetName}
+        setSavePresetName={setSavePresetName}
+      />
 
       {/* Back to Top */}
       <button className={`back-to-top ${showBackToTop ? 'visible' : ''}`} onClick={scrollToTop} title="回到顶部">

@@ -1,13 +1,14 @@
 :root {
   /* Base mode tokens — dark */
-  --bg-primary: #0B0E11;
+  --bg-primary: #11151A;
   --bg-secondary: #14181C;
-  --bg-card: rgba(20, 24, 28, .9);
+  --bg-card: rgba(20, 24, 28, .62);
   --bg-card-solid: #14181C;
   --bg-hover: rgba(30, 35, 41, .94);
-  --text-primary: #EDEFF2;
-  --text-secondary: #C4C9D0;
-  --text-muted: #B8C0CA;
+  /* 深色主题文字：三档对比度整体提升（和 #11151A 背景分别约 17.2 / 13.2 / 11.8 : 1，均 AAA 级） */
+  --text-primary: #F5F7FA;
+  --text-secondary: #D9DEE4;
+  --text-muted: #C5CCD4;
   --surface-workbench: rgba(20, 24, 28, .88);
   --surface-workbench-inset: rgba(255, 255, 255, .035);
   --surface-workbench-control: var(--bg-primary);
@@ -53,12 +54,12 @@
   --particle-c1: rgba(201,169,97,.5);
   --particle-c2: rgba(212,181,118,.42);
   /* 水墨氛围光晕：BackgroundLayer 多层 radial-gradient 使用 */
-  --ink-glow-1: rgba(201,169,97,.10);   /* 左上金色光晕 */
-  --ink-glow-2: rgba(201,169,97,.07);   /* 右下金色光晕 */
-  --ink-glow-3: rgba(60,55,75,.08);     /* 中下灰紫光晕 */
-  --particle-count: 40;
-  --particle-size-min: 0.5px;
-  --particle-size-max: 2px;
+  --ink-glow-1: rgba(201,169,97,.35);   /* 左上金色光晕 */
+  --ink-glow-2: rgba(201,169,97,.25);   /* 右下金色光晕 */
+  --ink-glow-3: rgba(120,108,140,.22);  /* 中下灰紫光晕 */
+  --particle-count: 55;
+  --particle-size-min: 1px;
+  --particle-size-max: 3px;
   --shadow-card: 0 16px 40px rgba(0,0,0,.5);
   --surface-workbench-ai: linear-gradient(135deg, rgba(201,169,97,.105), rgba(184,151,82,.055)), rgba(20,24,28,.88);
   --workbench-page-wash: linear-gradient(180deg, rgba(201,169,97,.055), transparent 250px);
@@ -69,57 +70,68 @@
   --signal-critical-soft: rgba(194, 88, 88, .12);
   --accent-red: #c25858;
   --accent-green: #5fa86d;
+  /* 滚动条主题 token（随 12 配色 & dark/light 双模式实时切色）
+     — 默认 fallback = champagne 香槟金 thumb；
+     — 侧边栏 / 主区 / 右面板 / 模态框 统一走这 3 个变量。*/
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(201,169,97,.35);
+  --scrollbar-thumb-hover: rgba(201,169,97,.58);
+  --scrollbar-size: 8px;
 }
 
 :root[data-mode="light"] {
-  /* Base mode tokens — light */
-  --bg-primary: #F7F5F0;
-  --bg-secondary: #FFFDF8;
-  --bg-card: rgba(255, 253, 248, .95);
-  --bg-card-solid: #FFFDF8;
-  --bg-hover: #EDE9E0;
-  --text-primary: #1A1D21;
-  --text-secondary: #3D3F43;
-  --text-muted: #5B5E63;
-  --surface-workbench: rgba(255, 253, 248, .97);
-  --surface-workbench-inset: rgba(237, 233, 224, .65);
-  --surface-workbench-control: #FBF9F4;
-  --surface-workbench-action: rgba(26, 29, 33, .05);
-  /* Default light palette tokens (champagne) — overridden by [data-palette] */
-  --accent-cyan: #9A7B3F;
-  --accent-blue: #8A6F3A;
-  --accent-violet: #6B6B6B;
-  --accent-emerald: #7A6232;
-  --accent-amber: #B8943E;
-  --accent-rose: #5C5C5C;
-  --gradient-primary: linear-gradient(135deg, #B8943E, #9A7B3F);
-  --accent-cyan-soft: rgba(154,123,63,.1);
-  --accent-cyan-softer: rgba(154,123,63,.065);
-  --accent-cyan-border: rgba(154,123,63,.25);
-  --accent-amber-soft: rgba(184,148,62,.11);
-  --border-color: rgba(154,123,63,.38);
-  --border-active: rgba(154,123,63,.4);
-  --border-glow: rgba(154,123,63,.12);
-  --bg-glow-1: rgba(154,123,63,.09);
-  --bg-glow-2: rgba(120,120,120,.05);
-  --particle-c1: rgba(154,123,63,.3);
-  --particle-c2: rgba(184,148,62,.24);
-  /* 水墨氛围光晕（浅主题：降低饱和度，提高背景明度） */
-  --ink-glow-1: rgba(154,123,63,.09);
-  --ink-glow-2: rgba(154,123,63,.06);
-  --ink-glow-3: rgba(120,110,90,.05);
-  --particle-count: 36;
-  --particle-size-min: 0.5px;
-  --particle-size-max: 1.8px;
-  --shadow-card: 0 16px 34px rgba(26,29,33,.08);
-  --surface-workbench-ai: linear-gradient(135deg, rgba(154,123,63,.1), rgba(138,111,58,.05)), rgba(255,253,248,.98);
-  --workbench-page-wash: linear-gradient(180deg, rgba(154,123,63,.07), rgba(255,244,224,.18) 210px, transparent 310px);
-  /* 信号色 — 浅色主题略调饱和度（水墨调和版） */
-  --signal-positive: #4d8a5a;      /* 墨青绿 */
-  --signal-critical: #b54545;      /* 墨赭红 */
-  --signal-critical-soft: rgba(181, 69, 69, .1);
-  --accent-red: #b54545;
-  --accent-green: #4d8a5a;
+  /* Base mode tokens — light 冰蓝白 */
+  --bg-primary: #F4F7FA;
+  --bg-secondary: #FFFFFF;
+  --bg-card: rgba(255, 255, 255, .94);
+  --bg-card-solid: #FFFFFF;
+  --bg-hover: #E8EEF4;
+  /* 浅色主题文字：三档对比度整体提升（和 #F4F7FA 背景分别约 15.8 / 10.8 / 6.8 : 1，AA~AAA 级） */
+  --text-primary: #0F151B;
+  --text-secondary: #273340;
+  --text-muted: #4D5D6D;
+  --surface-workbench: rgba(255, 255, 255, .98);
+  --surface-workbench-inset: rgba(232, 238, 244, .6);
+  --surface-workbench-control: #F8FAFC;
+  --surface-workbench-action: rgba(28, 35, 41, .04);
+  /* 冰蓝白 palette tokens */
+  --accent-cyan: #3A6B9C;
+  --accent-blue: #4A7BA7;
+  --accent-violet: #6B7A8F;
+  --accent-emerald: #4E7A6E;
+  --accent-amber: #7D8B99;
+  --accent-rose: #9C5F6B;
+  --gradient-primary: linear-gradient(135deg, #4A7BA7, #3A6B9C);
+  --accent-cyan-soft: rgba(74,123,167,.08);
+  --accent-cyan-softer: rgba(74,123,167,.04);
+  --accent-cyan-border: rgba(74,123,167,.18);
+  --accent-amber-soft: rgba(125,139,153,.08);
+  --border-color: rgba(80,100,120,.10);
+  --border-active: rgba(74,123,167,.22);
+  --border-glow: rgba(74,123,167,.05);
+  --bg-glow-1: rgba(74,123,167,.05);
+  --bg-glow-2: rgba(107,122,143,.035);
+  --particle-c1: rgba(100,145,185,.40);
+  --particle-c2: rgba(74,123,167,.30);
+  /* 冰蓝光晕 */
+  --ink-glow-1: rgba(74,123,167,.10);
+  --ink-glow-2: rgba(100,145,185,.07);
+  --ink-glow-3: rgba(107,122,143,.05);
+  --particle-count: 42;
+  --particle-size-min: 1px;
+  --particle-size-max: 2.5px;
+  --shadow-card: 0 4px 20px rgba(40,60,80,.05), 0 1px 3px rgba(40,60,80,.03);
+  --surface-workbench-ai: linear-gradient(135deg, rgba(74,123,167,.05), rgba(100,145,185,.03)), rgba(255,255,255,.98);
+  --workbench-page-wash: linear-gradient(180deg, rgba(74,123,167,.03), rgba(244,247,250,.2) 210px, transparent 310px);
+  /* 信号色 */
+  --signal-positive: #4A7A5E;
+  --signal-critical: #9A4E55;
+  --signal-critical-soft: rgba(154, 78, 85, .08);
+  --accent-red: #9A4E55;
+  --accent-green: #4A7A5E;
+  /* 滚动条（light 下整体浅 1 档，避免和浅白背景打架） */
+  --scrollbar-thumb: rgba(74,123,167,.32);
+  --scrollbar-thumb-hover: rgba(74,123,167,.52);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -157,9 +169,13 @@ body {
 .app.editor-fullscreen .preview-pane { min-height: 300px; }
 .app.editor-fullscreen .article-content-editor { min-height: 300px; }
 
-.app::before, .app::after { content: ''; position: fixed; pointer-events: none; z-index: 0; }
-.app::before { width: 60vw; height: 60vw; left: -20vw; top: -20vw; background: radial-gradient(circle, var(--bg-glow-1), transparent 60%); animation: glowPulse 8s ease-in-out infinite; }
-.app::after { width: 55vw; height: 55vw; right: -18vw; bottom: -20vw; background: radial-gradient(circle, var(--bg-glow-2), transparent 60%); animation: glowPulse 10s ease-in-out infinite reverse; }
+/* 移除左上/右下大光晕圆（默认金色光被用户要求去掉，连带灰紫副光晕一起移除，保持干净背景）
+ * .app::before / ::after 已不渲染背景，但保留空壳 content（避免子元素 absolute 定位坐标变化）。
+ * 原 glowPulse 动画保留（不影响，无元素再引用到）。
+ */
+.app::before, .app::after { content: ''; position: fixed; pointer-events: none; z-index: 0; background: none !important; animation: none !important; }
+:root[data-mode="light"] .app::before,
+:root[data-mode="light"] .app::after { background: none !important; }
 @keyframes glowPulse { 0%, 100% { opacity: .6; transform: scale(1); } 50% { opacity: .9; transform: scale(1.1); } }
 
 /* Background Grid */
@@ -177,10 +193,12 @@ body {
 /* Tech Badge */
 
 /* Neon Text */
-::-webkit-scrollbar { width: 0; height: 0; }
+/* NOTE: L186 旧规则 `::-webkit-scrollbar { width: 0; height: 0 }` 已删——它会把侧边栏 / 主区 / 右面板滚动条整个抹不见。
+   现在统一走文件底部 L22214「滚动条美化」token 化规则，并随 12 配色主题实时切色。*/
 
 /* Sidebar */
 .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-w); background: var(--bg-secondary); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; z-index: 100; transition: width .3s cubic-bezier(.4, 0, .2, 1); overflow: hidden; }
+:root[data-mode="light"] .sidebar { background: #FAFCFE; border-right-color: rgba(80,100,120,.08); box-shadow: 2px 0 12px rgba(40,60,80,.03); }
 .sidebar.collapsed { width: var(--sidebar-collapsed-w); }
 .sidebar-header { padding: 10px 12px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
 .sidebar.collapsed .sidebar-header { flex-direction: column; padding: 8px 4px; gap: var(--space-xs); }
@@ -268,6 +286,7 @@ body {
 
 /* Topbar */
 .topbar { position: sticky; top: 0; z-index: 50; padding: 12px 20px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px; transition: background .3s, backdrop-filter .3s, border-color .3s; }
+:root[data-mode="light"] .topbar { background: rgba(255,255,255,.88); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom-color: rgba(80,100,120,.06); box-shadow: 0 1px 6px rgba(40,60,80,.02); }
 /* 滚动时毛玻璃化 + 底部金色渐变线 */
 .topbar.topbar-scrolled {
   background: color-mix(in srgb, var(--bg-secondary) 75%, transparent);
@@ -277,9 +296,11 @@ body {
   box-shadow: 0 1px 0 0 rgba(201,169,97,.15);
 }
 :root[data-mode="light"] .topbar.topbar-scrolled {
-  background: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
-  border-bottom-color: rgba(154,123,63,.3);
-  box-shadow: 0 1px 0 0 rgba(154,123,63,.12);
+  background: rgba(255,255,255,.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom-color: rgba(80,100,120,.06);
+  box-shadow: 0 1px 10px rgba(40,60,80,.04);
 }
 @supports not ((backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px))) {
   .topbar.topbar-scrolled { background: var(--bg-secondary); }
@@ -745,10 +766,39 @@ body {
   border-color: var(--accent-cyan);
 }
 .filter-chip-x {
+  /* —— button 原生样式重置：解决"打叉按钮不渲染"问题 —— */
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  /* —— 布局/外观 —— */
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  /* —— 字符样式 —— */
   font-size: 14px;
   line-height: 1;
-  opacity: .7;
+  color: inherit;          /* 继承父级 filter-chip 的主题色 */
+  opacity: .75;
   font-weight: 900;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;  /* 避免 × 字符被等宽字体替代成方块 */
+  cursor: pointer;
+  transition: opacity .15s ease, background-color .15s ease;
+}
+.filter-chip-x:hover {
+  opacity: 1;
+  background-color: currentColor;
+  background-color: color-mix(in srgb, currentColor 15%, transparent);
+}
+.filter-chip-x:active {
+  transform: scale(0.92);
 }
 .filter-chip:hover .filter-chip-x { opacity: 1; }
 .filter-chip-clear-all {
@@ -2346,6 +2396,8 @@ body {
 
 /* News Item - 轻量化边框：平时淡边框，hover 才浮起 */
 .news-item { display: flex; gap: 16px; padding: 14px 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; transition: border-color .2s, transform .2s, box-shadow .2s; position: relative; }
+:root[data-mode="light"] .news-item { box-shadow: 0 2px 10px rgba(40,60,80,.04); }
+:root[data-mode="light"] .news-item:hover { box-shadow: 0 6px 20px rgba(40,60,80,.07), 0 1px 3px rgba(40,60,80,.03); }
 /* 视口淡入：默认隐藏，进入视口后加 news-item-visible 触发动画 */
 .news-item.news-item-hidden { opacity: 0; transform: translateY(12px); }
 .news-item.news-item-visible { animation: fadeUp .4s ease forwards; }
@@ -3712,7 +3764,8 @@ body {
 .line-chart-labels { display: grid; grid-template-columns: repeat(auto-fit, minmax(28px, 1fr)); gap: 6px; font-size: 11px; color: var(--text-muted); }
 
 /* Right Panel */
-.panel { position: fixed; right: 0; top: 0; bottom: 0; width: var(--panel-w); border-left: 1px solid var(--border-color); background: linear-gradient(180deg, rgba(56, 189, 248, .06), transparent 25%), color-mix(in srgb, var(--bg-secondary) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); min-height: 100vh; display: flex; flex-direction: column; transition: width .3s ease; z-index: 100; overflow-y: auto; overflow-x: hidden; }
+.panel { position: fixed; right: 0; top: 0; bottom: 0; width: var(--panel-w); border-left: 1px solid var(--border-color); background: var(--bg-secondary); min-height: 100vh; display: flex; flex-direction: column; transition: width .3s ease; z-index: 100; overflow-y: auto; overflow-x: hidden; }
+:root[data-mode="light"] .panel { background: #FAFCFE; border-left-color: rgba(80,100,120,.08); box-shadow: -2px 0 12px rgba(40,60,80,.03); }
 @supports not ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
   .panel { background: linear-gradient(180deg, rgba(56, 189, 248, .06), transparent 25%), var(--bg-secondary); }
 }
@@ -3889,14 +3942,320 @@ body {
 .hex-legend-item { font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
 .hex-legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
-/* Particle Layer */
+/* Particle Layer — Theme-driven shape engine
+ * 每个主题通过 :root[data-palette] 设置 6 个驱动变量来切换粒子形态：
+ *   --particle-shape     : dot | bubble | stardust | leaf | halo | hex | aurora | petal
+ *   --particle-size-base : 基础尺寸倍数（1 ≈ 4px）
+ *   --particle-size-delta: 每 3N/4N/5N 颗的尺寸差
+ *   --particle-fill      : 填充方式：solid / glassy（泡泡带描边+高光）
+ *   --particle-drift     : 横向漂移强度，px 值
+ *   --particle-wobble    : wobble 动画启用 0/1
+ *   --particle-tint-2     : 第 3n 颗粒子颜色（通常 = c2，可选覆盖）
+ *   --particle-animation  : 动画 keyframes 名（particleRise / bubbleRise / stardustDrift / leafSway / haloFloat / hexFloat / auroraWave / petalFall）
+ */
 .particle-layer { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
-.particle { position: absolute; width: 4px; height: 4px; border-radius: 999px; background: var(--particle-c1); left: calc((var(--i) * 4.16%)); top: 100%; box-shadow: 0 0 12px var(--particle-c1), 0 0 24px var(--particle-c1); animation: particleRise calc(14s + (var(--i) * .3s)) linear infinite; animation-delay: calc(var(--i) * -.5s); opacity: .8; }
-.particle:nth-child(3n) { background: var(--particle-c2); box-shadow: 0 0 14px var(--particle-c2), 0 0 28px var(--particle-c2); }
-.particle:nth-child(4n) { width: 3px; height: 3px; }
-.particle:nth-child(5n) { width: 5px; height: 5px; }
+.particle {
+  --base-w: calc(4px * var(--particle-size-base, 1));
+  --base-h: calc(4px * var(--particle-size-base, 1));
+  position: absolute;
+  width: var(--base-w);
+  height: var(--base-h);
+  left: calc((var(--i) * 4.16%));
+  top: 100%;
+  opacity: .8;
+  /* 统一背景 + 辉光 */
+  background:
+    /* 泡泡（glassy 模式）：半透明底 + 左上高光 + 右下内发光描边 */
+    var(
+      --particle-fill-bg,
+      var(--particle-c1)
+    );
+  box-shadow:
+    0 0 calc(12px * var(--particle-size-base, 1)) var(--particle-c1),
+    0 0 calc(24px * var(--particle-size-base, 1)) var(--particle-c1);
+  /* 形状驱动（圆点/六边形/椭圆/斜菱形/光环/椭圆叶） */
+  border-radius: var(--particle-radius, 999px);
+  clip-path: var(--particle-clip, none);
+  transform: rotate(var(--particle-rot, 0deg));
+  /* 动画 */
+  animation-name: var(--particle-animation, particleRise);
+  animation-duration: calc(14s + (var(--i) * .3s));
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-delay: calc(var(--i) * -.5s);
+}
+
+/* —— 尺寸分层：保留原 nth-child 分布思路 —— */
+.particle:nth-child(3n) {
+  background: var(--particle-fill-bg-2, var(--particle-c2));
+  box-shadow:
+    0 0 calc(14px * var(--particle-size-base, 1)) var(--particle-c2),
+    0 0 calc(28px * var(--particle-size-base, 1)) var(--particle-c2);
+}
+.particle:nth-child(4n) {
+  width: calc(var(--base-w) - calc(1px * var(--particle-size-delta, 1)));
+  height: calc(var(--base-h) - calc(1px * var(--particle-size-delta, 1)));
+}
+.particle:nth-child(5n) {
+  width: calc(var(--base-w) + calc(1px * var(--particle-size-delta, 1)));
+  height: calc(var(--base-h) + calc(1px * var(--particle-size-delta, 1)));
+}
 .particle:nth-child(7n) { opacity: 1; }
-@keyframes particleRise { 0% { transform: translateY(0) translateX(0) scale(.5); opacity: 0; } 5% { opacity: .8; transform: translateY(-5vh) translateX(5px) scale(1); } 50% { transform: translateY(-50vh) translateX(15px) scale(.8); } 95% { opacity: .6; } 100% { transform: translateY(-105vh) translateX(-10px) scale(.3); opacity: 0; } }
+
+/* —— 默认形态：dot（champagne 等未明确指定 shape 时 fallback） —— */
+
+/* —— 动画 keyframes（8 种形态各自的动作特征） —— */
+@keyframes particleRise {
+  0%   { transform: translate(0, 0) scale(.5); opacity: 0; }
+  5%   { opacity: .8; transform: translate(calc(var(--particle-drift, 5px) * .2), -5vh) scale(1); }
+  50%  { transform: translate(var(--particle-drift, 15px), -50vh) scale(.8); }
+  95%  { opacity: .6; }
+  100% { transform: translate(calc(var(--particle-drift, -10px)), -105vh) scale(.3); opacity: 0; }
+}
+
+@keyframes bubbleRise {
+  0%   { transform: translate(0, 0) scale(.4); opacity: 0; }
+  6%   { opacity: .85; transform: translate(2px, -6vh) scale(.7); }
+  30%  { transform: translate(var(--particle-drift, 12px), -35vh) scale(.9) rotate(-2deg); }
+  60%  { transform: translate(calc(var(--particle-drift, -6px) * -1), -65vh) scale(1) rotate(3deg); }
+  94%  { opacity: .7; }
+  100% { transform: translate(var(--particle-drift, 20px), -108vh) scale(1.05) rotate(-4deg); opacity: 0; }
+}
+
+@keyframes stardustDrift {
+  0%   { transform: translate(0, 0) rotate(0deg) scale(.6); opacity: 0; filter: blur(0); }
+  10%  { opacity: .9; }
+  50%  { transform: translate(var(--particle-drift, 30px), -55vh) rotate(180deg) scale(1.1); }
+  90%  { opacity: .75; }
+  100% { transform: translate(calc(var(--particle-drift, -40px) * -1), -110vh) rotate(360deg) scale(.5); opacity: 0; }
+}
+
+@keyframes leafSway {
+  0%   { transform: translate(0, 0) rotate(var(--particle-rot, 0deg)); opacity: 0; }
+  8%   { opacity: .85; }
+  25%  { transform: translate(var(--particle-drift, 22px), -28vh) rotate(calc(var(--particle-rot, 0deg) + 25deg)); }
+  50%  { transform: translate(calc(var(--particle-drift, -18px) * -1), -52vh) rotate(calc(var(--particle-rot, 0deg) - 20deg)); }
+  75%  { transform: translate(var(--particle-drift, 28px), -80vh) rotate(calc(var(--particle-rot, 0deg) + 35deg)); opacity: .7; }
+  100% { transform: translate(calc(var(--particle-drift, -12px) * -1), -112vh) rotate(calc(var(--particle-rot, 0deg) - 15deg)); opacity: 0; }
+}
+
+@keyframes haloFloat {
+  0%   { transform: translate(0, 0) scale(.6); opacity: 0; }
+  10%  { opacity: .6; }
+  50%  { transform: translate(var(--particle-drift, 10px), -50vh) scale(1.1); filter: blur(.5px); }
+  90%  { opacity: .5; }
+  100% { transform: translate(calc(var(--particle-drift, -14px) * -1), -108vh) scale(.9); opacity: 0; }
+}
+
+@keyframes hexFloat {
+  0%   { transform: translate(0, 0) rotate(0deg) scale(.7); opacity: 0; }
+  10%  { opacity: .85; }
+  50%  { transform: translate(var(--particle-drift, 16px), -50vh) rotate(30deg) scale(1); }
+  90%  { opacity: .75; }
+  100% { transform: translate(calc(var(--particle-drift, -20px) * -1), -110vh) rotate(60deg) scale(.6); opacity: 0; }
+}
+
+@keyframes auroraWave {
+  0%   { transform: translate(0, 0) skewX(0deg); opacity: 0; filter: blur(1px); }
+  12%  { opacity: .8; }
+  50%  { transform: translate(var(--particle-drift, 40px), -50vh) skewX(12deg) scale(1.15); filter: blur(2px); }
+  88%  { opacity: .7; }
+  100% { transform: translate(calc(var(--particle-drift, -50px) * -1), -110vh) skewX(-14deg) scale(.9); opacity: 0; }
+}
+
+@keyframes petalFall {
+  0%   { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+  10%  { opacity: .9; }
+  35%  { transform: translate(var(--particle-drift, 30px), -38vh) rotate(80deg) scale(1.05); }
+  65%  { transform: translate(calc(var(--particle-drift, -36px) * -1), -72vh) rotate(-60deg) scale(.95); }
+  92%  { opacity: .7; }
+  100% { transform: translate(var(--particle-drift, 22px), -112vh) rotate(160deg) scale(.75); opacity: 0; }
+}
+
+/* ==========================================================================
+   Palette → particle shape 映射（和 themes.css 的 12 palette 一一对应）
+   每个 palette 分别在 dark / light 两种 data-mode 下设置驱动变量。
+   蓝色系（cosmos/neon/arctic/twilight 等）→ bubble 泡泡（用户指定"蓝色可以为泡泡"）
+   森林/墨竹青 → leaf 叶脉/竹叶漂落
+   樱花粉 → petal 花瓣
+   极光紫 → aurora 光波
+   香槟金/琥珀 → dot 星点 / halo 光斑
+   珊瑚橙/赤陶 → hex 六边形蜡印
+   ========================================================================== */
+
+/* --- 1. 香槟金 champagne (默认) → 温润星点 dot --- */
+:root[data-palette="champagne"] .particle {
+  --particle-size-base: 1;
+  --particle-size-delta: 1;
+  --particle-drift: 15px;
+  --particle-animation: particleRise;
+}
+
+/* --- 2. 樱花粉 sakura → 柔粉花瓣下落 petal --- */
+:root[data-palette="sakura"] .particle {
+  --particle-size-base: 1.5;
+  --particle-size-delta: 1.5;
+  --particle-drift: 30px;
+  --particle-radius: 60% 40% 55% 45% / 45% 55% 50% 50%;
+  --particle-clip: none;
+  --particle-rot: -12deg;
+  --particle-animation: petalFall;
+}
+
+/* --- 3. 翠翠绿 forest → 绿叶漂落 leaf --- */
+:root[data-palette="forest"] .particle {
+  --particle-size-base: 1.6;
+  --particle-size-delta: 1.4;
+  --particle-drift: 22px;
+  --particle-radius: 2px 80% 4px 70%;
+  --particle-clip: ellipse(45% 60% at 50% 50%);
+  --particle-rot: 12deg;
+  --particle-animation: leafSway;
+}
+
+/* --- 4. 赛博蓝 neon → 漂浮泡泡 bubble（用户指定"蓝色泡泡"） --- */
+:root[data-palette="neon"] .particle {
+  --particle-size-base: 2.2;
+  --particle-size-delta: 2;
+  --particle-drift: 14px;
+  --particle-radius: 999px;
+  --particle-fill-bg:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.55) 0, rgba(255,255,255,0) 36%),
+    radial-gradient(circle at 70% 80%, color-mix(in srgb, var(--particle-c1) 35%, transparent) 0, transparent 60%),
+    color-mix(in srgb, var(--particle-c1) 22%, transparent);
+  --particle-fill-bg-2:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.5) 0, rgba(255,255,255,0) 36%),
+    radial-gradient(circle at 70% 80%, color-mix(in srgb, var(--particle-c2) 35%, transparent) 0, transparent 60%),
+    color-mix(in srgb, var(--particle-c2) 22%, transparent);
+  --particle-animation: bubbleRise;
+}
+:root[data-mode="light"][data-palette="neon"] .particle {
+  --particle-fill-bg:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.7) 0, rgba(255,255,255,0) 32%),
+    color-mix(in srgb, var(--particle-c1) 40%, rgba(255,255,255,.18));
+  --particle-fill-bg-2:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.7) 0, rgba(255,255,255,0) 32%),
+    color-mix(in srgb, var(--particle-c2) 40%, rgba(255,255,255,.18));
+}
+
+/* --- 5. 深空蓝 cosmos → 泡泡 bubble（用户指定"蓝色泡泡"） --- */
+:root[data-palette="cosmos"] .particle {
+  --particle-size-base: 2.0;
+  --particle-size-delta: 1.8;
+  --particle-drift: 14px;
+  --particle-radius: 999px;
+  --particle-fill-bg:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.5) 0, rgba(255,255,255,0) 36%),
+    color-mix(in srgb, var(--particle-c1) 30%, transparent);
+  --particle-fill-bg-2:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.45) 0, rgba(255,255,255,0) 36%),
+    color-mix(in srgb, var(--particle-c2) 30%, transparent);
+  --particle-animation: bubbleRise;
+}
+:root[data-mode="light"][data-palette="cosmos"] .particle {
+  --particle-fill-bg:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.72) 0, rgba(255,255,255,0) 32%),
+    color-mix(in srgb, var(--particle-c1) 38%, rgba(255,255,255,.18));
+  --particle-fill-bg-2:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.72) 0, rgba(255,255,255,0) 32%),
+    color-mix(in srgb, var(--particle-c2) 38%, rgba(255,255,255,.18));
+}
+
+/* --- 6. 赤陶橘 terracotta → 六边形蜡印 hex --- */
+:root[data-palette="terracotta"] .particle {
+  --particle-size-base: 1.4;
+  --particle-size-delta: 1.2;
+  --particle-drift: 16px;
+  --particle-radius: 0;
+  --particle-clip: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+  --particle-animation: hexFloat;
+}
+
+/* --- 7. 北极银 arctic → 泡泡 bubble（用户指定"蓝色泡泡"，冰蓝白） --- */
+:root[data-palette="arctic"] .particle {
+  --particle-size-base: 2.0;
+  --particle-size-delta: 1.6;
+  --particle-drift: 10px;
+  --particle-radius: 999px;
+  --particle-fill-bg:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.65) 0, rgba(255,255,255,0) 34%),
+    color-mix(in srgb, var(--particle-c1) 25%, transparent);
+  --particle-fill-bg-2:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.6) 0, rgba(255,255,255,0) 34%),
+    color-mix(in srgb, var(--particle-c2) 25%, transparent);
+  --particle-animation: bubbleRise;
+}
+:root[data-mode="light"][data-palette="arctic"] .particle {
+  --particle-fill-bg:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.78) 0, rgba(255,255,255,0) 32%),
+    color-mix(in srgb, var(--particle-c1) 32%, rgba(255,255,255,.22));
+  --particle-fill-bg-2:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.78) 0, rgba(255,255,255,0) 32%),
+    color-mix(in srgb, var(--particle-c2) 32%, rgba(255,255,255,.22));
+}
+
+/* --- 8. 极光紫 aurora → 扭动极光带 auroraWave --- */
+:root[data-palette="aurora"] .particle {
+  --particle-size-base: 2.6;
+  --particle-size-delta: 2.4;
+  --particle-drift: 40px;
+  --particle-radius: 40% 60% 60% 40% / 60% 50% 50% 40%;
+  --particle-clip: none;
+  --particle-animation: auroraWave;
+}
+
+/* --- 9. 墨竹青 bamboo → 竹叶漂落 leaf --- */
+:root[data-palette="bamboo"] .particle {
+  --particle-size-base: 1.5;
+  --particle-size-delta: 1.3;
+  --particle-drift: 20px;
+  --particle-radius: 3px 90% 4px 80%;
+  --particle-clip: ellipse(30% 65% at 50% 50%);
+  --particle-rot: 14deg;
+  --particle-animation: leafSway;
+}
+
+/* --- 10. 琥珀棕 amber → 柔化光晕 halo（和金色/琥珀色匹配） --- */
+:root[data-palette="amber"] .particle {
+  --particle-size-base: 1.8;
+  --particle-size-delta: 1.6;
+  --particle-drift: 10px;
+  --particle-radius: 999px;
+  --particle-animation: haloFloat;
+}
+
+/* --- 11. 暮光蓝 twilight → 泡泡 bubble（用户指定"蓝色泡泡"） --- */
+:root[data-palette="twilight"] .particle {
+  --particle-size-base: 1.9;
+  --particle-size-delta: 1.6;
+  --particle-drift: 12px;
+  --particle-radius: 999px;
+  --particle-fill-bg:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.55) 0, rgba(255,255,255,0) 36%),
+    color-mix(in srgb, var(--particle-c1) 28%, transparent);
+  --particle-fill-bg-2:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.5) 0, rgba(255,255,255,0) 36%),
+    color-mix(in srgb, var(--particle-c2) 28%, transparent);
+  --particle-animation: bubbleRise;
+}
+:root[data-mode="light"][data-palette="twilight"] .particle {
+  --particle-fill-bg:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.76) 0, rgba(255,255,255,0) 32%),
+    color-mix(in srgb, var(--particle-c1) 38%, rgba(255,255,255,.22));
+  --particle-fill-bg-2:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,.76) 0, rgba(255,255,255,0) 32%),
+    color-mix(in srgb, var(--particle-c2) 38%, rgba(255,255,255,.22));
+}
+
+/* --- 12. 珊瑚橙 coral → 六边形 hex（蜡封/贝壳质感） --- */
+:root[data-palette="coral"] .particle {
+  --particle-size-base: 1.3;
+  --particle-size-delta: 1.1;
+  --particle-drift: 16px;
+  --particle-radius: 0;
+  --particle-clip: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+  --particle-animation: hexFloat;
+}
 
 .export-filters { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .export-filters select { height: 32px; padding: 0 10px; background: var(--bg-primary); border: var(--panel-border); border-radius: 8px; color: var(--text-primary); }
@@ -8426,6 +8785,73 @@ body {
     width: 48px !important;
     height: 48px !important;
 }
+}
+
+/* Layer 1 快速Chip筛选 */
+.source-filter-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: rgba(120,130,145,.04);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+.chip-row-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: .3px;
+  padding-right: 8px;
+  margin-right: 4px;
+  border-right: 1px solid var(--border-color);
+  min-width: 96px;
+}
+.source-filter-chips-row .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12.5px;
+  transition: all .18s cubic-bezier(.4,0,.2,1);
+}
+.source-filter-chips-row .chip svg { width: 14px; height: 14px; }
+.source-filter-chips-row .chip:hover {
+  border-color: rgba(74,123,167,.45);
+  color: var(--accent-cyan, #3A6B9C);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(74,123,167,.08);
+}
+.source-filter-chips-row .chip.active {
+  background: linear-gradient(135deg, #4A7BA7, #3A6B9C);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 3px 8px rgba(74,123,167,.25);
+}
+.source-filter-chips-row .chip .chip-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  background: rgba(120,130,145,.18);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.source-filter-chips-row .chip.active .chip-badge {
+  background: rgba(255,255,255,.22);
+  color: #fff;
 }
 
 /* 源卡片布局 */
@@ -16181,6 +16607,277 @@ body {
 .llm-btn-primary:hover:not(:disabled) { background: var(--accent-emerald); }
 .llm-btn-primary:disabled { opacity: .4; cursor: default; }
 
+/* 另存为预设按钮 */
+.llm-btn-save-as {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border-active);
+  border-radius: 6px;
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+  cursor: pointer;
+  transition: all .15s ease;
+  white-space: nowrap;
+}
+.llm-btn-save-as:hover:not(:disabled) {
+  background: var(--accent-cyan-soft);
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+}
+.llm-btn-save-as:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+/* 另存为预设输入框 */
+.llm-preset-name-input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s ease;
+}
+.llm-preset-name-input:focus {
+  border-color: var(--accent-cyan);
+}
+.llm-preset-name-input::placeholder {
+  color: var(--text-muted);
+  opacity: .7;
+}
+
+/* 底部操作栏 */
+.llm-config-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+.llm-footer-spacer {
+  flex: 1;
+}
+
+/* ============ 三段式 LLM 配置 UI（服务商模板 / 我的预设 / 当前配置）============ */
+.llm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.llm-tab-root {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 4px 0;
+}
+.llm-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.llm-section-head label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.llm-section-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.llm-section-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 服务商模板下拉列表 */
+.llm-provider-select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.llm-provider-select {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  transition: border-color .15s ease;
+}
+.llm-provider-select:hover {
+  border-color: var(--border-active);
+}
+.llm-provider-select:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 1px var(--accent-cyan) inset;
+}
+
+/* 我的预设列表（紧凑行布局） */
+.llm-user-presets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.llm-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 12px;
+  transition: all .12s ease;
+}
+.llm-preset-row:hover {
+  border-color: var(--border-active);
+  background: var(--accent-cyan-soft);
+}
+.llm-preset-row.in-use {
+  border-color: var(--accent-cyan);
+  background: var(--accent-cyan-soft);
+  box-shadow: 0 0 0 1px var(--accent-cyan) inset;
+}
+.llm-preset-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.llm-preset-row .llm-preset-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.llm-preset-row .llm-preset-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.llm-preset-row .llm-preset-badge {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.llm-preset-row .llm-preset-chip {
+  padding: 1px 5px;
+  font-size: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.llm-preset-row .llm-preset-updated {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-right: auto;
+}
+.llm-preset-row .llm-btn-apply,
+.llm-preset-row .llm-btn-del {
+  padding: 3px 8px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* 空状态 */
+.llm-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: 10px;
+}
+.llm-empty-icon {
+  font-size: 24px;
+  opacity: .5;
+}
+.llm-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 2px;
+}
+.llm-empty-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* 手动添加模型行 */
+.llm-manual-add-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.llm-add-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border-active);
+  border-radius: 6px;
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+  cursor: pointer;
+  transition: all .15s ease;
+  white-space: nowrap;
+}
+.llm-add-btn:hover:not(:disabled) {
+  background: var(--accent-cyan-soft);
+  color: var(--accent-cyan);
+}
+.llm-add-btn:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+/* 联网搜索开关 */
+.llm-toggle-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.llm-toggle-wrap input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent-cyan, #22d3ee);
+}
+
 /* 羊皮纸底色 + 褶皱纹理 + 泛黄晕染 */
 .today-newspaper {
   position: relative;
@@ -21477,13 +22174,22 @@ body {
   inset: 0;
   z-index: -3;
   pointer-events: none;
-  background: var(--bg-primary);
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(201,169,97,.10) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 80% 90%, rgba(120,108,140,.08) 0%, transparent 50%),
+    linear-gradient(180deg, #141820 0%, #11151A 50%, #0F1318 100%);
   overflow: hidden;
+}
+:root[data-mode="light"] .visual-bg-layer {
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 5%, rgba(74,123,167,.04) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 85% 95%, rgba(107,122,143,.03) 0%, transparent 50%),
+    linear-gradient(180deg, #F7FAFC 0%, #F4F7FA 45%, #EDF1F5 100%);
 }
 .visual-bg-glow {
   position: absolute;
   border-radius: 50%;
-  filter: blur(60px);
+  filter: blur(42px);
   animation: visual-bg-breathe 25s ease-in-out infinite;
 }
 .visual-bg-glow-1 {
@@ -21529,8 +22235,273 @@ body {
   mix-blend-mode: overlay;
 }
 :root[data-mode="light"] .visual-noise-layer {
-  opacity: 0.04;
+  opacity: 0.025;
   mix-blend-mode: multiply;
+}
+
+/* ============================================================
+ * 旧 span 粒子层（App.jsx L2021-2023 的 24 个 .particle）现在隐藏。
+ * 背景粒子统一由 ParticleField Canvas 接管，并按 12 配色主题切形态。
+ * ============================================================ */
+.particle-layer { display: none !important; }
+
+/* ============================================================
+ * ParticleField 主题驱动引擎（读 :root 级 CSS 变量）
+ * 变量全部挂在 :root（<html data-palette="xxx">）上，
+ * 由 ParticleField.jsx 的 readCssVar() 直接读取，fallback 永不挂空。
+ * 蓝色主题（neon / cosmos / arctic / twilight）→ bubble 泡泡；
+ * 粉→花瓣，绿→叶片，金银→金箔点/光晕，橙陶→六角，紫→极光。
+ * ============================================================ */
+
+/* ---------- 默认（无 data-palette 属性 = champagne 兼容层） ---------- */
+:root {
+  --particle-shape: dot;
+  --particle-c1: rgba(201,169,97,.5);
+  --particle-c2: rgba(212,181,118,.42);
+  --particle-count: 45;
+  --particle-speed-mul: 1;
+  --particle-size-min: 0.5;
+  --particle-size-max: 2.2;
+  /* 泡泡专用（蓝色主题会覆盖） */
+  --particle-bubble-min: 3;
+  --particle-bubble-max: 14;
+  --particle-bubble-hl: rgba(255,255,255,.65);
+  --particle-bubble-edge: rgba(255,255,255,.18);
+  /* 其余形态专用 size 变量（按需要覆盖） */
+  --particle-petal-min: 5;   --particle-petal-max: 11;
+  --particle-leaf-min: 4;    --particle-leaf-max: 9;
+  --particle-hex-min: 3;     --particle-hex-max: 9;
+  --particle-halo-min: 8;    --particle-halo-max: 22;
+  --particle-aurora-min: 18; --particle-aurora-max: 48;
+  --particle-stardust-min:.4;--particle-stardust-max: 1.6;
+}
+
+/* ---------- 1. champagne 香槟金（默认）→ 金箔星点 ---------- */
+:root[data-palette="champagne"] {
+  --particle-shape: dot;
+  --particle-c1: rgba(201,169,97,.5);
+  --particle-c2: rgba(232,205,140,.4);
+  --particle-count: 55;
+  --particle-size-min: 0.6;
+  --particle-size-max: 2.4;
+  --particle-speed-mul: 1.05;
+  --scrollbar-thumb: rgba(201,169,97,.36);
+  --scrollbar-thumb-hover: rgba(201,169,97,.6);
+}
+:root[data-mode="light"][data-palette="champagne"] {
+  --scrollbar-thumb: rgba(154,123,63,.3);
+  --scrollbar-thumb-hover: rgba(154,123,63,.52);
+}
+
+/* ---------- 2. sakura 樱花和纸 → 花瓣 ---------- */
+:root[data-palette="sakura"] {
+  --particle-shape: petal;
+  --particle-c1: rgba(249,168,184,.55);
+  --particle-c2: rgba(255,200,214,.42);
+  --particle-count: 30;
+  --particle-petal-min: 5;
+  --particle-petal-max: 13;
+  --particle-speed-mul: 0.85;
+  --scrollbar-thumb: rgba(249,168,184,.38);
+  --scrollbar-thumb-hover: rgba(249,168,184,.62);
+}
+:root[data-mode="light"][data-palette="sakura"] {
+  --scrollbar-thumb: rgba(232,90,126,.26);
+  --scrollbar-thumb-hover: rgba(232,90,126,.46);
+}
+
+/* ---------- 3. forest 翠绿之森 → 叶片 ---------- */
+:root[data-palette="forest"] {
+  --particle-shape: leaf;
+  --particle-c1: rgba(74,222,128,.48);
+  --particle-c2: rgba(52,211,153,.38);
+  --particle-count: 34;
+  --particle-leaf-min: 4;
+  --particle-leaf-max: 11;
+  --particle-speed-mul: 0.9;
+  --scrollbar-thumb: rgba(52,211,153,.34);
+  --scrollbar-thumb-hover: rgba(52,211,153,.58);
+}
+:root[data-mode="light"][data-palette="forest"] {
+  --scrollbar-thumb: rgba(16,185,129,.28);
+  --scrollbar-thumb-hover: rgba(16,185,129,.48);
+}
+
+/* ---------- 4. neon 赛博蓝 → 泡泡（用户指定蓝色泡泡） ---------- */
+:root[data-palette="neon"] {
+  --particle-shape: bubble;
+  --particle-c1: rgba(34,211,238,.26);
+  --particle-c2: rgba(56,189,248,.18);
+  --particle-bubble-edge: rgba(186,230,253,.32);
+  --particle-bubble-hl: rgba(255,255,255,.78);
+  --particle-count: 38;
+  --particle-bubble-min: 4;
+  --particle-bubble-max: 18;
+  --particle-speed-mul: 0.7;
+  --scrollbar-thumb: rgba(34,211,238,.34);
+  --scrollbar-thumb-hover: rgba(56,189,248,.56);
+}
+:root[data-mode="light"][data-palette="neon"] {
+  --particle-c1: rgba(14,165,233,.22);
+  --particle-c2: rgba(34,211,238,.16);
+  --particle-bubble-edge: rgba(14,165,233,.25);
+  --particle-bubble-hl: rgba(255,255,255,.82);
+  --scrollbar-thumb: rgba(14,165,233,.28);
+  --scrollbar-thumb-hover: rgba(14,165,233,.5);
+}
+
+/* ---------- 5. cosmos 深空蓝 → 泡泡（蓝色主题） ---------- */
+:root[data-palette="cosmos"] {
+  --particle-shape: bubble;
+  --particle-c1: rgba(96,165,250,.24);
+  --particle-c2: rgba(129,140,248,.18);
+  --particle-bubble-edge: rgba(191,219,254,.3);
+  --particle-bubble-hl: rgba(255,255,255,.72);
+  --particle-count: 42;
+  --particle-bubble-min: 3.5;
+  --particle-bubble-max: 16;
+  --particle-speed-mul: 0.68;
+  --scrollbar-thumb: rgba(129,140,248,.34);
+  --scrollbar-thumb-hover: rgba(99,102,241,.56);
+}
+:root[data-mode="light"][data-palette="cosmos"] {
+  --particle-c1: rgba(59,130,246,.22);
+  --particle-c2: rgba(99,102,241,.16);
+  --particle-bubble-edge: rgba(59,130,246,.24);
+  --particle-bubble-hl: rgba(255,255,255,.8);
+  --scrollbar-thumb: rgba(79,70,229,.28);
+  --scrollbar-thumb-hover: rgba(79,70,229,.5);
+}
+
+/* ---------- 6. terracotta 赤陶橘 → 六角蜡封 ---------- */
+:root[data-palette="terracotta"] {
+  --particle-shape: hex;
+  --particle-c1: rgba(224,120,86,.52);
+  --particle-c2: rgba(251,146,60,.42);
+  --particle-count: 32;
+  --particle-hex-min: 3.5;
+  --particle-hex-max: 10;
+  --particle-speed-mul: 0.95;
+  --scrollbar-thumb: rgba(224,120,86,.36);
+  --scrollbar-thumb-hover: rgba(251,146,60,.6);
+}
+:root[data-mode="light"][data-palette="terracotta"] {
+  --scrollbar-thumb: rgba(194,88,52,.26);
+  --scrollbar-thumb-hover: rgba(194,88,52,.48);
+}
+
+/* ---------- 7. arctic 北极银 → 泡泡（蓝色主题） ---------- */
+:root[data-palette="arctic"] {
+  --particle-shape: bubble;
+  --particle-c1: rgba(148,163,184,.22);
+  --particle-c2: rgba(100,116,139,.16);
+  --particle-bubble-edge: rgba(226,232,240,.38);
+  --particle-bubble-hl: rgba(255,255,255,.85);
+  --particle-count: 44;
+  --particle-bubble-min: 3;
+  --particle-bubble-max: 15;
+  --particle-speed-mul: 0.65;
+  --scrollbar-thumb: rgba(148,163,184,.34);
+  --scrollbar-thumb-hover: rgba(100,116,139,.58);
+}
+:root[data-mode="light"][data-palette="arctic"] {
+  --particle-c1: rgba(100,116,139,.18);
+  --particle-c2: rgba(148,163,184,.14);
+  --particle-bubble-edge: rgba(71,85,105,.22);
+  --particle-bubble-hl: rgba(255,255,255,.9);
+  --scrollbar-thumb: rgba(71,85,105,.26);
+  --scrollbar-thumb-hover: rgba(71,85,105,.48);
+}
+
+/* ---------- 8. aurora 极光紫 → 极光光波 ---------- */
+:root[data-palette="aurora"] {
+  --particle-shape: aurora;
+  --particle-c1: rgba(167,139,250,.42);
+  --particle-c2: rgba(52,211,153,.34);
+  --particle-count: 18;
+  --particle-aurora-min: 22;
+  --particle-aurora-max: 62;
+  --particle-speed-mul: 0.55;
+  --scrollbar-thumb: rgba(167,139,250,.36);
+  --scrollbar-thumb-hover: rgba(139,92,246,.6);
+}
+:root[data-mode="light"][data-palette="aurora"] {
+  --scrollbar-thumb: rgba(124,58,237,.28);
+  --scrollbar-thumb-hover: rgba(124,58,237,.5);
+}
+
+/* ---------- 9. bamboo 墨竹青 → 叶片 ---------- */
+:root[data-palette="bamboo"] {
+  --particle-shape: leaf;
+  --particle-c1: rgba(132,204,22,.46);
+  --particle-c2: rgba(101,163,13,.38);
+  --particle-count: 32;
+  --particle-leaf-min: 4.5;
+  --particle-leaf-max: 12;
+  --particle-speed-mul: 0.88;
+  --scrollbar-thumb: rgba(132,204,22,.34);
+  --scrollbar-thumb-hover: rgba(101,163,13,.58);
+}
+:root[data-mode="light"][data-palette="bamboo"] {
+  --scrollbar-thumb: rgba(101,163,13,.28);
+  --scrollbar-thumb-hover: rgba(101,163,13,.5);
+}
+
+/* ---------- 10. amber 琥珀棕 → 光晕 ---------- */
+:root[data-palette="amber"] {
+  --particle-shape: halo;
+  --particle-c1: rgba(217,119,6,.32);
+  --particle-c2: rgba(251,191,36,.24);
+  --particle-count: 22;
+  --particle-halo-min: 10;
+  --particle-halo-max: 28;
+  --particle-speed-mul: 0.75;
+  --scrollbar-thumb: rgba(251,191,36,.32);
+  --scrollbar-thumb-hover: rgba(217,119,6,.56);
+}
+:root[data-mode="light"][data-palette="amber"] {
+  --scrollbar-thumb: rgba(217,119,6,.26);
+  --scrollbar-thumb-hover: rgba(217,119,6,.48);
+}
+
+/* ---------- 11. twilight 暮光蓝 → 泡泡（蓝色主题） ---------- */
+:root[data-palette="twilight"] {
+  --particle-shape: bubble;
+  --particle-c1: rgba(107,138,246,.26);
+  --particle-c2: rgba(139,124,246,.2);
+  --particle-bubble-edge: rgba(196,181,253,.32);
+  --particle-bubble-hl: rgba(255,255,255,.74);
+  --particle-count: 40;
+  --particle-bubble-min: 3.5;
+  --particle-bubble-max: 17;
+  --particle-speed-mul: 0.66;
+  --scrollbar-thumb: rgba(139,124,246,.34);
+  --scrollbar-thumb-hover: rgba(99,102,241,.56);
+}
+:root[data-mode="light"][data-palette="twilight"] {
+  --particle-c1: rgba(79,70,229,.22);
+  --particle-c2: rgba(99,102,241,.18);
+  --particle-bubble-edge: rgba(79,70,229,.26);
+  --particle-bubble-hl: rgba(255,255,255,.82);
+  --scrollbar-thumb: rgba(79,70,229,.28);
+  --scrollbar-thumb-hover: rgba(79,70,229,.5);
+}
+
+/* ---------- 12. coral 珊瑚橙 → 光晕 ---------- */
+:root[data-palette="coral"] {
+  --particle-shape: halo;
+  --particle-c1: rgba(249,115,22,.3);
+  --particle-c2: rgba(251,146,60,.24);
+  --particle-count: 24;
+  --particle-halo-min: 9;
+  --particle-halo-max: 26;
+  --particle-speed-mul: 0.78;
+  --scrollbar-thumb: rgba(249,115,22,.34);
+  --scrollbar-thumb-hover: rgba(232,90,60,.58);
+}
+:root[data-mode="light"][data-palette="coral"] {
+  --scrollbar-thumb: rgba(232,90,60,.26);
+  --scrollbar-thumb-hover: rgba(208,104,80,.48);
 }
 
 /* ParticleField：金箔粒子画布 */
@@ -21587,42 +22558,55 @@ body {
   }
 }
 
-/* ============ 滚动条美化 ============ */
+/* ============ 滚动条美化（token 化：随 12 配色主题 + dark/light 双模式实时切色）
+   目标容器（真实发生 overflow 的元素）：
+   - 侧边栏导航：.nav-menu（App.jsx 侧边栏中间部分）
+   - 主工作区：.main / .feed
+   - 右面板：.panel / .panel-body
+   - 其余自定义小区域：.custom-scrollbar（材料卡片/设置等）
+   Webkit + Firefox 两边规则都走同一套 --scrollbar-* token。
+============ */
 
-/* Webkit 浏览器（Chrome/Safari/Edge） */
+/* Webkit 浏览器（Chrome / Safari / Edge / 国内双核）*/
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: var(--scrollbar-size, 8px);
+  height: var(--scrollbar-size, 8px);
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track, transparent);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(201,169,97,.35);
+  background: var(--scrollbar-thumb, rgba(201,169,97,.35));
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(201,169,97,.55);
+  background: var(--scrollbar-thumb-hover, rgba(201,169,97,.58));
   background-clip: padding-box;
 }
-:root[data-mode="light"] ::-webkit-scrollbar-thumb {
-  background: rgba(154,123,63,.3);
-  background-clip: padding-box;
+
+/* 滚动条尺寸分级：侧栏 / 右面板窄一些，视觉不打架 */
+.nav-menu::-webkit-scrollbar,
+.panel::-webkit-scrollbar,
+.panel > .panel-body::-webkit-scrollbar,
+.sidebar-footer + div::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-:root[data-mode="light"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(154,123,63,.5);
-  background-clip: padding-box;
+.nav-menu::-webkit-scrollbar-thumb,
+.panel::-webkit-scrollbar-thumb,
+.panel > .panel-body::-webkit-scrollbar-thumb {
+  border-width: 1.5px;
 }
 
 /* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(201,169,97,.35) transparent;
+  scrollbar-color: var(--scrollbar-thumb, rgba(201,169,97,.35)) var(--scrollbar-track, transparent);
 }
-:root[data-mode="light"] * {
-  scrollbar-color: rgba(154,123,63,.3) transparent;
+*::-moz-scrollbar-thumb:hover {
+  scrollbar-color: var(--scrollbar-thumb-hover, rgba(201,169,97,.58)) var(--scrollbar-track, transparent);
 }
 
 

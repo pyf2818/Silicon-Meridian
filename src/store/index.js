@@ -35,8 +35,9 @@ export const useUiStore = create(
         return stored === null ? true : stored === 'true';
       })(),
       setSidebarCollapsed: (v) => {
-        set({ sidebarCollapsed: v });
-        try { localStorage.setItem('sidebarCollapsed', String(v)); } catch {}
+        const next = typeof v === 'function' ? v(get().sidebarCollapsed) : v;
+        set({ sidebarCollapsed: next });
+        try { localStorage.setItem('sidebarCollapsed', String(next)); } catch {}
       },
 
       // 移动端菜单
@@ -46,8 +47,9 @@ export const useUiStore = create(
       // 右栏上下文组展开
       contextGroupOpen: localStorage.getItem('contextGroupOpen') !== 'false',
       setContextGroupOpen: (v) => {
-        set({ contextGroupOpen: v });
-        try { localStorage.setItem('contextGroupOpen', String(v)); } catch {}
+        const next = typeof v === 'function' ? v(get().contextGroupOpen) : v;
+        set({ contextGroupOpen: next });
+        try { localStorage.setItem('contextGroupOpen', String(next)); } catch {}
       },
 
       // 上下文导航组展开（侧边栏，默认空数组）
@@ -96,8 +98,9 @@ export const useUiStore = create(
         catch { return false; }
       })(),
       setPanelCollapsed: (v) => {
-        set({ panelCollapsed: v });
-        try { localStorage.setItem('panelCollapsed', String(v)); } catch {}
+        const next = typeof v === 'function' ? v(get().panelCollapsed) : v;
+        set({ panelCollapsed: next });
+        try { localStorage.setItem('panelCollapsed', String(next)); } catch {}
       },
 
       // 资料中心分页
@@ -114,7 +117,10 @@ export const useUiStore = create(
       showProfileModal: false,
       setShowProfileModal: (v) => set({ showProfileModal: v }),
       showShortcuts: false,
-      setShowShortcuts: (v) => set({ showShortcuts: v }),
+      setShowShortcuts: (v) => {
+        const next = typeof v === 'function' ? v(get().showShortcuts) : v;
+        set({ showShortcuts: next });
+      },
       showCommandPalette: false,
       setShowCommandPalette: (v) => set({ showCommandPalette: v }),
       showUserMenu: false,

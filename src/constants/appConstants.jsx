@@ -419,6 +419,56 @@ export const ARTICLE_TEMPLATE_CONTENT = {
 export const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 export const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
+export const SOURCE_TYPES = {
+  OFFICIAL_REGULATOR: 'official_regulator',
+  OFFICIAL_RESEARCH: 'official_research',
+  VENDOR_OFFICIAL: 'vendor_official',
+  INDUSTRY_ASSOC: 'industry_association',
+  ACADEMIC: 'academic_journal',
+  EXPERT_BLOGGER: 'expert_blogger',
+  PROFESSIONAL_MEDIA: 'professional_media',
+  TECH_MEDIA: 'tech_media',
+  DEV_COMMUNITY: 'developer_community',
+  AGGREGATION: 'aggregation_platform',
+};
+
+export const SOURCE_TYPE_META = {
+  official_regulator:   { label: '官方监管机构', iconKey: 'sourceRegulator', minGrade: 'S' },
+  official_research:    { label: '官方研究机构', iconKey: 'sourceResearch', minGrade: 'A' },
+  vendor_official:      { label: '厂商官方',     iconKey: 'sourceVendor', minGrade: 'A' },
+  industry_association: { label: '行业协会',     iconKey: 'sourceAssociation', minGrade: 'B' },
+  academic_journal:     { label: '学术期刊',     iconKey: 'sourceAcademic', minGrade: 'A' },
+  expert_blogger:       { label: '专家KOL',      iconKey: 'sourceExpert', minGrade: 'B' },
+  professional_media:   { label: '专业行业媒体', iconKey: 'sourceProMedia', minGrade: 'B' },
+  tech_media:           { label: '大众科技媒体', iconKey: 'sourceTechMedia', minGrade: 'C' },
+  developer_community:  { label: '开发者社区',   iconKey: 'sourceDev', minGrade: 'C' },
+  aggregation_platform: { label: '聚合平台',     iconKey: 'sourceAgg', minGrade: 'D' },
+};
+
+export const AI_SUBDOMAINS = {
+  'llm-foundation':  { label: '大模型基础',   parent: 'ai-models' },
+  'llm-application': { label: '大模型应用/Agent', parent: 'ai-models' },
+  'computer-vision': { label: '计算机视觉',   parent: 'ai-models' },
+  'nlp-speech':      { label: 'NLP/语音',     parent: 'ai-models' },
+  'ml-theory':       { label: '机器学习理论', parent: 'research' },
+  'ai-policy':       { label: 'AI政策/监管',  parent: 'policy-finance' },
+  'ai-safety':       { label: 'AI安全/对齐',  parent: 'cybersecurity' },
+  'ai-infra':        { label: 'AI基础设施',   parent: 'cloud' },
+};
+
+export const GRADE_PRESET_TIERS = {
+  'ss-s':  { label: 'SS+S 权威档', grades: ['S'], iconKey: 'tierSS' },
+  'ap-a':  { label: 'A+A 顶级档', grades: ['A'], iconKey: 'tierA' },
+  'b':     { label: 'B 优质档',   grades: ['B'], iconKey: 'tierB' },
+  'c-d':   { label: 'C+D 基础档', grades: ['C', 'D'], iconKey: 'tierC' },
+};
+
+export const REGION_PRESETS = {
+  'global':    { label: '全部',   regions: ['domestic', 'overseas', 'global'], iconKey: 'regionGlobal' },
+  'domestic':  { label: '国内',   regions: ['domestic'], iconKey: 'regionDomestic' },
+  'overseas':  { label: '海外',   regions: ['overseas', 'global'], iconKey: 'regionOversea' },
+};
+
 export const ICONS = {
   grid: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
   cpu: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="15" x2="23" y2="15"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="15" x2="4" y2="15"/></svg>,
@@ -541,4 +591,26 @@ export const ICONS = {
   pause: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>,
   pin: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 17v5"/><path d="M9 10.76a6 6 0 0 1 6 0V6a3 3 0 0 0-6 0v4.76z"/><path d="M5 10h14"/></svg>,
   history: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>,
+  // 信息源分类图标：10种来源类型
+  sourceRegulator: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 21V10l9-7 9 7v11"/><path d="M9 21V12h6v9"/><path d="M12 3v4"/><path d="M8 7h8"/></svg>,
+  sourceResearch: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 3h6M10 3v6.39a2 2 0 0 1-.34 1.12L5.86 17.39A2 2 0 0 0 7.53 20h8.94a2 2 0 0 0 1.67-2.61l-3.8-6.88A2 2 0 0 1 14 9.39V3"/><circle cx="12" cy="14" r="1.5"/></svg>,
+  sourceVendor: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-3"/><path d="M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"/></svg>,
+  sourceAssociation: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="9" cy="7" r="4"/><circle cx="17" cy="17" r="4"/><path d="M9 11v10M7.5 5.5L2 2M10.5 5.5L16 2M14.5 18.5L22 22"/></svg>,
+  sourceAcademic: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+  sourceExpert: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M3 10V21M21 10V21"/><path d="M1 14h4M19 14h4"/></svg>,
+  sourceProMedia: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="10" y1="4" x2="10" y2="10"/><line x1="6" y1="14" x2="10" y2="14"/><line x1="6" y1="18" x2="14" y2="18"/></svg>,
+  sourceTechMedia: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h.01M14 14h.01M10 14h.01"/></svg>,
+  sourceDev: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="14" y1="4" x2="10" y2="20"/></svg>,
+  sourceAgg: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><circle cx="12" cy="12" r="1.5"/></svg>,
+  // 信息源质量档位图标
+  tierSS: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/><polygon points="12 6 13.5 9 17 9.5 14.5 12 15 16 12 14 9 16 9.5 12 7 9.5 10.5 9 12 6" fill="currentColor" stroke="none"/></svg>,
+  tierS: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+  tierA: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2l2 5h5l-4 3.5 1.5 5.5L12 13l-4.5 3 1.5-5.5L5 7h5z"/></svg>,
+  tierB: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h5a3 3 0 0 1 0 6H8zM8 13h5a3 3 0 0 1 0 6H8z"/></svg>,
+  tierC: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><path d="M21 4v5h-5"/></svg>,
+  tierD: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 7h4a4 4 0 0 1 4 4v2a4 4 0 0 1-4 4H8z"/></svg>,
+  // 区域筛选图标
+  regionGlobal: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><line x1="12" y1="2" x2="12" y2="22"/></svg>,
+  regionDomestic: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 12L9 6l3 3 3-3 6 6v6a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-6z"/><path d="M9 15h.01M12 15h.01M15 15h.01"/></svg>,
+  regionOversea: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M17 6l-5 6 5 6M7 6l5 6-5 6"/></svg>,
 };

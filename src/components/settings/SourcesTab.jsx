@@ -1,5 +1,5 @@
-import React from 'react';
-import { ICONS, REGION_MAP } from '../../constants/index.jsx';
+import React, { useState } from 'react';
+import { ICONS, REGION_MAP, GRADE_PRESET_TIERS, REGION_PRESETS, SOURCE_TYPE_META } from '../../constants/index.jsx';
 import SourceOpsPanel from '../SourceOpsPanel.jsx';
 import SourceForm from './SourceForm.jsx';
 
@@ -25,6 +25,9 @@ export default function SourcesTab({
   truncateUrl, truncateText, getSourceHealthIndicator,
   showSourceAdvanced, setShowSourceAdvanced,
 }) {
+  const [gradePresetKey, setGradePresetKey] = useState(null);
+  const [sourceTypeFilters, setSourceTypeFilters] = useState(new Set());
+  const [regionPresetKey, setRegionPresetKey] = useState('global');
   return (
                   <>
                     <div className="source-strategy-panel">
@@ -90,7 +93,13 @@ export default function SourcesTab({
                           {['S', 'A', 'B', 'C', 'D'].map(grade => {
                             const gradeInfo = sourceGrades[grade];
                             const currentSources = sourceTypeTab === 'builtin' ? allSources : customSources;
-                            const count = currentSources.filter(s => s.grade === grade).length;
+                            const regionPresetRegions = REGION_PRESETS[regionPresetKey]?.regions || ['domestic','overseas','global'];
+                            const count = currentSources.filter(s => {
+                              if (s.grade !== grade) return false;
+                              const matchesSourceType = sourceTypeFilters.size === 0 || sourceTypeFilters.has(s.sourceType);
+                              const matchesRegion = sourceTypeTab === 'builtin' ? regionPresetRegions.includes(s.region) : true;
+                              return matchesSourceType && matchesRegion;
+                            }).length;
                             const percentage = currentSources.length > 0 ? (count / currentSources.length * 100).toFixed(1) : 0;
                             return (
                               <div key={grade} className="grade-stat-card">
@@ -117,6 +126,86 @@ export default function SourcesTab({
                       <div className="setting-item">
                         <label>内置信息源管理</label>
                         <p className="setting-desc">管理系统内置的266个权威信息源，支持等级筛选和批量启用/禁用操作</p>
+
+                        {/* Layer 1 快速Chip筛选 - 第1行：质量档位 */}
+                        <div className="source-filter-chips-row">
+                          <span className="chip-row-label">质量档位</span>
+                          {Object.entries(GRADE_PRESET_TIERS).map(([key, meta]) => {
+                            const hitCount = allSources.filter(s => meta.grades.includes(s.grade)).length;
+                            const isActive = gradePresetKey === key;
+                            return (
+                              <button
+                                key={key}
+                                className={`chip ${isActive ? 'active' : ''}`}
+                                onClick={() => {
+                                  if (isActive) {
+                                    setGradePresetKey(null);
+                                    setGradeFilter('all');
+                                  } else {
+                                    setGradePresetKey(key);
+                                    setGradeFilter(meta.grades[0]);
+                                  }
+                                }}
+                              >
+                                {ICONS[meta.iconKey]}
+                                <span>{meta.label}</span>
+                                <span className="chip-badge">{hitCount}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Layer 1 快速Chip筛选 - 第2行：来源类型（多选） */}
+                        <div className="source-filter-chips-row">
+                          <span className="chip-row-label">来源类型（多选）</span>
+                          {Object.entries(SOURCE_TYPE_META).map(([key, meta]) => {
+                            const hitCount = allSources.filter(s => s.sourceType === key).length;
+                            const isActive = sourceTypeFilters.has(key);
+                            return (
+                              <button
+                                key={key}
+                                className={`chip ${isActive ? 'active' : ''}`}
+                                onClick={() => {
+                                  setSourceTypeFilters(prev => {
+                                    const n = new Set(prev);
+                                    if (n.has(key)) n.delete(key);
+                                    else n.add(key);
+                                    return n;
+                                  });
+                                }}
+                              >
+                                {ICONS[meta.iconKey]}
+                                <span>{meta.label}</span>
+                                <span className="chip-badge">{hitCount}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Layer 1 快速Chip筛选 - 第3行：区域 */}
+                        <div className="source-filter-chips-row">
+                          <span className="chip-row-label">区域</span>
+                          {Object.entries(REGION_PRESETS).map(([key, meta]) => {
+                            const hitCount = allSources.filter(s => meta.regions.includes(s.region)).length;
+                            const isActive = regionPresetKey === key;
+                            return (
+                              <button
+                                key={key}
+                                className={`chip ${isActive ? 'active' : ''}`}
+                                onClick={() => {
+                                  if (regionPresetKey !== key) {
+                                    setRegionPresetKey(key);
+                                    setRegionFilter('all');
+                                  }
+                                }}
+                              >
+                                {ICONS[meta.iconKey]}
+                                <span>{meta.label}</span>
+                                <span className="chip-badge">{hitCount}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
 
                         {/* 统计面板 */}
                         <div className="builtin-stats-panel">
@@ -155,12 +244,14 @@ export default function SourcesTab({
                                    source.name.toLowerCase().includes(searchLower) ||
                                    source.region?.toLowerCase().includes(searchLower);
                                  const matchesGrade = gradeFilter === 'all' || source.grade === gradeFilter;
-                                 const matchesRegion = regionFilter === 'all' || source.region === regionFilter;
+                                 const regionPresetRegions = REGION_PRESETS[regionPresetKey]?.regions || ['domestic','overseas','global'];
+                                 const matchesRegion = regionPresetRegions.includes(source.region);
                                  const isDisabled = disabledSources.includes(source.name);
                                  const matchesStatus = statusFilter === 'all' ||
                                    (statusFilter === 'enabled' && !isDisabled) ||
                                    (statusFilter === 'disabled' && isDisabled);
-                                 return matchesSearch && matchesGrade && matchesRegion && matchesStatus;
+                                 const matchesSourceType = sourceTypeFilters.size === 0 || sourceTypeFilters.has(source.sourceType);
+                                 return matchesSearch && matchesGrade && matchesRegion && matchesStatus && matchesSourceType;
                                }).length}</strong> 个源
                              </div>
                            </div>
@@ -177,12 +268,14 @@ export default function SourcesTab({
                                      source.name.toLowerCase().includes(searchLower) ||
                                      source.region?.toLowerCase().includes(searchLower);
                                    const matchesGrade = gradeFilter === 'all' || source.grade === gradeFilter;
-                                   const matchesRegion = regionFilter === 'all' || source.region === regionFilter;
+                                   const regionPresetRegions = REGION_PRESETS[regionPresetKey]?.regions || ['domestic','overseas','global'];
+                                   const matchesRegion = regionPresetRegions.includes(source.region);
                                    const isDisabled = disabledSources.includes(source.name);
                                    const matchesStatus = statusFilter === 'all' ||
                                      (statusFilter === 'enabled' && !isDisabled) ||
                                      (statusFilter === 'disabled' && isDisabled);
-                                   return matchesSearch && matchesGrade && matchesRegion && matchesStatus && !isDisabled;
+                                   const matchesSourceType = sourceTypeFilters.size === 0 || sourceTypeFilters.has(source.sourceType);
+                                   return matchesSearch && matchesGrade && matchesRegion && matchesStatus && matchesSourceType && !isDisabled;
                                  });
                                  if (filteredSources.length > 0 && confirm(`确定禁用当前筛选的 ${filteredSources.length} 个已启用源？`)) {
                                    setDisabledSources(prev => [...prev, ...filteredSources.map(s => s.name)]);
@@ -202,12 +295,14 @@ export default function SourcesTab({
                                      source.name.toLowerCase().includes(searchLower) ||
                                      source.region?.toLowerCase().includes(searchLower);
                                    const matchesGrade = gradeFilter === 'all' || source.grade === gradeFilter;
-                                   const matchesRegion = regionFilter === 'all' || source.region === regionFilter;
+                                   const regionPresetRegions = REGION_PRESETS[regionPresetKey]?.regions || ['domestic','overseas','global'];
+                                   const matchesRegion = regionPresetRegions.includes(source.region);
                                    const isDisabled = disabledSources.includes(source.name);
                                    const matchesStatus = statusFilter === 'all' ||
                                      (statusFilter === 'enabled' && !isDisabled) ||
                                      (statusFilter === 'disabled' && isDisabled);
-                                   return matchesSearch && matchesGrade && matchesRegion && matchesStatus && isDisabled;
+                                   const matchesSourceType = sourceTypeFilters.size === 0 || sourceTypeFilters.has(source.sourceType);
+                                   return matchesSearch && matchesGrade && matchesRegion && matchesStatus && matchesSourceType && isDisabled;
                                  });
                                  if (filteredSources.length > 0 && confirm(`确定启用当前筛选的 ${filteredSources.length} 个已禁用源？`)) {
                                    setDisabledSources(prev => prev.filter(name => !filteredSources.some(s => s.name === name)));
@@ -280,7 +375,8 @@ export default function SourcesTab({
                               const matchesGrade = gradeFilter === 'all' || source.grade === gradeFilter;
 
                               // 地区筛选
-                              const matchesRegion = regionFilter === 'all' || source.region === regionFilter;
+                              const regionPresetRegions = REGION_PRESETS[regionPresetKey]?.regions || ['domestic','overseas','global'];
+                              const matchesRegion = regionPresetRegions.includes(source.region);
 
                               // 状态筛选
                               const isDisabled = disabledSources.includes(source.name);
@@ -288,7 +384,9 @@ export default function SourcesTab({
                                 (statusFilter === 'enabled' && !isDisabled) ||
                                 (statusFilter === 'disabled' && isDisabled);
 
-                              return matchesSearch && matchesGrade && matchesRegion && matchesStatus;
+                              const matchesSourceType = sourceTypeFilters.size === 0 || sourceTypeFilters.has(source.sourceType);
+
+                              return matchesSearch && matchesGrade && matchesRegion && matchesStatus && matchesSourceType;
   }).map(source => (
                                <div
                                  key={source.name}

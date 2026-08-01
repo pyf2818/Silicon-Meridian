@@ -18,7 +18,7 @@ const DEFAULT_AGENTS = [
     habits: ['先给结论再展开依据', '复杂任务必先拆解为执行计划', '每次回复末尾给出明确的下一步动作'],
     category: '指挥',
     isDefault: true,
-    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'fetch_page', 'set_plan', 'add_task', 'update_task', 'set_variable', 'write_blackboard', 'create_skill']
+    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'fetch_page', 'get_stock_quote', 'get_stock_kline', 'set_plan', 'add_task', 'update_task', 'set_variable', 'write_blackboard', 'create_skill', 'execute_command']
   },
   {
     id: 'analyst',
@@ -34,7 +34,7 @@ const DEFAULT_AGENTS = [
     habits: ['先概述再展开影响分析', '区分事实与推断', '必要时附上数据来源'],
     category: '分析',
     isDefault: true,
-    tools: ['search_news', 'web_search', 'fetch_page', 'create_skill']
+    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'fetch_page', 'set_plan', 'add_task', 'update_task', 'set_variable', 'write_blackboard', 'create_skill']
   },
   {
     id: 'tech-advisor',
@@ -50,7 +50,7 @@ const DEFAULT_AGENTS = [
     habits: ['先讲技术原理再讲应用', '主动对比同类方案', '指出技术局限而非只夸优势'],
     category: '技术',
     isDefault: true,
-    tools: ['search_news', 'web_search', 'fetch_page', 'read_workspace_file', 'create_skill']
+    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'fetch_page', 'set_plan', 'add_task', 'update_task', 'set_variable', 'write_blackboard', 'create_skill']
   },
   {
     id: 'business-analyst',
@@ -66,7 +66,7 @@ const DEFAULT_AGENTS = [
     habits: ['关键判断必配数据', '主动算 ROI 和市占率', '给出明确 buy/hold/sell 倾向（仅供决策参考）'],
     category: '商业',
     isDefault: true,
-    tools: ['search_news', 'web_search', 'fetch_page', 'get_stock_quote', 'get_stock_kline', 'create_skill']
+    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'fetch_page', 'get_stock_quote', 'get_stock_kline', 'set_plan', 'add_task', 'update_task', 'set_variable', 'write_blackboard', 'create_skill']
   },
   {
     id: 'writer',
@@ -82,7 +82,7 @@ const DEFAULT_AGENTS = [
     habits: ['先列大纲再写正文', '每段控制在 3-5 句', '主动提供 2 个标题候选'],
     category: '写作',
     isDefault: true,
-    tools: ['read_workspace_file', 'write_workspace_file', 'edit_file', 'create_skill']
+    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'fetch_page', 'set_plan', 'add_task', 'update_task', 'set_variable', 'write_blackboard', 'create_skill']
   },
   {
     id: 'memory-agent',
@@ -98,7 +98,7 @@ const DEFAULT_AGENTS = [
     habits: ['回答前先回忆相关历史', '主动指出与过去关注的关联', '给出「是否值得持续追踪」的明确建议'],
     category: '记忆',
     isDefault: true,
-    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'create_skill']
+    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'fetch_page', 'set_plan', 'add_task', 'update_task', 'set_variable', 'write_blackboard', 'create_skill']
   },
   {
     id: 'risk-scout',
@@ -114,7 +114,7 @@ const DEFAULT_AGENTS = [
     habits: ['区分事实/推断/不确定', '每个风险必给触发信号', '主动指出反证与不确定边界'],
     category: '风险',
     isDefault: true,
-    tools: ['search_news', 'web_search', 'fetch_page', 'create_skill']
+    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'fetch_page', 'set_plan', 'add_task', 'update_task', 'set_variable', 'write_blackboard', 'create_skill']
   },
   {
     id: 'creation-agent',
@@ -130,7 +130,7 @@ const DEFAULT_AGENTS = [
     habits: ['一次给 3 个选题角度', '附上文章结构提纲', '主动写入工作空间便于后续创作'],
     category: '创作',
     isDefault: true,
-    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'create_skill']
+    tools: ['search_news', 'web_search', 'read_workspace_file', 'write_workspace_file', 'edit_file', 'fetch_page', 'set_plan', 'add_task', 'update_task', 'set_variable', 'write_blackboard', 'create_skill']
   }
 ];
 

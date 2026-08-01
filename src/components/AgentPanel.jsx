@@ -106,16 +106,28 @@ export default function AgentPanel({
   }, [input, stats.firstQuestion]);
 
   // 当前 agent 的工具能力清单（用于右栏展示）
+  // 规则：
+  //   1. 若 agent.tools 明确配置了白名单 → 只渲染白名单内的工具（仍需在注册表中存在，不存在的忽略）
+  //   2. 若 agent.tools 未配置 / 为空 → 兜底渲染全部已启用工具（兼容旧自定义 agent 或未手动配置的 agent，避免显示"没有工具"）
   const agentTools = useMemo(() => {
-    const names = Array.isArray(agent?.tools) ? agent.tools : [];
-    if (names.length === 0) return [];
-    return names
-      .map(name => {
-        const schema = AGENT_TOOL_SCHEMAS.find(s => s.function.name === name);
-        const display = getToolDisplay(name);
-        return schema ? { name, label: display.label, iconKey: display.iconKey, desc: schema.function.description || '' } : null;
-      })
-      .filter(Boolean);
+    const whitelist = Array.isArray(agent?.tools) ? agent.tools : [];
+    const allEnabled = Array.isArray(AGENT_TOOL_SCHEMAS) ? AGENT_TOOL_SCHEMAS : [];
+    const schemas = whitelist.length > 0
+      ? whitelist
+          .map(name => AGENT_TOOL_SCHEMAS.find(s => s.function.name === name))
+          .filter(Boolean)
+      : allEnabled;
+
+    return schemas.map(schema => {
+      const name = schema?.function?.name;
+      const display = getToolDisplay(name);
+      return {
+        name,
+        label: display.label,
+        iconKey: display.iconKey,
+        desc: schema?.function?.description || '',
+      };
+    });
   }, [agent]);
 
   // 各 tab 的 badge 计算（用于 tab 标题右上角小红点）
