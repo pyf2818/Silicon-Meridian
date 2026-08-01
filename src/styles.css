@@ -6537,8 +6537,10 @@ body {
 .ai-elf-message-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
 .ai-elf-message-content { flex: 1; min-width: 0; }
 .ai-elf-message-text { padding: 10px 14px; border-radius: var(--radius-card); font-size: 13px; line-height: 1.7; word-break: break-word; }
-.ai-elf-message.user .ai-elf-message-text { background: linear-gradient(135deg, rgba(201, 169, 97, .15), rgba(212, 181, 118, .1)); color: var(--text-primary); border-bottom-right-radius: 4px; }
-.ai-elf-message.assistant .ai-elf-message-text { background: var(--bg-secondary); color: var(--text-primary); border-bottom-left-radius: 4px; }
+.ai-elf-message.user .ai-elf-message-text { background: linear-gradient(135deg, rgba(201, 169, 97, .15), rgba(60, 55, 75, .1)); color: var(--text-primary); border: 1px solid rgba(201, 169, 97, .2); border-bottom-right-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+.ai-elf-message.assistant .ai-elf-message-text { background: linear-gradient(180deg, rgba(201, 169, 97, .04), transparent 60%); color: var(--text-primary); border-left: 2px solid rgba(201, 169, 97, .2); border-bottom-left-radius: 4px; }
+:root[data-mode="light"] .ai-elf-message.user .ai-elf-message-text { background: linear-gradient(135deg, rgba(154, 123, 63, .1), rgba(120, 110, 90, .06)); border-color: rgba(154, 123, 63, .2); }
+:root[data-mode="light"] .ai-elf-message.assistant .ai-elf-message-text { background: linear-gradient(180deg, rgba(154, 123, 63, .03), transparent 60%); border-left-color: rgba(154, 123, 63, .2); }
 
 /* AI精灵消息内的Markdown样式 */
 .ai-elf-message-text table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 12px; }
@@ -11607,9 +11609,39 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-right: 1px solid var(--border-color);
-  border-left: 1px solid var(--border-color);
+  /* 净墨底：中栏保持最干净，仅顶部一点微光提亮焦点 */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, rgba(255,255,255,.025) 70%, var(--bg-base, var(--bg-primary))) 0%,
+      var(--bg-base, var(--bg-primary)) 18%);
+  border-right: 1px solid color-mix(in srgb, rgba(201,169,97,.18) 30%, var(--border-color));
+  border-left: 1px solid color-mix(in srgb, rgba(201,169,97,.18) 30%, var(--border-color));
   overflow: hidden;
+  position: relative;
+}
+.ai-chat-panel-main .chat-main-col::before,
+.ai-chat-panel-main .chat-main-col::after {
+  /* 左右两侧描金渐隐分隔线（顶尾淡，中段微亮） */
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
+.ai-chat-panel-main .chat-main-col::before {
+  left: 0;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    color-mix(in srgb, rgba(201,169,97,.14) 50%, transparent) 30%,
+    transparent 100%);
+}
+.ai-chat-panel-main .chat-main-col::after {
+  right: 0;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    color-mix(in srgb, rgba(201,169,97,.14) 50%, transparent) 30%,
+    transparent 100%);
 }
 .ai-chat-panel-main .chat-messages { flex: 1 1 0; min-height: 0; min-width: 0; }
 
@@ -12277,28 +12309,48 @@ body {
   width: 100%;
 }
 
-/* 用户气泡：紧凑显示，靠右对齐 */
+/* 用户气泡：墨色微光底 + 金色边框，靠右对齐 */
 .chat-msg-user .chat-bubble {
   padding: 8px 12px;
-  background: linear-gradient(135deg, rgba(201, 169, 97, 0.18) 0%, rgba(201, 169, 97, 0.08) 100%);
+  background: linear-gradient(135deg, rgba(201, 169, 97, 0.18) 0%, rgba(60, 55, 75, 0.12) 100%);
   color: var(--text-primary);
   font-weight: 500;
   border-radius: 8px;
-  box-shadow: none;
+  border: 1px solid rgba(201, 169, 97, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   flex: 0 1 auto;
   width: auto;
   max-width: 85%;
   align-self: flex-end;
+  transition: border-color .2s, box-shadow .2s;
+}
+.chat-msg-user .chat-bubble:hover {
+  border-color: rgba(201, 169, 97, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+:root[data-mode="light"] .chat-msg-user .chat-bubble {
+  background: linear-gradient(135deg, rgba(154, 123, 63, 0.12) 0%, rgba(120, 110, 90, 0.08) 100%);
+  border-color: rgba(154, 123, 63, 0.25);
 }
 
-/* AI 气泡：透明背景，文档式，占满整行 */
+/* AI 气泡：淡金微光底，文档式，占满整行 */
 .chat-msg-assistant .chat-bubble {
   padding: 0;
-  background: transparent;
+  background: linear-gradient(180deg, rgba(201, 169, 97, 0.04) 0%, transparent 60%);
   border-radius: 0;
+  border-left: 2px solid rgba(201, 169, 97, 0.2);
+  padding-left: 12px;
   flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
+  transition: border-color .2s;
+}
+.chat-msg-assistant .chat-bubble:hover {
+  border-left-color: rgba(201, 169, 97, 0.35);
+}
+:root[data-mode="light"] .chat-msg-assistant .chat-bubble {
+  background: linear-gradient(180deg, rgba(154, 123, 63, 0.03) 0%, transparent 60%);
+  border-left-color: rgba(154, 123, 63, 0.2);
 }
 
 /* AI 回复：无气泡全宽文档式排版，最大化内容可读性 */
@@ -16501,8 +16553,28 @@ body {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--bg-secondary);
+  /* 暖墨底：左侧会话栏偏金色，呼应"沉淀/历史"语义 */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, rgba(201,169,97,.04) 60%, var(--bg-secondary)) 0%,
+      var(--bg-secondary) 40%,
+      color-mix(in srgb, rgba(120,90,60,.03) 50%, var(--bg-secondary)) 100%);
   overflow: hidden;
+  position: relative;
+}
+.session-sidebar::before {
+  /* 右侧 1px 描金分隔线 */
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; right: 0;
+  width: 1px;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    color-mix(in srgb, rgba(201,169,97,.22) 60%, transparent) 30%,
+    color-mix(in srgb, rgba(201,169,97,.18) 50%, transparent) 70%,
+    transparent 100%);
+  pointer-events: none;
+  z-index: 1;
 }
 .session-sidebar-top {
   flex-shrink: 0;
@@ -16684,21 +16756,74 @@ body {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--bg-secondary);
+  /* 冷墨底：右侧偏青色，呼应"工具/控制"语义 */
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, rgba(60,80,100,.045) 60%, var(--bg-secondary)) 0%,
+      var(--bg-secondary) 40%,
+      color-mix(in srgb, rgba(40,55,75,.035) 50%, var(--bg-secondary)) 100%);
   overflow: hidden; /* 由内部 panes 自己滚动 */
   gap: 0;
+  position: relative;
+}
+.agent-panel::before {
+  /* 左侧 1px 描青渐隐分隔线 */
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 1px;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    color-mix(in srgb, rgba(96,165,250,.22) 60%, transparent) 30%,
+    color-mix(in srgb, rgba(96,165,250,.16) 50%, transparent) 70%,
+    transparent 100%);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .agent-topcard {
   position: relative;
   flex-shrink: 0;
   padding: 12px 12px 10px 14px;
-  border-bottom: 1px solid var(--border-color);
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--accent-cyan, #06b6d4) 5%, var(--bg-base, var(--bg-secondary))) 0%,
-    var(--bg-base, var(--bg-secondary)) 100%);
+  /* 水墨渐变边框：左侧金色重 → 右侧渐隐至透明 */
+  border-bottom: 1px solid transparent;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--accent-cyan, #06b6d4) 5%, var(--bg-base, var(--bg-secondary))) 0%,
+      var(--bg-base, var(--bg-secondary)) 100%) padding-box,
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--accent-cyan, #06b6d4) 38%, transparent) 0%,
+      color-mix(in srgb, rgba(201,169,97,.55) 30%, transparent) 28%,
+      color-mix(in srgb, rgba(201,169,97,.22) 60%, transparent) 60%,
+      transparent 100%) border-box;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  border-image: none; /* 用 background 双层模拟，避免 border-image 在圆角下溢出 */
   overflow: hidden;
-  transition: background .3s;
+  transition: background .3s, box-shadow .25s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(201,169,97,.05),
+    0 2px 8px -4px rgba(0,0,0,.18);
+}
+.agent-topcard::after {
+  /* 顶部细金线：模拟宣纸描金，呼应水墨主题 */
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    color-mix(in srgb, rgba(201,169,97,.45) 50%, transparent) 18%,
+    color-mix(in srgb, rgba(201,169,97,.7) 60%, transparent) 50%,
+    color-mix(in srgb, rgba(201,169,97,.35) 50%, transparent) 82%,
+    transparent 100%);
+  opacity: .8;
+  pointer-events: none;
+}
+.agent-topcard:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(201,169,97,.08),
+    0 4px 14px -4px rgba(0,0,0,.22);
 }
 /* 左侧状态竖条：默认金色，运行/草稿/未配置分别变色 */
 .agent-topcard-stripe {
