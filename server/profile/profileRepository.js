@@ -1,4 +1,6 @@
 import { getPool } from '../db/client.js';
+import { isDevMemoryMode } from '../db/devMemoryStore.js';
+import { createMemoryProfileRepository } from './memoryProfileRepository.js';
 
 async function inTransaction(db, work) {
   const client = await db.connect();
@@ -15,7 +17,12 @@ async function inTransaction(db, work) {
   }
 }
 
-export function createProfileRepository(db = getPool()) {
+export function createProfileRepository(db) {
+  // 开发态无 PostgreSQL 时切换到内存仓储，保证端到端可用
+  if (db === undefined) {
+    if (isDevMemoryMode()) return createMemoryProfileRepository();
+    db = getPool();
+  }
   return {
     async getState(userId) {
       // Phase 1.4 Task 17: extended SELECT to include briefing_config + pending_suggestions,

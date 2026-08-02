@@ -110,3 +110,101 @@ export function formatEvolvedAt(iso) {
   const mi = String(d.getUTCMinutes()).padStart(2, '0');
   return `${mm}-${dd} ${hh}:${mi}`;
 }
+
+/* ============ 领域关注雷达（基于阅读行为真实分布） ============ */
+
+function normalizeKey(str = '') {
+  return String(str).toLocaleLowerCase().replace(/[\s_\-]/g, '');
+}
+
+/**
+ * 领域关注雷达：以关注领域为轴，值 = 该领域阅读点击（匹配 category）占比归一化到 0-100。
+ * 若 selectedInterests 为空或阅读行为缺失，回退到 readingHistory 中 top 类目。
+ * @param {Array} readingHistory - 阅读点击记录（含 category）
+ * @param {Array<string>} selectedInterests - 关注领域标签
+ * @param {number} maxAxes - 雷达轴数上限
+ * @returns {{ axes: string[], values: number[] }}
+ */
+export function buildDomainRadar(readingHistory = [], selectedInterests = [], maxAxes = 6) {
+  const reads = Array.isArray(readingHistory) ? readingHistory : [];
+  const counts = new Map();
+  reads.forEach(r => {
+    const cat = r?.category || r?.domain;
+    if (cat) counts.set(normalizeKey(cat), (counts.get(normalizeKey(cat)) || 0) + 1);
+  });
+
+  let axes = [];
+  if (Array.isArray(selectedInterests) && selectedInterests.length > 0) {
+    axes = selectedInterests.slice(0, maxAxes).map(s => String(s));
+  } else {
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, maxAxes);
+    axes = sorted.map(([k]) => k);
+  }
+  if (axes.length === 0) return { axes: [], values: [] };
+
+  const maxCount = Math.max(1, ...counts.values());
+  const values = axes.map(ax => {
+    const c = counts.get(normalizeKey(ax)) || 0;
+    const v = c > 0 ? Math.round((c / maxCount) * 100) : 8;
+    return v;
+  });
+  return { axes, values };
+}
+
+/* ============ 阅读活跃度（按日聚合，最近 N 天） ============ */
+
+/**
+ * 阅读活跃度：把 readingHistory 按 readAt 日期聚合，返回最近 days 天的计数序列。
+ * @param {Array} readingHistory
+ * @param {number} days
+ * @returns {{ labels: string[], values: number[] }}
+ */
+export function buildReadingActivity(readingHistory = [], days = 14) {
+  const reads = Array.isArray(readingHistory) ? readingHistory : [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const labels = [];
+  const buckets = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    labels.push(`${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    buckets.push(0);
+  }
+  const indexOf = new Map(labels.map((lab, i) => [lab, i]));
+  reads.forEach(r => {
+    const t = r?.readAt || r?.timestamp || r?.date;
+    if (!t) return;
+    const d = new Date(t);
+    if (isNaN(d.getTime())) return;
+    const lab = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (indexOf.has(lab)) buckets[indexOf.get(lab)] += 1;
+  });
+  return { labels, values: buckets };
+}
+
+/* ============ AI 生成状态柱状图 ============ */
+
+const AI_STATUS_META = {
+  generated: { label: '生成成功', color: '#00e5ff' },
+  merged: { label: '已合并', color: '#37f5b6' },
+  pending: { label: '待处理', color: '#ffb74d' },
+  ai_failed: { label: 'AI 失败', color: '#ff6e9c' },
+  failed: { label: '失败', color: '#ff5252' },
+  unknown: { label: '未知', color: '#9aa7b3' },
+};
+
+/**
+ * AI 生成状态分布：把 buildAiStatusCounts 的结果转成柱状图 items。
+ * @param {Array} snapshots
+ * @returns {Array<{ label: string, value: number, color: string }>}
+ */
+export function buildAiStatusSeries(snapshots = []) {
+  const counts = buildAiStatusCounts(snapshots);
+  return Object.entries(counts)
+    .map(([status, value]) => {
+      const meta = AI_STATUS_META[status] || { label: status, color: '#9aa7b3' };
+      return { label: meta.label, value, color: meta.color };
+    })
+    .sort((a, b) => b.value - a.value);
+}

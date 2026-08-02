@@ -9,6 +9,7 @@
  * - 双击文件：右侧滑出 panel 预览文件内容
  */
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { indexFile } from '../utils/workspaceIndex.js';
 import { renderMarkdown } from '../utils/markdown.jsx';
 import {
@@ -413,7 +414,7 @@ export default function WorkspacePanel({
         </div>
       )}
 
-      {previewFile && (
+      {previewFile && createPortal(
         <>
           <div className="workspace-side-panel-backdrop" onClick={closePreview} />
           <aside className="workspace-side-panel" role="dialog" aria-modal="false" aria-label="文件预览">
@@ -452,7 +453,8 @@ export default function WorkspacePanel({
               </button>
             </div>
           </aside>
-        </>
+        </>,
+        document.body
       )}
     </aside>
   );

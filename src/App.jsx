@@ -279,10 +279,7 @@ function App() {
     setUser, setToken, setShowAuthModal, setAuthMode, setAuthForm,
     setSelectedInterests, setShowInterestModal,
     handleRegister, handleLogin, handleLogout, updateUserInterests, updateUserProfile,
-  } = useAuth({ setSelectedInterests: (interests) => {
-    setSelectedInterests(interests);
-    // 同步更新外部 state
-  } });
+  } = useAuth();
 
   const {
     llmConfig, setLlmConfig,
@@ -2096,6 +2093,13 @@ ${signals}
           setTrendingPlatform={setTrendingPlatform}
           loadTrending={loadTrending}
           newSinceLastVisit={newSinceLastVisit}
+          telemetryStats={nav === 'profile-center' ? [
+            { label: 'PERSONA.CONF', value: `${intelligenceProfile?.confidence ?? 0}%` },
+            { label: 'DOMAINS', value: selectedInterests?.length ?? 0 },
+            { label: 'READS', value: readingHistory?.length ?? 0 },
+            { label: 'MARKS', value: bookmarks?.length ?? 0 },
+            { label: 'SNAPSHOTS', value: dailyProfileSnapshots?.length ?? 0 },
+          ] : null}
         />
 
         {showStatsBar && <div className="stats-bar">
@@ -2131,6 +2135,7 @@ ${signals}
               todayBriefing={todayBriefing}
               todayLanes={todayLanes}
               materials={materials}
+              toggleMaterial={toggleMaterial}
               agent={agents.find(a => a.id === currentAgent) || agents[0]}
               onUpdateAgent={updateAgent}
               setLlmConfig={setLlmConfig}

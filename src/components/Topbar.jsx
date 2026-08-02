@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import LanguageSwitcher from './LanguageSwitcher.jsx';
+import HudTelemetryBar from './profile/HudTelemetryBar.jsx';
+import { useUiStore } from '../store';
 import {
   PRODUCT_NAME,
   CATEGORY_GROUPS, GITHUB_LANGS, GITHUB_PERIODS,
@@ -71,6 +73,8 @@ export default function Topbar({
   setTrendingPlatform,
   loadTrending,
   newSinceLastVisit = 0,
+  // 用户画像页遥测数据（由 App 注入，仅 profile-center 使用）
+  telemetryStats,
 }) {
   // 滚动毛玻璃化：页面滚动 >10px 时 topbar 加 scrolled 类
   const [scrolled, setScrolled] = useState(false);
@@ -80,6 +84,10 @@ export default function Topbar({
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // 用户画像页视图切换（仪表盘/设置）——与 ProfilePage 共享全局 store 状态
+  const profileTab = useUiStore(s => s.profileTab);
+  const setProfileTab = useUiStore(s => s.setProfileTab);
 
   return (
     <header className={`topbar ${nav === 'all' ? 'topbar-all' : ''} ${nav === 'stock' ? 'topbar-stock' : ''} ${(nav === 'trending' || nav === 'recommendations') ? 'topbar-trending' : ''} ${scrolled ? 'topbar-scrolled' : ''}`}>
@@ -110,6 +118,37 @@ export default function Topbar({
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 用户画像页：系统遥测栏置顶（替代顶部语言切换，随 sticky 顶栏固定在屏幕最顶端） */}
+      {nav === 'profile-center' && telemetryStats && telemetryStats.length > 0 && (
+        <div className="profile-center-page topbar-hud-host">
+          <HudTelemetryBar
+            stats={telemetryStats}
+            actions={(
+              <div className="hud-tab-mini" role="tablist" aria-label="Profile view tabs">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={profileTab === 'dashboard'}
+                  className={`profile-tab ${profileTab === 'dashboard' ? 'active' : ''}`}
+                  onClick={() => setProfileTab('dashboard')}
+                >
+                  仪表盘
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={profileTab === 'settings'}
+                  className={`profile-tab ${profileTab === 'settings' ? 'active' : ''}`}
+                  onClick={() => setProfileTab('settings')}
+                >
+                  设置
+                </button>
+              </div>
+            )}
+          />
         </div>
       )}
 
@@ -283,8 +322,8 @@ export default function Topbar({
               )}
             </>
           )}
-          {/* 语言切换器：仅在非「全部动态」页显示（全部动态页移除中英文切换） */}
-          {nav !== 'all' && <LanguageSwitcher variant="compact" />}
+          {/* 语言切换器：仅在非「全部动态」页显示（全部动态页移除中英文切换）；用户画像页由系统遥测栏替代 */}
+          {nav !== 'all' && nav !== 'profile-center' && <LanguageSwitcher variant="compact" />}
         </div>
       </div>
     </header>

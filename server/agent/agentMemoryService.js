@@ -1,6 +1,8 @@
 // agentMemoryService.js - 智能体跨会话记忆与用户画像深化服务
 // 提供 agent_memories 表的 CRUD + 用户画像 persona_summary 读写
 import { getPool } from '../db/client.js';
+import { isDevMemoryMode } from '../db/devMemoryStore.js';
+import * as memoryAgent from './memoryAgentMemoryService.js';
 
 /* ============ Agent 记忆 CRUD ============ */
 
@@ -15,6 +17,7 @@ export async function addAgentMemory({ userId, agentId, sessionId = null, memory
   if (!validTypes.includes(memoryType)) {
     throw new Error(`invalid memory_type: ${memoryType}, must be one of ${validTypes.join('/')}`);
   }
+  if (isDevMemoryMode()) return memoryAgent.addAgentMemory({ userId, agentId, sessionId, memoryType, content, evidence, weight, expiresAt });
   const result = await pool.query(
     `insert into agent_memories (user_id, agent_id, session_id, memory_type, content, evidence, weight, expires_at)
      values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
@@ -28,6 +31,7 @@ export async function addAgentMemory({ userId, agentId, sessionId = null, memory
  */
 export async function addAgentMemoriesBatch(userId, memories) {
   if (!Array.isArray(memories) || memories.length === 0) return [];
+  if (isDevMemoryMode()) return memoryAgent.addAgentMemoriesBatch(userId, memories);
   const pool = getPool();
   const client = await pool.connect();
   const ids = [];
@@ -55,6 +59,7 @@ export async function addAgentMemoriesBatch(userId, memories) {
  * 检索用户记忆（按 agent 或全量，按时间倒序）
  */
 export async function getAgentMemories(userId, options = {}) {
+  if (isDevMemoryMode()) return memoryAgent.getAgentMemories(userId, options);
   const pool = getPool();
   const agentId = options.agentId;
   const memoryType = options.memoryType;
@@ -88,6 +93,7 @@ export async function getAgentMemories(userId, options = {}) {
  * 全文检索记忆（简单 ilike 匹配）
  */
 export async function searchAgentMemories(userId, query, options = {}) {
+  if (isDevMemoryMode()) return memoryAgent.searchAgentMemories(userId, query, options);
   const pool = getPool();
   const limit = Math.min(Math.max(options.limit || 10, 1), 50);
   const pattern = `%${String(query || '').trim().toLowerCase()}%`;
@@ -127,6 +133,7 @@ export async function deleteAgentMemory(userId, { memoryId = null, sessionId = n
  * 读取用户画像深化字段（persona_summary + learned_preferences）
  */
 export async function getPersonaSummary(userId) {
+  if (isDevMemoryMode()) return memoryAgent.getPersonaSummary(userId);
   const pool = getPool();
   const result = await pool.query(
     `select persona_summary, learned_preferences, persona_updated_at
@@ -149,6 +156,7 @@ export async function getPersonaSummary(userId) {
  * personaSummary: { personality, needs, habits, thoughts, preferences, lastUpdated }
  */
 export async function setPersonaSummary(userId, personaSummary, learnedPreferences = null) {
+  if (isDevMemoryMode()) return memoryAgent.setPersonaSummary(userId, personaSummary, learnedPreferences);
   const pool = getPool();
   const fields = ['persona_summary = $2', 'persona_updated_at = now()'];
   const params = [userId, JSON.stringify(personaSummary)];
@@ -171,6 +179,7 @@ export async function setPersonaSummary(userId, personaSummary, learnedPreferenc
  * - 统一时间戳字段名为 lastEvolvedAt + lastUpdated（修 Bug 3：清理 updatedAt）
  */
 export async function mergePersonaSummary(userId, patch) {
+  if (isDevMemoryMode()) return memoryAgent.mergePersonaSummary(userId, patch);
   const pool = getPool();
   const client = await pool.connect();
   try {
@@ -235,6 +244,7 @@ export async function mergePersonaSummary(userId, patch) {
  * @returns {Promise<Array<{ id, snapshot, evolved_at }>>}
  */
 export async function getPersonaHistory(userId, limit = 30) {
+  if (isDevMemoryMode()) return memoryAgent.getPersonaHistory(userId, limit);
   const pool = getPool();
   const cappedLimit = Math.max(1, Math.min(90, Number(limit) || 30));
   const result = await pool.query(

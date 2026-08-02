@@ -38,6 +38,7 @@ export function useSnapshotPreheat({ enabled = false, llmConfig } = {}) {
     setStatus('loading');
     fetch('/api/profile/snapshots/preheat', {
       method: 'POST',
+      credentials: 'same-origin',
       signal: controller.signal,
     })
       .then(r => r.json())

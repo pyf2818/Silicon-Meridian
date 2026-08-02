@@ -1,5 +1,4 @@
-import React from 'react';
-import { BlockGrid, BlockStat } from '../blocks/index.js';
+import React, { useState } from 'react';
 import {
   PROFILE_TIER_OPTIONS,
   PROFILE_TIERS,
@@ -7,7 +6,7 @@ import {
 } from '../domain/intelligence/profileTiers.js';
 import { ICONS } from '../constants/index.jsx';
 import { showToast } from '../utils/toast.js';
-import { useUiStore } from '../store';
+import { useUiStore, useBehaviorStore } from '../store';
 import PendingSuggestionsSection from './profile/PendingSuggestionsSection.jsx';
 import AgentMemorySection from './profile/AgentMemorySection.jsx';
 import PersonaSummarySection from './profile/PersonaSummarySection.jsx';
@@ -80,8 +79,44 @@ export default function ProfilePage({
   const profileTab = useUiStore(s => s.profileTab);
   const setProfileTab = useUiStore(s => s.setProfileTab);
 
+  // 问题 2：把"只读校准状态"变成真纠错台 —— 直接写入 recommendationFeedback
+  const setRecommendationFeedback = useBehaviorStore(s => s.setRecommendationFeedback);
+  const recommendationFeedback = useBehaviorStore(s => s.recommendationFeedback);
+  const [calibInput, setCalibInput] = useState('');
+  const [calibType, setCalibType] = useState('boost'); // boost | mute | track
+
+  const scrollToId = (id) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const applyManualCalibration = () => {
+    const value = calibInput.trim();
+    if (!value) { showToast('请输入要校准的内容'); return; }
+    setRecommendationFeedback(prev => {
+      const next = { ...prev };
+      if (calibType === 'boost') {
+        next.boostedCategories = { ...(prev.boostedCategories || {}), [value]: ((prev.boostedCategories || {})[value] || 0) + 1 };
+      } else if (calibType === 'mute') {
+        next.mutedSources = { ...(prev.mutedSources || {}), [value]: ((prev.mutedSources || {})[value] || 0) + 1 };
+      } else {
+        next.trackedTerms = { ...(prev.trackedTerms || {}), [value]: ((prev.trackedTerms || {})[value] || 0) + 1 };
+      }
+      return next;
+    });
+    showToast(
+      calibType === 'boost' ? `已提高「${value}」的推荐权重`
+        : calibType === 'mute' ? `已降低「${value}」的推荐权重`
+          : `已开始追踪「${value}」`
+    );
+    setCalibInput('');
+  };
+
   return (
-    <div className="product-page profile-center-page">
+    <div className="product-page profile-center-page profile-hud-page">
+              {/* 扫描线叠加层 */}
+              <div className="hud-scanlines" aria-hidden="true" />
+
               <section className="product-hero profile-hero">
                 <div>
                   <div className="workbench-kicker">Personal Intelligence Memory</div>
@@ -94,27 +129,6 @@ export default function ProfilePage({
                 </div>
               </section>
 
-              <div className="profile-tabs" role="tablist" aria-label="Profile view tabs">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={profileTab === 'dashboard'}
-                  className={`profile-tab ${profileTab === 'dashboard' ? 'active' : ''}`}
-                  onClick={() => setProfileTab('dashboard')}
-                >
-                  仪表盘
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={profileTab === 'settings'}
-                  className={`profile-tab ${profileTab === 'settings' ? 'active' : ''}`}
-                  onClick={() => setProfileTab('settings')}
-                >
-                  设置
-                </button>
-              </div>
-
               {profileTab === 'dashboard' ? (
                 <ProfileDashboard
                   intelligenceProfile={intelligenceProfile}
@@ -124,16 +138,42 @@ export default function ProfilePage({
                   specialFollows={specialFollows}
                 />
               ) : (
-                <>
-              <PersonaSummarySection />
-              <PendingSuggestionsSection />
+                <div className="profile-settings-grid">
+              <details className="pset-collapsible">
+                <summary>AI 性格画像</summary>
+                <PersonaSummarySection />
+              </details>
+              <details className="pset-collapsible">
+                <summary>AI 建议待确认</summary>
+                <PendingSuggestionsSection />
+              </details>
 
-              <BlockGrid columns={3}>
-                <BlockStat variant="card" label="关注领域" value={selectedInterests.length} desc={intelligenceProfile.focusLabels.slice(0, 4).join('、') || '尚未设置'} />
-                <BlockStat variant="card" label="阅读点击" value={readingHistory.length} desc="近 100 条点击记录用于校准推荐" />
-                <BlockStat variant="card" label="收藏资讯" value={bookmarks.length} desc="收藏会提高相似主题和来源权重" />
-                <BlockStat variant="card" label="每日画像" value={dailyProfileSnapshots.length} desc="按日期保留 AI 对你的理解变化" />
-              </BlockGrid>
+              <div className="hud-stat-grid">
+                <div className="hud-stat-tile">
+                  <span className="hud-stat-label">关注领域</span>
+                  <strong className="hud-stat-value">{selectedInterests.length}</strong>
+                  <span className="hud-stat-sub">{intelligenceProfile.focusLabels.slice(0, 4).join('、') || '尚未设置'}</span>
+                  <span className="hud-stat-bar"><i style={{ width: `${Math.min(100, selectedInterests.length * 8)}%` }} /></span>
+                </div>
+                <div className="hud-stat-tile">
+                  <span className="hud-stat-label">阅读点击</span>
+                  <strong className="hud-stat-value">{readingHistory.length}</strong>
+                  <span className="hud-stat-sub">近 100 条点击记录用于校准推荐</span>
+                  <span className="hud-stat-bar"><i style={{ width: `${Math.min(100, readingHistory.length)}%` }} /></span>
+                </div>
+                <div className="hud-stat-tile">
+                  <span className="hud-stat-label">收藏资讯</span>
+                  <strong className="hud-stat-value">{bookmarks.length}</strong>
+                  <span className="hud-stat-sub">收藏会提高相似主题和来源权重</span>
+                  <span className="hud-stat-bar"><i style={{ width: `${Math.min(100, (bookmarks.length / 50) * 100)}%` }} /></span>
+                </div>
+                <div className="hud-stat-tile">
+                  <span className="hud-stat-label">每日画像</span>
+                  <strong className="hud-stat-value">{dailyProfileSnapshots.length}</strong>
+                  <span className="hud-stat-sub">按日期保留 AI 对你的理解变化</span>
+                  <span className="hud-stat-bar"><i style={{ width: `${Math.min(100, (dailyProfileSnapshots.length / 30) * 100)}%` }} /></span>
+                </div>
+              </div>
 
               <section className="profile-learning-panel">
                 <div className="profile-learning-main">
@@ -173,7 +213,7 @@ export default function ProfilePage({
               </section>
 
               <section className="profile-control-layout">
-                <div className="profile-control-panel">
+                <div className="profile-control-panel" id="profile-domain-tiers">
                   <div className="section-header">
                     <h2 className="section-title">{ICONS.target} 领域优先级</h2>
                     <p className="section-desc">一级进入核心必看，二级正常参与，三级保留探索价值但降低出现频率。</p>
@@ -203,7 +243,7 @@ export default function ProfilePage({
                   </div>
                 </div>
 
-                <div className="profile-control-panel">
+                <div className="profile-control-panel" id="profile-source-tiers">
                   <div className="section-header">
                     <h2 className="section-title">{ICONS.layers} 信号源优先级</h2>
                     <p className="section-desc">显式信任等级优先于隐式行为，避免一次误点长期改变信源判断。</p>
@@ -234,7 +274,7 @@ export default function ProfilePage({
                 </div>
               </section>
 
-              <section className="profile-special-follows" data-testid="profile-special-follows">
+              <section className="profile-special-follows" id="profile-special-follows" data-testid="profile-special-follows">
                 <div className="section-header"><h2 className="section-title">{ICONS.star} 特别关注</h2><p className="section-desc">手动添加小众信息源、博主或特定URL，始终优先推荐。</p></div>
                 {specialFollows.length === 0 ? (
                   <div className="empty-state"><p>暂无特别关注</p><p className="empty-state-hint">添加后这些目标的新内容会优先进入个人必看通道</p></div>
@@ -267,17 +307,67 @@ export default function ProfilePage({
 
               <section className="profile-calibration-panel">
                 <div className="section-header">
-                  <h2 className="section-title">{ICONS.sparkles} 推荐校准状态</h2>
-                  <p className="section-desc">这些信号已经接入每日汇报排序，让系统从“你设置了什么、读了什么、收藏了什么”里持续学习。</p>
+                  <h2 className="section-title">{ICONS.sparkles} 推荐校准台</h2>
+                  <p className="section-desc">这些信号已接入推荐排序。如果系统理解错了你，下面可以直接纠正——校准会立刻影响后续推荐。</p>
                 </div>
                 <div className="profile-calibration-grid">
-                  {profileCalibrationCards.map(signal => (
-                    <div key={signal.label} className="profile-calibration-card">
-                      <span>{signal.label}</span>
-                      <strong>{signal.value}</strong>
-                      <p>{signal.desc}</p>
-                    </div>
-                  ))}
+                  {profileCalibrationCards.map(signal => {
+                    const jumpId = signal.label === '高优先领域' ? 'profile-domain-tiers'
+                      : signal.label === '高信任来源' ? 'profile-source-tiers'
+                        : null;
+                    const inner = (
+                      <>
+                        <span>{signal.label}</span>
+                        <strong>{signal.value}</strong>
+                        <p>{signal.desc}</p>
+                        {jumpId && <span className="calib-jump-hint">去调整 →</span>}
+                      </>
+                    );
+                    return jumpId ? (
+                      <button type="button" key={signal.label} className="profile-calibration-card is-clickable" onClick={() => scrollToId(jumpId)}>
+                        {inner}
+                      </button>
+                    ) : (
+                      <div key={signal.label} className="profile-calibration-card">{inner}</div>
+                    );
+                  })}
+                </div>
+
+                <div className="calibration-console">
+                  <div className="calibration-console-head">
+                    <span className="calibration-console-title">手动纠错</span>
+                    <span className="calibration-console-sub">系统理解错了？直接告诉它你真正关心的</span>
+                  </div>
+                  <div className="calibration-type-toggle" role="group" aria-label="纠错类型">
+                    <button type="button" className={calibType === 'boost' ? 'active' : ''} onClick={() => setCalibType('boost')}>提升领域</button>
+                    <button type="button" className={calibType === 'mute' ? 'active' : ''} onClick={() => setCalibType('mute')}>屏蔽来源</button>
+                    <button type="button" className={calibType === 'track' ? 'active' : ''} onClick={() => setCalibType('track')}>盯住关键词</button>
+                  </div>
+                  <div className="calibration-console-row">
+                    <input
+                      className="calibration-console-input"
+                      value={calibInput}
+                      onChange={e => setCalibInput(e.target.value)}
+                      placeholder={calibType === 'boost' ? '如：芯片、Agent、机器人' : calibType === 'mute' ? '如：某公众号 / 某媒体' : '如：GPU、端侧模型'}
+                      onKeyDown={e => { if (e.key === 'Enter') applyManualCalibration(); }}
+                    />
+                    <button type="button" className="ai-primary-action calibration-apply" onClick={applyManualCalibration}>记录校准</button>
+                  </div>
+                  {(() => {
+                    const fb = recommendationFeedback || {};
+                    const boostCount = Object.keys(fb.boostedCategories || {}).length;
+                    const muteCount = Object.keys(fb.mutedSources || {}).length;
+                    const trackCount = Object.keys(fb.trackedTerms || {}).length;
+                    const hiddenCount = (fb.hiddenIds || []).length;
+                    const total = boostCount + muteCount + trackCount + hiddenCount;
+                    return (
+                      <div className="calibration-summary">
+                        {total > 0
+                          ? <span>已记录 <strong>{total}</strong> 条校准：提升 {boostCount} 个领域 · 屏蔽 {muteCount} 个来源 · 盯住 {trackCount} 个关键词</span>
+                          : <span>还没有手动校准，试着纠正一条，让推荐更懂你。</span>}
+                      </div>
+                    );
+                  })()}
                 </div>
               </section>
 
@@ -303,7 +393,7 @@ export default function ProfilePage({
 
               <AgentMemorySection />
               <SnapshotHistorySection />
-                </>
+              </div>
               )}
             </div>
   );

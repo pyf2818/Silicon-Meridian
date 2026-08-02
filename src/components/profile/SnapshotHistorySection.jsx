@@ -17,7 +17,7 @@ export default function SnapshotHistorySection() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch('/api/profile/snapshots');
+      const resp = await fetch('/api/profile/snapshots', { credentials: 'same-origin' });
       const data = await resp.json();
       if (data.ok) setSnapshots(data.snapshots || []);
       else setError(normalizeError(data.error) || '加载失败');
@@ -33,7 +33,7 @@ export default function SnapshotHistorySection() {
   const viewDetail = useCallback(async (date) => {
     setDetailLoading(true);
     try {
-      const resp = await fetch(`/api/profile/snapshots?date=${encodeURIComponent(date)}`);
+      const resp = await fetch(`/api/profile/snapshots?date=${encodeURIComponent(date)}`, { credentials: 'same-origin' });
       const data = await resp.json();
       if (data.ok) setSelectedSnap(data.snapshot);
     } catch {

@@ -199,14 +199,11 @@ export const SOURCE_WEIGHTS = {
   'Segmentfault 热榜': 0.65,
   'TMZ': 0.65,
   'ZDNet': 0.65,
-  '华为云开发者': 0.65,
   '少数派': 0.65,
   '微博热搜AI': 0.65,
   '微博热搜科技': 0.65,
   '掘金热榜': 0.65,
   '爱范儿': 0.65,
-  '腾讯云开发者': 0.65,
-  '阿里云开发者': 0.65,
   // 基础信息源（权重0.6）
   'CSDN 热榜': 0.6,
   'IT之家': 0.6,
@@ -539,12 +536,9 @@ export const SOURCE_GRADE_MAP = {
   '健康界': 'C',
   '北大法宝': 'C',
   '医学界': 'C',
-  '华为云开发者': 'C',
   '少数派': 'C',
   '爱范儿': 'C',
   '经济观察网': 'C',
-  '腾讯云开发者': 'C',
-  '阿里云开发者': 'C',
   '雪球': 'C',
   // D级 - 基础源（RSSHub聚合、一般源）
   'CSDN 热榜': 'D',
@@ -679,6 +673,18 @@ export const SOURCE_GRADE_MAP = {
   'PitchBook News': 'B',
   'a16z AI & Tech': 'A',
   'Sequoia Capital Blog': 'A',
+  // ========== 本轮新增高质量源等级 ==========
+  'PNAS': 'S',
+  'JMLR': 'A',
+  'Joel on Software': 'A',
+  'Coding Horror': 'B',
+  'Benedict Evans': 'A',
+  'Paul Graham Essays': 'A',
+  '池建强 MacTalk': 'B',
+  '极客公园': 'B',
+  '雷锋网': 'B',
+  '博客园': 'B',
+  'FreeBuf': 'B',
 };;
 
 // 多源交叉验证阈值：同一URL在多少个源出现才算高可信度
@@ -735,10 +741,13 @@ export const DEFAULT_SOURCES = [
   { name: 'Hugging Face Daily Papers', url: 'https://huggingface.co/papers/feed', region: 'global', defaultCategory: 'research' },
   { name: 'MIT News Tech', url: 'https://news.mit.edu/rss/topic/technology', region: 'overseas', defaultCategory: 'research' },
   { name: 'ACM TechNews', url: 'https://technews.acm.org/rss', region: 'overseas', defaultCategory: 'research' },
+  // ========== 新增：学术顶刊（高质量一手研究） ==========
+  { name: 'PNAS', url: 'https://www.pnas.org/action/showFeed?type=etoc&feed=rss&jc=pnas', region: 'global', defaultCategory: 'research', sourceType: 'academic_journal', tags: ['学术','PNAS','顶刊'] },
+  { name: 'JMLR', url: 'http://jmlr.org/jmlr.xml', region: 'global', defaultCategory: 'research', sourceType: 'academic_journal', tags: ['学术','JMLR','机器学习'] },
   // ========== AI/大模型官方博客（一手信息） ==========
   { name: 'OpenAI Blog', url: 'https://openai.com/blog/rss.xml', region: 'overseas', defaultCategory: 'ai-models' },
   { name: 'Anthropic News', url: 'https://www.anthropic.com/news/rss', region: 'overseas', defaultCategory: 'ai-models' },
-  { name: 'Google DeepMind', url: 'https://deepmind.google/discover/blog/rss/', region: 'overseas', defaultCategory: 'ai-models' },
+  { name: 'Google DeepMind', url: 'https://deepmind.google/blog/rss.xml', region: 'overseas', defaultCategory: 'ai-models' },
   { name: 'Meta AI Blog', url: 'https://ai.meta.com/blog/rss/', region: 'overseas', defaultCategory: 'ai-models' },
   { name: 'Google AI Blog', url: 'https://blog.google/technology/ai/rss/', region: 'overseas', defaultCategory: 'ai-models' },
   { name: 'Microsoft AI Blog', url: 'https://blogs.microsoft.com/ai/feed/', region: 'overseas', defaultCategory: 'ai-models' },
@@ -767,14 +776,13 @@ export const DEFAULT_SOURCES = [
   { name: '网易严选技术', url: 'https://rsshub.rssforever.com/you163/tech', region: 'domestic', defaultCategory: 'ai-models' },
   // ========== 新增：国内知名博主 ==========
   { name: '阮一峰博客', url: 'http://www.ruanyifeng.com/blog/atom.xml', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '酷壳 CoolShell', url: 'https://coolshell.cn/feed', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '张鑫旭博客', url: 'https://www.zhangxinxu.com/wordpress/feed/', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '苏剑林博客', url: 'https://kexue.fm/feed.xml', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '廖雪峰博客', url: 'https://www.liaoxuefeng.com/feed/', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '知乎AI', url: 'https://rsshub.rssforever.com/zhihu/topic/19550517', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '微博热搜AI', url: 'https://rsshub.rssforever.com/weibo/search/hot/AI', region: 'domestic', defaultCategory: 'ai-models' },
   { name: 'Microsoft Research AI', url: 'https://www.microsoft.com/en-us/research/blog/topic/artificial-intelligence/feed/', region: 'overseas', defaultCategory: 'ai-models' },
-  { name: 'NVIDIA AI Blog', url: 'https://blogs.nvidia.com/ai/feed/', region: 'overseas', defaultCategory: 'ai-models' },
+  { name: 'NVIDIA AI Blog', url: 'https://blogs.nvidia.com/feed/', region: 'overseas', defaultCategory: 'ai-models' },
   { name: 'Amazon AI Blog', url: 'https://aws.amazon.com/blogs/machine-learning/feed/', region: 'overseas', defaultCategory: 'ai-models' },
   // ========== AIHOT 聚合精选及新增高质量源 ==========
   { name: 'AIHOT 精选摘要', url: 'https://aihot.virxact.com/feed.xml', region: 'global', defaultCategory: 'ai-models' },
@@ -793,6 +801,12 @@ export const DEFAULT_SOURCES = [
   { name: 'Chip Huyen', url: 'https://huyenchip.com/feed.xml', region: 'overseas', defaultCategory: 'ai-models' },
   { name: 'Eugene Yan', url: 'https://eugeneyan.com/feed.xml', region: 'overseas', defaultCategory: 'ai-models' },
   { name: 'Sebastian Raschka', url: 'https://magazine.sebastianraschka.com/feed', region: 'overseas', defaultCategory: 'ai-models' },
+  // ========== 新增：国际/国内高质量博主（一手思想源） ==========
+  { name: 'Joel on Software', url: 'https://www.joelonsoftware.com/feed/', region: 'overseas', defaultCategory: 'open-source', sourceType: 'expert_blogger', tags: ['海外','Joel Spolsky','软件工程'] },
+  { name: 'Coding Horror', url: 'https://blog.codinghorror.com/rss/', region: 'overseas', defaultCategory: 'open-source', sourceType: 'expert_blogger', tags: ['海外','Jeff Atwood','编程'] },
+  { name: 'Benedict Evans', url: 'https://www.ben-evans.com/benedictevans?format=rss', region: 'overseas', defaultCategory: 'silicon-valley', sourceType: 'expert_blogger', tags: ['海外','Benedict Evans','科技战略'] },
+  { name: 'Paul Graham Essays', url: 'http://www.aaronsw.com/2002/feeds/pgessays.rss', region: 'overseas', defaultCategory: 'silicon-valley', sourceType: 'expert_blogger', tags: ['海外','Paul Graham','创业'] },
+  { name: '池建强 MacTalk', url: 'https://macshuo.com/?feed=rss2', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'expert_blogger', tags: ['国内','池建强','Mac/iOS'] },
   // ========== 开发者社区与开源 ==========
   { name: 'Hacker News', url: 'https://hnrss.org/frontpage', region: 'global', defaultCategory: 'open-source' },
   { name: 'Hacker News Best', url: 'https://hnrss.org/best', region: 'global', defaultCategory: 'open-source' },
@@ -919,87 +933,17 @@ export const DEFAULT_SOURCES = [
   { name: 'CNN World', url: 'http://rss.cnn.com/rss/cnn_world.rss', region: 'overseas', defaultCategory: 'economy-stock' },
   { name: 'NYT Homepage', url: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml', region: 'overseas', defaultCategory: 'economy-stock' },
   { name: 'Washington Post World', url: 'https://feeds.washingtonpost.com/rss/world', region: 'overseas', defaultCategory: 'economy-stock' },
-  // ========== P0 新增：国际标准/监管机构官方 ==========
-  // 【连通性优化】：ISO/IEEE/OECD/白宫OSTP/EU Office等官方RSS 403或本机网络超时的，统一用
-  //   ✅ TechCrunch 政策/AI类垂直 + ✅ MIT Technology Review + ✅ EFF/Future of Life 政策类
-  //   作为"权威主题聚合"替代。源名不变但在tags里标注代理源，方便识别。
-  // 2025-07-31 本机可达性验证：TechCrunch/ArsTechnica/MIT Tech Review/EFF 均可直连
-  { name: 'ISO 标准动态', url: 'https://arstechnica.com/tech-policy/feed/', region: 'global', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['国际','标准化','代理:Ars-Policy'] },
-  { name: 'IEC 电工标准', url: 'https://techcrunch.com/category/artificial-intelligence/feed/', region: 'global', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['国际','电工标准','代理:TC-AI'] },
-  { name: 'IEEE 技术标准', url: 'https://arstechnica.com/tech-policy/feed/', region: 'global', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['国际','IEEE','代理:Ars-Policy'] },
-  { name: 'OECD 科技政策', url: 'https://www.eff.org/rss/updates.xml', region: 'global', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['国际','经合组织','代理:EFF'] },
-  { name: 'EU AI Office', url: 'https://www.technologyreview.com/feed/', region: 'global', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['欧盟','AI监管','代理:MIT-TechReview'] },
-  { name: '白宫 OSTP 科技政策', url: 'https://futureoflife.org/feed/', region: 'global', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['美国','白宫','代理:FLI'] },
-  // ========== P0 新增：中国官方权威机构 ==========
-  // 【连通性优化】：RSSHub公共实例 5 个候选本机全不可达（超时/DNS失败）。因此：
-  //   政府类 → 改用本机可达的 ✅ 人民网时政 / ✅ 新华网时政 作为"国内政策总览"
-  //   学术/研究院 → 改用 ✅ 人民网财经 / ✅ 中国新闻网财经 等作为"科技财经动态"
-  // 源名保留类别语义，tags 里标注 proxy_from 便于用户理解和未来替换
-  { name: '国务院新闻办·国内政策', url: 'http://www.people.com.cn/rss/politics.xml', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['中国','官方','国务院','代理:人民网时政'] },
-  { name: '国家发改委·宏观政策', url: 'http://www.xinhuanet.com/politics/news_politics.xml', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['中国','发改委','代理:新华网时政'] },
-  { name: '国家网信办·互联网监管', url: 'http://www.people.com.cn/rss/politics.xml', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['中国','网信办','代理:人民网时政'] },
-  { name: '国家标准委·标准化动态', url: 'http://www.xinhuanet.com/politics/news_politics.xml', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['中国','标准化','代理:新华网时政'] },
-  { name: '中国科学院·科研动态', url: 'https://www.people.com.cn/rss/finance.xml', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_research', tags: ['中国','中科院','代理:人民网财经'] },
-  { name: '中国工程院·工程科学', url: 'https://www.chinanews.com.cn/rss/finance.xml', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_research', tags: ['中国','工程院','代理:中新网财经'] },
-  { name: '中国科协·科技动态', url: 'https://www.eeo.com.cn/rss.xml', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['中国','科协','代理:经济观察网'] },
-  { name: '人工智能标准总体组', url: 'https://www.qbitai.com/rss/', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_regulator', tags: ['中国','AI标准','代理:量子位'] },
-  { name: '中国人工智能学会 CAAI', url: 'https://www.infoq.cn/feed', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_research', tags: ['中国','CAAI','代理:InfoQ'] },
-  { name: '中国计算机学会 CCF', url: 'https://www.oschina.net/news/rss', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_research', tags: ['中国','CCF','代理:开源中国'] },
-  { name: '智源研究院 BAAI', url: 'https://www.qbitai.com/rss/', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_research', tags: ['中国','北京','智源','代理:量子位'] },
-  { name: '之江实验室', url: 'https://www.tmtpost.com/rss.xml', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_research', tags: ['中国','浙江','之江实验室','代理:钛媒体'] },
-  { name: '上海人工智能实验室', url: 'https://www.36kr.com/feed', region: 'domestic', defaultCategory: 'policy-finance', sourceType: 'official_research', tags: ['中国','上海','AI实验室','代理:36氪'] },
-  // ========== P0 新增：海外AI独角兽/厂商官方 ==========
-  // 【连通性优化】：本机网络 xAI/Groq/Perplexity/Together/Fireworks/Character.AI 等官方feed
-  //   或 ECONNREFUSED/超时/DNS失败，全部替换为直连可达的同类顶级feed：
-  //   ✅ OpenAI Blog ✅ Databricks ✅ AWS ML ✅ Nvidia Developer ✅ Red Hat ✅ Simon Willison ✅ LangChain(代理:W&B) ✅ YC Blog
-  { name: 'xAI Blog', url: 'https://openai.com/blog/rss.xml', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','大模型','代理:OpenAI-Blog'] },
-  { name: 'Groq Blog（推理芯片）', url: 'https://developer.nvidia.com/blog/feed/', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','推理加速','代理:Nvidia-Dev'] },
+  // （已移除中国官方代理源：原指向人民网/新华网/36氪等代理URL，不再误导用户）
+  // ========== P0 新增：海外AI独角兽/厂商官方（已移除代理源） ==========
   { name: 'Databricks Blog', url: 'https://www.databricks.com/feed', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','Databricks','数据+AI'] },
-  { name: 'Perplexity（AI搜索）', url: 'https://aws.amazon.com/blogs/machine-learning/feed/', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','AI搜索','代理:AWS-ML'] },
-  { name: 'Character.AI（角色AI）', url: 'https://simonwillison.net/atom/entries/', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','对话AI','代理:SimonWillison'] },
-  { name: 'Inflection AI（个人AI）', url: 'https://www.databricks.com/feed', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','个人AI','代理:Databricks'] },
-  { name: 'Replicate Blog（模型托管）', url: 'https://aws.amazon.com/blogs/machine-learning/feed/', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','模型托管','代理:AWS-ML'] },
-  { name: 'Together AI（开源模型）', url: 'https://www.databricks.com/feed', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','开源模型','代理:Databricks'] },
-  { name: 'Fireworks AI（推理平台）', url: 'https://developer.nvidia.com/blog/feed/', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','模型推理','代理:Nvidia-Dev'] },
-  { name: 'Modal Blog（Serverless AI）', url: 'https://simonwillison.net/atom/entries/', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','Serverless','代理:SimonWillison'] },
-  { name: 'Cerebras Blog（AI芯片）', url: 'https://developer.nvidia.com/blog/feed/', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','AI芯片','代理:Nvidia-Dev'] },
-  { name: 'Tenstorrent Blog（RISC-V AI）', url: 'https://www.redhat.com/en/blog/rss.xml', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['海外','RISC-V','代理:RedHat-Blog'] },
-  // ========== P0 新增：国内AI大厂/实验室官方 ==========
-  // 【连通性优化】：RSSHub全不可达 → 国内厂商全部替换为直连可达的顶级科技媒体聚合feed：
-  //   ✅ 量子位 ✅ 36氪 ✅ InfoQ中文 ✅ 钛媒体 ✅ IT之家 ✅ 开源中国 ✅ 少数派
-  // 保留源名让UI看起来是"独立源"，在tags里明确标注代理来源，便于后续替换
-  { name: '百度研究院', url: 'https://www.qbitai.com/rss/', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'official_research', tags: ['中国','百度','代理:量子位'] },
-  { name: '飞桨 PaddlePaddle', url: 'https://www.infoq.cn/feed', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','飞桨','代理:InfoQ'] },
-  { name: '阿里达摩院', url: 'https://www.36kr.com/feed', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'official_research', tags: ['中国','阿里','达摩院','代理:36氪'] },
-  { name: '通义实验室', url: 'https://www.qbitai.com/rss/', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','通义','大模型','代理:量子位'] },
-  { name: '火山引擎 AI', url: 'https://www.tmtpost.com/rss.xml', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','字节','火山引擎','代理:钛媒体'] },
-  { name: '腾讯混元', url: 'https://www.ithome.com/rss', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','腾讯','混元','代理:IT之家'] },
-  { name: '腾讯优图实验室', url: 'https://www.infoq.cn/feed', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'official_research', tags: ['中国','腾讯','优图','代理:InfoQ'] },
-  { name: '华为诺亚方舟实验室', url: 'https://www.qbitai.com/rss/', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'official_research', tags: ['中国','华为','诺亚','代理:量子位'] },
-  { name: '昇腾社区', url: 'https://www.oschina.net/news/rss', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','华为','昇腾','代理:开源中国'] },
-  { name: '讯飞研究院', url: 'https://www.36kr.com/feed', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'official_research', tags: ['中国','科大讯飞','代理:36氪'] },
-  { name: '商汤 SenseTime', url: 'https://www.tmtpost.com/rss.xml', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','商汤','CV','代理:钛媒体'] },
-  { name: '旷视 Megvii', url: 'https://www.ithome.com/rss', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','旷视','CV','代理:IT之家'] },
-  { name: 'MiniMax 稀宇', url: 'https://www.qbitai.com/rss/', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','MiniMax','代理:量子位'] },
-  { name: '阶跃星辰 StepFun', url: 'https://www.36kr.com/feed', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','StepFun','代理:36氪'] },
-  { name: '零一万物', url: 'https://www.infoq.cn/feed', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','零一万物','代理:InfoQ'] },
-  { name: '月之暗面 Moonshot', url: 'https://www.tmtpost.com/rss.xml', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','Moonshot','代理:钛媒体'] },
-  { name: '百川智能 Baichuan', url: 'https://www.ithome.com/rss', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','百川智能','代理:IT之家'] },
-  { name: '深言科技 DeepLang', url: 'https://www.oschina.net/news/rss', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'vendor_official', tags: ['中国','深言科技','代理:开源中国'] },
-  // ========== P1 新增：产业联盟/专业媒体 ==========
-  // 这里只保留本机已验证可达的源；不可达的替换为可达的同类源
-  { name: 'AI Alliance（联盟动态）', url: 'https://www.partnershiponai.org/feed/', region: 'global', defaultCategory: 'ai-models', sourceType: 'industry_association', tags: ['国际','AI联盟','代理:PartnershipOnAI'] },
+  // （已移除：xAI/Groq/Perplexity/Character.AI/Inflection/Replicate/Together AI/Fireworks/Modal/Cerebras/Tenstorrent 等代理源）
+  // （已移除国内AI大厂代理源：原18个源指向量子位/36氪/InfoQ/钛媒体/IT之家/开源中国等代理URL）
+  // ========== P1 新增：产业联盟/专业媒体（已移除代理源） ==========
   { name: 'Partnership on AI', url: 'https://www.partnershiponai.org/feed/', region: 'global', defaultCategory: 'policy-finance', sourceType: 'industry_association', tags: ['国际','AI合作','AI治理'] },
-  { name: 'SemiAnalysis（半导体深度）', url: 'https://www.phoronix.com/rss.php', region: 'overseas', defaultCategory: 'chips-compute', sourceType: 'professional_media', tags: ['海外','半导体','代理:Phoronix'] },
-  { name: 'The Next Platform（HPC）', url: 'https://lwn.net/headlines/rss', region: 'overseas', defaultCategory: 'chips-compute', sourceType: 'professional_media', tags: ['海外','超算','代理:LWN'] },
-  { name: 'WikiChip Fuse（芯片微架构）', url: 'https://www.phoronix.com/rss.php', region: 'overseas', defaultCategory: 'chips-compute', sourceType: 'professional_media', tags: ['海外','芯片','代理:Phoronix'] },
-  { name: '半导体行业观察（集微网）', url: 'https://www.solidot.org/index.rss', region: 'domestic', defaultCategory: 'chips-compute', sourceType: 'professional_media', tags: ['中国','半导体','代理:Solidot'] },
+  // （已移除：AI Alliance 重复源、SemiAnalysis/The Next Platform/WikiChip/半导体观察/CB Insights/PitchBook/a16z 等代理源）
   { name: 'CNCF Blog', url: 'https://www.cncf.io/blog/feed/', region: 'global', defaultCategory: 'cloud', sourceType: 'industry_association', tags: ['国际','CNCF','云原生'] },
   { name: 'Kubernetes Blog', url: 'https://kubernetes.io/feed.xml', region: 'global', defaultCategory: 'cloud', sourceType: 'industry_association', tags: ['国际','K8s','容器编排'] },
   { name: 'Terraform / HashiCorp Blog', url: 'https://www.hashicorp.com/blog/feed.xml', region: 'global', defaultCategory: 'cloud', sourceType: 'vendor_official', tags: ['国际','Terraform','IaC'] },
-  { name: 'CB Insights Research（研究）', url: 'https://blog.ycombinator.com/feed/', region: 'overseas', defaultCategory: 'economy-stock', sourceType: 'professional_media', tags: ['海外','市场研究','代理:YC-Blog'] },
-  { name: 'PitchBook News（私募股权）', url: 'https://www.sequoiacap.com/rss', region: 'overseas', defaultCategory: 'economy-stock', sourceType: 'professional_media', tags: ['海外','私募','代理:Sequoia'] },
-  { name: 'a16z AI & Tech（风投视角）', url: 'https://blog.ycombinator.com/feed/', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'professional_media', tags: ['海外','风投','代理:YC-Blog'] },
   { name: 'Sequoia Capital Blog', url: 'https://www.sequoiacap.com/rss', region: 'overseas', defaultCategory: 'economy-stock', sourceType: 'professional_media', tags: ['海外','红杉资本','风投'] },
   { name: 'NPR Global', url: 'https://feeds.npr.org/1001/rss.xml', region: 'overseas', defaultCategory: 'economy-stock' },
   { name: 'CNBC Global', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.xml', region: 'overseas', defaultCategory: 'economy-stock' },
@@ -1054,6 +998,11 @@ export const DEFAULT_SOURCES = [
   { name: '德国之声中文', url: 'https://rss.dw.com/rdf/rss-zh-all', region: 'domestic', defaultCategory: 'china-tech' },
   { name: '香港电台国际', url: 'https://news.rthk.hk/rthk/ch/rss/international.xml', region: 'domestic', defaultCategory: 'china-tech' },
   { name: '观察者网', url: 'https://www.guancha.cn/rss', region: 'domestic', defaultCategory: 'china-tech' },
+  // ========== 新增：国内高质量科技/安全媒体 ==========
+  { name: '极客公园', url: 'https://www.geekpark.net/rss', region: 'domestic', defaultCategory: 'china-tech', sourceType: 'tech_media', tags: ['国内','极客公园','科技'] },
+  { name: '雷锋网', url: 'https://www.leiphone.com/feed', region: 'domestic', defaultCategory: 'china-tech', sourceType: 'tech_media', tags: ['国内','雷锋网','AI/硬件'] },
+  { name: '博客园', url: 'https://www.cnblogs.com/rss', region: 'domestic', defaultCategory: 'open-source', sourceType: 'developer_community', tags: ['国内','博客园','开发者'] },
+  { name: 'FreeBuf', url: 'https://www.freebuf.com/feed', region: 'domestic', defaultCategory: 'cybersecurity', sourceType: 'professional_media', tags: ['国内','FreeBuf','安全'] },
 ];;
 
 export const TRENDING_SOURCES = [

@@ -4,6 +4,7 @@ import './i18n/index.js'; // i18n 初始化（中英文双语支持，默认中�
 import App from './App.jsx';
 import './styles.css';
 import './themes.css';
+import './hud-theme.css';
 import BackgroundLayer from './components/visual/BackgroundLayer.jsx';
 import NoiseLayer from './components/visual/NoiseLayer.jsx';
 // ParticleField 懒加载：首屏先显示背景与噪点，粒子稍后出现，不阻塞首屏

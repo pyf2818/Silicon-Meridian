@@ -1,0 +1,1816 @@
+/* ============================================================
+   HUD THEME — 科幻数据面板设计系统（作用域：用户画像中心页）
+   ------------------------------------------------------------
+   第一性原理：HUD = 让操作者"一瞥即懂全局"的信息界面。
+   从战斗机 HUD / 科幻影视（钢铁侠、银翼杀手、少数派报告）
+   推导出的 6 条法则：
+     1. 亮度分层   —— 最亮的元素最重要；单个发光数字 > 整块灰字
+     2. 线框优先   —— 面板是"打开的窗口"不是"实心盒子"
+     3. 颜色=状态  —— cyan 正常 / amber 注意 / red 关键 / green 锁定
+     4. 界面活着   —— 扫描线·雷达·脉冲点 = 系统正在实时感知
+     5. 等宽遥测   —— 数字逐列对齐、标签全大写，便于快速扫描
+     6. 几何切割   —— 切角面板·同心环·坐标网格 = 工程感
+   ============================================================ */
+
+.profile-center-page {
+  /* ---- 设计令牌（跟随主题系统：data-mode 深浅 + data-palette 12 套配色实时切换）---- */
+  --hud-bg0: #04070d;            /* 深色兜底（浅色模式由 [data-mode="light"] 覆盖） */
+  --hud-bg1: #08111d;            /* 深色兜底 */
+  --hud-panel: rgba(7, 15, 26, 0.55);   /* 面板半透明（深色模式） */
+  --hud-panel-deep: rgba(5, 10, 18, 0.72);  /* 深层卡片（深色模式） */
+  --hud-tele: rgba(6, 12, 22, 0.7);    /* 遥测栏底（深色模式） */
+  --hud-console: rgba(4, 10, 18, 0.72); /* 控制台/输入条底（深色模式） */
+  --hud-console-deep: rgba(4, 10, 18, 0.94); /* 工具提示底 */
+  /* 霓虹色 = 主题强调色：切 palette 即跟随变化（香槟金/樱花粉/森林绿/...） */
+  --hud-cyan: var(--accent-cyan);          /* 主信号色 */
+  --hud-teal: var(--accent-blue);          /* 交互次级 */
+  --hud-green: var(--accent-emerald);      /* 锁定/成功 */
+  --hud-amber: var(--accent-amber);        /* 注意/警告 */
+  --hud-red: var(--accent-rose);           /* 关键 */
+  --hud-violet: var(--accent-violet);      /* 特殊/装饰 */
+  --hud-text: var(--text-primary);
+  --hud-dim: var(--text-muted);
+  --hud-faint: color-mix(in srgb, var(--text-muted) 58%, transparent);
+  --hud-grid: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+  --hud-line: color-mix(in srgb, var(--accent-cyan) 22%, transparent);
+  --hud-line-soft: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  --hud-notch: polygon(
+    0 12px, 12px 0,
+    calc(100% - 12px) 0, 100% 12px,
+    100% calc(100% - 12px), calc(100% - 12px) 100%,
+    12px 100%, 0 calc(100% - 12px)
+  );
+  --hud-font-display: 'Orbitron', 'Syne', 'Arial Narrow', sans-serif;
+  --hud-font-mono: 'Share Tech Mono', 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+  --hud-font-ui: 'Rajdhani', 'DM Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  color: var(--hud-text);
+}
+
+/* ============================================================
+   1. 页面背景：透明底 + 双色辉光 + 坐标网格
+      （背景透明，主应用粒子效果直接透出，呈全息投影悬浮感）
+   ============================================================ */
+.profile-center-page.profile-hud-page {
+  background:
+    radial-gradient(1100px 520px at 82% -8%, color-mix(in srgb, var(--hud-cyan) 7%, transparent), transparent 62%),
+    radial-gradient(860px 480px at 8% 108%, color-mix(in srgb, var(--hud-green) 5%, transparent), transparent 60%),
+    radial-gradient(700px 400px at 55% 55%, color-mix(in srgb, var(--hud-violet) 4%, transparent), transparent 65%);
+}
+.profile-center-page .hud-backgrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--hud-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hud-grid) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--hud-cyan) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--hud-cyan) 3%, transparent) 1px, transparent 1px);
+  background-size: 56px 56px, 56px 56px, 14px 14px, 14px 14px;
+  -webkit-mask-image: radial-gradient(ellipse 90% 75% at 50% 40%, #000 30%, transparent 78%);
+  mask-image: radial-gradient(ellipse 90% 75% at 50% 40%, #000 30%, transparent 78%);
+}
+/* 页面级扫描线（保留旧层，弱化） */
+.profile-center-page .hud-scanlines {
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    color-mix(in srgb, var(--hud-cyan) 1%, transparent) 2px, color-mix(in srgb, var(--hud-cyan) 1%, transparent) 4px
+  );
+  z-index: 90;
+}
+
+/* ============================================================
+   2. 系统遥测栏（顶部状态条）
+   ============================================================ */
+.profile-center-page .hud-telemetry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 18px;
+  margin-bottom: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--hud-cyan) 5%, transparent), transparent),
+    var(--hud-tele);
+  border-top: 1px solid var(--hud-line-soft);
+  border-bottom: 1px solid var(--hud-line-soft);
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--hud-dim);
+  position: relative;
+  overflow: hidden;
+}
+.profile-center-page .hud-telemetry::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent,
+    color-mix(in srgb, var(--hud-cyan) 50%, transparent),
+    color-mix(in srgb, var(--hud-green) 50%, transparent),
+    transparent);
+  animation: hud-pulse-line 4s ease-in-out infinite;
+}
+.profile-center-page .hud-tele-left,
+.profile-center-page .hud-tele-right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.profile-center-page .hud-tele-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--hud-green);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.profile-center-page .hud-tele-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hud-green);
+  box-shadow: 0 0 8px var(--hud-green);
+  animation: hud-blink 2.2s ease-in-out infinite;
+}
+.profile-center-page .hud-tele-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--hud-line-soft);
+}
+.profile-center-page .hud-tele-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.profile-center-page .hud-tele-stat em {
+  font-style: normal;
+  color: var(--hud-dim);
+}
+.profile-center-page .hud-tele-stat b {
+  color: var(--hud-cyan);
+  font-weight: 600;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--hud-cyan) 45%, transparent);
+}
+.profile-center-page .hud-tele-right {
+  gap: 14px;
+}
+.profile-center-page .hud-tele-time {
+  color: var(--hud-text);
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--hud-cyan) 35%, transparent);
+}
+
+/* ============================================================
+   3. Hero 区：终端标题
+   ============================================================ */
+.profile-center-page .profile-hero {
+  position: relative;
+  padding: 22px 26px 20px;
+  background:
+    linear-gradient(120deg, color-mix(in srgb, var(--hud-cyan) 6%, transparent), transparent 45%),
+    linear-gradient(180deg, var(--hud-tele), transparent);
+  border-left: 2px solid var(--hud-cyan);
+  border-bottom: 1px solid var(--hud-line-soft);
+  margin-bottom: 20px;
+}
+.profile-center-page .profile-hero .workbench-kicker {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--hud-cyan);
+  opacity: 0.85;
+  margin-bottom: 8px;
+}
+.profile-center-page .profile-hero h1 {
+  font-family: var(--hud-font-display);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--hud-text);
+  text-shadow: 0 0 22px color-mix(in srgb, var(--hud-cyan) 40%, transparent);
+  margin: 0 0 8px;
+}
+.profile-center-page .profile-hero p {
+  font-family: var(--hud-font-mono);
+  font-size: 12px;
+  color: var(--hud-dim);
+  line-height: 1.7;
+  margin: 0;
+}
+.profile-center-page .profile-hero .product-hero-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.profile-center-page .profile-hero .ai-primary-action,
+.profile-center-page .profile-hero .secondary-action {
+  font-family: var(--hud-font-ui);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  padding: 9px 18px;
+  border-radius: 0;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+  width: auto;                 /* 覆盖全局 .ai-primary-action 的 width:100% */
+}
+.profile-center-page .profile-hero .ai-primary-action {
+  color: #031018;
+  background: linear-gradient(135deg, var(--hud-cyan), var(--hud-teal));
+  border: 1px solid color-mix(in srgb, var(--hud-cyan) 60%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--hud-cyan) 35%, transparent);
+}
+.profile-center-page .profile-hero .ai-primary-action:hover {
+  box-shadow: 0 0 28px color-mix(in srgb, var(--hud-cyan) 55%, transparent);
+}
+.profile-center-page .profile-hero .secondary-action {
+  color: var(--hud-cyan);
+  background: transparent;
+  border: 1px solid var(--hud-line);
+}
+.profile-center-page .profile-hero .secondary-action:hover {
+  background: color-mix(in srgb, var(--hud-cyan) 8%, transparent);
+  box-shadow: inset 0 0 14px color-mix(in srgb, var(--hud-cyan) 12%, transparent);
+}
+
+/* ============================================================
+   4. Tab 模式选择器
+   ============================================================ */
+.profile-center-page .profile-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--hud-line-soft);
+  position: relative;
+}
+.profile-center-page .profile-tabs::before {
+  content: "MODE //";
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--hud-faint);
+  align-self: center;
+  margin-right: 18px;
+  display: block;
+  position: static;
+  width: auto;
+  height: auto;
+  background: none;
+}
+.profile-center-page .profile-tab {
+  font-family: var(--hud-font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--hud-dim);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 12px 22px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+.profile-center-page .profile-tab:hover {
+  color: var(--hud-text);
+}
+.profile-center-page .profile-tab.active {
+  color: var(--hud-cyan);
+  border-bottom-color: var(--hud-cyan);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--hud-cyan) 50%, transparent);
+}
+.profile-center-page .profile-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: -1px;
+  height: 1px;
+  background: color-mix(in srgb, var(--hud-cyan) 60%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--hud-cyan) 80%, transparent);
+}
+
+/* ============================================================
+   5. HUD 面板外壳（切角 + 描边 + 角标 + 扫描线）
+   ============================================================ */
+.profile-center-page .hud-panel {
+  position: relative;
+  clip-path: var(--hud-notch);
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--hud-cyan) 5%, transparent), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--hud-cyan) 3%, transparent), transparent 60%),
+    var(--hud-panel);
+  padding: 0;
+  overflow: visible;
+}
+/* 发光描边层：mask 技巧只保留 1px 边缘 */
+.profile-center-page .hud-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  clip-path: var(--hud-notch);
+  background: color-mix(in srgb, var(--hud-cyan) 16%, transparent);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+}
+/* 面板内四角角标（修正旧样式 fixed 定位 bug） */
+.profile-center-page .hud-panel .hud-corner {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  z-index: 2;
+  pointer-events: none;
+}
+.profile-center-page .hud-panel .hud-corner-tl {
+  top: 4px;
+  left: 4px;
+  border-top: 2px solid var(--hud-cyan);
+  border-left: 2px solid var(--hud-cyan);
+}
+.profile-center-page .hud-panel .hud-corner-tl::after,
+.profile-center-page .hud-panel .hud-corner-br::after {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: var(--hud-cyan);
+  box-shadow: 0 0 7px var(--hud-cyan);
+}
+.profile-center-page .hud-panel .hud-corner-tl::after {
+  top: -1px;
+  left: -1px;
+}
+.profile-center-page .hud-panel .hud-corner-tr {
+  top: 4px;
+  right: 4px;
+  border-top: 2px solid var(--hud-cyan);
+  border-right: 2px solid var(--hud-cyan);
+}
+.profile-center-page .hud-panel .hud-corner-bl {
+  bottom: 4px;
+  left: 4px;
+  border-bottom: 2px solid var(--hud-cyan);
+  border-left: 2px solid var(--hud-cyan);
+}
+.profile-center-page .hud-panel .hud-corner-br {
+  bottom: 4px;
+  right: 4px;
+  border-bottom: 2px solid var(--hud-cyan);
+  border-right: 2px solid var(--hud-cyan);
+}
+.profile-center-page .hud-panel .hud-corner-br::after {
+  bottom: -1px;
+  right: -1px;
+}
+/* 面板扫描线 */
+.profile-center-page .hud-panel .hud-panel-scan {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 3px,
+    color-mix(in srgb, var(--hud-cyan) 2%, transparent) 3px, color-mix(in srgb, var(--hud-cyan) 2%, transparent) 5px
+  );
+  opacity: 0.7;
+}
+/* 面板头部 */
+.profile-center-page .hud-panel .hud-panel-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--hud-line-soft);
+}
+.profile-center-page .hud-panel .hud-panel-kicker {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--hud-cyan);
+  opacity: 0.7;
+}
+.profile-center-page .hud-panel .hud-panel-title {
+  font-family: var(--hud-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--hud-text);
+  margin: 2px 0 0;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--hud-cyan) 25%, transparent);
+}
+.profile-center-page .hud-panel .hud-panel-tag {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--hud-dim);
+  border: 1px solid var(--hud-line-soft);
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.profile-center-page .hud-panel .hud-panel-tag.diff {
+  color: var(--hud-amber);
+  border-color: color-mix(in srgb, var(--hud-amber) 35%, transparent);
+}
+.profile-center-page .hud-panel .hud-panel-body {
+  position: relative;
+  z-index: 1;
+  padding: 14px 18px 18px;
+}
+
+/* ============================================================
+   6. 仪表盘网格 + KPI 遥测条
+   ============================================================ */
+.profile-center-page .profile-dashboard {
+  position: relative;
+}
+/* 覆盖 styles.css 旧版硬编码深色底（rgba(8,11,15,.55)）：仪表盘容器透明，跟随页面背景（粒子/浅色主题直接透出） */
+.profile-center-page .profile-dashboard-v3 {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  overflow: visible;
+}
+/* 覆盖旧 hud-panel 硬编码深色底/青边框，统一走主题变量 */
+.profile-center-page .hud-panel {
+  border: 1px solid var(--hud-line-soft);
+}
+.profile-center-page .dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 250px) 1fr;
+  grid-template-areas:
+    "kpi kpi"
+    "rail main"
+    "hero hero"
+    "behavior preheat";
+  gap: 16px;
+}
+.profile-center-page .dash-kpi { grid-area: kpi; }
+.profile-center-page .dash-rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;          /* 兜底高度 */
+}
+.profile-center-page .dash-main { grid-area: main; }
+
+/* 时间轴占满右侧总高（grid stretch 对齐），内容超出时内部滚动 */
+.profile-center-page .dash-rail .timeline-rail {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hud-line) transparent;
+}
+.profile-center-page .dash-rail .timeline-rail::-webkit-scrollbar {
+  width: 5px;
+}
+.profile-center-page .dash-rail .timeline-rail::-webkit-scrollbar-thumb {
+  background: var(--hud-line);
+  border-radius: 3px;
+}
+.profile-center-page .dash-rail .timeline-rail::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--hud-cyan) 55%, transparent);
+}
+.profile-center-page .dash-rail .timeline-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* 底部留白由滚动容器吃掉，footer 不再紧贴内容 */
+.profile-center-page .dash-rail .timeline-footer {
+  margin-top: auto;
+  padding-bottom: 6px;
+}
+.profile-center-page .dash-hero { grid-area: hero; }
+.profile-center-page .dash-behavior { grid-area: behavior; }
+.profile-center-page .dash-preheat { grid-area: preheat; }
+
+/* KPI 条：发光大数字 + 电平表 */
+.profile-center-page .hud-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.profile-center-page .hud-kpi {
+  position: relative;
+  clip-path: var(--hud-notch);
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--hud-cyan) 6%, transparent), transparent 40%),
+    var(--hud-panel-deep);
+  padding: 14px 16px 12px;
+  border: none;
+}
+.profile-center-page .hud-kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  clip-path: var(--hud-notch);
+  background: color-mix(in srgb, var(--hud-cyan) 15%, transparent);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+}
+.profile-center-page .hud-kpi-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.profile-center-page .hud-kpi-value {
+  font-family: var(--hud-font-display);
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--kpi-accent, var(--hud-cyan));
+  text-shadow: 0 0 18px var(--kpi-accent, color-mix(in srgb, var(--hud-cyan) 55%, transparent));
+  letter-spacing: 0.03em;
+}
+.profile-center-page .hud-kpi-trend {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+}
+.profile-center-page .hud-kpi-trend.up { color: var(--hud-green); }
+.profile-center-page .hud-kpi-trend.down { color: var(--hud-red); }
+.profile-center-page .hud-kpi-label {
+  display: block;
+  font-family: var(--hud-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--hud-text);
+  margin-top: 8px;
+}
+.profile-center-page .hud-kpi-sub {
+  display: block;
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  color: var(--hud-dim);
+  margin-top: 3px;
+}
+.profile-center-page .hud-kpi-foot {
+  margin-top: 10px;
+}
+.profile-center-page .hud-kpi-meter {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+  height: 16px;
+}
+.profile-center-page .hud-kpi-meter i {
+  flex: 1;
+  height: 100%;
+  background: linear-gradient(180deg, var(--kpi-accent, var(--hud-cyan)), transparent);
+  box-shadow: 0 0 6px var(--kpi-accent, color-mix(in srgb, var(--hud-cyan) 40%, transparent));
+  transition: opacity 0.3s ease;
+}
+
+/* ============================================================
+   7. 侧栏进化时间轴
+   ============================================================ */
+.profile-center-page .timeline-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.profile-center-page .timeline-header {
+  font-family: var(--hud-font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--hud-text);
+  padding: 0 0 12px 26px;
+}
+.profile-center-page .timeline-node {
+  position: relative;
+  padding: 2px 0 18px 26px;
+  border-left: 1px solid var(--hud-line-soft);
+  margin-left: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.profile-center-page .timeline-node::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hud-bg1);
+  border: 1px solid var(--hud-cyan);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--hud-cyan) 50%, transparent);
+  transition: all 0.2s ease;
+}
+.profile-center-page .timeline-node:hover::before {
+  background: var(--hud-cyan);
+}
+.profile-center-page .timeline-node.active::before {
+  background: var(--hud-cyan);
+  box-shadow: 0 0 14px var(--hud-cyan);
+}
+.profile-center-page .timeline-node-date {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--hud-text);
+}
+.profile-center-page .timeline-node-meta {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  color: var(--hud-dim);
+  margin-top: 3px;
+}
+.profile-center-page .delta-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 6px;
+  font-size: 10px;
+}
+.profile-center-page .delta-chip.positive {
+  color: var(--hud-green);
+  border: 1px solid color-mix(in srgb, var(--hud-green) 35%, transparent);
+}
+.profile-center-page .delta-chip.negative {
+  color: var(--hud-red);
+  border: 1px solid color-mix(in srgb, var(--hud-red) 35%, transparent);
+}
+.profile-center-page .timeline-footer {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  color: var(--hud-faint);
+  padding-left: 26px;
+  border-left: 1px solid var(--hud-line-soft);
+  margin-left: 8px;
+  padding-bottom: 4px;
+}
+
+/* ============================================================
+   8. 设置页网格 + 折叠面板
+   ============================================================ */
+.profile-center-page .profile-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+/* 覆盖旧 12 列 grid-column 定位（响应式下的 column-span 失效，统一单列） */
+.profile-center-page .profile-settings-grid > .hud-stat-grid,
+.profile-center-page .profile-settings-grid > .profile-learning-panel,
+.profile-center-page .profile-settings-grid > .profile-special-follows,
+.profile-center-page .profile-settings-grid > .profile-control-layout,
+.profile-center-page .profile-settings-grid > .profile-calibration-panel,
+.profile-center-page .profile-settings-grid > .profile-memory-panel,
+.profile-center-page .profile-settings-grid > .profile-agent-memory,
+.profile-center-page .profile-settings-grid > .profile-snapshot-history {
+  grid-column: auto;
+}
+/* details 折叠 = HUD 子面板 */
+.profile-center-page .pset-collapsible {
+  position: relative;
+  clip-path: var(--hud-notch);
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--hud-cyan) 5%, transparent), transparent 40%),
+    var(--hud-panel);
+  padding: 0;
+  overflow: visible;
+}
+.profile-center-page .pset-collapsible::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  clip-path: var(--hud-notch);
+  background: color-mix(in srgb, var(--hud-cyan) 14%, transparent);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+}
+.profile-center-page .pset-collapsible > summary {
+  position: relative;
+  z-index: 1;
+  list-style: none;
+  cursor: pointer;
+  font-family: var(--hud-font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--hud-text);
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--hud-line-soft);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.profile-center-page .pset-collapsible > summary::-webkit-details-marker { display: none; }
+.profile-center-page .pset-collapsible > summary::before {
+  content: "▸";
+  font-family: var(--hud-font-mono);
+  color: var(--hud-cyan);
+  transition: transform 0.25s ease;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--hud-cyan) 50%, transparent);
+}
+.profile-center-page .pset-collapsible[open] > summary::before {
+  transform: rotate(90deg);
+}
+.profile-center-page .pset-collapsible > summary:hover {
+  background: color-mix(in srgb, var(--hud-cyan) 4%, transparent);
+}
+.profile-center-page .pset-collapsible[open] > summary {
+  border-bottom-color: var(--hud-line);
+}
+.profile-center-page .pset-collapsible > summary::after {
+  content: "MODULE";
+  font-family: var(--hud-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--hud-faint);
+  margin-left: auto;
+}
+.profile-center-page .pset-collapsible > *:not(summary) {
+  position: relative;
+  z-index: 1;
+  padding: 14px 18px;
+}
+
+/* 设置页通用 section 面板 */
+.profile-center-page .profile-settings-grid section {
+  position: relative;
+  clip-path: var(--hud-notch);
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--hud-cyan) 5%, transparent), transparent 40%),
+    var(--hud-panel);
+  padding: 16px 18px 18px;
+}
+.profile-center-page .profile-settings-grid section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  clip-path: var(--hud-notch);
+  background: color-mix(in srgb, var(--hud-cyan) 13%, transparent);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+}
+.profile-center-page .profile-settings-grid section > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 区块标题 */
+.profile-center-page .profile-settings-grid .section-header {
+  margin-bottom: 14px;
+}
+.profile-center-page .profile-settings-grid .section-title {
+  font-family: var(--hud-font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--hud-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+.profile-center-page .profile-settings-grid .section-title::before {
+  content: "";
+  width: 3px;
+  height: 15px;
+  background: linear-gradient(180deg, var(--hud-cyan), transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--hud-cyan) 60%, transparent);
+  border-radius: 0;
+}
+.profile-center-page .profile-settings-grid .section-desc {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  color: var(--hud-dim);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ---- 统计四格（hud-stat-grid） ---- */
+.profile-center-page .hud-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.profile-center-page .hud-stat-tile {
+  min-width: 0;
+}
+.profile-center-page .hud-stat-tile {
+  position: relative;
+  clip-path: var(--hud-notch);
+  background: var(--hud-panel-deep);
+  padding: 13px 15px 12px;
+}
+.profile-center-page .hud-stat-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  clip-path: var(--hud-notch);
+  background: color-mix(in srgb, var(--hud-cyan) 12%, transparent);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  padding: 1px;
+}
+.profile-center-page .hud-stat-tile::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 12px 12px 0;
+  border-color: transparent color-mix(in srgb, var(--hud-cyan) 28%, transparent) transparent transparent;
+}
+.profile-center-page .hud-stat-label {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+}
+.profile-center-page .hud-stat-value {
+  display: block;
+  font-family: var(--hud-font-display);
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--hud-cyan);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--hud-cyan) 50%, transparent);
+  margin: 6px 0 4px;
+  line-height: 1;
+}
+.profile-center-page .hud-stat-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--hud-dim);
+  font-family: var(--hud-font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.profile-center-page .hud-stat-bar {
+  display: block;
+  height: 3px;
+  background: var(--hud-line-soft);
+  margin-top: 9px;
+  overflow: hidden;
+  position: relative;
+}
+.profile-center-page .hud-stat-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--hud-cyan), var(--hud-green));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--hud-cyan) 60%, transparent);
+  transition: width 0.6s ease;
+}
+
+/* ============================================================
+   9. 画像学习引擎（感知引擎）
+   ============================================================ */
+.profile-center-page .profile-learning-panel {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+}
+.profile-center-page .profile-learning-score strong {
+  font-family: var(--hud-font-display);
+  font-size: 52px;
+  font-weight: 800;
+  color: var(--hud-green);
+  text-shadow: 0 0 24px color-mix(in srgb, var(--hud-green) 50%, transparent);
+  line-height: 1;
+}
+.profile-center-page .profile-learning-score span {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--hud-cyan);
+}
+.profile-center-page .profile-learning-score p {
+  font-size: 12px;
+  color: var(--hud-dim);
+  line-height: 1.6;
+  margin-top: 10px;
+}
+.profile-center-page .profile-learning-actions button {
+  font-family: var(--hud-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hud-cyan);
+  background: transparent;
+  border: 1px solid var(--hud-line);
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+}
+.profile-center-page .profile-learning-actions button:hover {
+  background: color-mix(in srgb, var(--hud-cyan) 8%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--hud-cyan) 20%, transparent);
+}
+.profile-center-page .profile-learning-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.profile-center-page .profile-learning-side div {
+  border-left: 1px solid var(--hud-line-soft);
+  padding-left: 12px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--hud-cyan) 4%, transparent), transparent);
+}
+.profile-center-page .profile-learning-side span {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hud-amber);
+}
+.profile-center-page .profile-learning-side p {
+  font-size: 12px;
+  color: var(--hud-text);
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   10. 信号路由（领域/信源优先级）
+   ============================================================ */
+.profile-center-page .profile-control-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.profile-center-page .priority-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 条目多时内部滚动，避免无限撑长页面 */
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hud-line) transparent;
+}
+.profile-center-page .priority-list::-webkit-scrollbar {
+  width: 5px;
+}
+.profile-center-page .priority-list::-webkit-scrollbar-thumb {
+  background: var(--hud-line);
+  border-radius: 3px;
+}
+.profile-center-page .priority-list::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--hud-cyan) 55%, transparent);
+}
+.profile-center-page .priority-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.profile-center-page .priority-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--hud-cyan) 3%, transparent);
+  border: 1px solid var(--hud-line-soft);
+  border-left: 2px solid var(--hud-line);
+  transition: all 0.2s ease;
+}
+.profile-center-page .priority-row:hover {
+  border-left-color: var(--hud-cyan);
+  background: color-mix(in srgb, var(--hud-cyan) 5%, transparent);
+}
+.profile-center-page .priority-row > span {
+  font-family: var(--hud-font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hud-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-center-page .priority-row > strong {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  color: var(--hud-cyan);
+  letter-spacing: 0.1em;
+  min-width: 34px;
+  text-align: right;
+}
+/* 三级功率档位 */
+.profile-center-page .profile-tier-control {
+  display: inline-flex;
+  gap: 3px;
+  border: 1px solid var(--hud-line-soft);
+  background: var(--hud-console);
+  padding: 2px;
+}
+.profile-center-page .profile-tier-control button {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--hud-dim);
+  background: transparent;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.profile-center-page .profile-tier-control button:hover {
+  color: var(--hud-text);
+  background: color-mix(in srgb, var(--hud-cyan) 6%, transparent);
+}
+.profile-center-page .profile-tier-control button.active {
+  color: #031018;
+  background: linear-gradient(135deg, var(--hud-cyan), var(--hud-teal));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--hud-cyan) 50%, transparent);
+  font-weight: 700;
+}
+
+/* ============================================================
+   11. 追踪目标（特别关注）
+   ============================================================ */
+.profile-center-page .special-follows-list {
+  display: grid;
+  gap: 6px;
+  /* 条目多时内部滚动 */
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hud-line) transparent;
+}
+.profile-center-page .special-follows-list::-webkit-scrollbar {
+  width: 5px;
+}
+.profile-center-page .special-follows-list::-webkit-scrollbar-thumb {
+  background: var(--hud-line);
+  border-radius: 3px;
+}
+.profile-center-page .special-follow-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 2fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  background: color-mix(in srgb, var(--hud-cyan) 2%, transparent);
+  border: 1px solid var(--hud-line-soft);
+  transition: all 0.2s ease;
+  position: relative;
+}
+.profile-center-page .special-follow-item::before {
+  content: "◎";
+  font-family: var(--hud-font-mono);
+  color: var(--hud-violet);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--hud-violet) 70%, transparent);
+  font-size: 11px;
+}
+.profile-center-page .special-follow-item:hover {
+  border-color: var(--hud-line);
+  background: color-mix(in srgb, var(--hud-cyan) 4%, transparent);
+}
+.profile-center-page .special-follow-type {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hud-violet);
+  border: 1px solid color-mix(in srgb, var(--hud-violet) 30%, transparent);
+  background: color-mix(in srgb, var(--hud-violet) 6%, transparent);
+  padding: 2px 8px;
+}
+.profile-center-page .special-follow-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hud-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-center-page .special-follow-note {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  color: var(--hud-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-center-page .special-follow-edit,
+.profile-center-page .special-follow-remove {
+  font-family: var(--hud-font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--hud-line-soft);
+  color: var(--hud-dim);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.profile-center-page .special-follow-edit:hover {
+  color: var(--hud-cyan);
+  border-color: var(--hud-line);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-cyan) 15%, transparent);
+}
+.profile-center-page .special-follow-remove:hover {
+  color: var(--hud-red);
+  border-color: color-mix(in srgb, var(--hud-red) 40%, transparent);
+}
+/* 追踪目标表单 = 终端输入行 */
+.profile-center-page .special-follow-form {
+  display: grid;
+  grid-template-columns: auto minmax(140px, 1fr) minmax(140px, 1fr) auto auto;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+  background: color-mix(in srgb, var(--hud-console) 83%, transparent);
+  border: 1px solid var(--hud-line-soft);
+  padding: 10px;
+}
+.profile-center-page .special-follow-form select,
+.profile-center-page .special-follow-form input {
+  font-family: var(--hud-font-mono);
+  font-size: 12px;
+  padding: 8px 11px;
+  background: color-mix(in srgb, var(--hud-cyan) 3%, transparent);
+  border: 1px solid var(--hud-line-soft);
+  color: var(--hud-text);
+  outline: none;
+  transition: all 0.2s ease;
+}
+.profile-center-page .special-follow-form select:focus,
+.profile-center-page .special-follow-form input:focus {
+  border-color: var(--hud-cyan);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-cyan) 20%, transparent);
+  background: color-mix(in srgb, var(--hud-cyan) 6%, transparent);
+}
+.profile-center-page .special-follow-form button {
+  font-family: var(--hud-font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 8px 16px;
+  color: #031018;
+  background: linear-gradient(135deg, var(--hud-violet), color-mix(in srgb, var(--hud-violet) 78%, transparent));
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--hud-violet) 35%, transparent);
+  transition: all 0.2s ease;
+}
+.profile-center-page .special-follow-form button:hover {
+  box-shadow: 0 0 22px color-mix(in srgb, var(--hud-violet) 55%, transparent);
+}
+.profile-center-page .special-follow-form button.secondary-action {
+  color: var(--hud-cyan);
+  background: transparent;
+  border: 1px solid var(--hud-line);
+  box-shadow: none;
+}
+
+/* ============================================================
+   12. 纠错控制台（校准台）
+   ============================================================ */
+.profile-center-page .profile-calibration-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.profile-center-page .profile-calibration-card {
+  position: relative;
+  background: color-mix(in srgb, var(--hud-cyan) 3%, transparent);
+  border: 1px solid var(--hud-line-soft);
+  border-top: 2px solid var(--hud-cyan);
+  padding: 12px 14px;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  transition: all 0.2s ease;
+  cursor: default;
+}
+.profile-center-page .profile-calibration-card.is-clickable {
+  cursor: pointer;
+}
+.profile-center-page .profile-calibration-card:hover {
+  border-top-color: var(--hud-cyan);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--hud-cyan) 12%, transparent);
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--hud-cyan) 5%, transparent);
+}
+.profile-center-page .profile-calibration-card > span:first-child {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+  display: block;
+}
+.profile-center-page .profile-calibration-card > strong {
+  display: block;
+  font-family: var(--hud-font-display);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--hud-cyan);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--hud-cyan) 40%, transparent);
+  margin: 6px 0 4px;
+}
+.profile-center-page .profile-calibration-card > p {
+  font-size: 11px;
+  color: var(--hud-dim);
+  margin: 0;
+  line-height: 1.5;
+}
+.profile-center-page .profile-calibration-card .calib-jump-hint {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  color: var(--hud-amber);
+  margin-top: 8px;
+}
+/* 控制台 */
+.profile-center-page .calibration-console {
+  background: color-mix(in srgb, var(--hud-console) 96%, transparent);
+  border: 1px solid var(--hud-line-soft);
+  border-left: 2px solid var(--hud-amber);
+  padding: 12px 14px;
+}
+.profile-center-page .calibration-console-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.profile-center-page .calibration-console-title {
+  font-family: var(--hud-font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--hud-amber);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--hud-amber) 40%, transparent);
+}
+.profile-center-page .calibration-console-title::before {
+  content: "> ";
+  color: var(--hud-amber);
+}
+.profile-center-page .calibration-console-sub {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  color: var(--hud-dim);
+}
+.profile-center-page .calibration-type-toggle {
+  display: inline-flex;
+  gap: 3px;
+  border: 1px solid var(--hud-line-soft);
+  padding: 2px;
+  background: var(--hud-console);
+  margin-bottom: 10px;
+}
+.profile-center-page .calibration-type-toggle button {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--hud-dim);
+  background: transparent;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.profile-center-page .calibration-type-toggle button:hover {
+  color: var(--hud-text);
+}
+.profile-center-page .calibration-type-toggle button.active {
+  color: #031018;
+  background: linear-gradient(135deg, var(--hud-amber), color-mix(in srgb, var(--hud-amber) 80%, transparent));
+  font-weight: 700;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--hud-amber) 50%, transparent);
+}
+.profile-center-page .calibration-console-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.profile-center-page .calibration-console-input {
+  flex: 1;
+  font-family: var(--hud-font-mono);
+  font-size: 12px;
+  padding: 9px 12px;
+  background: color-mix(in srgb, var(--hud-cyan) 3%, transparent);
+  border: 1px solid var(--hud-line-soft);
+  color: var(--hud-text);
+  outline: none;
+  transition: all 0.2s ease;
+}
+.profile-center-page .calibration-console-input:focus {
+  border-color: var(--hud-amber);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--hud-amber) 20%, transparent);
+}
+.profile-center-page .calibration-console-row .ai-primary-action {
+  font-family: var(--hud-font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 9px 18px;
+  width: auto;                 /* 覆盖全局 .ai-primary-action 的 width:100%，避免撑爆 flex 行 */
+  flex: 0 0 auto;
+  color: #031018;
+  background: linear-gradient(135deg, var(--hud-amber), color-mix(in srgb, var(--hud-amber) 80%, transparent));
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--hud-amber) 35%, transparent);
+  transition: all 0.2s ease;
+}
+.profile-center-page .calibration-console-row .ai-primary-action:hover {
+  box-shadow: 0 0 22px color-mix(in srgb, var(--hud-amber) 55%, transparent);
+}
+.profile-center-page .calibration-summary {
+  margin-top: 10px;
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  color: var(--hud-dim);
+}
+.profile-center-page .calibration-summary strong {
+  color: var(--hud-amber);
+}
+
+/* ============================================================
+   13. 记忆日志（每日画像记录 / 快照）
+   ============================================================ */
+.profile-center-page .profile-snapshot-list {
+  display: grid;
+  gap: 8px;
+}
+.profile-center-page .profile-snapshot {
+  position: relative;
+  padding: 10px 14px 10px 20px;
+  border: 1px solid var(--hud-line-soft);
+  border-left: 2px solid var(--hud-green);
+  background: color-mix(in srgb, var(--hud-green) 2%, transparent);
+  transition: all 0.2s ease;
+}
+.profile-center-page .profile-snapshot::before {
+  content: "▮";
+  position: absolute;
+  left: 7px;
+  top: 9px;
+  color: var(--hud-green);
+  font-size: 10px;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--hud-green) 80%, transparent);
+}
+.profile-center-page .profile-snapshot:hover {
+  border-left-color: var(--hud-green);
+  background: color-mix(in srgb, var(--hud-green) 5%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--hud-green) 8%, transparent);
+}
+.profile-center-page .profile-snapshot span {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--hud-green);
+}
+.profile-center-page .profile-snapshot strong {
+  font-size: 12px;
+  color: var(--hud-text);
+  margin-left: 10px;
+}
+.profile-center-page .profile-snapshot p {
+  font-size: 11px;
+  color: var(--hud-dim);
+  margin: 5px 0 0;
+  line-height: 1.6;
+}
+
+/* 空状态 */
+.profile-center-page .empty-state,
+.profile-center-page .profile-empty-state {
+  border: 1px dashed var(--hud-line-soft);
+  padding: 22px;
+  text-align: center;
+  font-family: var(--hud-font-mono);
+  font-size: 12px;
+  color: var(--hud-dim);
+  background: color-mix(in srgb, var(--hud-cyan) 2%, transparent);
+}
+.profile-center-page .empty-state p { margin: 4px 0; }
+.profile-center-page .empty-state-hint { font-size: 11px; opacity: 0.75; }
+.profile-center-page .empty-state button {
+  margin-top: 10px;
+  font-family: var(--hud-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hud-cyan);
+  background: transparent;
+  border: 1px solid var(--hud-line);
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.profile-center-page .empty-state button:hover {
+  background: color-mix(in srgb, var(--hud-cyan) 8%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--hud-cyan) 20%, transparent);
+}
+
+/* ============================================================
+   14. 仪表盘内部小组件适配
+   ============================================================ */
+.profile-center-page .hud-linechart .hud-axis-text,
+.profile-center-page .hud-barchart .hud-axis-text,
+.profile-center-page .hud-radar-label {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  fill: var(--hud-dim);
+}
+.profile-center-page .hud-linechart-tip {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  background: var(--hud-console-deep);
+  border: 1px solid var(--hud-line);
+  color: var(--hud-text);
+}
+.profile-center-page .hud-gauge-label {
+  font-family: var(--hud-font-ui);
+  letter-spacing: 0.14em;
+  color: var(--hud-text);
+}
+.profile-center-page .hud-gauge-sub { color: var(--hud-dim); }
+.profile-center-page .card-loading,
+.profile-center-page .card-empty {
+  font-family: var(--hud-font-mono);
+  font-size: 12px;
+  color: var(--hud-dim);
+}
+
+/* 预热卡片 */
+.profile-center-page .preheat-btn {
+  font-family: var(--hud-font-display) !important;
+  letter-spacing: 0.14em !important;
+}
+.profile-center-page .preheat-btn::before {
+  content: "▶ ";
+  color: var(--hud-amber);
+}
+
+/* 行为观测（info-card 系） */
+.profile-center-page .info-card.behavior-card,
+.profile-center-page .info-card.preheat-card {
+  border: 1px solid var(--hud-line-soft);
+  background: color-mix(in srgb, var(--hud-cyan) 2%, transparent);
+}
+.profile-center-page .info-card-title {
+  font-family: var(--hud-font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--hud-text);
+}
+.profile-center-page .info-card-meta {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--hud-dim);
+}
+.profile-center-page .pref-tag {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  color: var(--hud-green);
+  border: 1px solid color-mix(in srgb, var(--hud-green) 30%, transparent);
+  background: color-mix(in srgb, var(--hud-green) 6%, transparent);
+  padding: 3px 9px;
+}
+.profile-center-page .prefs-row .label {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+}
+.profile-center-page .prefs-row .value {
+  color: var(--hud-text);
+}
+.profile-center-page .card-desc {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  color: var(--hud-dim);
+}
+
+/* 主画像卡 */
+.profile-center-page .persona-hero .hero-label {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--hud-cyan);
+}
+.profile-center-page .persona-hero .hero-title {
+  font-family: var(--hud-font-display);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--hud-text);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--hud-cyan) 30%, transparent);
+}
+.profile-center-page .persona-hero .hero-subtitle {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  color: var(--hud-dim);
+}
+.profile-center-page .persona-hero .persona-col-title {
+  font-family: var(--hud-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--hud-text);
+}
+.profile-center-page .persona-hero .persona-col-count {
+  font-family: var(--hud-font-mono);
+  font-size: 10px;
+  color: var(--hud-cyan);
+}
+.profile-center-page .persona-hero .persona-col ul li {
+  font-size: 12px;
+  color: var(--hud-text);
+  border-left: 1px solid var(--hud-line-soft);
+  padding-left: 10px;
+  margin-bottom: 6px;
+}
+.profile-center-page .persona-hero .confidence-value strong {
+  font-family: var(--hud-font-display);
+  color: var(--hud-cyan);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--hud-cyan) 50%, transparent);
+}
+.profile-center-page .persona-hero .confidence-value span {
+  font-family: var(--hud-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--hud-dim);
+}
+
+/* ============================================================
+   15. 动效（克制：只用于"系统活着"的暗示）
+   ============================================================ */
+@keyframes hud-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes hud-pulse-line {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.9; }
+}
+@keyframes hud-radar-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 雷达扫描扇形（叠加在雷达图上方，纯装饰，不遮挡交互） */
+.profile-center-page .radar .hud-panel-body {
+  position: relative;
+}
+.profile-center-page .radar .hud-panel-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    conic-gradient(from 0deg,
+      color-mix(in srgb, var(--hud-cyan) 16%, transparent) 0deg,
+      transparent 42deg),
+    radial-gradient(circle at 50% 50%, transparent 55%, color-mix(in srgb, var(--hud-cyan) 5%, transparent) 100%);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 30%, transparent 68%);
+  mask-image: radial-gradient(circle at 50% 50%, #000 30%, transparent 68%);
+  animation: hud-radar-spin 6s linear infinite;
+  z-index: 0;
+}
+.profile-center-page .radar .hud-panel-body > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .profile-center-page .hud-scanlines,
+  .profile-center-page .radar .hud-panel-body::after,
+  .profile-center-page .hud-telemetry::after,
+  .profile-center-page .hud-tele-status i {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
+   17. 顶栏遥测宿主（用户画像页：遥测栏置顶固定）
+   ============================================================ */
+.topbar .topbar-hud-host {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+.topbar .topbar-hud-host .hud-telemetry {
+  margin-bottom: 0;
+  padding: 5px 14px;
+}
+/* 遥测栏内的迷你视图切换按钮（仪表盘/设置，位于日期时间左侧） */
+.topbar .topbar-hud-host .hud-tele-actions {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 2px;
+}
+.topbar .topbar-hud-host .hud-tab-mini {
+  display: inline-flex;
+  gap: 2px;
+}
+.topbar .topbar-hud-host .hud-tab-mini .profile-tab {
+  font-family: var(--hud-font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  padding: 3px 11px;
+  background: transparent;
+  border: 1px solid var(--hud-line-soft);
+  color: var(--hud-dim);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  position: relative;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+}
+.topbar .topbar-hud-host .hud-tab-mini .profile-tab:hover {
+  color: var(--hud-text);
+  border-color: var(--hud-line);
+}
+.topbar .topbar-hud-host .hud-tab-mini .profile-tab.active {
+  color: #031018;
+  background: linear-gradient(135deg, var(--hud-cyan), var(--hud-teal));
+  border-color: transparent;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-cyan) 45%, transparent);
+  font-weight: 700;
+  text-shadow: none;
+}
+.topbar .topbar-hud-host .hud-tab-mini .profile-tab.active::after {
+  display: none;
+}
+/* 右侧区与按钮的间距 */
+.topbar .topbar-hud-host .hud-tele-right {
+  gap: 10px;
+}
+
+/* ============================================================
+   16. 窄屏适配
+   ============================================================ */
+@media (max-width: 1100px) {
+  .profile-center-page .dashboard-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "kpi" "rail" "main" "hero" "behavior" "preheat";
+  }
+  .profile-center-page .hud-kpi-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .profile-center-page .hud-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .profile-center-page .profile-control-layout,
+  .profile-center-page .profile-learning-panel {
+    grid-template-columns: 1fr;
+  }
+  .profile-center-page .profile-calibration-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-center-page .special-follow-item {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+  .profile-center-page .special-follow-note {
+    display: none;
+  }
+  .profile-center-page .special-follow-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .profile-center-page .hud-kpi-strip,
+  .profile-center-page .hud-stat-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-center-page .hud-tele-stat em { display: none; }
+}
+
+/* ============================================================
+   18. 浅色模式适配（data-mode="light"）
+       面板改浅色毛玻璃、发光减弱、accent 底按钮改白字、下拉列表浅底
+   ============================================================ */
+:root[data-mode="light"] .profile-center-page {
+  /* 面板底：浅色毛玻璃，粒子/主背景仍透出 */
+  --hud-bg0: #f4f7fa;
+  --hud-bg1: #e8eef4;
+  --hud-panel: rgba(255, 255, 255, 0.6);
+  --hud-panel-deep: rgba(255, 255, 255, 0.86);
+  --hud-tele: rgba(255, 255, 255, 0.72);
+  --hud-console: rgba(255, 255, 255, 0.82);
+  --hud-console-deep: rgba(255, 255, 255, 0.97);
+  /* 浅色下发光减弱（亮度分层仍保留，但用柔和阴影代替霓虹光晕） */
+  --hud-line: color-mix(in srgb, var(--accent-cyan) 32%, transparent);
+  --hud-line-soft: color-mix(in srgb, var(--accent-cyan) 16%, transparent);
+}
+
+/* 发光文字 → 柔和阴影 */
+:root[data-mode="light"] .profile-center-page .profile-hero h1,
+:root[data-mode="light"] .profile-center-page .hud-kpi-value,
+:root[data-mode="light"] .profile-center-page .hud-stat-value,
+:root[data-mode="light"] .profile-center-page .profile-learning-score strong,
+:root[data-mode="light"] .profile-center-page .profile-calibration-card > strong,
+:root[data-mode="light"] .profile-center-page .persona-hero .confidence-value strong,
+:root[data-mode="light"] .profile-center-page .persona-hero .hero-title,
+:root[data-mode="light"] .profile-center-page .hud-tele-time,
+:root[data-mode="light"] .profile-center-page .hud-panel-title {
+  text-shadow: none;
+}
+
+/* accent 底按钮：浅色模式下文字改白（accent 为深色系） */
+:root[data-mode="light"] .profile-center-page .profile-hero .ai-primary-action,
+:root[data-mode="light"] .profile-center-page .calibration-console-row .ai-primary-action,
+:root[data-mode="light"] .profile-center-page .hud-tab-mini .profile-tab.active,
+:root[data-mode="light"] .profile-center-page .profile-tier-control button.active,
+:root[data-mode="light"] .profile-center-page .calibration-type-toggle button.active,
+:root[data-mode="light"] .profile-center-page .special-follow-form > button {
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+/* 面板发光描边 → 浅色下用 accent 边框色 */
+:root[data-mode="light"] .profile-center-page .hud-panel::before,
+:root[data-mode="light"] .profile-center-page .hud-kpi::before,
+:root[data-mode="light"] .profile-center-page .hud-stat-tile::before,
+:root[data-mode="light"] .profile-center-page .pset-collapsible::before,
+:root[data-mode="light"] .profile-center-page .profile-settings-grid section::before {
+  background: color-mix(in srgb, var(--accent-cyan) 30%, transparent);
+}
+
+/* 遥测栏/面板底色统一浅色（无独立深色底） */
+:root[data-mode="light"] .profile-center-page .hud-telemetry {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 5%, transparent), transparent),
+    var(--hud-tele);
+}
+:root[data-mode="light"] .profile-center-page .profile-hero {
+  background:
+    linear-gradient(120deg, color-mix(in srgb, var(--accent-cyan) 8%, transparent), transparent 45%),
+    linear-gradient(180deg, var(--hud-tele), transparent);
+}
+
+/* 下拉列表（select/option）：跟随深浅模式 */
+.profile-center-page select option {
+  background: var(--hud-panel-deep);
+  color: var(--hud-text);
+}
+:root[data-mode="light"] .profile-center-page select option {
+  background: #fff;
+  color: var(--hud-text);
+}
+
+/* 图表 tooltip：浅色下浅底深字 */
+:root[data-mode="light"] .profile-center-page .hud-linechart-tip {
+  background: rgba(255, 255, 255, 0.97);
+  border-color: var(--hud-line);
+  color: var(--hud-text);
+  box-shadow: 0 4px 16px rgba(30, 45, 60, 0.12);
+}
+
+/* 状态灯/脉冲点：浅色下仍保留（accent 色） */
+:root[data-mode="light"] .profile-center-page .hud-tele-status i {
+  box-shadow: 0 0 6px color-mix(in srgb, var(--hud-green) 70%, transparent);
+}

@@ -6,9 +6,9 @@
 import { buildPersonaTrendSeries } from '../../utils/dashboardBuilders.js';
 
 const SERIES_STYLE = [
-  { name: '习惯', stroke: '#D4B576', dash: '' },
-  { name: '性格', stroke: '#9A7B3F', dash: '3,3' },
-  { name: '需求', stroke: 'rgba(201,169,97,0.5)', dash: '' },
+  { name: '习惯', stroke: '#00e5ff', dash: '' },
+  { name: '性格', stroke: '#0088aa', dash: '3,3' },
+  { name: '需求', stroke: 'rgba(0,229,255,0.4)', dash: '' },
 ];
 
 export default function PersonaEvolutionMiniChart({ history, loading, selectedIdx, onSelectNode }) {
@@ -46,7 +46,7 @@ export default function PersonaEvolutionMiniChart({ history, loading, selectedId
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
           {[20, 40, 60].map(y => (
             <line key={y} x1="0" y1={y} x2={W} y2={y}
-                  stroke="rgba(201,169,97,0.06)" strokeWidth="1" />
+                  stroke="rgba(0,229,255,0.06)" strokeWidth="1" />
           ))}
           {series.map((s, si) => {
             const style = SERIES_STYLE[si];

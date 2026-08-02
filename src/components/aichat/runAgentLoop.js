@@ -323,6 +323,87 @@ export async function runAgentLoop({
   const extracted = extractTodos(finalFinalContent);
   if (extracted.length > 0) setAutoTodos(extracted);
 
+  // 自动技能沉淀：任务完成后，若有工具调用且输出有结构化内容，Agent 自我反思沉淀经验
+  // 这不是用户手动"存为技能"，而是 Agent 主动从工作过程中提炼方法论、步骤、决策点
+  const hadToolCalls = toolCallTrace.length > 0;
+  const hadStructuredOutput = /\n\s*[#>*\-\d]/.test(finalFinalContent) || finalFinalContent.length > 500;
+  if (hadToolCalls && hadStructuredOutput) {
+    try {
+      const skillPrecipitationPrompt = [
+        '你刚完成了一个任务。现在请反思并沉淀本次工作的经验为一个可复用的技能（Skill）。',
+        '',
+        '请按以下结构输出技能内容：',
+        '',
+        '# 技能标题：<用一句话概括这个技能能做什么>',
+        '',
+        '## 适用场景',
+        '- 什么时候应该使用这个技能？',
+        '- 典型的触发关键词是什么？',
+        '',
+        '## 工作流程与方法论',
+        '1. 第一步做什么，为什么',
+        '2. 第二步做什么，关键判断标准是什么',
+        '3. 第三步做什么，注意事项有哪些',
+        '',
+        '## 关键决策点',
+        '- 在哪些情况下需要调整策略？',
+        '- 有哪些常见的陷阱或误区？',
+        '',
+        '## 工具使用经验',
+        '- 本次用到了哪些工具？各自的作用是什么？',
+        '- 工具组合的最佳实践是什么？',
+        '',
+        '## 输出模板',
+        '- 最终交付物应该包含哪些部分？',
+        '- 格式/结构要求是什么？',
+      ].join('\n');
+
+      const precipitationMessages = [
+        ...baseMessages,
+        { role: 'user', content: userMessage.content },
+        { role: 'assistant', content: finalFinalContent, tool_calls: toolCallTrace.map(tc => ({ id: tc.id, function: { name: tc.name, arguments: JSON.stringify(tc.args || {}) } })) },
+        { role: 'user', content: skillPrecipitationPrompt },
+      ];
+
+      const precipitationResponse = await fetch('/api/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: llmConfig.baseUrl,
+          apiKey: llmConfig.apiKey,
+          model: selectedModel,
+          action: 'chat',
+          systemPrompt: `${systemPrompt}\n\n【技能沉淀模式】你正在进行工作反思。你的任务是把刚才完成的工作过程、方法论、经验教训沉淀为一个可复用的 Skill。重点描述过程和方法，而不是重复输出结果。`,
+          messages: precipitationMessages,
+          max_tokens: 3000,
+          tools: toolSchemas.filter(s => s.function?.name === 'create_skill'),
+          tool_choice: 'auto',
+        }),
+      });
+
+      if (precipitationResponse.ok) {
+        const pData = await precipitationResponse.json();
+        // 如果 Agent 调用了 create_skill，技能已由工具执行层写入
+        // 如果没有调用工具，说明 Agent 判断本次工作不值得沉淀（正常情况）
+        if (Array.isArray(pData.tool_calls) && pData.tool_calls.length > 0) {
+          // 执行 create_skill 工具调用
+          for (const tc of pData.tool_calls) {
+            const toolName = tc?.function?.name;
+            let args = {};
+            try { args = JSON.parse(tc?.function?.arguments || '{}'); } catch { args = {}; }
+            if (toolName === 'create_skill') {
+              args.source = 'work'; // 强制标记为工作沉淀
+              const toolResult = await executeAgentTool(toolName, args, toolCtx);
+              // create_skill 内部已通过 onSkillCreated 回调通知前端刷新
+            }
+          }
+        }
+      }
+    } catch {
+      // 技能沉淀失败不影响主流程，静默失败
+    }
+  }
+
   const currentSession = sessions.find(s => s.id === targetId) || { id: targetId, messages: [...messages, userMessage, { role: 'assistant', content: finalFinalContent }] };
   const totalRounds = currentSession.messages.filter(m => m.role === 'user').length;
   if (totalRounds >= 3) {

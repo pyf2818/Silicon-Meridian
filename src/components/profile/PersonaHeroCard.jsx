@@ -11,15 +11,15 @@ function ConfidenceRing({ value }) {
     <div className="confidence-ring">
       <svg viewBox="0 0 80 80">
         <defs>
-          <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#D4B576" />
-            <stop offset="100%" stopColor="#9A7B3F" />
+          <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#00e5ff" />
+            <stop offset="100%" stopColor="#0088aa" />
           </linearGradient>
         </defs>
         <circle cx="40" cy="40" r={radius} fill="none"
-                stroke="rgba(201,169,97,0.10)" strokeWidth="6" />
+                stroke="rgba(0,229,255,0.08)" strokeWidth="6" />
         <circle cx="40" cy="40" r={radius} fill="none"
-                stroke="url(#goldGrad)" strokeWidth="6" strokeLinecap="round"
+                stroke="url(#cyanGrad)" strokeWidth="6" strokeLinecap="round"
                 strokeDasharray={circumference}
                 strokeDashoffset={offset}
                 transform="rotate(-90 40 40)"

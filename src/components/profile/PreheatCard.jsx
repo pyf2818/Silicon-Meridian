@@ -1,21 +1,20 @@
 // src/components/profile/PreheatCard.jsx
-// Phase 6: 包装 PreheatButton，加 info-card 样式 + normalizeError
+// Phase 6: 包装 PreheatButton，加 info-card 样式
+// 错误以结构化 { code, message } 透传，由 PreheatButton 做引导式呈现
 import PreheatButton from './PreheatButton.jsx';
-import { normalizeError } from '../../utils/dashboardBuilders.js';
 
 export default function PreheatCard({ onPreheat, loading, result, error }) {
-  const normalizedError = normalizeError(error);
   return (
     <div className="info-card preheat-card">
       <div className="info-card-header">
-        <span className="info-card-title">手动重跑预热</span>
+        <span className="info-card-title">刷新我的推荐</span>
       </div>
-      <p className="card-desc">触发今日推荐快照重新生成，会调用 LLM，可能耗时 30-60 秒</p>
+      <p className="card-desc">按你的偏好重新生成今日推荐，通常几秒到一分钟</p>
       <PreheatButton
         onPreheat={onPreheat}
         loading={loading}
         result={result}
-        error={normalizedError}
+        error={error}
       />
     </div>
   );

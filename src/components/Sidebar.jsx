@@ -210,11 +210,17 @@ export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileM
         <div className="sidebar-footer">
           {isLoggedIn ? (
             <button className="sidebar-action" onClick={() => setShowProfileModal(true)}>
-              {user?.avatar ? (
-                <img src={user.avatar} alt="avatar" className="sidebar-user-avatar-btn" />
-              ) : (
+              <span className="sidebar-user-avatar-wrap">
                 <span className="sidebar-user-avatar-small">{(user?.displayName || user?.username)?.[0]?.toUpperCase() || 'U'}</span>
-              )}
+                {user?.avatar && (
+                  <img
+                    src={user.avatar}
+                    alt="avatar"
+                    className="sidebar-user-avatar-btn"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                )}
+              </span>
               {!sidebarCollapsed && <span>{user?.displayName || user?.username}</span>}
             </button>
           ) : (

@@ -1,8 +1,23 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createAuthRepository } from './authRepository.js';
+import { createMemoryAuthRepository } from './memoryAuthRepository.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * 开发态内存备用存储开关。
+ * 仅当显式设置 DEV_MEMORY_AUTH=true 且非 production 时生效——用于本地无 PostgreSQL
+ * 时仍能端到端跑通注册/登录/取当前用户。生产环境绝不会进入该分支，避免掩盖真实 DB 故障。
+ */
+function devMemoryEnabled() {
+  return process.env.NODE_ENV !== 'production' && process.env.DEV_MEMORY_AUTH === 'true';
+}
+
+function resolveAuthRepository() {
+  if (devMemoryEnabled()) return createMemoryAuthRepository();
+  return createAuthRepository();
+}
 
 function serviceError(code, message, status = 400) {
   return Object.assign(new Error(message), { code, status });
@@ -26,7 +41,7 @@ export function publicUser(user) {
   };
 }
 
-export function createAuthService(repository = createAuthRepository()) {
+export function createAuthService(repository = resolveAuthRepository()) {
   async function issueSession(user) {
     const rawToken = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + SESSION_MS);

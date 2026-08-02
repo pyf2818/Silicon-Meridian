@@ -1,4 +1,6 @@
 import { getPool, withTransaction } from '../db/client.js';
+import { isDevMemoryMode } from '../db/devMemoryStore.js';
+import * as memorySnapshotRepository from './memorySnapshotRepository.js';
 
 /**
  * Phase 3 Task B2: 纯函数 — 构造 recommendation_items 批量 INSERT 的 values 字符串和参数数组。
@@ -36,6 +38,7 @@ export function buildInsertItemsParams(snapshotId, lanes) {
  * 使用 withTransaction 保证原子性。
  */
 export async function insertSnapshot({ userId, date, algorithmVersion, lanes, algorithmPayload, aiPayload = null, aiCitationIds = [], aiStatus = 'not_requested' }) {
+  if (isDevMemoryMode()) return memorySnapshotRepository.insertSnapshot({ userId, date, algorithmVersion, lanes, algorithmPayload, aiPayload, aiCitationIds, aiStatus });
   return withTransaction(async (client) => {
     // 1. upsert recommendation_snapshots
     const snapRes = await client.query(
@@ -85,6 +88,7 @@ export async function insertSnapshot({ userId, date, algorithmVersion, lanes, al
  * Phase 3 Task B2: 按日期查询某用户的快照
  */
 export async function getSnapshotByDate(userId, date) {
+  if (isDevMemoryMode()) return memorySnapshotRepository.getSnapshotByDate(userId, date);
   const res = await getPool().query(
     `SELECT rs.*, bs.algorithm_payload as "algorithmPayload", bs.ai_payload as "aiPayload",
             bs.ai_citation_ids as "aiCitationIds", bs.ai_status as "aiStatus"
@@ -100,6 +104,7 @@ export async function getSnapshotByDate(userId, date) {
  * Phase 3 Task B2: 查询最近 N 天的快照列表
  */
 export async function getRecentSnapshots(userId, limit = 30) {
+  if (isDevMemoryMode()) return memorySnapshotRepository.getRecentSnapshots(userId, limit);
   const res = await getPool().query(
     `SELECT rs.id, rs.snapshot_date as date, rs.algorithm_version as "algorithmVersion",
             bs.ai_status as "aiStatus",

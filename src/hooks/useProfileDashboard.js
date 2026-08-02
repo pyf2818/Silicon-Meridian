@@ -4,10 +4,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useProfileStore } from '../store';
-import { buildTrendSeries, buildAiStatusCounts, normalizeError, buildPersonaTrendSeries, diffPersonaSnapshots } from '../utils/dashboardBuilders.js';
+import { buildTrendSeries, buildAiStatusCounts, normalizeError, buildPersonaTrendSeries, diffPersonaSnapshots, buildDomainRadar, buildReadingActivity, buildAiStatusSeries } from '../utils/dashboardBuilders.js';
 
 // Re-export 纯函数（便于从 hook 文件统一 import）
-export { buildTrendSeries, buildAiStatusCounts, normalizeError, buildPersonaTrendSeries, diffPersonaSnapshots };
+export { buildTrendSeries, buildAiStatusCounts, normalizeError, buildPersonaTrendSeries, diffPersonaSnapshots, buildDomainRadar, buildReadingActivity, buildAiStatusSeries };
 
 /**
  * Phase 4 仪表盘聚合 hook
@@ -37,7 +37,7 @@ export function useProfileDashboard() {
     setSnapshotsLoading(true);
     setSnapshotsError(null);
     try {
-      const resp = await fetch('/api/profile/snapshots');
+      const resp = await fetch('/api/profile/snapshots', { credentials: 'same-origin' });
       const data = await resp.json();
       if (data.ok) setSnapshots(data.snapshots || []);
       else setSnapshotsError(normalizeError(data.error) || '加载失败');
@@ -52,7 +52,7 @@ export function useProfileDashboard() {
   const loadLearnedPrefs = useCallback(async () => {
     setPrefsLoading(true);
     try {
-      const resp = await fetch('/api/agent-memory/persona');
+      const resp = await fetch('/api/agent-memory/persona', { credentials: 'same-origin' });
       const data = await resp.json();
       if (data.ok) setLearnedPrefs(data.learnedPreferences || {});
     } catch {
@@ -66,7 +66,7 @@ export function useProfileDashboard() {
   const loadPersonaHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const resp = await fetch('/api/agent-memory/persona/history?limit=30');
+      const resp = await fetch('/api/agent-memory/persona/history?limit=30', { credentials: 'same-origin' });
       const data = await resp.json();
       if (data.ok) setPersonaHistory(data.history || []);
     } catch {
@@ -81,16 +81,20 @@ export function useProfileDashboard() {
     setPreheatError(null);
     setPreheatResult(null);
     try {
-      const resp = await fetch('/api/profile/snapshots/preheat', { method: 'POST' });
+      const resp = await fetch('/api/profile/snapshots/preheat', { method: 'POST', credentials: 'same-origin' });
       const data = await resp.json();
       if (data.ok) {
         setPreheatResult({ cached: data.cached, aiStatus: data.aiStatus });
         if (!data.cached) loadSnapshots(); // 重新拉取列表
       } else {
-        setPreheatError(normalizeError(data.error) || '预热失败');
+        // 保留 code，使前端能做引导式提示（而非把故障归因成裸字符串）
+        setPreheatError({
+          code: data?.error?.code || 'PREHEAT_FAILED',
+          message: normalizeError(data.error) || '预热失败',
+        });
       }
     } catch (err) {
-      setPreheatError(normalizeError(err) || '网络错误');
+      setPreheatError({ code: 'NETWORK', message: normalizeError(err) || '网络错误' });
     } finally {
       setPreheatLoading(false);
     }

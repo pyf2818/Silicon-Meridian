@@ -55,6 +55,7 @@ export default function AiChatPanel({
   todayBriefing,
   todayLanes,
   materials,
+  toggleMaterial,
   agent,
   onUpdateAgent,
   setLlmConfig,
@@ -260,61 +261,59 @@ export default function AiChatPanel({
     }
   }, [input]);
 
-  // 工作沉淀：把当前 assistant 回复存为 work 来源的 skill
-  // 提取标题/正文/触发词/使用工具，调用 createSkill 落地到 skills/work/<id>/SKILL.md
-  const saveAsSkill = useCallback(async (msg, idx) => {
+  // 存为素材：把当前 assistant 回复保存到素材库（materials），供后续创作引用
+  const saveAsMaterial = useCallback(async (msg, idx) => {
     if (!msg?.content) {
-      showToast('回复内容为空，无法沉淀');
+      showToast('回复内容为空，无法保存');
       return;
     }
-    // 标题：取正文首行非空文本（去掉 markdown 标记），最多 30 字
     const firstLine = String(msg.content)
       .split('\n')
       .map(s => s.trim())
-      .filter(Boolean)[0] || '工作沉淀技能';
+      .filter(Boolean)[0] || 'AI 对话分析';
     const cleanTitle = firstLine
       .replace(/^#+\s*/, '')
       .replace(/^\s*[-*]\s+/, '')
       .replace(/[`*_~]/g, '')
-      .slice(0, 30);
-    // id：基于标题生成 kebab-case，避免冲突加 4 位随机后缀
-    const baseId = (cleanTitle.toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 24) || 'work-skill');
-    const id = `${baseId}-${Math.random().toString(36).slice(2, 6)}`;
-    // 触发词：从前一条用户消息提取关键词（去停用词，取前 5 个）
+      .slice(0, 60);
+
     const prevUserMsg = messages.slice(0, idx).reverse().find(m => m.role === 'user');
-    const stopWords = new Set(['的', '了', '是', '在', '和', '与', '或', '一个', '一些', '我', '你', '他', '她', '它', '这', '那', '请', '帮', '给', '把', '让', 'the', 'a', 'an', 'is', 'are', 'to', 'of', 'in', 'on', 'for', 'with', 'and', 'or']);
-    const triggers = (prevUserMsg?.content || '')
-      .split(/[\s,，。.;；!！?？::]+/)
-      .map(s => s.trim().toLowerCase())
-      .filter(s => s.length >= 2 && s.length <= 12 && !stopWords.has(s))
-      .slice(0, 5);
-    // 工具：取本条消息调用的工具名（去重）
     const tools = Array.isArray(msg.toolCalls)
-      ? [...new Set(msg.toolCalls.map(tc => tc?.name || tc?.toolName).filter(Boolean))]
+      ? msg.toolCalls.map(tc => tc?.name || tc?.toolName).filter(Boolean)
       : [];
-    const skill = {
-      id,
+
+    const materialItem = {
+      id: `ai-${Date.now()}`,
       title: cleanTitle,
-      description: prevUserMsg?.content?.slice(0, 60) || '从对话中沉淀的工作技能',
-      category: 'work',
-      triggers,
-      tools,
-      tags: [],
-      version: '0.1.0',
-      author: '工作沉淀',
-      body: `# ${cleanTitle}\n\n> 由对话沉淀自动生成，可基于此模板继续编辑。\n\n## Prompt 模板\n\n用户原始问题：\n\n${prevUserMsg?.content || '（无）'}\n\n## 回复内容（可作为输出参考）\n\n${msg.content}`,
-      source: 'work',
+      summary: prevUserMsg?.content?.slice(0, 200) || cleanTitle,
+      content: msg.content,
+      source: 'AI 对话',
+      category: agent?.category || 'ai-analysis',
+      tags: ['AI分析', agent?.name || '智能体', ...new Set(tools)],
+      url: '',
+      imageUrl: '',
+      type: tools.length > 0 ? 'case' : 'viewpoint',
+      insight: msg.content.slice(0, 300),
+      metadata: {
+        agentId: agent?.id,
+        agentName: agent?.name,
+        userQuery: prevUserMsg?.content || '',
+        toolCalls: tools,
+        messageIndex: idx,
+      },
+      publishedAt: new Date().toISOString(),
     };
+
     try {
-      await skillsHook.createSkill(skill);
-      showToast(`已沉淀为技能：${cleanTitle}`);
+      if (toggleMaterial) {
+        toggleMaterial(materialItem, materialItem.type, '来自 AI 工作站的分析回复');
+      } else {
+        showToast('已保存为素材（请刷新页面查看）');
+      }
     } catch (err) {
-      showToast(`沉淀失败：${err?.message || '未知错误'}`);
+      showToast(`保存失败：${err?.message || '未知错误'}`);
     }
-  }, [messages, skillsHook]);
+  }, [messages, toggleMaterial, agent]);
   useEffect(() => {
     let cancelled = false;
     fetchPersonaSummary().then(ps => {
@@ -839,9 +838,9 @@ export default function AiChatPanel({
                   <span className="icon-sm">{ICONS.copy}</span>
                   复制
                 </button>
-                <button type="button" className="chat-action-btn" title="存为技能（沉淀到 skills/work）" onClick={() => saveAsSkill(msg, i)}>
+                <button type="button" className="chat-action-btn" title="存为素材（保存到素材库，供后续创作引用）" onClick={() => saveAsMaterial(msg, i)}>
                   <span className="icon-sm">{ICONS.bookmark}</span>
-                  存为技能
+                  存为素材
                 </button>
                 <button type="button" className="chat-action-btn" title="重新生成" onClick={() => regenerateLast()} disabled={isStreaming}>
                   <span className="icon-sm">{ICONS.refresh}</span>

@@ -52,11 +52,23 @@ export function sessionCookie(token, { clear = false } = {}) {
   return `meridian_session=${value}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
+// 连接类错误：数据库未启动 / 网络不可达时，pg 会抛出这些系统错误码或带特定文案的错误，
+// 需要归一为可读提示，而不是把空 message 暴露成「请求失败」。
+const CONNECTION_ERROR_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', '57P01', '57P03']);
+const CONNECTION_MESSAGE_RE = /(could not connect|connection (to server|refused|terminated)|database .* does not exist|no pg_hba\.conf|remaining connection slots are reserved)/i;
+
 export function routeError(res, error) {
-  const code = error?.code === 'DATABASE_UNAVAILABLE' ? 'DATABASE_UNAVAILABLE' : (error?.code || 'INTERNAL_ERROR');
-  const status = error?.code === 'DATABASE_UNAVAILABLE' ? 503 : (error?.status || 500);
-  const message = code === 'DATABASE_UNAVAILABLE'
-    ? '持久化数据库尚未配置，账户与社区暂不可用'
-    : (status >= 500 && code === 'INTERNAL_ERROR' ? '服务暂时不可用' : (error?.message || '请求失败'));
-  return sendJsonResponse(res, status, { ok: false, error: { code, message } });
+  const code = error?.code;
+  const isDatabaseError = code === 'DATABASE_UNAVAILABLE'
+    || (code && CONNECTION_ERROR_CODES.has(code))
+    || CONNECTION_MESSAGE_RE.test(error?.message || '');
+  if (isDatabaseError) {
+    return sendJsonResponse(res, 503, {
+      ok: false,
+      error: { code: 'DATABASE_UNAVAILABLE', message: '数据库暂时无法连接，账户与社区功能暂不可用，请稍后重试' },
+    });
+  }
+  const status = error?.status || 500;
+  const message = status >= 500 && code === 'INTERNAL_ERROR' ? '服务暂时不可用' : (error?.message || '请求失败');
+  return sendJsonResponse(res, status, { ok: false, error: { code: code || 'INTERNAL_ERROR', message } });
 }
