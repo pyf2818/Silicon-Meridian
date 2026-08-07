@@ -1,0 +1,235 @@
+/* ============================================================
+   polish.css — 全局视觉打磨层（2026-08-03）
+   加载顺序最后：styles.css → themes.css → hud-theme.css → polish.css
+
+   第一性原理：
+   1. 结构退后，内容向前 —— 边框是分组工具而非装饰，
+      2px 金框裱一切 = 没有层级。结构线中性化，accent 只留给状态与动作。
+   2. 颜色 = 信息权重 —— 修复硬编码蓝/紫/亮黄残留，
+      一切强调色走 accent 变量，随调色板统一迁移。
+   3. 界面是活的 —— 首屏欢迎区是产品的"门面"，
+      需要聚焦、呼吸感与进场节奏，而不是堆在顶部的一堆盒子。
+   本文件为纯 CSS 覆盖层，不改动任何组件结构与业务逻辑。
+   ============================================================ */
+
+/* ---------- 1. 结构边框中性化（覆盖全部 12 套调色板的金色描边） ----------
+   选择器覆盖 :root / [data-mode] / [data-palette] / 组合态，
+   保证在调色板切换后依然生效（后加载 + 同特异性胜出）。 */
+:root,
+:root[data-mode],
+:root[data-palette],
+:root[data-mode][data-palette] {
+  --border-color: rgba(255, 255, 255, 0.09);
+  --panel-border: 1px solid var(--border-color);
+}
+:root[data-mode="light"],
+:root[data-mode="light"][data-palette] {
+  --border-color: rgba(15, 23, 42, 0.1);
+}
+
+/* 硬编码深色文字修复：active tab 文字跟随底色，深浅模式均保证对比度 */
+.lang-tab.active,
+.mode-tab.active {
+  color: var(--bg-primary);
+}
+
+/* ---------- 2. 左侧导航：修复硬编码天蓝激活态 + 增加激活指示条 ---------- */
+.nav-item.active {
+  background: var(--accent-cyan-soft);
+  color: var(--accent-cyan);
+  box-shadow: inset 2px 0 0 var(--accent-cyan);
+}
+
+/* ---------- 3. 首屏欢迎区：垂直聚焦 + 打字光标 + 卡片错落进场 ---------- */
+.chat-messages:has(> .chat-welcome) {
+  display: flex;
+  flex-direction: column;
+}
+.chat-welcome {
+  flex: 1;
+  justify-content: center;
+  padding-top: 24px;
+  gap: 14px;
+}
+.chat-welcome-greeting {
+  font-size: clamp(20px, 2.6vw, 27px);
+  letter-spacing: 0.5px;
+  min-height: 38px;
+}
+/* 渐变金文字 → 高对比纯色 + 呼吸光标（对抗"AI slop"渐变标题） */
+.chat-welcome-typed {
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  color: var(--text-primary);
+}
+.chat-welcome-typed::after {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  margin-left: 7px;
+  vertical-align: -0.12em;
+  border-radius: 1px;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 12px var(--accent-cyan);
+  animation: polishCaret 1.15s steps(2, jump-none) infinite;
+}
+@keyframes polishCaret {
+  50% { opacity: 0; }
+}
+/* 统计行 → 遥测胶囊：等宽数字 + accent 描边，信息更"仪表盘化" */
+.chat-welcome-meta {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 15px;
+  border-radius: 999px;
+  background: var(--accent-cyan-softer);
+  border: 1px solid var(--accent-cyan-border);
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  letter-spacing: 0.4px;
+}
+/* 快捷卡片：错落上浮进场，拒绝"一整面墙同时闪现" */
+.chat-suggest-card {
+  animation: polishCardIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.chat-welcome-cards .chat-suggest-card:nth-child(1) { animation-delay: 0.06s; }
+.chat-welcome-cards .chat-suggest-card:nth-child(2) { animation-delay: 0.13s; }
+.chat-welcome-cards .chat-suggest-card:nth-child(3) { animation-delay: 0.2s; }
+.chat-welcome-cards .chat-suggest-card:nth-child(4) { animation-delay: 0.27s; }
+.chat-welcome-cards .chat-suggest-card:nth-child(5) { animation-delay: 0.34s; }
+.chat-welcome-cards .chat-suggest-card:nth-child(n+6) { animation-delay: 0.41s; }
+@keyframes polishCardIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (max-width: 640px) {
+  .chat-welcome-typed { white-space: normal; }
+  .chat-welcome-greeting { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-suggest-card { animation: none; }
+  .chat-welcome-typed::after { animation: none; }
+}
+
+/* ---------- 4. 输入区：聚焦时的柔和光环（取代生硬描边变化） ---------- */
+.chat-input-area:focus-within {
+  border-color: var(--accent-cyan-border);
+  box-shadow: 0 0 0 3px var(--accent-cyan-softer), 0 8px 28px -12px var(--border-glow);
+}
+
+/* ---------- 5. GitHub 热门：色彩系统归位 + Top3 仪式感 ---------- */
+/* 卡片描金边：硬编码金色 → accent 变量，随调色板迁移 */
+.github-card {
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, rgba(255, 255, 255, 0.022) 60%, var(--bg-card-solid)) 0%,
+      var(--bg-card-solid) 50%) padding-box,
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--accent-cyan) 16%, transparent) 0%,
+      transparent 100%) border-box;
+}
+.github-card::before {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent-cyan) 22%, transparent) 40%,
+    color-mix(in srgb, var(--accent-cyan) 34%, transparent) 50%,
+    color-mix(in srgb, var(--accent-cyan) 20%, transparent) 60%,
+    transparent 100%);
+}
+.github-card:hover {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), 0 0 0 1px var(--border-glow);
+}
+/* Top3 排名：金色填充徽章，排行榜的仪式感 */
+.github-grid > .github-card:nth-child(-n+3) .gh-rank {
+  background: var(--gradient-primary);
+  color: var(--bg-primary);
+  border-radius: 7px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  box-shadow: 0 2px 12px var(--border-glow);
+}
+.gh-rank {
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+}
+/* topic 标签：硬编码天蓝 → accent 体系 */
+.gh-topic {
+  background: var(--accent-cyan-softer);
+  border-color: var(--accent-cyan-border);
+  color: var(--accent-cyan);
+}
+/* 操作按钮激活态：硬编码紫/亮黄 → color-mix accent */
+.gh-bookmark-btn.active {
+  color: var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-amber) 42%, transparent);
+}
+.gh-add-material-btn.active {
+  color: var(--accent-violet);
+  background: color-mix(in srgb, var(--accent-violet) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-violet) 38%, transparent);
+}
+.gh-translate-btn.active {
+  color: var(--accent-cyan);
+  background: var(--accent-cyan-soft);
+  border-color: var(--accent-cyan-border);
+}
+/* AI 情报折叠区：硬编码金底 → accent 软底 */
+.gh-insight {
+  background: var(--accent-cyan-softer);
+  border-color: var(--accent-cyan-border);
+}
+.gh-insight-toggle:hover {
+  background: var(--accent-cyan-soft);
+}
+.gh-translation {
+  background: var(--accent-cyan-softer);
+}
+
+/* ---------- 6. 空状态：从"虚线框告示"到"有呼吸感的留白" ---------- */
+.empty-state {
+  position: relative;
+  overflow: hidden;
+  padding: 72px 40px;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  background: var(--bg-secondary);
+}
+.empty-state::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -110px;
+  width: 300px;
+  height: 300px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-cyan-soft) 0%, transparent 65%);
+  pointer-events: none;
+}
+.empty-state p {
+  position: relative;
+  font-size: 14.5px;
+  margin-bottom: 22px;
+}
+.empty-state button {
+  position: relative;
+  padding: 11px 28px;
+  border-radius: 999px;
+  color: var(--bg-primary);
+  box-shadow: 0 4px 20px var(--border-glow);
+}
+.empty-state button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 26px var(--border-glow);
+}
+
+/* ---------- 7. 全局细节：选区 / 焦点环 ---------- */
+::selection {
+  background: var(--accent-cyan-border);
+  color: var(--text-primary);
+}
+:focus-visible {
+  outline: 2px solid var(--accent-cyan-border);
+  outline-offset: 2px;
+}

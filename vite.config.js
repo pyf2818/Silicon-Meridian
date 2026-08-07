@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
     plugins: [newsPlugin(), react()],
     server: {
       port: 5175,
-      allowedHosts: ['.monkeycode-ai.online'],
+      allowedHosts: ['.monkeycode-ai.online', 'localhost', '127.0.0.1'],
       proxy: {
         '/api/scrape': {
           target: 'http://localhost:5000',

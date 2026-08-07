@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { ICONS } from '../constants/index.jsx';
 
 export default function ProfileModal({
@@ -18,6 +18,23 @@ export default function ProfileModal({
 }) {
   const fileInputRef = useRef(null);
   const initial = (user?.displayName || user?.username)?.[0]?.toUpperCase() || 'U';
+  const [stats, setStats] = useState(null);
+  const formatDate = (iso) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleDateString('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch { return '—'; }
+  };
+
+  useEffect(() => {
+    if (!showProfileModal || !user?.id) { setStats(null); return; }
+    let cancelled = false;
+    fetch('/api/auth/stats', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(data => { if (!cancelled && data?.ok) setStats(data.data.stats || {}); })
+      .catch(() => { if (!cancelled) setStats({}); });
+    return () => { cancelled = true; };
+  }, [showProfileModal, user?.id]);
 
   if (!showProfileModal) return null;
 
@@ -93,6 +110,19 @@ export default function ProfileModal({
                 <button type="button" className="profile-avatar-remove" onClick={removeAvatar}>移除</button>
               )}
             </div>
+          </div>
+
+          <div className="profile-social-stats">
+            <div className="profile-stat"><strong>{stats?.followers ?? '—'}</strong><span>粉丝</span></div>
+            <div className="profile-stat"><strong>{stats?.following ?? '—'}</strong><span>关注</span></div>
+            <div className="profile-stat"><strong>{stats?.posts ?? '—'}</strong><span>发布</span></div>
+            <div className="profile-stat"><strong>{stats?.likesReceived ?? '—'}</strong><span>获赞</span></div>
+          </div>
+
+          <div className="profile-behavior-strip">
+            <div className="profile-behavior-item"><span className="profile-behavior-label">加入</span><strong>{formatDate(user?.createdAt)}</strong></div>
+            <div className="profile-behavior-item"><span className="profile-behavior-label">互动</span><strong>{(stats?.comments ?? 0) + (stats?.bookmarks ?? 0)}</strong></div>
+            <div className="profile-behavior-item"><span className="profile-behavior-label">状态</span><strong className="profile-status-active">活跃</strong></div>
           </div>
 
           <div className="auth-form">

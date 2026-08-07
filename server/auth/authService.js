@@ -88,5 +88,10 @@ export function createAuthService(repository = resolveAuthRepository()) {
       if (!current) throw serviceError('UNAUTHORIZED', '请先登录', 401);
       return publicUser(await repository.updateProfile(current.id, updates));
     },
+    async getStats(rawToken) {
+      const current = await this.authenticate(rawToken);
+      if (!current) throw serviceError('UNAUTHORIZED', '请先登录', 401);
+      return repository.getUserStats(current.id);
+    },
   };
 }

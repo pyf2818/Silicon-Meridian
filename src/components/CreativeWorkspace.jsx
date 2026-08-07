@@ -102,38 +102,38 @@ export default function CreativeWorkspace({ workspace, onOpenEditor, onOpenMater
       <div className="creative-workspace-head">
         <div>
           <span>Creative Workspace</span>
-          <h2>Creative asset workspace</h2>
+          <h2>创意工作台</h2>
         </div>
         <div className="creative-workspace-stats">
-          <strong>{assets.length}<span>assets</span></strong>
-          <strong>{documents.length}<span>docs</span></strong>
-          <strong>{activeVersions.length}<span>versions</span></strong>
+          <strong>{assets.length}<span>素材</span></strong>
+          <strong>{documents.length}<span>文稿</span></strong>
+          <strong>{activeVersions.length}<span>版本</span></strong>
           <button
             type="button"
             className="creative-sync-button"
             onClick={() => workspace?.syncNow?.()}
             disabled={!workspace?.syncNow || ['syncing', 'local'].includes(workspace?.syncState?.status)}
           >
-            {workspace?.syncState?.status === 'local' ? 'Local' : workspace?.syncState?.status === 'syncing' ? 'Syncing' : 'Sync'}
+            {workspace?.syncState?.status === 'local' ? '本地' : workspace?.syncState?.status === 'syncing' ? '同步中' : '同步'}
           </button>
         </div>
       </div>
       {workspace?.syncState?.status === 'conflict' && (
         <div className="creative-sync-alert">
-          <span>Remote changes detected for {workspace.syncState.conflicts?.length || 0} document(s).</span>
-          <button type="button" onClick={() => workspace.syncNow?.({ resolve: 'local' })}>Keep local</button>
-          <button type="button" onClick={() => workspace.syncNow?.({ resolve: 'remote' })}>Use remote</button>
+          <span>检测到 {workspace.syncState.conflicts?.length || 0} 个文稿存在远端变更。</span>
+          <button type="button" onClick={() => workspace.syncNow?.({ resolve: 'local' })}>保留本地</button>
+          <button type="button" onClick={() => workspace.syncNow?.({ resolve: 'remote' })}>使用远端</button>
         </div>
       )}
       {workspace?.syncState?.status === 'error' && (
-        <div className="creative-sync-alert error">{workspace.syncState.error?.message || 'Creative sync failed'}</div>
+        <div className="creative-sync-alert error">{workspace.syncState.error?.message || '同步失败'}</div>
       )}
 
       <div className="creative-workspace-grid">
         <div className="creative-panel">
           <div className="creative-panel-head">
-            <h3>Recent assets</h3>
-            <button type="button" onClick={onOpenMaterials}>Manage</button>
+            <h3>最近素材</h3>
+            <button type="button" onClick={onOpenMaterials}>管理</button>
           </div>
           <div className="creative-asset-list">
             {assets.slice(0, 6).map(asset => (
@@ -144,15 +144,15 @@ export default function CreativeWorkspace({ workspace, onOpenEditor, onOpenMater
                 onClick={() => setSelectedAssetId(asset.id)}
               >
                 <strong>{asset.title}</strong>
-                <span>{asset.source || 'Unknown source'} / {(asset.tags || []).slice(0, 2).join(', ') || 'untagged'}</span>
+                <span>{asset.source || '未知来源'} / {(asset.tags || []).slice(0, 2).join(', ') || '未标记'}</span>
               </button>
             ))}
-            {assets.length === 0 && <p className="creative-empty">No assets yet. Save news cards or AI Elf outputs into the material library first.</p>}
+            {assets.length === 0 && <p className="creative-empty">还没有素材。先把资讯卡片或 AI 精灵的输出收藏进素材库。</p>}
           </div>
           {selectedAsset && (
             <>
               <p className="creative-asset-provenance">
-                <span>{selectedAsset.citation?.title || selectedAsset.title} / {selectedAsset.citation?.source || selectedAsset.source || 'Unknown source'}</span>
+                <span>{selectedAsset.citation?.title || selectedAsset.title} / {selectedAsset.citation?.source || selectedAsset.source || '未知来源'}</span>
                 {(selectedAsset.citation?.url || selectedAsset.url) && (
                   <a href={selectedAsset.citation?.url || selectedAsset.url} target="_blank" rel="noreferrer">
                     {selectedAsset.citation?.url || selectedAsset.url}
@@ -174,20 +174,20 @@ export default function CreativeWorkspace({ workspace, onOpenEditor, onOpenMater
               )}
             </>
           )}
-          <button type="button" className="creative-primary" onClick={createFromAsset} disabled={!selectedAsset}>
-            Create from asset
+          <button type="button" className="creative-primary" onClick={createFromAsset} disabled={!selectedAsset} aria-label="Create from asset">
+            从素材创建文稿
           </button>
         </div>
 
         <div className="creative-panel creative-document-panel">
           <div className="creative-panel-head">
-            <h3>Current document</h3>
-            <button type="button" onClick={onOpenEditor}>Edit</button>
+            <h3>当前文稿</h3>
+            <button type="button" onClick={onOpenEditor}>编辑</button>
           </div>
           {activeDocument ? (
             <>
               <h4>{activeDocument.title}</h4>
-              <p>{String(activeDocument.draftContent || '').slice(0, 220) || 'Blank draft'}</p>
+              <p>{String(activeDocument.draftContent || '').slice(0, 220) || '空白草稿'}</p>
               <div className="creative-document-meta">
                 <span>{(activeDocument.assetIds || []).length} linked assets</span>
                 <span>{activeVersions.length} versions</span>
@@ -199,10 +199,10 @@ export default function CreativeWorkspace({ workspace, onOpenEditor, onOpenMater
                   <option value="json">JSON</option>
                   <option value="html">HTML</option>
                 </select>
-                <button type="button" onClick={exportActiveDocument}>Export local</button>
+                <button type="button" onClick={exportActiveDocument} aria-label="Export local">导出到本地</button>
               </div>
               {activeVersions.length > 0 && (
-                <div className="creative-version-list" aria-label="Version history">
+                <div className="creative-version-list" aria-label="版本历史">
                   {activeVersions.slice(0, 5).map(version => (
                     <button
                       type="button"
@@ -218,25 +218,25 @@ export default function CreativeWorkspace({ workspace, onOpenEditor, onOpenMater
               )}
             </>
           ) : (
-            <p className="creative-empty">No document yet. Create the first draft from an asset.</p>
+            <p className="creative-empty">还没有文稿。从左侧素材创建第一份草稿。</p>
           )}
         </div>
 
         <div className="creative-panel creative-proposal-panel">
           <div className="creative-panel-head">
-            <h3>AI proposal review</h3>
-            <span>{invalidCitationIds.length ? 'invalid citations' : 'manual insert'}</span>
+            <h3>AI 稿件审议</h3>
+            <span>{invalidCitationIds.length ? '引用无效' : '手动插入'}</span>
           </div>
           <textarea
             value={proposal}
             onChange={event => setProposal(event.target.value)}
-            placeholder="Paste AI output here. Cite materials as [asset:assetId]."
+            placeholder="把 AI 输出粘贴到这里，用 [asset:素材ID] 引用素材。"
           />
           {invalidCitationIds.length > 0 && (
-            <div className="creative-citation-error">Invalid asset references: {invalidCitationIds.join(', ')}</div>
+            <div className="creative-citation-error">无效的素材引用：{invalidCitationIds.join(', ')}</div>
           )}
-          <button type="button" className="creative-primary" onClick={insertProposal} disabled={!proposal.trim() || invalidCitationIds.length > 0 || !activeDocument}>
-            Insert as new version
+          <button type="button" className="creative-primary" onClick={insertProposal} disabled={!proposal.trim() || invalidCitationIds.length > 0 || !activeDocument} aria-label="Insert as new version">
+            插入为新版本
           </button>
         </div>
       </div>

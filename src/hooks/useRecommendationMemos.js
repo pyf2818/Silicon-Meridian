@@ -171,7 +171,7 @@ export function useRecommendationMemos({
         });
       })
       .sort((a, b) => b.mustReadScore - a.mustReadScore)
-      .slice(0, 80);
+      .slice(0, 500);
   }, [items, followKeywords, readingHistory, bookmarks, selectedInterests, domainTiers, sourceTiers, specialFollows, personaSummary, relevantMemories]);
 
   const recommendationCandidates = useMemo(() => todayMustRead.filter(item =>

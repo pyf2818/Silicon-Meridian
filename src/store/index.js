@@ -142,6 +142,10 @@ export const useUiStore = create(
       profileTab: 'dashboard',
       setProfileTab: (tab) => set({ profileTab: tab }),
 
+      // Profile page section (overview/insights/preferences/social)
+      profileSection: 'overview',
+      setProfileSection: (v) => set({ profileSection: v }),
+
       // 滚动资讯暂停
       scrollingNewsPaused: false,
       setScrollingNewsPaused: (v) => set({ scrollingNewsPaused: v }),

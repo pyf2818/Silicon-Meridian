@@ -12,6 +12,7 @@ import BehaviorObservedCard from './BehaviorObservedCard.jsx';
 import PreheatCard from './PreheatCard.jsx';
 import { HudLineChart, HudRadarChart, HudBarChart } from './charts/HudCharts.jsx';
 import { HudPanel, KpiStripHud } from './dashboard/HudPanel.jsx';
+import { AviationGauge } from './charts/AviationGauge.jsx';
 
 export default function ProfileDashboard({
   intelligenceProfile,
@@ -114,6 +115,37 @@ export default function ProfileDashboard({
       <div className="dashboard-grid">
         <div className="dash-kpi">
           <KpiStripHud items={kpiItems} />
+        </div>
+
+        <div className="dash-aviation">
+          <HudPanel title="画像飞行仪表盘" kicker="PROFILE FLIGHT INSTRUMENTS" accent={TREND_COLOR} className="aviation" right={<span className="hud-panel-tag">实时数据</span>}>
+            <div className="aviation-grid">
+              <AviationGauge
+                value={Math.min(100, intelligenceProfile.confidence || 0)}
+                label="画像置信度"
+                unit="%"
+                sub={`${intelligenceProfile?.confidenceLabel || '—'}`}
+              />
+              <AviationGauge
+                value={Math.min(100, (readingHistory.length / 20) * 100)}
+                label="阅读活跃度"
+                unit="次"
+                sub={`共 ${readingHistory.length} 条行为`}
+              />
+              <AviationGauge
+                value={Math.min(100, (bookmarks.length / 50) * 100)}
+                label="收藏浓度"
+                unit="条"
+                sub={`已收藏 ${bookmarks.length}`}
+              />
+              <AviationGauge
+                value={Math.min(100, selectedInterests.length * 14)}
+                label="领域覆盖"
+                unit="域"
+                sub={`${selectedInterests.length} 个关注领域`}
+              />
+            </div>
+          </HudPanel>
         </div>
 
         <aside className="dash-rail">

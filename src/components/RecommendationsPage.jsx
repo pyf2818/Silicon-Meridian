@@ -65,6 +65,7 @@ function RecommendationsPage({
       />
       <RecommendationFeed
         lanes={displayRecommendationLanes}
+        allItems={recommendationCandidates}
         loading={loading}
         error={error}
         isLoggedIn={isLoggedIn}

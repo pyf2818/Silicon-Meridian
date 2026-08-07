@@ -75,6 +75,11 @@ export async function handleAuthRequest(req, res, { action, service } = {}) {
       if (!user) return sendJsonResponse(res, 401, { ok: false, error: { code: 'UNAUTHORIZED', message: '未登录' } });
       return sendJsonResponse(res, 200, { ok: true, data: { user } });
     }
+    if (action === 'stats' && method === 'GET') {
+      const stats = await auth.getStats(token);
+      if (!stats) return sendJsonResponse(res, 401, { ok: false, error: { code: 'UNAUTHORIZED', message: '未登录' } });
+      return sendJsonResponse(res, 200, { ok: true, data: { stats } });
+    }
     if ((action === 'profile' || action === 'interests') && method === 'POST') {
       const body = await readJsonBody(req);
       const updates = action === 'interests'

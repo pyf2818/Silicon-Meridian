@@ -47,5 +47,22 @@ export function createAuthRepository(db = getPool()) {
       );
       return rows[0] || null;
     },
+    async getUserStats(userId) {
+      // 聚合个人主页的社交/行为/时间统计（社区模块对外展示用）
+      const { rows } = await db.query(`
+        select
+          (select count(*) from user_follows where followed_id = $1)::int      as "followers",
+          (select count(*) from user_follows where follower_id = $1)::int      as "following",
+          (select count(*) from posts where author_id = $1 and status = 'published')::int as "posts",
+          (select count(*) from post_likes l join posts p on p.id = l.post_id
+             where p.author_id = $1 and p.status = 'published')::int          as "likesReceived",
+          (select count(*) from comments c join posts p on p.id = c.post_id
+             where p.author_id = $1 and p.status = 'published' and c.status = 'published')::int as "comments",
+          (select count(*) from post_bookmarks b join posts p on p.id = b.post_id
+             where p.author_id = $1 and p.status = 'published')::int          as "bookmarks",
+          (select count(*) from users u where u.id = $1)::int                  as "isUser"
+      `, [userId]);
+      return rows[0] || null;
+    },
   };
 }

@@ -157,6 +157,8 @@ function App() {
   const panelCollapsed = useUiStore(s => s.panelCollapsed);
   const setPanelCollapsed = useUiStore(s => s.setPanelCollapsed);
   const profilePage = useUiStore(s => s.profilePage);
+  const profileSection = useUiStore(s => s.profileSection);
+  const setProfileSection = useUiStore(s => s.setProfileSection);
   const setProfilePage = useUiStore(s => s.setProfilePage);
   // ===== AI 助手人格状态（迁移自 useState -> Zustand elfStore）=====
   const elfAvatar = useElfStore(s => s.elfAvatar);
@@ -866,10 +868,28 @@ function App() {
     return () => clearTimeout(timer);
   }, [query]);
 
+  // 搜索策略（类百度）：
+  // - 输入框 onChange -> setQuery -> 本地 filtered 即时全文匹配（无延迟、无 API 调用）
+  // - 按 Enter 或点击建议 -> executeSearch -> 调 API 获取更多搜索结果
+  // - debouncedQuery 仅用于 60s 自动刷新轮询的条件判断，不再触发 loadNews
   useEffect(() => {
     if (nav !== 'all') return;
-    loadNews(blocked, false, debouncedQuery);
-  }, [debouncedQuery, category, mode, sourceFilter]);
+    // 仅在用户明确提交搜索（按 Enter / 点击建议）时才请求 API
+    // 不再每次按键都触发 API 请求
+  }, [debouncedQuery]);
+
+  // 切换赛道时自动清空来源筛选：不同赛道下的来源不同，残留的 sourceFilter 会导致结果为空
+  // 仅在 category 实际变化时触发（用 ref 记录上一次值），items 刷新不触发，避免误清用户选择
+  const prevCategoryRef = useRef(category);
+  useEffect(() => {
+    if (prevCategoryRef.current !== category) {
+      prevCategoryRef.current = category;
+      if (sourceFilter !== 'all') setSourceFilter('all');
+    }
+  }, [category, sourceFilter, setSourceFilter]);
+
+  // regionFilter 不自动清空：国内/国外是用户主动选择，切换赛道后保留选择
+  // 若用户选择后无结果，由空状态提示引导，而非静默重置（之前依赖 regionFilter 自身导致切换不了）
   useEffect(() => {
     if (nav === 'recommendations') loadNews(blocked, false, debouncedQuery);
   }, [nav]);
@@ -962,6 +982,8 @@ function App() {
   }, [items]);
 
   const filtered = useMemo(() => {
+    // 本地文本搜索：当有搜索词时，在前端做标题/摘要/标签全文匹配
+    const q = (query || '').toLowerCase().trim();
     let result = items.filter(item => {
       const cat = category === 'all' || item.category === category;
       const md = mode === 'all' || item.mode === mode;
@@ -974,34 +996,39 @@ function App() {
           reg = item.region === 'overseas' || item.region === 'global';
         }
       }
-      return cat && md && src && reg;
+      // 本地搜索匹配：标题 + 摘要 + 来源名 + 标签
+      let searchMatch = true;
+      if (q) {
+        const haystack = (
+          (item.title || '') + ' ' +
+          (item.summary || '') + ' ' +
+          (item.source || '') + ' ' +
+          (Array.isArray(item.tags) ? item.tags.join(' ') : '')
+        ).toLowerCase();
+        searchMatch = haystack.includes(q);
+      }
+      return cat && md && src && reg && searchMatch;
     });
 
     if (items.length > 0) {
       const sampleRegions = items.slice(0, 5).map(i => ({ title: i.title?.substring(0, 30), region: i.region }));
     }
 
-    // 排序策略：先按综合质量分降序（高质量优先），同分时按发布时间倒序（最新优先）
-    // 这样用户打开页面看到的是「最新 + 高质量」的资讯：
-    // - 同等质量下，最新的排最前
-    // - 高质量资讯即使稍旧也会排在中低质量新资讯前面
-    const followLc = followKeywords.map(kw => kw.toLowerCase());
+    // 全部动态 = 纯资讯热度排序（不叠加用户画像偏好，避免与「精准推荐」功能重复）
+    // 排序策略：按资讯热度降序（qualityScore + mustReadScore + AI 评分加权），同热度时按发布时间倒序
     result.sort((a, b) => {
-      // 1. 关注词命中：命中加分 +50，置于前列
-      const aFollow = followLc.some(kw => `${a.title} ${a.summary}`.toLowerCase().includes(kw)) ? 50 : 0;
-      const bFollow = followLc.some(kw => `${b.title} ${b.summary}`.toLowerCase().includes(kw)) ? 50 : 0;
-      // 2. 综合质量分（后端 qualityScore + mustReadScore + AI 评分加权 0.3）
+      // 1. 热度分（后端 qualityScore + mustReadScore + AI 评分加权 0.3）
       const aAi = (a.aiRelevanceScore || 0) * 0.3;
       const bAi = (b.aiRelevanceScore || 0) * 0.3;
-      const aQ = (a.qualityScore || 0) + (a.mustReadScore || 0) + aFollow + aAi;
-      const bQ = (b.qualityScore || 0) + (b.mustReadScore || 0) + bFollow + bAi;
+      const aQ = (a.qualityScore || 0) + (a.mustReadScore || 0) + aAi;
+      const bQ = (b.qualityScore || 0) + (b.mustReadScore || 0) + bAi;
       if (bQ !== aQ) return bQ - aQ;
-      // 3. 同分时按发布时间倒序（最新优先）
+      // 2. 同热度时按发布时间倒序（最新优先）
       return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
     });
 
     return result;
-  }, [items, category, mode, sourceFilter, followKeywords, regionFilter]);
+  }, [items, category, mode, sourceFilter, regionFilter, query]);
 
   // 同步 filtered.length 到 ref（供 IntersectionObserver 闭包读取最新值）
   useEffect(() => { filteredLengthRef.current = filtered.length; }, [filtered.length]);
@@ -1749,13 +1776,14 @@ ${materialLines || '暂无素材'}`;
     }
     // 用户主动点"刷新"按钮时强制刷新（绕过缓存）；后台预取走 SWR
     const forceRefreshParam = options.forceRefresh ? '&forceRefresh=1' : '';
-    fetch(`/api/news?blocked=${encodeURIComponent(b)}&page=${page}&pageSize=40${searchParam}${disabledParam}${interestsParam}${customParams ? '&' + customParams : ''}${forceRefreshParam}`)
+    const baseUrl = `/api/news?blocked=${encodeURIComponent(b)}&page=${page}&pageSize=200${searchParam}${disabledParam}${interestsParam}${customParams ? '&' + customParams : ''}${forceRefreshParam}`;
+    fetch(baseUrl)
       .then(r => r.json())
       .then(d => {
         if (d.items && d.items.length > 0) {
           const sampleRegions = d.items.slice(0, 3).map(i => ({ title: i.title?.substring(0, 30), region: i.region }));
         }
-        
+
         // isChinaFocused 已由后端 /api/news 预计算（getNews 中 computeIsChinaFocused），直接消费
         const itemsWithChinaTag = d.items || [];
 
@@ -1767,9 +1795,49 @@ ${materialLines || '暂无素材'}`;
         setStats({ ...d, items: undefined });
         setNewsHasMore(d.hasMore ?? false);
         setNewsPage(page);
+
+        // 后台逐批拉取剩余所有信号源资讯（仅首次进入全部动态 / 无搜索词时触发）
+        // 不设置 loading，静默合并去重，用户无感、不卡顿、不白屏
+        if (!append && !searchQuery && d.hasMore) {
+          const seenIds = new Set(itemsWithChinaTag.map(i => i.id));
+          const customParamsStr = customParams;
+          const disabledParamStr = disabledParam;
+          const interestsParamStr = interestsParam;
+          fetchAllRemainingNews(b, seenIds, customParamsStr, disabledParamStr, interestsParamStr, page);
+        }
       })
       .catch(e => setError(e.message))
       .finally(() => { setLoading(false); setLoadingMore(false); });
+  }
+
+  // 后台逐批拉取全部信号源资讯：从 nextPage 起循环请求，直至 hasMore=false
+  // 每批到达后静默合并到 items（去重、保留已有顺序），不打断用户当前浏览
+  async function fetchAllRemainingNews(b, seenIds, customParamsStr, disabledParamStr, interestsParamStr, startPage) {
+    let currentPage = startPage + 1;
+    let hasMore = true;
+    while (hasMore && currentPage < 10) {  // 上限 10 批（200*10=2000 条），防止失控
+      const url = `/api/news?blocked=${encodeURIComponent(b)}&page=${currentPage}&pageSize=200${disabledParamStr}${interestsParamStr}${customParamsStr ? '&' + customParamsStr : ''}`;
+      try {
+        const resp = await fetch(url);
+        const d = await resp.json();
+        const fresh = (d.items || []).filter(item => item && item.id && !seenIds.has(item.id));
+        if (fresh.length > 0) {
+          fresh.forEach(item => seenIds.add(item.id));
+          // 合并到 items：已有 ID 跳过，新条目追加到末尾
+          setItems(prev => {
+            const existing = new Set(prev.map(i => i.id));
+            const additions = fresh.filter(i => !existing.has(i.id));
+            return additions.length > 0 ? [...prev, ...additions] : prev;
+          });
+          // 更新资讯总数统计
+          setStats(prevStats => prevStats ? { ...prevStats, sourceCount: Math.max(prevStats.sourceCount || 0, 0), failedSources: prevStats.failedSources || 0 } : prevStats);
+        }
+        hasMore = d.hasMore ?? false;
+        currentPage++;
+      } catch {
+        hasMore = false;  // 后台拉取失败静默停止，不影响用户
+      }
+    }
   }
 
   useEffect(() => {
@@ -1932,12 +2000,15 @@ ${signals}
     setCategory('all');
     setMode('all');
     setSourceFilter('all');
+    setRegionFilter('all');
     setQuery(q);
     if (q.trim()) {
       setSearchHistory(prev => {
         const filtered = prev.filter(h => h.query !== q.trim());
         return [{ query: q.trim(), searchedAt: new Date().toISOString() }, ...filtered].slice(0, 20);
       });
+      // 调 API 获取更多搜索结果（补充本地已有数据）
+      loadNews(blocked, false, q.trim());
     }
     setSearchOpen(false);
   }
@@ -2093,6 +2164,8 @@ ${signals}
           setTrendingPlatform={setTrendingPlatform}
           loadTrending={loadTrending}
           newSinceLastVisit={newSinceLastVisit}
+          profileSection={profileSection}
+          setProfileSection={setProfileSection}
           telemetryStats={nav === 'profile-center' ? [
             { label: 'PERSONA.CONF', value: `${intelligenceProfile?.confidence ?? 0}%` },
             { label: 'DOMAINS', value: selectedInterests?.length ?? 0 },
@@ -2362,6 +2435,9 @@ ${signals}
               generateDailyProfileSnapshot={generateDailyProfileSnapshot}
               setShowInterestModal={setShowInterestModal}
               selectedInterests={selectedInterests}
+              user={user}
+              categories={categories}
+              materials={materials}
             />
           )}
 

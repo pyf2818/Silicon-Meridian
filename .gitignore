@@ -190,3 +190,8 @@ _app_pre_refactor.jsx
 playwright-report/
 test-results/
 .data/
+
+# 本地凭证 / 临时文件（勿提交）
+cookies.txt
+commit-msg.txt
+.workbuddy/

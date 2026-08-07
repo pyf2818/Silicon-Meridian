@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 
 export default function RecommendationFeed({
   lanes,
+  allItems, // 当天全部画像资讯（不限条数），由 App.jsx 传入 recommendationCandidates
   loading,
   error,
   isLoggedIn,
@@ -24,29 +25,29 @@ export default function RecommendationFeed({
   onPickInterests,
   onLogin,
 }) {
-  // 扁平化当日推荐 lanes：个人必看优先，再公共热点，去重
-  // P4: 同分时按发布时间倒序，让最新资讯排前（与全部动态页保持一致体验）
+  // 精准推荐：优先展示当天全部画像资讯（allItems，不限条数），按发布时间倒序（最近→最久）
+  // 仅在 allItems 为空时才回退到 lanes（历史快照的 10 条精选）
   const feedItems = useMemo(() => {
     const seen = new Set();
-    const merged = [...(lanes?.personal || []), ...(lanes?.public || [])];
     const result = [];
+    const merged = Array.isArray(allItems) && allItems.length > 0
+      ? allItems
+      : [...(lanes?.personal || []), ...(lanes?.public || [])];
     for (const item of merged) {
       if (!item || seen.has(item.id)) continue;
       seen.add(item.id);
       result.push(item);
     }
-    // 同 mustReadScore 下按发布时间倒序，最新资讯排前
+    // 按发布时间倒序（最近→最久），最新资讯排最前
     result.sort((a, b) => {
-      const scoreDiff = (b.mustReadScore || 0) - (a.mustReadScore || 0);
-      if (scoreDiff !== 0) return scoreDiff;
       return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
     });
     return result;
-  }, [lanes]);
+  }, [lanes, allItems]);
 
   const total = feedItems.length;
-  const visible = feedItems.slice(0, renderLimit);
-  const canLoadMore = hasMore || total > renderLimit;
+  const visible = feedItems;
+  const canLoadMore = false;
 
   // 未登录
   if (!snapshotMeta && !isLoggedIn) {

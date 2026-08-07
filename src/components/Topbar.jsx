@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import LanguageSwitcher from './LanguageSwitcher.jsx';
 import HudTelemetryBar from './profile/HudTelemetryBar.jsx';
-import { useUiStore } from '../store';
 import {
   PRODUCT_NAME,
   CATEGORY_GROUPS, GITHUB_LANGS, GITHUB_PERIODS,
@@ -13,6 +12,15 @@ import {
  * 顶部栏：滚动资讯 / 品牌 / 搜索 / 分类筛选 / GitHub 过滤 / 模式 / 平台 / 语言切换
  * 由 App.jsx 抽离，仅在 nav 等内部状态变化时重渲染。
  */
+
+// 画像页 4 分区子导航（顶部时间钟左侧菜单）
+const PROFILE_SECTIONS = [
+  { id: 'overview', label: '画像总览', icon: 'sparkles' },
+  { id: 'insights', label: '行为洞察', icon: 'trend' },
+  { id: 'preferences', label: '偏好设置', icon: 'target' },
+  { id: 'social', label: '我的社交', icon: 'user' },
+];
+
 export default function Topbar({
   // 当前导航
   nav,
@@ -75,19 +83,18 @@ export default function Topbar({
   newSinceLastVisit = 0,
   // 用户画像页遥测数据（由 App 注入，仅 profile-center 使用）
   telemetryStats,
+  profileSection,
+  setProfileSection,
 }) {
   // 滚动毛玻璃化：页面滚动 >10px 时 topbar 加 scrolled 类
   const [scrolled, setScrolled] = useState(false);
+  const [sectionMenuOpen, setSectionMenuOpen] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
-
-  // 用户画像页视图切换（仪表盘/设置）——与 ProfilePage 共享全局 store 状态
-  const profileTab = useUiStore(s => s.profileTab);
-  const setProfileTab = useUiStore(s => s.setProfileTab);
 
   return (
     <header className={`topbar ${nav === 'all' ? 'topbar-all' : ''} ${nav === 'stock' ? 'topbar-stock' : ''} ${(nav === 'trending' || nav === 'recommendations') ? 'topbar-trending' : ''} ${scrolled ? 'topbar-scrolled' : ''}`}>
@@ -122,35 +129,38 @@ export default function Topbar({
       )}
 
       {/* 用户画像页：系统遥测栏置顶（替代顶部语言切换，随 sticky 顶栏固定在屏幕最顶端） */}
+      {/* 用户画像页：系统遥测栏置顶 + 分区菜单按钮 */}
       {nav === 'profile-center' && telemetryStats && telemetryStats.length > 0 && (
         <div className="profile-center-page topbar-hud-host">
           <HudTelemetryBar
             stats={telemetryStats}
-            actions={(
-              <div className="hud-tab-mini" role="tablist" aria-label="Profile view tabs">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={profileTab === 'dashboard'}
-                  className={`profile-tab ${profileTab === 'dashboard' ? 'active' : ''}`}
-                  onClick={() => setProfileTab('dashboard')}
-                >
-                  仪表盘
+            actions={
+              <div className="hud-section-menu">
+                <button className="hud-section-menu-btn" title="切换画像分区" onClick={() => setSectionMenuOpen(v => !v)}>
+                  {ICONS.grid}
                 </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={profileTab === 'settings'}
-                  className={`profile-tab ${profileTab === 'settings' ? 'active' : ''}`}
-                  onClick={() => setProfileTab('settings')}
-                >
-                  设置
-                </button>
-              </div>
-            )}
+                {sectionMenuOpen && (
+                  <>
+                    <div className="dropdown-backdrop" onClick={() => setSectionMenuOpen(false)} />
+                    <div className="hud-section-dropdown">
+                      {PROFILE_SECTIONS.map(sec => (
+                        <button
+                          key={sec.id}
+                          className={"hud-section-opt " + (profileSection === sec.id ? "active" : "")}
+                          onClick={() => { setProfileSection(sec.id); setSectionMenuOpen(false); }}>
+                          <span className="hud-section-icon">{ICONS[sec.icon]}</span>
+                          <span>{sec.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                </>
+              )}
+            </div>
+            }
           />
         </div>
       )}
+
 
       <button className="mobile-menu-btn" onClick={() => setMobileMenuOpen(true)}>
         {ICONS.menu}
@@ -166,7 +176,7 @@ export default function Topbar({
           {nav === 'all' && (
             <div className="search-wrap">
               {ICONS.search}
-              <input ref={searchInputRef} value={query} onChange={e => { setQuery(e.target.value); setSearchOpen(true); }} onFocus={() => setSearchOpen(true)} placeholder="搜索技术、公司、项目..." />
+              <input ref={searchInputRef} value={query} onChange={e => { setQuery(e.target.value); setSearchOpen(true); }} onFocus={() => setSearchOpen(true)} onKeyDown={e => { if (e.key === "Enter" && query.trim()) executeSearch(query.trim()); }} placeholder="搜索技术、公司、项目..." />
               {searchOpen && (query.trim() || searchHistory.length > 0) && (
                 <>
                   <div className="dropdown-backdrop" onClick={() => setSearchOpen(false)} />
@@ -180,10 +190,13 @@ export default function Topbar({
                       </button>
                     ))}
                     {query.trim() && (
+                    <>
                       <div className="search-sort-row">
-                        <button className={`search-sort-btn ${searchSort === 'time' ? 'active' : ''}`} onClick={() => setSearchSort('time')}>按时间</button>
-                        <button className={`search-sort-btn ${searchSort === 'relevance' ? 'active' : ''}`} onClick={() => setSearchSort('relevance')}>按相关度</button>
+                        <button className={`search-sort-btn ${searchSort === "time" ? "active" : ""}`} onClick={() => setSearchSort("time")}>按时间</button>
+                        <button className={`search-sort-btn ${searchSort === "relevance" ? "active" : ""}`} onClick={() => setSearchSort("relevance")}>按相关度</button>
                       </div>
+                      <button className="search-submit-btn" onClick={() => executeSearch(query.trim())}>搜索全部资讯</button>
+                    </>
                     )}
                   </div>
                 </>

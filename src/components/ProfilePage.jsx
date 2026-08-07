@@ -6,12 +6,28 @@ import {
 } from '../domain/intelligence/profileTiers.js';
 import { ICONS } from '../constants/index.jsx';
 import { showToast } from '../utils/toast.js';
-import { useUiStore, useBehaviorStore } from '../store';
+import { useBehaviorStore, useUiStore } from '../store';
+import { getLearnedPreferences } from '../utils/profileLearning.js';
 import PendingSuggestionsSection from './profile/PendingSuggestionsSection.jsx';
 import AgentMemorySection from './profile/AgentMemorySection.jsx';
 import PersonaSummarySection from './profile/PersonaSummarySection.jsx';
 import SnapshotHistorySection from './profile/SnapshotHistorySection.jsx';
-import ProfileDashboard from './profile/ProfileDashboard.jsx';
+import ProfileOverviewSection from './profile/ProfileOverviewSection.jsx';
+import ProfileInsightsSection from './profile/ProfileInsightsSection.jsx';
+import ProfileSocialSection from './profile/ProfileSocialSection.jsx';
+
+// 偏好设置内的模块导航（每个模块独立一页，只显示一个组件）
+const PROFILE_MODULES = [
+  { id: 'learning', label: '学习引擎', icon: 'sparkles' },
+  { id: 'domains', label: '领域优先级', icon: 'target' },
+  { id: 'sources', label: '信号源优先级', icon: 'layers' },
+  { id: 'follows', label: '特别关注', icon: 'star' },
+  { id: 'calibration', label: '推荐校准', icon: 'pencil' },
+  { id: 'persona', label: 'AI 性格画像', icon: 'user' },
+  { id: 'suggestions', label: 'AI 建议', icon: 'sparkle' },
+  { id: 'memory', label: '跨会话记忆', icon: 'clock' },
+  { id: 'snapshots', label: '每日画像', icon: 'calendar' },
+];
 
 export default function ProfilePage({
   intelligenceProfile,
@@ -33,6 +49,9 @@ export default function ProfilePage({
   generateDailyProfileSnapshot,
   setShowInterestModal,
   selectedInterests,
+  user,
+  categories,
+  materials = [],
 }) {
   const resetForm = () => {
     setSpecialFollowForm({ type: 'source', target: '', note: '' });
@@ -75,20 +94,33 @@ export default function ProfilePage({
     setSpecialFollowForm({ type: item.type, target: item.target, note: item.note || '' });
   };
 
-  // Phase 4: Tab 切换（仪表盘 / 设置）
-  const profileTab = useUiStore(s => s.profileTab);
-  const setProfileTab = useUiStore(s => s.setProfileTab);
+  // 画像页 4 分区导航 - 从 Zustand store 读取，侧边栏子导航可控制
+  const activeSection = useUiStore(s => s.profileSection);
+  const setActiveSection = useUiStore(s => s.setProfileSection);
+
+  // 11 维画像数据（从 localStorage 读取，AgentPanel 同源；useMemo 避免每次渲染重读）
+  const learnedPrefs = React.useMemo(() => getLearnedPreferences(), []);
+
+  // 用户社交统计（粉丝/关注/发布/获赞）
+  const [userStats, setUserStats] = useState(null);
+  React.useEffect(() => {
+    if (!user?.id) { setUserStats(null); return; }
+    let cancelled = false;
+    fetch('/api/auth/stats', { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(data => { if (!cancelled && data?.ok) setUserStats(data.data.stats || {}); })
+      .catch(() => { if (!cancelled) setUserStats({}); });
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  // 偏好设置视图内部模块导航（侧边栏），点击切换每次只显示一个模块
+  const [activeModule, setActiveModule] = useState('learning');
 
   // 问题 2：把"只读校准状态"变成真纠错台 —— 直接写入 recommendationFeedback
   const setRecommendationFeedback = useBehaviorStore(s => s.setRecommendationFeedback);
   const recommendationFeedback = useBehaviorStore(s => s.recommendationFeedback);
   const [calibInput, setCalibInput] = useState('');
   const [calibType, setCalibType] = useState('boost'); // boost | mute | track
-
-  const scrollToId = (id) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
 
   const applyManualCalibration = () => {
     const value = calibInput.trim();
@@ -117,11 +149,9 @@ export default function ProfilePage({
               {/* 扫描线叠加层 */}
               <div className="hud-scanlines" aria-hidden="true" />
 
-              <section className="product-hero profile-hero">
+              <section className="product-hero profile-hero profile-hero-compact">
                 <div>
-                  <div className="workbench-kicker">Personal Intelligence Memory</div>
                   <h1>用户画像</h1>
-                  <p>设置关注领域、领域优先级、信号源优先级，并按日期记录每日 AI 画像，让系统越用越懂你。</p>
                 </div>
                 <div className="product-hero-actions">
                   <button className="ai-primary-action" onClick={generateDailyProfileSnapshot}>生成今日画像</button>
@@ -129,53 +159,43 @@ export default function ProfilePage({
                 </div>
               </section>
 
-              {profileTab === 'dashboard' ? (
-                <ProfileDashboard
-                  intelligenceProfile={intelligenceProfile}
-                  bookmarks={bookmarks}
+              {activeSection === 'overview' && (
+                <ProfileOverviewSection
                   readingHistory={readingHistory}
+                  bookmarks={bookmarks}
+                  materials={materials}
                   selectedInterests={selectedInterests}
-                  specialFollows={specialFollows}
+                  profileLearningEngine={profileLearningEngine}
+                  learnedPrefs={learnedPrefs}
                 />
-              ) : (
-                <div className="profile-settings-grid">
-              <details className="pset-collapsible">
-                <summary>AI 性格画像</summary>
-                <PersonaSummarySection />
-              </details>
-              <details className="pset-collapsible">
-                <summary>AI 建议待确认</summary>
-                <PendingSuggestionsSection />
-              </details>
+              )}
 
-              <div className="hud-stat-grid">
-                <div className="hud-stat-tile">
-                  <span className="hud-stat-label">关注领域</span>
-                  <strong className="hud-stat-value">{selectedInterests.length}</strong>
-                  <span className="hud-stat-sub">{intelligenceProfile.focusLabels.slice(0, 4).join('、') || '尚未设置'}</span>
-                  <span className="hud-stat-bar"><i style={{ width: `${Math.min(100, selectedInterests.length * 8)}%` }} /></span>
-                </div>
-                <div className="hud-stat-tile">
-                  <span className="hud-stat-label">阅读点击</span>
-                  <strong className="hud-stat-value">{readingHistory.length}</strong>
-                  <span className="hud-stat-sub">近 100 条点击记录用于校准推荐</span>
-                  <span className="hud-stat-bar"><i style={{ width: `${Math.min(100, readingHistory.length)}%` }} /></span>
-                </div>
-                <div className="hud-stat-tile">
-                  <span className="hud-stat-label">收藏资讯</span>
-                  <strong className="hud-stat-value">{bookmarks.length}</strong>
-                  <span className="hud-stat-sub">收藏会提高相似主题和来源权重</span>
-                  <span className="hud-stat-bar"><i style={{ width: `${Math.min(100, (bookmarks.length / 50) * 100)}%` }} /></span>
-                </div>
-                <div className="hud-stat-tile">
-                  <span className="hud-stat-label">每日画像</span>
-                  <strong className="hud-stat-value">{dailyProfileSnapshots.length}</strong>
-                  <span className="hud-stat-sub">按日期保留 AI 对你的理解变化</span>
-                  <span className="hud-stat-bar"><i style={{ width: `${Math.min(100, (dailyProfileSnapshots.length / 30) * 100)}%` }} /></span>
-                </div>
-              </div>
+              {activeSection === 'insights' && (
+                <ProfileInsightsSection
+                  readingHistory={readingHistory}
+                  bookmarks={bookmarks}
+                  profileLearningEngine={profileLearningEngine}
+                  learnedPrefs={learnedPrefs}
+                />
+              )}
 
-              <section className="profile-learning-panel">
+              {activeSection === 'social' && (
+                <ProfileSocialSection
+                  user={user}
+                  stats={userStats}
+                  selectedInterests={selectedInterests}
+                  categories={categories}
+                />
+              )}
+
+              {activeSection === 'preferences' && (
+                <div className="profile-settings-layout">
+                  <aside className="profile-module-nav">
+                    <span className="profile-module-nav-title">设置模块</span>
+                    {PROFILE_MODULES.map(module => (<button key={module.id} type="button" className={"profile-module-nav-item" + (activeModule === module.id ? " active" : "")} onClick={() => setActiveModule(module.id)}>{ICONS[module.icon]} <span>{module.label}</span></button>))}
+                  </aside>
+                  <div className="profile-module-content" data-active={activeModule}>
+              <section className="profile-module-page profile-learning-compact" data-module="learning">
                 <div className="profile-learning-main">
                   <div className="section-header">
                     <h2 className="section-title">{ICONS.sparkles} 画像学习引擎</h2>
@@ -212,8 +232,7 @@ export default function ProfilePage({
                 </div>
               </section>
 
-              <section className="profile-control-layout">
-                <div className="profile-control-panel" id="profile-domain-tiers">
+                <div className="profile-module-page profile-control-panel" id="profile-domain-tiers" data-module="domains">
                   <div className="section-header">
                     <h2 className="section-title">{ICONS.target} 领域优先级</h2>
                     <p className="section-desc">一级进入核心必看，二级正常参与，三级保留探索价值但降低出现频率。</p>
@@ -243,7 +262,7 @@ export default function ProfilePage({
                   </div>
                 </div>
 
-                <div className="profile-control-panel" id="profile-source-tiers">
+                <div className="profile-module-page profile-control-panel" id="profile-source-tiers" data-module="sources">
                   <div className="section-header">
                     <h2 className="section-title">{ICONS.layers} 信号源优先级</h2>
                     <p className="section-desc">显式信任等级优先于隐式行为，避免一次误点长期改变信源判断。</p>
@@ -272,9 +291,8 @@ export default function ProfilePage({
                     ))}
                   </div>
                 </div>
-              </section>
 
-              <section className="profile-special-follows" id="profile-special-follows" data-testid="profile-special-follows">
+              <section className="profile-module-page profile-special-follows" id="profile-special-follows" data-module="follows" data-testid="profile-special-follows">
                 <div className="section-header"><h2 className="section-title">{ICONS.star} 特别关注</h2><p className="section-desc">手动添加小众信息源、博主或特定URL，始终优先推荐。</p></div>
                 {specialFollows.length === 0 ? (
                   <div className="empty-state"><p>暂无特别关注</p><p className="empty-state-hint">添加后这些目标的新内容会优先进入个人必看通道</p></div>
@@ -305,30 +323,30 @@ export default function ProfilePage({
                 </div>
               </section>
 
-              <section className="profile-calibration-panel">
+              <section className="profile-module-page profile-calibration-panel" data-module="calibration">
                 <div className="section-header">
                   <h2 className="section-title">{ICONS.sparkles} 推荐校准台</h2>
                   <p className="section-desc">这些信号已接入推荐排序。如果系统理解错了你，下面可以直接纠正——校准会立刻影响后续推荐。</p>
                 </div>
-                <div className="profile-calibration-grid">
+                <div className="profile-calibration-inline">
                   {profileCalibrationCards.map(signal => {
-                    const jumpId = signal.label === '高优先领域' ? 'profile-domain-tiers'
-                      : signal.label === '高信任来源' ? 'profile-source-tiers'
+                    const jumpModule = signal.label === '高优先领域' ? 'domains'
+                      : signal.label === '高信任来源' ? 'sources'
                         : null;
                     const inner = (
                       <>
                         <span>{signal.label}</span>
                         <strong>{signal.value}</strong>
                         <p>{signal.desc}</p>
-                        {jumpId && <span className="calib-jump-hint">去调整 →</span>}
+                        {jumpModule && <span className="calib-jump-hint">去调整 →</span>}
                       </>
                     );
-                    return jumpId ? (
-                      <button type="button" key={signal.label} className="profile-calibration-card is-clickable" onClick={() => scrollToId(jumpId)}>
+                    return jumpModule ? (
+                      <button type="button" key={signal.label} className="profile-calibration-row is-clickable" onClick={() => setActiveModule(jumpModule)}>
                         {inner}
                       </button>
                     ) : (
-                      <div key={signal.label} className="profile-calibration-card">{inner}</div>
+                      <div key={signal.label} className="profile-calibration-row">{inner}</div>
                     );
                   })}
                 </div>
@@ -371,7 +389,7 @@ export default function ProfilePage({
                 </div>
               </section>
 
-              <section className="profile-memory-panel">
+              <section className="profile-module-page profile-memory-panel" data-module="snapshots">
                 <div className="section-header">
                   <h2 className="section-title">{ICONS.calendar} 每日 AI 画像记录</h2>
                   <p className="section-desc">每日记录会保留系统对你的关注领域、追踪关键词和输出目标的理解。</p>
@@ -391,9 +409,12 @@ export default function ProfilePage({
                 )}
               </section>
 
-              <AgentMemorySection />
-              <SnapshotHistorySection />
+              <section className="profile-module-page" data-module="persona"><PersonaSummarySection /></section>
+              <section className="profile-module-page" data-module="suggestions"><PendingSuggestionsSection /></section>
+              <section className="profile-module-page" data-module="memory"><AgentMemorySection /></section>
+              <section className="profile-module-page" data-module="snapshots"><SnapshotHistorySection /></section>
               </div>
+                </div>
               )}
             </div>
   );

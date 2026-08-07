@@ -1,6 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
 import CreativeWorkspace from './CreativeWorkspace.jsx';
-import { BlockGrid, BlockPanel } from '../blocks/index.js';
 import { ICONS } from '../constants/index.jsx';
 import { renderMarkdown } from '../utils/markdown.jsx';
 
@@ -17,30 +16,41 @@ export default function StudioPage({
   setNewAgent,
   setShowAgentForm,
 }) {
-  const studioModules = useMemo(() => [
+  // 创作流水线三段：原料 → 熔炉 → 作品
+  const pipelineStages = useMemo(() => [
     {
       id: 'materials',
+      index: '01',
+      stage: '原料入库',
       title: '素材库',
       desc: '收集资讯卡片、每日汇报、本地上传与创作片段，按空间和标签形成可复用资产。',
-      metric: `${materials.length} 条素材`,
+      metric: materials.length,
+      unit: '条素材',
       action: '进入素材库',
       nav: 'materials',
       icon: 'layers'
     },
     {
       id: 'agents',
+      index: '02',
+      stage: '熔炉炼金',
       title: '智能体工作流',
       desc: '用输入、大模型 Prompt、工具 Skills、条件分支、分类判断和输出节点编排协作流程。',
-      metric: `${agents.length} 个智能体`,
+      metric: agents.length,
+      unit: '个智能体',
       action: '搭建工作流',
       nav: 'agents',
-      icon: 'bot'
+      icon: 'bot',
+      core: true
     },
     {
       id: 'editor',
+      index: '03',
+      stage: '终成作品',
       title: '内容创作',
       desc: '联动素材库和智能体，把情报、观点和资料沉淀成文章、报告与私有知识库资产。',
-      metric: `${articles.length} 篇文章`,
+      metric: articles.length,
+      unit: '篇文章',
       action: '开始写作',
       nav: 'editor',
       icon: 'edit'
@@ -69,72 +79,100 @@ export default function StudioPage({
 
   return (
     <div className="product-page studio-page">
-      <section className="product-hero studio-hero">
-        <div>
-          <div className="workbench-kicker">Creation Intelligence</div>
-          <h1>智创中心</h1>
-          <p>把每日汇报、资讯卡片、本地资料和智能体工作流汇入同一个创作空间，形成可持续积累的个人知识资产。</p>
+      {/* ============ HERO：使命宣言 + 资产遥测 ============ */}
+      <section className="st-hero">
+        <div className="st-hero-grid-bg" aria-hidden="true" />
+        <div className="st-hero-main">
+          <div className="st-kicker"><span className="st-kicker-dot" />CREATION INTELLIGENCE</div>
+          <h1 className="st-title">智创中心</h1>
+          <p className="st-subtitle">把每日汇报、资讯卡片、本地资料和智能体工作流汇入同一个创作空间，形成可持续积累的个人知识资产。</p>
+          <div className="st-quickstart">
+            <span className="st-quickstart-label">{ICONS.sparkles} 快速开始</span>
+            <button type="button" className="st-quick-btn" onClick={() => { const a = createArticle('blank'); setCurrentArticleId(a.id); setEditorTab('edit'); goNav('editor'); }}>
+              {ICONS.edit}<strong>新建文章</strong><em>空白模板起步</em>
+            </button>
+            <button type="button" className="st-quick-btn" onClick={() => { setEditingAgent(null); setNewAgent({ name: '', description: '', systemPrompt: '', category: '分析', avatar: '' }); setShowAgentForm(true); goNav('agents'); }}>
+              {ICONS.bot}<strong>新建智能体</strong><em>自定义 Prompt 与技能</em>
+            </button>
+            <button type="button" className="st-quick-btn" onClick={() => goNav('materials')}>
+              {ICONS.layers}<strong>添加素材</strong><em>从资讯或本地上传</em>
+            </button>
+          </div>
         </div>
-        <div className="product-hero-actions">
-          <button className="ai-primary-action" onClick={() => goNav('agents')}>搭建智能体工作流</button>
-          <button className="secondary-action" onClick={() => goNav('editor')}>进入内容创作</button>
+        <div className="st-hero-stats">
+          {pipelineStages.map(s => (
+            <button type="button" key={s.id} className={`st-stat${s.core ? ' st-stat-core' : ''}`} onClick={() => goNav(s.nav)}>
+              <span className="st-stat-value">{s.metric}</span>
+              <span className="st-stat-label">{s.unit}</span>
+              <span className="st-stat-bar" aria-hidden="true" />
+            </button>
+          ))}
         </div>
       </section>
 
-      <section className="studio-quick-create">
-        <button className="quick-create-btn" onClick={() => { const a = createArticle('blank'); setCurrentArticleId(a.id); setEditorTab('edit'); goNav('editor'); }}>
-          <span className="quick-create-icon">{ICONS.edit}</span>
-          <span className="quick-create-text"><strong>新建文章</strong><em>空白模板起步</em></span>
-        </button>
-        <button className="quick-create-btn" onClick={() => { setEditingAgent(null); setNewAgent({ name: '', description: '', systemPrompt: '', category: '分析', avatar: '' }); setShowAgentForm(true); goNav('agents'); }}>
-          <span className="quick-create-icon">{ICONS.bot}</span>
-          <span className="quick-create-text"><strong>新建智能体</strong><em>自定义 Prompt 与技能</em></span>
-        </button>
-        <button className="quick-create-btn" onClick={() => goNav('materials')}>
-          <span className="quick-create-icon">{ICONS.layers}</span>
-          <span className="quick-create-text"><strong>添加素材</strong><em>从资讯或本地上传</em></span>
-        </button>
+      {/* ============ 创作流水线：原料 → 熔炉 → 作品 ============ */}
+      <section className="st-pipeline">
+        <div className="st-section-head">
+          <h2 className="st-section-title"><span className="st-section-index">§1</span>创作流水线</h2>
+          <p className="st-section-desc">原料入库，熔炉炼金，终成作品 —— 点击任意一段进入对应工作区。</p>
+        </div>
+        <div className="st-pipe-track">
+          {pipelineStages.map((s, i) => (
+            <div className="st-pipe-segment" key={s.id}>
+              <button type="button" className={`st-pipe-node${s.core ? ' st-pipe-core' : ''}`} onClick={() => goNav(s.nav)}>
+                <span className="st-pipe-top">
+                  <span className="st-pipe-index">{s.index}</span>
+                  <span className="st-pipe-stage">{s.stage}</span>
+                </span>
+                <span className="st-pipe-icon">{ICONS[s.icon]}</span>
+                <span className="st-pipe-title">{s.title}</span>
+                <span className="st-pipe-metric"><strong>{s.metric}</strong> {s.unit}</span>
+                <span className="st-pipe-desc">{s.desc}</span>
+                <span className="st-pipe-cta">{s.action} {ICONS.arrowRight}</span>
+              </button>
+              {i < pipelineStages.length - 1 && (
+                <span className="st-pipe-link" aria-hidden="true">
+                  <span className="st-pipe-particle" />
+                  <span className="st-pipe-particle st-pipe-particle-b" />
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
       </section>
 
+      {/* ============ 创意工作台（保留全部业务能力） ============ */}
       <CreativeWorkspace
         workspace={creativeWorkspace}
         onOpenEditor={() => goNav('editor')}
         onOpenMaterials={() => goNav('materials')}
       />
 
-      <BlockGrid columns={3}>
-        {studioModules.map(module => (
-          <BlockGrid.Card
-            key={module.id}
-            icon={module.icon}
-            title={module.title}
-            desc={module.desc}
-            meta={{ metric: module.metric, action: module.action }}
-            variant={module.id === 'agents' ? 'primary' : 'default'}
-            onClick={() => goNav(module.nav)}
-          />
-        ))}
-      </BlockGrid>
-
-      <section className="workflow-builder-preview">
-        <div className="section-header">
-          <h2 className="section-title">{ICONS.bot} 可视化智能体工作流</h2>
-          <p className="section-desc">点击节点类型，前往智能体页面用对应节点搭建工作流。</p>
+      {/* ============ 节点图鉴：工作流的七种积木 ============ */}
+      <section className="st-nodes">
+        <div className="st-section-head">
+          <h2 className="st-section-title"><span className="st-section-index">§2</span>工作流节点图鉴</h2>
+          <p className="st-section-desc">七种积木拼出任意智能体流程，点击节点前往编排。</p>
         </div>
-        <div className="workflow-node-strip">
+        <div className="st-node-strip">
           {workflowNodeTypes.map((node, index) => (
-            <button key={node.type} className="workflow-node-card" onClick={() => goNav('agents')}>
-              <span>{String(index + 1).padStart(2, '0')}</span>
+            <button key={node.type} type="button" className="st-node-card" onClick={() => goNav('agents')}>
+              <span className="st-node-num">{String(index + 1).padStart(2, '0')}</span>
               <strong>{node.type}</strong>
               <p>{node.desc}</p>
-              <em className="workflow-node-cta">前往编排 →</em>
+              {index < workflowNodeTypes.length - 1 && <span className="st-node-arrow" aria-hidden="true">{ICONS.arrowRight}</span>}
             </button>
           ))}
         </div>
       </section>
 
-      <section className="studio-asset-row">
-        <BlockPanel title="最近素材" action={<button onClick={() => goNav('materials')}>管理素材库（{materials.length}）</button>}>
+      {/* ============ 资产速览 ============ */}
+      <section className="st-assets">
+        <div className="st-asset-panel">
+          <div className="st-asset-panel-head">
+            <h3>{ICONS.layers} 最近素材</h3>
+            <button type="button" onClick={() => goNav('materials')}>管理素材库（{materials.length}）</button>
+          </div>
           {materials.length > 0 ? (
             <ul className="studio-asset-list studio-asset-list-clickable">
               {materials.slice(0, 3).map(m => (
@@ -146,10 +184,19 @@ export default function StudioPage({
               ))}
             </ul>
           ) : (
-            <div className="studio-asset-empty"><strong>还没有沉淀素材</strong><p>从资讯卡片、每日汇报或本地上传开始收集。</p></div>
+            <div className="st-asset-empty">
+              <span className="st-asset-empty-icon">{ICONS.layers}</span>
+              <strong>还没有沉淀素材</strong>
+              <p>从资讯卡片、每日汇报或本地上传开始收集。</p>
+              <button type="button" onClick={() => goNav('materials')}>去收集素材</button>
+            </div>
           )}
-        </BlockPanel>
-        <BlockPanel title="创作资产" action={<button onClick={() => goNav('editor')}>打开编辑器（{articles.length}）</button>}>
+        </div>
+        <div className="st-asset-panel">
+          <div className="st-asset-panel-head">
+            <h3>{ICONS.edit} 创作资产</h3>
+            <button type="button" onClick={() => goNav('editor')}>打开编辑器（{articles.length}）</button>
+          </div>
           {articles.length > 0 ? (
             <ul className="studio-asset-list">
               {articles.slice(0, 3).map(a => (
@@ -157,9 +204,14 @@ export default function StudioPage({
               ))}
             </ul>
           ) : (
-            <div className="studio-asset-empty"><strong>准备你的第一篇内容</strong><p>内容创作区联动素材库与智能体输出。</p></div>
+            <div className="st-asset-empty">
+              <span className="st-asset-empty-icon">{ICONS.edit}</span>
+              <strong>准备你的第一篇内容</strong>
+              <p>内容创作区联动素材库与智能体输出。</p>
+              <button type="button" onClick={() => goNav('editor')}>开始写作</button>
+            </div>
           )}
-        </BlockPanel>
+        </div>
       </section>
 
       {previewAsset && (

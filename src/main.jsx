@@ -5,6 +5,8 @@ import App from './App.jsx';
 import './styles.css';
 import './themes.css';
 import './hud-theme.css';
+import './polish.css';
+import './studio-theme.css';
 import BackgroundLayer from './components/visual/BackgroundLayer.jsx';
 import NoiseLayer from './components/visual/NoiseLayer.jsx';
 // ParticleField 懒加载：首屏先显示背景与噪点，粒子稍后出现，不阻塞首屏
