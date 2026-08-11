@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import { renderMarkdown } from '../utils/markdown.jsx';
 import SessionSidebar from './SessionSidebar.jsx';
 import AgentPanel from './AgentPanel.jsx';
-import { retrieveRelevantMemories } from '../utils/sessionMemory.js';
+import { retrieveRelevantMemories, rememberCompaction } from '../utils/sessionMemory.js';
 import { searchFiles } from '../utils/workspaceIndex.js';
 import { observeQuestion, observeReply, observeFeedback, getLearnedPreferences } from '../utils/profileLearning.js';
 import { evolveMemory, fetchPersonaSummary, fetchRelevantMemories } from '../utils/memoryEvolver.js';
@@ -34,6 +34,14 @@ import { useSkills } from '../hooks/useSkills.js';
 import { showToast } from '../utils/toast.js';
 import { useProfileStore, useUiStore } from '../store';
 import { ICONS } from '../constants/appConstants.jsx';
+import { buildContext, shouldCompact, estimateMessages, localSummary } from '../session/contextManager.js';
+import { forkLinearSession } from '../session/trailStore.js';
+import { useMultiAgentOrchestrator } from '../hooks/useMultiAgentOrchestrator.js';
+import MaterialGraph from './MaterialGraph.jsx';
+
+// 流式回复的上下文预算（token）。超预算时对中段做本地摘要压缩，替代 slice(-20) 硬截断
+const STREAM_CONTEXT_BUDGET = 40_000;
+const STREAM_KEEP_RECENT = 15;
 import ChatHeader from './aichat/ChatHeader.jsx';
 
 // 模块级 abortController，跨组件生命周期保持
@@ -57,6 +65,7 @@ export default function AiChatPanel({
   materials,
   toggleMaterial,
   agent,
+  agents,
   onUpdateAgent,
   setLlmConfig,
   variant = 'copilot',
@@ -160,7 +169,13 @@ export default function AiChatPanel({
   // 学习画像：从用户行为观测到的偏好（高频主题/格式/深度）
   const learnedPrefs = useMemo(() => getLearnedPreferences(), [learnedVersion]);
 
-  const materialContext = useMemo(() => buildMaterialContext(materials), [materials]);
+  // 素材库上下文（知识库联动）：按当前输入检索最相关素材，而非固定注入 top 6。
+  // 输入为空时回退最近一条用户消息作查询；都空则走通用默认。
+  const materialContext = useMemo(() => {
+    const lastUser = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+    const query = (input || lastUser || '').slice(0, 120);
+    return buildMaterialContext(materials, { query, limit: 6 });
+  }, [materials, input, messages]);
 
   // 工作空间召回：异步检索相关文件（IndexedDB），debounce 避免频繁查询
   const [recalledFiles, setRecalledFiles] = useState([]);
@@ -197,6 +212,10 @@ export default function AiChatPanel({
   const [skillMenuPos, setSkillMenuPos] = useState(null);
   const skillBtnRef = useRef(null);
   const skillMenuRef = useRef(null);
+
+  // 知识图谱 overlay：AI 工作站顶部的「知识图谱」按钮打开
+  const [showGraph, setShowGraph] = useState(false);
+  const [graphSelected, setGraphSelected] = useState(null); // 图谱中选中的素材
 
   // 打开菜单时计算位置（按钮左下角为锚点，菜单向上展开）
   const openSkillMenu = useCallback(() => {
@@ -351,6 +370,41 @@ export default function AiChatPanel({
   // 情境化快捷建议：已抽离至 aichat/buildQuickActions.js
   const quickActions = useMemo(() => buildQuickActions(intelligenceContext, workbenchItems, materialContext), [intelligenceContext, workbenchItems, materialContext]);
 
+  // 多视角协作（AI 工作站多智能体编排）：一次任务多 agent 接力产出再综合
+  const multiAgent = useMultiAgentOrchestrator({ agents, llmConfig, enabled: !!agents?.length });
+
+  // 触发多视角协作：向会话写入用户任务 → 跑编排器 → 把各视角 + 综合报告写回会话
+  const handleOrchestrate = useCallback(async (prompt) => {
+    if (!prompt || !activeSessionId || isStreaming) return;
+    // 1) 写入用户消息占位
+    const userMsg = { role: 'user', content: prompt };
+    const placeholder = { role: 'assistant', content: '', loading: true };
+    setSessions(prev => prev.map(s => s.id === activeSessionId
+      ? { ...s, messages: [...s.messages, userMsg, placeholder], updatedAt: Date.now() }
+      : s));
+    setActiveSessionId(activeSessionId);
+    setIsStreaming(true);
+
+    // 2) 跑编排器
+    const { ok, views, synthesis, error } = await multiAgent.run(prompt);
+
+    // 3) 拼总报告：各视角 + 综合（综合在前，视角折叠其后）
+    const viewsText = (views || []).length
+      ? views.map((v, i) => `### ${i + 1} · ${v.viewLabel}\n${v.output}`).join('\n\n---\n\n')
+      : '';
+    const synthesisText = synthesis ? `## 综合判断\n\n${synthesis}\n` : '';
+    const body = [synthesisText, viewsText ? `## ${(views || []).length} 个视角\n\n${viewsText}` : '', error ? `\n> 部分视角执行失败：${error}` : ''].filter(Boolean).join('\n\n') || '（无输出）';
+
+    // 4) 写回会话
+    setSessions(prev => prev.map(s => {
+      if (s.id !== activeSessionId) return s;
+      const msgs = [...s.messages];
+      msgs[msgs.length - 1] = { role: 'assistant', content: body, loading: false };
+      return { ...s, messages: msgs, updatedAt: Date.now() };
+    }));
+    setIsStreaming(false);
+  }, [activeSessionId, isStreaming, setSessions, setIsStreaming, multiAgent.run]);
+
   // 用户消息节点列表（用于侧边导航跳转）
   const userMessageNodes = useMemo(() => messages
     .map((m, i) => m.role === 'user' ? { idx: i, content: m.content } : null)
@@ -403,8 +457,25 @@ export default function AiChatPanel({
       permissionMode: agentPermissionMode,
       // 技能创建成功回调：toolCreateSkill 写盘后立即刷新 skillsHook，与右侧边栏面板同步
       onSkillCreated: () => skillsHook.refresh(),
+      // 知识沉淀回调：save_knowledge 工具把分析结论沉淀为素材，走 toggleMaterial 落库
+      onSaveKnowledge: (payload) => {
+        if (!payload || !toggleMaterial) return;
+        toggleMaterial({
+          id: `ai-knowledge-${Date.now()}`,
+          title: String(payload.title || 'AI 知识沉淀').slice(0, 100),
+          summary: String(payload.summary || '').slice(0, 300),
+          content: String(payload.content || ''),
+          source: payload.source || 'AI 智能体沉淀',
+          category: payload.category || 'ai-knowledge',
+          type: payload.type || 'knowledge',
+          tags: [...new Set(['AI知识', agent?.name || '智能体', ...(Array.isArray(payload.tags) ? payload.tags : [])])],
+          url: payload.url || '',
+          insight: String(payload.insight || payload.content || '').slice(0, 300),
+          metadata: payload.metadata || { origin: 'ai-agent', agentId: agent?.id },
+        }, payload.type || 'knowledge', '由 AI 智能体主动沉淀的知识');
+      },
     });
-  }, [llmConfig, selectedModel, systemPrompt, intelligenceContext, sessions, messages, setSessions, setLearnedVersion, setAutoTodos, setMemoriesVersion, agentPermissionMode, skillsHook]);
+  }, [llmConfig, selectedModel, systemPrompt, intelligenceContext, sessions, messages, setSessions, setLearnedVersion, setAutoTodos, setMemoriesVersion, agentPermissionMode, skillsHook, toggleMaterial, agent]);
 
   const sendMessage = useCallback(async (text) => {
     const msg = text || input.trim();
@@ -492,6 +563,27 @@ export default function AiChatPanel({
         return;
       }
 
+      // 上下文预算检查（对标 pi/compaction）：超预算时把中段折叠为一条本地摘要，
+      // 替代 slice(-20) 硬截断。本地摘要不额外调 LLM，失败自动回退到 slice。
+      const fullHistory = [...messages, userMessage];
+      let sendMessages;
+      if (shouldCompact(fullHistory, STREAM_CONTEXT_BUDGET)) {
+        const packed = await buildContext(fullHistory, STREAM_CONTEXT_BUDGET, {
+          keepRecent: STREAM_KEEP_RECENT,
+          cutMin: 2,
+          summaryText: localSummary(fullHistory.slice(1, Math.max(1, fullHistory.length - STREAM_KEEP_RECENT))),
+        });
+        sendMessages = packed.compressed ? packed.messages : fullHistory.slice(-20);
+        // 压缩是 lossy 的：沉淀为跨会话记忆，避免被压段"蒸发"（同会话去重）
+        if (packed.compressed && targetId) {
+          try { rememberCompaction(targetId, packed.summaryText || ''); } catch { /* silent */ }
+        }
+      } else {
+        sendMessages = fullHistory.slice(-20);
+      }
+      // 终极兜底：绝不越界
+      if (estimateMessages(sendMessages) > STREAM_CONTEXT_BUDGET) sendMessages = sendMessages.slice(-20);
+
       const response = await fetch('/api/ai-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -502,7 +594,7 @@ export default function AiChatPanel({
           model: selectedModel,
           action: 'chat',
           systemPrompt: finalSystemPrompt,
-          messages: [...messages, userMessage].slice(-20).map(m => ({ role: m.role, content: m.content })),
+          messages: sendMessages.map(m => ({ role: m.role, content: m.content })),
           max_tokens: 4000,
           stream: true,
         }),
@@ -629,6 +721,25 @@ export default function AiChatPanel({
     cancelAllPending('用户停止生成');
   }, []);
 
+  // 从这里分支（对标 pi /tree + fork）：在消息 i 处把当前会话 fork 出新会话并切换过去
+  const forkFromMessage = useCallback((msgIndex) => {
+    const session = sessions.find(s => s.id === activeSessionId);
+    if (!session || isStreaming) return;
+    const { messages: branchMsgs } = forkLinearSession(session, { anchorIndex: msgIndex });
+    if (!branchMsgs.length) return;
+    const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const newSession = {
+      id: newId,
+      title: `${(session.title || '会话')} · 分支`,
+      messages: branchMsgs,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setSessions(prev => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    if (showToast) showToast('已从该消息创建分支会话，可从此处继续');
+  }, [sessions, activeSessionId, isStreaming, setSessions, setActiveSessionId]);
+
   // 复制消息内容到剪贴板
   const copyMessage = useCallback(async (content, e) => {
     try {
@@ -735,6 +846,7 @@ export default function AiChatPanel({
         agent={agent}
         setShowPersonaDrawer={setShowPersonaDrawer}
         onOpenLlmConfig={onOpenLlmConfig}
+        onOpenGraph={() => setShowGraph(true)}
       />
 
       {/* Messages area + 侧边节点导航 */}
@@ -751,7 +863,11 @@ export default function AiChatPanel({
             <p className="chat-welcome-tip">万般硅川汇集于此，亦可取一瓢独饮</p>
             <div className="chat-welcome-cards">
               {quickActions.map(action => (
-                <button key={action.label} className="chat-suggest-card" onClick={() => sendMessage(action.prompt)}>
+                <button
+                  key={action.label}
+                  className="chat-suggest-card"
+                  onClick={() => (action.orchestrate ? handleOrchestrate(action.prompt) : sendMessage(action.prompt))}
+                >
                   <span className="chat-suggest-icon">{SUGGEST_ICONS[action.icon] || SUGGEST_ICONS.sparkle}</span>
                   <span className="chat-suggest-text">
                     <strong>{action.label}</strong>
@@ -846,6 +962,10 @@ export default function AiChatPanel({
                   <span className="icon-sm">{ICONS.refresh}</span>
                   重新生成
                 </button>
+                <button type="button" className="chat-action-btn" title="从这里分支出新会话继续" onClick={() => forkFromMessage(i)} disabled={isStreaming}>
+                  <span className="icon-sm">{ICONS.fork}</span>
+                  分支
+                </button>
               </div>
             )}
           </div>
@@ -922,7 +1042,7 @@ export default function AiChatPanel({
           {messages.length > 0 && (
             <div className="chat-quick-bar">
               {quickActions.map(action => (
-                <button key={action.label} className="chat-quick-pill" onClick={() => sendMessage(action.prompt)} disabled={isStreaming} title={action.desc}>
+                <button key={action.label} className="chat-quick-pill" onClick={() => (action.orchestrate ? handleOrchestrate(action.prompt) : sendMessage(action.prompt))} disabled={isStreaming} title={action.desc}>
                   <span className="chat-quick-pill-icon">{SUGGEST_ICONS[action.icon] || SUGGEST_ICONS.sparkle}</span>
                   {action.label}
                 </button>
@@ -1004,6 +1124,44 @@ export default function AiChatPanel({
           </div>
         </div>
       </div>
+      {/* 知识图谱 overlay：AI 工作站顶部按钮打开，portal 到 body */}
+      {showGraph && createPortal(
+        <div className="graph-overlay" onClick={() => setShowGraph(false)}>
+          <div className="graph-overlay-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="graph-overlay-head">
+              <span className="graph-overlay-title">知识图谱</span>
+              <span className="graph-overlay-sub">{materials?.length || 0} 条素材按标签聚类</span>
+              <button className="graph-overlay-close" onClick={() => setShowGraph(false)} title="关闭">
+                {ICONS.x}
+              </button>
+            </div>
+            <MaterialGraph
+              materials={materials || []}
+              onOpenMaterial={(mat) => setGraphSelected(mat)}
+            />
+            {graphSelected && (
+              <div className="graph-overlay-detail">
+                <div className="graph-overlay-detail-head">
+                  <span className="graph-overlay-detail-title">{graphSelected.title || '素材'}</span>
+                  <span className="graph-overlay-detail-type">{graphSelected.type || 'material'}</span>
+                </div>
+                {graphSelected.tags?.length > 0 && (
+                  <div className="graph-overlay-detail-tags">
+                    {graphSelected.tags.map(t => <span key={t} className="graph-overlay-detail-tag">#{t}</span>)}
+                  </div>
+                )}
+                {(graphSelected.content || graphSelected.summary) && (
+                  <div className="graph-overlay-detail-body">
+                    {String(graphSelected.content || graphSelected.summary || '').slice(0, 400)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* P5 Skills 菜单：portal 渲染到 body，向上弹出，避免被父容器 overflow 裁剪 */}
       {showSkillMenu && skillMenuPos && createPortal(
         <div

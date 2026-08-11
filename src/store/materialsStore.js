@@ -23,7 +23,12 @@ export const useMaterialsStore = create((set) => ({
   setMaterialSearch: (v) => set({ materialSearch: v }),
 
   materialTags: [],
-  setMaterialTags: (v) => set({ materialTags: v }),
+  // 兼容函数 updater + 强制数组：避免外部误传字符串/函数把 store 污染成非数组
+  setMaterialTags: (v) => set((state) => ({
+    materialTags: typeof v === 'function'
+      ? v(state.materialTags)
+      : (Array.isArray(v) ? v : []),
+  })),
 
   materialTimeRange: 'all',
   setMaterialTimeRange: (v) => set({ materialTimeRange: v }),

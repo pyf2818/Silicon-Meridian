@@ -11,37 +11,14 @@ export default function MessageList({
   activeAgent,
   isLoading,
   messagesEndRef,
-  relayAgents,
   onContinueInWorkbench,
   setQuotedContext,
   setInputText,
   saveConversationToMaterials,
-  handoffToAgent,
   elfName,
-  missions,
-  agents,
-  runMission,
 }) {
   return (
     <>
-      {/* 任务面板（仅在有任务时显示） */}
-      {missions?.length > 0 && (
-        <div className="ai-elf-mission-panel">
-          <div>
-            <span className="ai-elf-mission-kicker">INTELLIGENCE OS</span>
-            <strong>{elfName || 'AI精灵'} 已接入你的今日情报上下文</strong>
-          </div>
-          <div className="ai-elf-mission-grid">
-            {missions.slice(0, 4).map(mission => (
-              <button key={mission.id} onClick={() => runMission(mission)}>
-                <span>{mission.label}</span>
-                <small>{agents.find(agent => agent.id === mission.agentId)?.name || '智能体'}</small>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* 空状态 */}
       {messages.length === 0 && (
         <div className="ai-elf-chat-empty">
@@ -177,18 +154,7 @@ export default function MessageList({
                     存入工作站
                   </button>
                 )}
-                {relayAgents.slice(0, 4).map(agent => (
-                  <button
-                    key={agent.id}
-                    className="ai-elf-action-btn ai-elf-handoff-btn"
-                    onClick={() => handoffToAgent(agent.id, msg)}
-                    title={`交给${agent.name}继续处理`}
-                  >
-                    <span>交给</span>
-                    <strong>{agent.name.replace(/智能体|Agent/g, '').slice(0, 6)}</strong>
-                  </button>
-                ))}
-              </div>
+                </div>
             )}
             <div className="ai-elf-message-time">
               {new Date(msg.timestamp).toLocaleTimeString()}

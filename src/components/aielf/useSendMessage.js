@@ -1,4 +1,10 @@
 import { selectToolSchemas } from '../../utils/agentTools.js';
+import { buildContext, shouldCompact, estimateMessages, localSummary } from '../../session/contextManager.js';
+import { rememberCompaction } from '../../utils/sessionMemory.js';
+
+// 普通模式（无工具）上下文预算：超预算时中段本地摘要压缩，替代整段发送
+const PLAIN_CONTEXT_BUDGET = 40_000;
+const PLAIN_KEEP_RECENT = 15;
 
 /**
  * AiElf 发送消息逻辑（从 AiElf.jsx 抽离）
@@ -144,6 +150,26 @@ export function useSendMessage({
         });
       } else {
         // ===== 普通模式：无 tools，单次请求 =====
+        // 上下文预算检查（对标 pi/compaction）：当前消息超预算时中段本地摘要压缩，
+        // 替代全量发送导致上下文爆掉。本地摘要不额外调 LLM，失败自动回退。
+        const plainHistory = currentMessages.slice(-40);
+        let plainMessages;
+        if (shouldCompact(plainHistory, PLAIN_CONTEXT_BUDGET)) {
+          const packed = await buildContext(plainHistory, PLAIN_CONTEXT_BUDGET, {
+            keepRecent: PLAIN_KEEP_RECENT,
+            cutMin: 2,
+            summaryText: localSummary(plainHistory.slice(1, Math.max(1, plainHistory.length - PLAIN_KEEP_RECENT))),
+          });
+          plainMessages = packed.compressed ? packed.messages : plainHistory.slice(-20);
+          // 压缩是 lossy 的：沉淀为跨会话记忆（同会话去重）
+          if (packed.compressed) {
+            try { rememberCompaction(currentSessionId || activeAgentId, packed.summaryText || ''); } catch { /* silent */ }
+          }
+        } else {
+          plainMessages = plainHistory.slice(-20);
+        }
+        if (estimateMessages(plainMessages) > PLAIN_CONTEXT_BUDGET) plainMessages = plainMessages.slice(-20);
+
         const response = await fetch('/api/ai-generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -154,7 +180,7 @@ export function useSendMessage({
             action: 'chat',
             content: messageText,
             systemPrompt,
-            messages: currentMessages.map(msg => ({
+            messages: plainMessages.map(msg => ({
               role: msg.role,
               content: msg.content
             }))

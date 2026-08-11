@@ -2210,6 +2210,7 @@ ${signals}
               materials={materials}
               toggleMaterial={toggleMaterial}
               agent={agents.find(a => a.id === currentAgent) || agents[0]}
+              agents={agents}
               onUpdateAgent={updateAgent}
               setLlmConfig={setLlmConfig}
             />
@@ -2750,18 +2751,14 @@ ${signals}
         {ICONS.chevronLeft ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"/></svg> : ICONS.chevronUp}
       </button>
 
-      {/* AI精灵助手 */}
+      {/* AI精灵助手（去 agent 化：全站轻量助理，只接收画像/上下文，不再接智能体生态） */}
       <Suspense fallback={null}>
       <AiElf
         llmConfig={llmConfig}
         avatarImage={elfAvatar}
         elfName={elfName}
-        agents={agents}
-        currentAgent={currentAgent}
-        onChangeAgent={setCurrentAgent}
         externalQuotedContext={elfQuotedContext}
         intelligenceProfile={intelligenceProfile}
-        intelligenceMissions={intelligenceMissions}
         onContinueInWorkbench={(payload, savedMaterial) => {
           const material = savedMaterial || addManualMaterial({
             title: String(payload.title || 'AI 精灵研究记录').slice(0, 100),

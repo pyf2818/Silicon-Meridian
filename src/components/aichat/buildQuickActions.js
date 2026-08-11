@@ -123,5 +123,14 @@ export function buildQuickActions(intelligenceContext, workbenchItems, materialC
     prompt: `基于今日 ${items.length} 条资讯和我的关注领域，给出5个创作选题及大纲`,
   });
 
-  return actions.slice(0, 5);
+  // 6. 多视角综合分析：多个专业 agent 各产出视角再综合（AI 工作站多智能体协作）
+  actions.push({
+    label: '多视角分析',
+    icon: 'fork',
+    desc: '分析师/技术/商业/风险/创作多智能体协作',
+    prompt: `基于今日 ${items.length} 条资讯，从多个专业视角综合判断：核心结论、技术/商业风险、创作机会、下一步行动`,
+    orchestrate: true,
+  });
+
+  return actions.slice(0, 6);
 }

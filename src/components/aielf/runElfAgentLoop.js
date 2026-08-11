@@ -5,6 +5,13 @@
 
 import { executeAgentTool } from '../../utils/agentTools.js';
 import { getRootHandle } from '../../utils/workspaceHandleStore.js';
+import { buildContext, estimateMessages, shouldCompact, localSummary } from '../../session/contextManager.js';
+import { persistLongResult } from '../../session/outputSink.js';
+import { rememberCompaction } from '../../utils/sessionMemory.js';
+
+// 上下文预算：超过则中段本地摘要压缩而非硬截断（对标 pi/compaction）
+const CONTEXT_BUDGET = 48_000;
+const KEEP_RECENT = 25;
 
 /**
  * @param {Object} params
@@ -49,6 +56,25 @@ export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas
         loading: true,
       });
 
+      // 上下文压缩（对标 pi/compaction）：超预算时中段本地摘要压缩，而非仅留最近 30 条
+      let sendMessages;
+      if (shouldCompact(conversationMessages, CONTEXT_BUDGET)) {
+        const packed = await buildContext(conversationMessages, CONTEXT_BUDGET, {
+          keepRecent: KEEP_RECENT,
+          cutMin: 2,
+          summaryText: localSummary(conversationMessages.slice(1, Math.max(1, conversationMessages.length - KEEP_RECENT))),
+        });
+        sendMessages = packed.compressed ? packed.messages : conversationMessages.slice(-30);
+        // 压缩是 lossy 的：把摘要沉淀为跨会话记忆（同主动 agent 去重）
+        if (packed.compressed && typeof rememberCompaction === 'function') {
+          try { rememberCompaction(activeAgentId, packed.summaryText || ''); } catch { /* silent */ }
+        }
+      } else {
+        sendMessages = conversationMessages.slice(-30);
+      }
+      // 终极兜底：与旧行为对齐，绝不越界
+      if (estimateMessages(sendMessages) > CONTEXT_BUDGET) sendMessages = sendMessages.slice(-30);
+
       const response = await fetch('/api/ai-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -58,7 +84,7 @@ export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas
           model: llmConfig.selectedModel,
           action: 'chat',
           systemPrompt,
-          messages: conversationMessages.slice(-30),
+          messages: sendMessages,
           max_tokens: 4000,
           tools: toolSchemas,
           tool_choice: 'auto',
@@ -126,10 +152,16 @@ export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas
           loading: true,
         });
 
+        // 超长结果落盘工作空间（对标 pi/bash 输出截断进 temp 文件）
+        const toolResult = await persistLongResult({
+          result: String(result),
+          rootHandle: toolCtx.rootHandle,
+          toolName,
+        });
         conversationMessages.push({
           role: 'tool',
           tool_call_id: tc.id,
-          content: String(result).slice(0, 20000),
+          content: toolResult.text,
         });
       }
     }

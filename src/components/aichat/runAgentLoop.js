@@ -11,6 +11,13 @@ import { executeAgentTool } from '../../utils/agentTools.js';
 import { getRootHandle } from '../../utils/workspaceHandleStore.js';
 import { buildSessionContextText, appendHistory } from '../../utils/sessionStore.js';
 import { requestApproval } from '../../utils/sandbox.js';
+import { buildContext, estimateMessages, shouldCompact, localSummary } from '../../session/contextManager.js';
+import { persistLongResult } from '../../session/outputSink.js';
+import { rememberCompaction } from '../../utils/sessionMemory.js';
+
+// 上下文预算：发送给 LLM 的消息总token上限。超过则触发「中段本地摘要压缩」而非硬截断。
+const CONTEXT_BUDGET = 48_000;
+const KEEP_RECENT = 25; // 压缩时保留的最近消息数
 
 /**
  * @param {object} opts
@@ -99,6 +106,26 @@ export async function runAgentLoop({
         ? `${systemPrompt}\n\n【会话状态】你正在执行一个多步任务，以下是当前会话的状态快照，可作为接力推理的依据：\n${sessionContextText}`
         : systemPrompt;
 
+      // 上下文压缩（对标 pi/compaction）：超过预算时，把中段消息折叠为一条本地摘要再发送，
+      // 而非只保留最近 KEEP_RECENT 条硬截断。summaryText 缺省用本地摘要降级，不额外增加 LLM 调用。
+      let sendMessages;
+      if (shouldCompact(conversationMessages, CONTEXT_BUDGET)) {
+        const packed = await buildContext(conversationMessages, CONTEXT_BUDGET, {
+          keepRecent: KEEP_RECENT,
+          cutMin: 2,
+          summaryText: localSummary(conversationMessages.slice(1, Math.max(1, conversationMessages.length - KEEP_RECENT))),
+        });
+        sendMessages = packed.compressed ? packed.messages : conversationMessages.slice(-30);
+        // 压缩是 lossy 的：把摘要沉淀为跨会话记忆，避免被压段"蒸发"（同 sessionId 去重）
+        if (packed.compressed && typeof rememberCompaction === 'function') {
+          try { rememberCompaction(targetId, packed.summaryText || ''); } catch { /* silent */ }
+        }
+      } else {
+        sendMessages = conversationMessages.slice(-30);
+      }
+      // 终极兜底：即使压缩后仍超长，也保留最近 30 条（与旧行为对齐，绝不越界）
+      if (estimateMessages(sendMessages) > CONTEXT_BUDGET) sendMessages = sendMessages.slice(-30);
+
       const response = await fetch('/api/ai-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,7 +136,7 @@ export async function runAgentLoop({
           model: selectedModel,
           action: 'chat',
           systemPrompt: fullSystemPrompt,
-          messages: conversationMessages.slice(-30),
+          messages: sendMessages,
           max_tokens: 4000,
           tools: toolSchemas,
           tool_choice: 'auto',
@@ -245,11 +272,18 @@ export async function runAgentLoop({
           });
         } catch { /* ignore */ }
 
-        // 把工具结果作为 tool message 追加到 conversation
+        // 把工具结果作为 tool message 追加到 conversation。
+        // 超长结果落盘工作空间（对标 pi/bash 输出截断进 temp 文件），只回灌截断+路径提示。
+        const toolResult = await persistLongResult({
+          result: String(result),
+          rootHandle: toolCtx.rootHandle,
+          toolName,
+          sessionId: targetId,
+        });
         conversationMessages.push({
           role: 'tool',
           tool_call_id: tc.id,
-          content: String(result).slice(0, 20000),
+          content: toolResult.text,
         });
 
         // 用户已 abort：停止后续工具调用

@@ -9,8 +9,6 @@ export default function InputArea({
   sendMessage,
   activeAgent,
   isLoading,
-  missions,
-  runMission,
 }) {
   return (
     <div className="ai-elf-chat-input-area">
@@ -48,15 +46,6 @@ export default function InputArea({
         }}
         rows={2}
       />
-      {missions.length > 0 && !quotedContext && (
-        <div className="ai-elf-input-suggestions">
-          {missions.slice(0, 3).map(mission => (
-            <button key={mission.id} onClick={() => runMission(mission)}>
-              {mission.label}
-            </button>
-          ))}
-        </div>
-      )}
       <button
         className="ai-elf-send-btn"
         onClick={() => sendMessage()}

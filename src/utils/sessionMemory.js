@@ -90,7 +90,32 @@ export async function generateSessionSummary(session, llmConfig) {
   } catch (e) { console.warn('[sessionMemory] 摘要生成异常:', e.message); return null; }
 }
 
-/* 按关键词检索相关历史记忆（排除当前会话）。要求匹配率 ≥ 25% 或命中 ≥ 2 个词，避免噪声 */
+/**
+ * 把一次「上下文压缩」的产出记为跨会话记忆（对标 pi compaction 的摘要节点保留在树里）。
+ * 压缩是 lossy 的——若直接丢弃被压段信息，长会话早期结论就"蒸发"了。写成记忆后：
+ *   - 后续轮次继续可检索（retrieveRelevantMemories 命中该会话摘要）
+ *   - 新会话也可能命中，形成跨会话连续性
+ * 去重：同 sessionId 已写过 compaction 记忆则跳过（避免每轮重复写）。
+ * 失败静默（不阻断主流程）。
+ */
+export function rememberCompaction(sessionId, summaryText) {
+  if (!sessionId || !summaryText) return;
+  const mems = loadMemories();
+  // 同 sessionId 的 compaction 记忆已存在则跳过（压缩可能每轮触发）
+  if (mems.some(m => m.sessionId === sessionId && m.kind === 'compaction')) return;
+  const memory = {
+    sessionId,
+    title: '会话上下文压缩',
+    topic: String(summaryText).replace(/\s+/g, ' ').slice(0, 50) || '压缩摘要',
+    conclusions: [String(summaryText).slice(0, 400)],
+    evidenceIds: [],
+    kind: 'compaction',
+    createdAt: Date.now(),
+  };
+  saveMemories([...mems, memory]);
+}
+
+/* 按关键词检索相关历史会话（排除当前会话）。要求匹配率 ≥ 25% 或命中 ≥ 2 个词，避免噪声 */
 export function retrieveRelevantMemories(query, currentSessionId, limit = 3) {
   const queryTokens = new Set(tokenize(query));
   if (queryTokens.size === 0) return [];

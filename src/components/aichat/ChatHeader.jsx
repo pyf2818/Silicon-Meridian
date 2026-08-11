@@ -9,6 +9,7 @@ export default function ChatHeader({
   agent,
   setShowPersonaDrawer,
   onOpenLlmConfig,
+  onOpenGraph,
 }) {
   return (
     <div className="chat-header">
@@ -40,6 +41,11 @@ export default function ChatHeader({
         {variant === 'main' && (
           <button className="chat-header-btn" onClick={() => setSessionCollapsed(v => !v)} title={sessionCollapsed ? '展开会话栏' : '收起会话栏'}>
             {ICONS.layers}
+          </button>
+        )}
+        {onOpenGraph && (
+          <button className="chat-header-btn" onClick={onOpenGraph} title="知识图谱">
+            {ICONS.fork}
           </button>
         )}
         <button

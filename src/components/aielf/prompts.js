@@ -3,6 +3,7 @@
 // 依赖 ElfToolCard 暴露的 TOOL_META 用于工具能力声明
 
 import { TOOL_META } from './ElfToolCard.jsx';
+import { buildToolCapabilitiesText } from '../../utils/toolCapabilities.js';
 
 function formatProfileList(value, fallback = '暂无') {
   return Array.isArray(value) && value.length ? value.join('、') : fallback;
@@ -43,8 +44,11 @@ export function buildAgenticSystemPrompt(activeAgent, missions = [], agents = []
   }).join('\n') || '- 暂无预设任务';
 
   const toolNames = Array.isArray(activeAgent?.tools) ? activeAgent.tools : [];
+  // 工具能力声明（对标 pi promptSnippet/promptGuidelines）：告知每个工具何时可用、边界在哪，
+  // 替代此前只列工具名。toolNames 不在 CAPABILITIES 中的（如自定义工具）仍以 label 兜底列出。
   const toolSection = toolNames.length > 0
-    ? `\n【工具能力】你被配置为 Agent Loop 模式，可通过 function calling 主动调用以下工具，无需用户授权：\n${toolNames.map(n => `- ${n}：${(TOOL_META[n]?.label || n)}`).join('\n')}\n当问题需要外部数据或文件操作时（如查询股价、检索资讯、读写工作空间文件、抓取网页），请主动调用对应工具获取信息后再回答。工具返回的数据是事实依据，应直接采纳。`
+    ? buildToolCapabilitiesText(toolNames) ||
+      `\n【工具能力】你被配置为 Agent Loop 模式，可通过 function calling 主动调用以下工具：\n${toolNames.map(n => `- ${n}：${(TOOL_META[n]?.label || n)}`).join('\n')}`
     : '';
 
   return `${basePrompt}

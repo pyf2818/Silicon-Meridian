@@ -278,6 +278,50 @@ async function toolCreateSkill(args, ctx) {
  * 联网搜索：豆包搜索（火山引擎，国内首选） > Tavily > DuckDuckGo
  * 返回结构化文本：标题、链接、摘要，便于 LLM 后续引用
  */
+/**
+ * save_knowledge - 让 Agent 主动把本次分析的结构化产出沉淀为知识库条目（素材）。
+ * 与 create_skill（沉淀方法论）互补：这里沉淀的是「结论/资料/可复用判断」，
+ * 而不是「工作流程」。
+ *
+ * 落库走 ctx.onSaveKnowledge(payload) 回调（与 create_skill 的 onSkillCreated 同型），
+ * 前端把它转成素材（addManualMaterial / toggleMaterial）。无回调时提示用户手动保存。
+ */
+async function toolSaveKnowledge(args, ctx) {
+  const title = String(args?.title || '').trim();
+  if (!title) return '错误：title 不能为空（请给这条知识起一个简短标题）';
+  const content = String(args?.content || '').trim();
+  if (!content) return '错误：content 不能为空（请提供知识/结论的正文）';
+
+  const payload = {
+    title: title.slice(0, 80),
+    content,
+    summary: String(args?.summary || '').slice(0, 300) || content.slice(0, 200),
+    source: 'AI 智能体沉淀',
+    category: String(args?.category || 'ai-knowledge').slice(0, 32),
+    type: String(args?.type || 'knowledge').slice(0, 24),
+    tags: Array.isArray(args?.tags) ? args.tags.map(String).slice(0, 10) : [],
+    url: String(args?.url || ''),
+    insight: content.slice(0, 300),
+    spaceId: args?.spaceId || null,
+    metadata: {
+      origin: 'ai-agent',
+      agentId: ctx?.agentId || '',
+      agentName: ctx?.agentName || '',
+      reason: 'agent 知识沉淀',
+    },
+  };
+
+  if (typeof ctx?.onSaveKnowledge === 'function') {
+    try {
+      ctx.onSaveKnowledge(payload);
+      return `✅ 已沉淀为知识库条目：${title}（${content.length} 字符）`;
+    } catch (err) {
+      return `错误：知识沉淀失败 - ${err?.message || String(err)}`;
+    }
+  }
+  return '知识内容已准备好（当前环境无法自动保存）：\n- 标题：' + title + '\n- 正文：' + content.slice(0, 120) + (content.length > 120 ? '…' : '');
+}
+
 async function toolWebSearch(args, ctx) {
   const query = String(args?.query || args?.keyword || '').trim();
   if (!query) return '错误：query 参数不能为空';
@@ -1105,6 +1149,31 @@ const BUILTIN_TOOL_DEFS = [
     },
     meta: { label: '沉淀技能', iconKey: 'bookmark', description: '将工作方法论沉淀为可复用技能', category: 'skills' },
     executor: toolCreateSkill,
+  },
+  {
+    name: 'save_knowledge',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'save_knowledge',
+        description: '【知识沉淀】把本次分析的结构化产出（结论、判断、可复用的资料片段）沉淀为知识库素材条目。区别于 create_skill（沉淀工作方法论），这里是沉淀知识结论。当你的分析产出了有保存价值的结论时主动调用',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: '知识条目标题（80字以内）' },
+            content: { type: 'string', description: '知识正文（结论、判断、事实梳理，Markdown）' },
+            summary: { type: 'string', description: '摘要（可选）' },
+            category: { type: 'string', description: '分类（可选，如 research/writing/analysis/risk）' },
+            type: { type: 'string', description: '素材类型（可选，默认 knowledge）' },
+            tags: { type: 'array', items: { type: 'string' }, description: '标签列表（可选）' },
+            url: { type: 'string', description: '来源链接（可选）' },
+          },
+          required: ['title', 'content'],
+        },
+      },
+    },
+    meta: { label: '沉淀知识', iconKey: 'bookmarkFill', description: '把分析结论沉淀为知识库素材条目', category: 'knowledge', requiresApproval: true },
+    executor: toolSaveKnowledge,
   },
   {
     name: 'web_search',

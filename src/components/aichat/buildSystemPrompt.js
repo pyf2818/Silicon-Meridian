@@ -3,6 +3,7 @@
 // 从 src/components/AiChatPanel.jsx 抽离，纯函数
 
 import { useProfileStore } from '../../store';
+import { buildToolCapabilitiesText } from '../../utils/toolCapabilities.js';
 
 /**
  * @param {object} opts
@@ -117,6 +118,9 @@ export function buildSystemPrompt({
     workspaceFiles.length > 0
       ? `用户从本地工作空间加入了以下文件作为分析上下文：\n${workspaceFiles.map(f => `[文件:${f.name}]\n${String(f.content || '').slice(0, 2000)}`).join('\n\n')}`
       : '',
+    // 工具能力声明（对标 pi promptSnippet/promptGuidelines）：仅在 agent 配置了 tools 白名单时注入，
+    // 让 agent Loop 模式下的 LLM 知道有哪些工具、何时该用。未配工具则跳过。
+    agent?.tools?.length ? buildToolCapabilitiesText(agent.tools) : '',
     // Phase 1.3 Task 14: 预留"最近校准"段 —— 读取 pendingSuggestions 中近 7 天 accepted 的建议。
     // 当前 pendingSuggestions 永远没有 accepted 项（Phase 2 才有接受 UI），此段实际不输出内容，
     // 仅预留接口点，让 Phase 2 接入接受 UI 后此段自动激活。

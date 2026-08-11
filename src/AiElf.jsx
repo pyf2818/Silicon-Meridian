@@ -1,66 +1,59 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { getRootHandle } from './utils/workspaceHandleStore.js';
 import {
-  buildAgenticSystemPrompt as buildAgenticSystemPromptImpl,
-  buildRelayPrompt,
-  buildAnalysisPrompt as buildAnalysisPromptImpl,
-} from './components/aielf/prompts.js';
+  buildElfSystemPrompt,
+  buildElfDropPrompt,
+  ELF_DEFAULT_AGENT,
+} from './constants/aielfDefaults.js';
 import { runElfAgentLoop as runElfAgentLoopImpl } from './components/aielf/runElfAgentLoop.js';
 import { useSendMessage } from './components/aielf/useSendMessage.js';
+import { useTrailBranches } from './hooks/useTrailBranches.js';
 import Sidebar from './components/aielf/Sidebar.jsx';
 import ChatHeader from './components/aielf/ChatHeader.jsx';
 import MessageList from './components/aielf/MessageList.jsx';
 import InputArea from './components/aielf/InputArea.jsx';
 
-// AI精灵助手组件 - Agent系统 + 历史记录 + 自适应窗口
+// AI精灵助手组件 - 全站轻量 AI 助理（方案 A：去 agent 化，单例）
 // embedded=true 时以全屏工作站模式渲染（无悬浮按钮、强制展开、占满父容器）
-export default function AiElf({ llmConfig, avatarImage, elfName, onExportToMaterials, onContinueInWorkbench, agents, currentAgent, onChangeAgent, externalQuotedContext, intelligenceProfile, intelligenceMissions, embedded = false }) {
+export default function AiElf({ llmConfig, avatarImage, elfName, onExportToMaterials, onContinueInWorkbench, externalQuotedContext, intelligenceProfile, embedded = false }) {
   const [isOpen, setIsOpen] = useState(embedded);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [activeAgentId, setActiveAgentId] = useState(currentAgent || 'analyst');
   const [showSidebar, setShowSidebar] = useState(true);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [expandedAgent, setExpandedAgent] = useState(null);
-  
-  // 按Agent保存消息 { agentId: [messages] }
+  const [expandedConcern, setExpandedConcern] = useState(null);
+
+  // 精灵是单例：固定 agent 配置（不再来自 agents 生态）
+  const activeAgent = ELF_DEFAULT_AGENT;
+  const activeAgentId = activeAgent.id;
+
+  // 按「会话类型」保存消息（历史保留，但键从 agentId 收敛为精灵单键）
   const [agentMessages, setAgentMessages] = useState(() => {
     try {
       const saved = localStorage.getItem('ai-elf-agent-messages');
-      return saved ? JSON.parse(saved) : {};
+      if (!saved) return {};
+      const parsed = JSON.parse(saved);
+      // 兼容旧的多 agent 存储：优先取 ai-elf；旧 analyst 数据迁移到 ai-elf
+      if (parsed['ai-elf']) return { 'ai-elf': parsed['ai-elf'] };
+      const migrated = parsed['analyst'] ? parsed['analyst'] : [];
+      return { 'ai-elf': migrated };
     } catch {
       return {};
     }
   });
 
-  // 按Agent保存历史会话 { agentId: [{id, title, timestamp, messages}[]] }
+  // 历史会话（收敛为 ai-elf 单键）
   const [agentHistory, setAgentHistory] = useState(() => {
     try {
       const saved = localStorage.getItem('ai-elf-agent-history');
       if (!saved) return {};
-      
       const history = JSON.parse(saved);
-      
-      // 数据迁移：将旧的对象结构转换为新的数组结构
-      const migrated = {};
-      Object.keys(history).forEach(agentId => {
-        const sessions = history[agentId];
-        // 如果是对象（旧结构），转换为数组
-        if (!Array.isArray(sessions)) {
-          if (sessions && sessions.messages) {
-            migrated[agentId] = [sessions];
-          } else {
-            migrated[agentId] = [];
-          }
-        } else {
-          // 已经是数组，直接使用
-          migrated[agentId] = sessions;
-        }
-      });
-      
-      return migrated;
+      const sessions = Array.isArray(history['ai-elf'])
+        ? history['ai-elf']
+        : (Array.isArray(history['analyst']) ? history['analyst'] : []);
+      return { 'ai-elf': sessions };
     } catch {
       return {};
     }
@@ -78,59 +71,45 @@ export default function AiElf({ llmConfig, avatarImage, elfName, onExportToMater
 
   const AVATAR_SIZE = 56;
 
-  // 当前活跃Agent
-  const activeAgent = agents.find(a => a.id === activeAgentId) || agents[0];
-
-  // 当前Agent的消息
+  // 当前精灵的消息（key 固定为 ai-elf 单键）
   const messages = agentMessages[activeAgentId] || [];
 
-  // 当前Agent的历史记录（多个对话窗口）
+  // 历史会话分叉（对标 pi /tree + fork）：从一条历史消息开新分支
+  const { forkSession } = useTrailBranches();
+
+  // 从某个历史会话 fork 出一条新分支会话并置为当前
+  const handleForkSession = useCallback((session, anchorMessageId = null) => {
+    if (!session) return;
+    const branchSessionId = Date.now();
+    const { messages: branchTrail } = forkSession(session, { anchorMessageId });
+    const newSession = {
+      id: branchSessionId,
+      title: (session.title || '会话') + ' · 分支',
+      timestamp: Date.now(),
+      messages: branchTrail,
+    };
+    setCurrentSessionId(branchSessionId);
+    setAgentMessages(prev => ({ ...prev, [activeAgentId]: branchTrail }));
+    setAgentHistory(prev => {
+      const list = Array.isArray(prev[activeAgentId]) ? prev[activeAgentId] : [];
+      return { ...prev, [activeAgentId]: [newSession, ...list].slice(0, 12) };
+    });
+  }, [activeAgentId, forkSession]);
+
+  // 当前精灵的历史记录（多个对话窗口）
   const historySessions = agentHistory[activeAgentId] || [];
 
   const profile = intelligenceProfile || {};
-  const missions = Array.isArray(intelligenceMissions) ? intelligenceMissions : [];
   const activeAgentSessions = historySessions.length;
-  const agentById = (id) => agents.find(agent => agent.id === id);
-  const relayAgents = ['orchestrator', 'memory-agent', 'risk-scout', 'creation-agent', 'analyst']
-    .map(agentById)
-    .filter(agent => agent && agent.id !== activeAgentId);
 
-  const buildAgenticSystemPrompt = useMemo(
-    () => buildAgenticSystemPromptImpl(activeAgent, missions, agents, profile),
-    [activeAgent, missions, agents, profile]
+  // 精灵 system prompt：材料自识别 + 用户画像 + 工具能力（纯函数构造）
+  const buildElfSystem = useMemo(
+    () => buildElfSystemPrompt(profile),
+    [activeAgentId, profile]
   );
-
-  const runMission = (mission) => {
-    if (!mission) return;
-    if (mission.agentId) handleChangeAgent(mission.agentId);
-    setInputText(mission.prompt || mission.label || '');
-  };
-
-  const handoffToAgent = (targetAgentId, sourceMessage) => {
-    const targetAgent = agentById(targetAgentId);
-    if (!targetAgent || !sourceMessage) return;
-    const sourceAgentName = activeAgent?.name || '上一位智能体';
-    handleChangeAgent(targetAgent.id);
-    setQuotedContext({
-      title: `智能体接力：${sourceAgentName} → ${targetAgent.name}`,
-      content: sourceMessage.content.slice(0, 180) + (sourceMessage.content.length > 180 ? '...' : ''),
-      fullContent: sourceMessage.content
-    });
-    setInputText(buildRelayPrompt(targetAgent, sourceMessage));
-    setIsOpen(true);
-    setTimeout(() => document.querySelector('.ai-elf-chat-input')?.focus(), 50);
-  };
-
-  useEffect(() => {
-    if (currentAgent) setActiveAgentId(currentAgent);
-  }, [currentAgent]);
 
   useEffect(() => {
     if (!externalQuotedContext) return;
-    if (externalQuotedContext.agentId) {
-      setActiveAgentId(externalQuotedContext.agentId);
-      onChangeAgent && onChangeAgent(externalQuotedContext.agentId);
-    }
     setQuotedContext({
       title: externalQuotedContext.title || '外部上下文',
       content: externalQuotedContext.content || ''
@@ -141,9 +120,9 @@ export default function AiElf({ llmConfig, avatarImage, elfName, onExportToMater
     setIsOpen(true);
   }, [externalQuotedContext?.id]);
 
-  // 生成Agent专属的分析Prompt（来自 prompts.js）
+  // 拖拽分析 Prompt：内容自识别（不再按 8 个 agent 模板）
   const buildAnalysisPrompt = (itemData, pageContent) =>
-    buildAnalysisPromptImpl(activeAgentId, agents, itemData, pageContent);
+    buildElfDropPrompt(itemData, pageContent);
 
   // 初始化位置 - 右下角
   useEffect(() => {
@@ -298,18 +277,6 @@ export default function AiElf({ llmConfig, avatarImage, elfName, onExportToMater
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  // 切换Agent
-  const handleChangeAgent = (agentId) => {
-    setActiveAgentId(agentId);
-    onChangeAgent && onChangeAgent(agentId);
-  };
-
-  // 展开/收起Agent历史
-  const toggleAgentExpand = (agentId, e) => {
-    e.stopPropagation();
-    setExpandedAgent(prev => prev === agentId ? null : agentId);
-  };
-
   // 获取网页内容
   const fetchPageContent = async (url) => {
     try {
@@ -349,7 +316,7 @@ export default function AiElf({ llmConfig, avatarImage, elfName, onExportToMater
     setAgentHistory,
     fetchPageContent,
     buildAnalysisPrompt,
-    buildAgenticSystemPrompt,
+    buildElfSystem,
     runElfAgentLoop,
   });
 
@@ -567,22 +534,18 @@ export default function AiElf({ llmConfig, avatarImage, elfName, onExportToMater
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {/* 左侧边栏 - Agent列表 + 历史记录 */}
+          {/* 左侧边栏 - 精灵信息 + 历史会话（去 agent 化：仅精灵单例 + 会话列表） */}
           {showSidebar && (
             <Sidebar
               avatarImage={avatarImage}
               activeAgent={activeAgent}
-              agents={agents}
-              activeAgentId={activeAgentId}
               activeAgentSessions={activeAgentSessions}
               profile={profile}
               agentHistory={agentHistory}
-              expandedAgent={expandedAgent}
-              handleChangeAgent={handleChangeAgent}
-              toggleAgentExpand={toggleAgentExpand}
               setCurrentSessionId={setCurrentSessionId}
               setAgentMessages={setAgentMessages}
               setAgentHistory={setAgentHistory}
+              onForkSession={handleForkSession}
             />
           )}
 
@@ -610,16 +573,11 @@ export default function AiElf({ llmConfig, avatarImage, elfName, onExportToMater
                 activeAgent={activeAgent}
                 isLoading={isLoading}
                 messagesEndRef={messagesEndRef}
-                relayAgents={relayAgents}
                 onContinueInWorkbench={onContinueInWorkbench}
                 setQuotedContext={setQuotedContext}
                 setInputText={setInputText}
                 saveConversationToMaterials={saveConversationToMaterials}
-                handoffToAgent={handoffToAgent}
                 elfName={elfName}
-                missions={missions}
-                agents={agents}
-                runMission={runMission}
               />
             </div>
 
@@ -631,8 +589,6 @@ export default function AiElf({ llmConfig, avatarImage, elfName, onExportToMater
               sendMessage={sendMessage}
               activeAgent={activeAgent}
               isLoading={isLoading}
-              missions={missions}
-              runMission={runMission}
             />
           </div>
         </div>

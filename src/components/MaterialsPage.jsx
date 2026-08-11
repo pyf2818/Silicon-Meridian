@@ -19,6 +19,9 @@ export default function MaterialsPage({
   showSpaceForm, setShowSpaceForm, newSpaceName, setNewSpaceName, createMaterialSpace,
   showAddMaterial, setShowAddMaterial, addManualMaterial, setLightbox,
 }) {
+  // 视图切换：list 列表 / graph 图谱
+  // 标签筛选防御性兜底：store 可能被外部误写为非数组（见 materialsStore setMaterialTags 修复）
+  const tagFilter = Array.isArray(materialTags) ? materialTags : [];
   return (
     <>
     <div className="trends-dashboard">
@@ -105,13 +108,13 @@ export default function MaterialsPage({
               {allMaterialTags.slice(0, 15).map(tag => (
                 <button 
                   key={tag}
-                  className={`material-tag-btn ${materialTags.includes(tag) ? 'active' : ''}`}
+                  className={`material-tag-btn ${tagFilter.includes(tag) ? 'active' : ''}`}
                   onClick={() => setMaterialTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])}
                 >
                   {tag}
                 </button>
               ))}
-              {materialTags.length > 0 && (
+              {tagFilter.length > 0 && (
                 <button className="tag-clear-btn" onClick={() => setMaterialTags([])}>清除</button>
               )}
             </div>
@@ -138,8 +141,8 @@ export default function MaterialsPage({
         {filteredMaterials.length === 0 ? (
           <div className="empty-materials">
             <div className="empty-icon">{ICONS.layers}</div>
-            <p className="empty-title">{materialSearch || materialFilter !== 'all' || materialTags.length > 0 ? '没有找到匹配的素材' : '暂无素材'}</p>
-            <p className="hint">{materialSearch || materialFilter !== 'all' || materialTags.length > 0 ? '试试调整筛选条件' : '浏览资讯时点击收藏按钮，或点击右上角"添加素材"手动添加'}</p>
+            <p className="empty-title">{materialSearch || materialFilter !== 'all' || tagFilter.length > 0 ? '没有找到匹配的素材' : '暂无素材'}</p>
+            <p className="hint">{materialSearch || materialFilter !== 'all' || tagFilter.length > 0 ? '试试调整筛选条件' : '浏览资讯时点击收藏按钮，或点击右上角"添加素材"手动添加'}</p>
           </div>
         ) : (
           <div className="materials-grid">
