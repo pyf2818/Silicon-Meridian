@@ -163,21 +163,40 @@ async function toolSearchNews(args, ctx) {
   }
   if (items.length === 0) {
     // 最后 fallback：尝试联网搜索
-    const webRes = await fetch('/api/web-search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: keyword, max_results: 6 }),
-    });
-    if (webRes.ok) {
-      const webData = await webRes.json();
-      if (webData?.ok && Array.isArray(webData.results) && webData.results.length > 0) {
-        const lines = webData.results.map((item, i) =>
-          `${i + 1}. ${item.title || '(无标题)'}\n   链接：${item.url || ''}\n   摘要：${String(item.snippet || '').slice(0, 200)}`
-        );
-        return `资讯库中未找到 "${keyword}"，已通过联网搜索补充 ${webData.results.length} 条结果：\n\n${lines.join('\n\n')}`;
-      }
+    // 注意：与「联网搜索（web_search）」工具不同，此处不携带用户在设置中配置的
+    // 豆包/Tavily Key（仅当 Key 已配置到服务端环境变量时才可能成功）。
+    let webData = null;
+    try {
+      const webRes = await fetch('/api/web-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: keyword, max_results: 6 }),
+      });
+      if (webRes.ok) webData = await webRes.json();
+    } catch {
+      // 网络异常：走下方引导文案
     }
-    return `未找到与 "${keyword}" 相关的资讯`;
+    if (webData?.ok && Array.isArray(webData.results) && webData.results.length > 0) {
+      const lines = webData.results.map((item, i) =>
+        `${i + 1}. ${item.title || '(无标题)'}\n   链接：${item.url || ''}\n   摘要：${String(item.snippet || '').slice(0, 200)}`
+      );
+      return `资讯库中未找到 "${keyword}"，已通过联网搜索补充 ${webData.results.length} 条结果：\n\n${lines.join('\n\n')}`;
+    }
+
+    // 联网兜底失败：给出友好引导，提示改用「联网搜索（web_search）」工具。
+    // 该工具会携带用户配置的 Key，配置后即可正常联网查询。
+    const webSearchEnabled = ctx?.webSearchEnabled !== false && ctx?.llmConfig?.webSearchEnabled !== false;
+    const hasKey = Boolean(String(ctx?.doubaoSearchKey || ctx?.llmConfig?.doubaoSearchKey || '').trim())
+      || Boolean(String(ctx?.tavilyKey || ctx?.llmConfig?.tavilyKey || '').trim());
+    let hint;
+    if (!webSearchEnabled) {
+      hint = '同时「设置 → 大模型配置」中的「联网搜索总开关」当前为关闭状态，请先开启后再让它联网查询。';
+    } else if (hasKey) {
+      hint = '如需联网补充，请调用「联网搜索（web_search）」工具，用关键词 "' + keyword + '" 联网查询。';
+    } else {
+      hint = '如需联网补充，请调用「联网搜索（web_search）」工具（需先在「设置 → 大模型配置」填入豆包搜索 API Key：火山引擎订阅「豆包搜索 Custom 版」，国内访问稳定，每月免费 500 次）。';
+    }
+    return `本地资讯库中未找到与 "${keyword}" 相关的资讯，联网兜底暂不可用。${hint}`;
   }
   const lines = items.map((item, i) =>
     `${i + 1}. ${item.title}\n   来源：${item.source || '未知'} | ${item.publishedAt ? new Date(item.publishedAt).toLocaleString('zh-CN') : '时间未知'}\n   摘要：${String(item.summary || '').slice(0, 200)}`
