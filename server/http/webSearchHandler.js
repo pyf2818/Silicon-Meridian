@@ -4,23 +4,26 @@ import { assertSafeExternalUrl } from '../security/urlSafety.js';
 /**
  * Web Search Handler - 联网搜索接口
  *
- * 优先级：豆包搜索（火山引擎） > Tavily > DuckDuckGo
+ * 优先级：豆包搜索（火山引擎） > Tavily > DuckDuckGo > 免费源兜底（HN Algolia + Bing RSS）
  *
  * - 豆包搜索：国内首选，每月 500 次免费，订阅地址 https://console.volcengine.com/search-infinity/web-search
  * - Tavily：海外 AI 搜索服务，每月 1000 次免费（tavily.com）
- * - DuckDuckGo：兜底免费方案，无需注册
+ * - DuckDuckGo：免费但国内通常不可达
+ * - HN Algolia + Bing RSS：免订阅免费兜底（国内可达），无需任何 API Key
  *
  * API Key 来源：
  *   豆包：环境变量 DOUBAO_SEARCH_API_KEY 或请求头 X-Doubao-Search-Key
  *   Tavily：环境变量 TAVILY_API_KEY 或请求头 X-Tavily-Key
  *
  * 统一返回格式：
- *   { ok: true, provider: 'doubao'|'tavily'|'duckduckgo', results: [{title, url, snippet, score?}], meta: {query, count, latencyMs} }
+ *   { ok: true, provider: 'doubao'|'tavily'|'duckduckgo'|'free', results: [{title, url, snippet, score?}], meta: {query, count, latencyMs} }
  */
 
 const DOUBAO_SEARCH_ENDPOINT = 'https://open.feedcoopapi.com/search_api/web_search';
 const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
 const DUCKDUCKGO_ENDPOINT = 'https://lite.duckduckgo.com/lite/';
+const HN_ALGOLIA_ENDPOINT = 'https://hn.algolia.com/api/v1/search';
+const BING_RSS_ENDPOINT = 'https://www.bing.com/search';
 const DEFAULT_MAX_RESULTS = 8;
 const MAX_RESULTS_LIMIT = 20;
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -238,6 +241,111 @@ async function callDuckDuckGo(query, maxResults) {
   }
 }
 
+/**
+ * HN Algolia 搜索（免费免订阅，国内可达）
+ * Hacker News 全站搜索 API，返回技术类资讯的标题/链接/摘要（story_text）。
+ * 文档：https://hn.algolia.com/api
+ */
+async function callHackerNews(query, maxResults) {
+  await assertSafeExternalUrl(HN_ALGOLIA_ENDPOINT);
+  const url = `${HN_ALGOLIA_ENDPOINT}?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=${maxResults}`;
+  const { signal, clear } = withTimeout(REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'Accept': 'application/json',
+      },
+      signal,
+    });
+    if (!response.ok) {
+      throw Object.assign(new Error(`Hacker News 返回 ${response.status}`), {
+        code: 'HN_UPSTREAM_ERROR', status: 502,
+      });
+    }
+    const data = await response.json();
+    const hits = Array.isArray(data.hits) ? data.hits : [];
+    const results = hits
+      .map((h) => ({
+        title: String(h.title || '(无标题)').trim(),
+        url: String(h.url || (h.objectID ? `https://news.ycombinator.com/item?id=${h.objectID}` : '')),
+        snippet: String(h.story_text || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 280),
+      }))
+      .filter((r) => r.title && r.url)
+      .slice(0, maxResults);
+    return { provider: 'free-hn', results };
+  } finally {
+    clear();
+  }
+}
+
+/**
+ * Bing RSS 搜索（免费免订阅，国内可达）
+ * Bing 的 format=rss 输出可直接作为 RSS 解析，返回标题/链接/摘要。
+ */
+async function callBingRss(query, maxResults) {
+  await assertSafeExternalUrl(BING_RSS_ENDPOINT);
+  const url = `${BING_RSS_ENDPOINT}?q=${encodeURIComponent(query)}&format=rss&count=${maxResults}`;
+  const { signal, clear } = withTimeout(REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'Accept': 'application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8',
+      },
+      signal,
+    });
+    if (!response.ok) {
+      throw Object.assign(new Error(`Bing 返回 ${response.status}`), {
+        code: 'BING_UPSTREAM_ERROR', status: 502,
+      });
+    }
+    const xml = await response.text();
+    // 解析 RSS <item> 块：提取 <title>、<link>、<description>
+    const results = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null) {
+      const block = match[1];
+      const title = (block.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || '';
+      const link = (block.match(/<link>([\s\S]*?)<\/link>/) || [])[1] || '';
+      const desc = (block.match(/<description>([\s\S]*?)<\/description>/) || [])[1] || '';
+      const clean = (s) => String(s).replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+      const titleText = clean(title);
+      const linkText = clean(link);
+      const snippetText = clean(desc);
+      if (!titleText) continue;
+      results.push({ title: titleText, url: linkText, snippet: snippetText.slice(0, 280) });
+    }
+    return { provider: 'free-bing', results: results.slice(0, maxResults) };
+  } finally {
+    clear();
+  }
+}
+
+/**
+ * 免费源兜底：HN Algolia + Bing RSS 并行查询，任一有结果即返回。
+ * 完全免订阅、免配置，作为 DuckDuckGo 之后、503 之前的最后保障。
+ * @returns {Promise<{provider: string, results: Array} | null>} 全部失败返回 null
+ */
+async function callFreeFallback(query, maxResults) {
+  const settled = await Promise.allSettled([
+    callHackerNews(query, maxResults),
+    callBingRss(query, maxResults),
+  ]);
+  for (const r of settled) {
+    if (r.status === 'fulfilled' && r.value && Array.isArray(r.value.results) && r.value.results.length > 0) {
+      return r.value;
+    }
+  }
+  // 两个都失败：记录具体原因，便于排查（不抛出，交给上层走 503 文案）
+  const reasons = settled.map((r) => r.status === 'rejected' ? r.reason?.message || String(r.reason) : '空结果');
+  console.warn('[webSearch] 免费源兜底全部失败：', reasons.join(' | '));
+  return null;
+}
+
 export async function handleWebSearchRequest(req, res) {
   const started = Date.now();
   // 支持 GET（query 参数）和 POST（JSON body）
@@ -311,29 +419,47 @@ export async function handleWebSearchRequest(req, res) {
       }
     }
 
-    // 兜底：DuckDuckGo（国内通常无法访问，配置了豆包/Tavily 后不应走到这里）
-    let ddgResult;
+    // 兜底 1：DuckDuckGo（国内通常无法访问）
     try {
-      ddgResult = await callDuckDuckGo(query, maxResults);
-    } catch (ddgErr) {
-      // DDG 网络不可达时返回友好错误，引导用户配置 Key
-      const hint = doubaoKey || tavilyKey
-        ? '所有联网搜索源均不可用（豆包/Tavily 调用失败，DuckDuckGo 网络不可达）'
-        : '未配置联网搜索 API Key 且 DuckDuckGo 网络不可达。请前往「设置 → 大模型配置」填写豆包搜索 API Key（推荐，国内稳定）';
-      return sendJsonResponse(res, 503, {
-        ok: false,
-        error: {
-          code: 'WEB_SEARCH_UNAVAILABLE',
-          message: hint,
-          cause: ddgErr?.message || String(ddgErr),
-        },
+      const ddgResult = await callDuckDuckGo(query, maxResults);
+      return sendJsonResponse(res, 200, {
+        ok: true,
+        provider: ddgResult.provider,
+        results: ddgResult.results,
+        meta: { query, count: ddgResult.results.length, latencyMs: Date.now() - started, tavilyConfigured: Boolean(tavilyKey), doubaoConfigured: Boolean(doubaoKey) },
       });
+    } catch (ddgErr) {
+      // DDG 不可达：继续尝试免费源兜底
+      console.warn('[webSearch] DuckDuckGo 不可达，尝试免费源兜底：', ddgErr.message);
     }
-    return sendJsonResponse(res, 200, {
-      ok: true,
-      provider: ddgResult.provider,
-      results: ddgResult.results,
-      meta: { query, count: ddgResult.results.length, latencyMs: Date.now() - started, tavilyConfigured: Boolean(tavilyKey), doubaoConfigured: Boolean(doubaoKey) },
+
+    // 兜底 2：免费源（HN Algolia + Bing RSS，免订阅免配置，国内可达）
+    try {
+      const freeResult = await callFreeFallback(query, maxResults);
+      if (freeResult && freeResult.results.length > 0) {
+        return sendJsonResponse(res, 200, {
+          ok: true,
+          provider: freeResult.provider,
+          results: freeResult.results,
+          meta: { query, count: freeResult.results.length, latencyMs: Date.now() - started, freeFallback: true, tavilyConfigured: Boolean(tavilyKey), doubaoConfigured: Boolean(doubaoKey) },
+        });
+      }
+    } catch (freeErr) {
+      // 免费源兜底异常：记录后走最终 503 文案
+      console.warn('[webSearch] 免费源兜底异常：', freeErr.message);
+    }
+
+    // 全部源均不可达：返回友好错误，引导用户配置 Key
+    const hint = doubaoKey || tavilyKey
+      ? '所有联网搜索源均不可用（豆包/Tavily 调用失败，DuckDuckGo 与免费源均不可达）'
+      : '联网搜索暂不可用（未配置 API Key，且免订阅免费源不可达）。请前往「设置 → 大模型配置」填写豆包搜索 API Key（推荐，国内稳定），或稍后再试';
+    return sendJsonResponse(res, 503, {
+      ok: false,
+      error: {
+        code: 'WEB_SEARCH_UNAVAILABLE',
+        message: hint,
+        cause: 'DuckDuckGo 与免费源均不可达',
+      },
     });
   } catch (error) {
     if (error?.name === 'AbortError') {
@@ -343,3 +469,6 @@ export async function handleWebSearchRequest(req, res) {
     return routeError(res, error);
   }
 }
+
+// 导出免费兜底函数供单元测试 / 独立测试使用
+export { callFreeFallback, callHackerNews, callBingRss };
