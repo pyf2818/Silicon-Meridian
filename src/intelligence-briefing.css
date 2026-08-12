@@ -1,0 +1,100 @@
+/* 今日智能简报面板 —— 报纸风（与今日速报 .newspaper-* 视觉一致）
+ * 去掉原暗色玻璃内联样式，统一使用主题变量，随 12 套调色板迁移。
+ * 设计原则：细线为界（报纸横栏分隔）、衬线标题、等宽 eyebrow、强调色只给状态/按钮。 */
+.intel-briefing {
+  margin: 0 0 24px;
+  padding: 18px;
+  border: var(--panel-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  background: transparent;
+}
+.intel-briefing-head { margin-bottom: 14px; }
+.intel-briefing-eyebrow {
+  display: block;
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 7px;
+}
+.intel-briefing-title {
+  margin: 0 0 5px;
+  font-family: Georgia, 'Noto Serif SC', serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.intel-briefing-sub { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.55; }
+
+.intel-section-label {
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 9px;
+  padding-bottom: 6px;
+  border-bottom: var(--panel-border);
+}
+
+.intel-card {
+  padding: 12px 14px;
+  margin: 0 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: transparent;
+}
+.intel-card--accent { border-left: 3px solid var(--accent-cyan); }
+.intel-card--strong { border-color: var(--accent-cyan-border); }
+
+.intel-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.intel-chip {
+  display: inline-block;
+  padding: 2px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: transparent;
+}
+.intel-chip--lead { border-color: var(--text-primary); color: var(--text-primary); font-weight: 600; }
+.intel-chip--ok { border-color: rgba(60,180,120,.5); color: #2f9e6b; }
+.intel-chip--new { border-color: rgba(80,150,235,.5); color: #3f86d6; }
+.intel-chip--warn { border-color: rgba(200,150,90,.5); color: #c08a3e; }
+
+.intel-clusters { margin-top: 4px; }
+.intel-cluster { padding: 12px 0; border-bottom: 1px solid var(--border-color); }
+.intel-cluster:last-child { border-bottom: 0; }
+.intel-cluster-title {
+  font-family: Georgia, 'Noto Serif SC', serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+.intel-cluster-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+
+.intel-view { font-size: 12px; color: var(--text-secondary); line-height: 1.55; margin-bottom: 3px; }
+.intel-view-label { color: var(--accent-cyan); font-weight: 600; }
+.intel-synthesis { font-size: 12px; color: var(--text-primary); margin-top: 4px; }
+.intel-total { font-size: 12px; color: var(--text-primary); line-height: 1.65; }
+
+.intel-agentic { margin-top: 16px; }
+.intel-btn {
+  margin-top: 4px;
+  padding: 7px 14px;
+  border: 1px solid var(--accent-cyan);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent-cyan);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .18s ease;
+}
+.intel-btn:hover:not(:disabled) { background: var(--accent-cyan-soft); }
+.intel-btn:disabled { opacity: .6; cursor: default; }
+.intel-note { margin-top: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.55; }
+.intel-note--warn { color: #c08a3e; }
+.intel-note--err { color: #d06464; }
+.intel-agentic-results { margin-top: 10px; }

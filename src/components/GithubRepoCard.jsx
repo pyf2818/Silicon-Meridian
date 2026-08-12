@@ -1,14 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ICONS, GITHUB_PERIODS } from '../constants/index.jsx';
-import { isEnglishText, formatStars } from '../utils/format.js';
+import { formatStars } from '../utils/format.js';
 import { buildGithubMaterial } from '../utils/githubMaterial.js';
 
-function GithubRepoCard({ repo, index, since = 'weekly', isBookmarked = false, isInMaterials = false, onBookmark, onAddMaterial, showTranslation, onToggleTranslation, translation, onOpenLightbox, insight, onRequestInsight, insightLoading }) {
+function GithubRepoCard({ repo, index, since = 'weekly', isBookmarked = false, isInMaterials = false, onBookmark, onAddMaterial, onOpenLightbox, insight, onRequestInsight, insightLoading, expandedAll = false }) {
   const [tutorialExpanded, setTutorialExpanded] = useState(false);
   const [insightExpanded, setInsightExpanded] = useState(false);
-  const isEnglish = isEnglishText(repo.fullName) || isEnglishText(repo.description);
   const periodValue = repo.starsToday || repo.starsThisWeek || repo.starsThisMonth || 0;
   const periodLabel = GITHUB_PERIODS.find(p => p.id === since)?.label || '周榜';
+
+  // 「一键启动 AI 情报」：父级一键展开全部卡片的 AI 情报（模拟逐卡点击「AI 情报」）。
+  // 每张卡片仍各自按需调用 onRequestInsight 生成，不另起批量接口；单卡也可独立展开/收起。
+  useEffect(() => {
+    if (expandedAll) {
+      setInsightExpanded(true);
+      if (!insight && onRequestInsight) onRequestInsight(repo);
+    } else {
+      setInsightExpanded(false);
+    }
+    // 仅响应「一键」信号变化；insight / repo / onRequestInsight 在展开后由卡片自身机制处理
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedAll]);
 
   // 拖拽开始 - 生成兼容 AI Elf 的数据格式
   const handleDragStart = (e) => {
@@ -43,7 +55,6 @@ function GithubRepoCard({ repo, index, since = 'weekly', isBookmarked = false, i
         </div>
       )}
       <p className="gh-desc">{repo.description}</p>
-      {showTranslation && translation && <p className="gh-translation">{translation.title}{translation.summary ? ` - ${translation.summary}` : ''}</p>}
       {repo.topics?.length > 0 && <div className="gh-topics">{repo.topics.slice(0, 3).map(t => <span key={t} className="gh-topic">{t}</span>)}</div>}
 
       <div className="gh-card-stats">
@@ -84,7 +95,6 @@ function GithubRepoCard({ repo, index, since = 'weekly', isBookmarked = false, i
       <div className="gh-card-actions">
         <button className={`gh-bookmark-btn ${isBookmarked ? 'active' : ''}`} onClick={onBookmark} title={isBookmarked ? '取消收藏' : '收藏'}>{isBookmarked ? ICONS.bookmarkFill : ICONS.bookmark}<span>收藏</span></button>
         {onAddMaterial && <button className={`gh-add-material-btn ${isInMaterials ? 'active' : ''}`} onClick={onAddMaterial} title={isInMaterials ? '已在素材库' : '收藏为素材'}>{ICONS.layers}<span>素材</span></button>}
-        {isEnglish && onToggleTranslation && <button className={`gh-translate-btn ${showTranslation ? 'active' : ''}`} onClick={() => onToggleTranslation(repo)} title="翻译">{ICONS.globe}<span>译</span></button>}
       </div>
     </article>
   );

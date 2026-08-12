@@ -5,6 +5,7 @@
  * - 中英对照：英文条目点击「中英对照」调用 LLM 翻译，并列显示中文译文
  */
 import { useMemo, useState } from 'react';
+import IntelligenceBriefingPanel from './IntelligenceBriefingPanel.jsx';
 
 function dateKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -157,6 +158,7 @@ export default function TodayNewspaper({
   onRequestTranslation,
   onToggleTranslation,
   isEnglishText,
+  intelligence,
 }) {
   const allItems = useMemo(
     () => [...(lanes?.public || []), ...(lanes?.personal || [])],
@@ -239,6 +241,9 @@ export default function TodayNewspaper({
           <div><dt>独立信源</dt><dd>{sources.length}</dd></div>
           <div><dt>编发时间</dt><dd>{generatedTime}</dd></div>
         </dl>
+
+        {/* 复刻 Meridian G1/G2/G3：智能简报（语义聚类 + 多智能体 + 跨日演化）结合进今日速报 */}
+        {intelligence && <IntelligenceBriefingPanel briefing={intelligence} maxClusters={8} />}
 
         {!lead ? (
           <div className="newspaper-empty">当前日期没有足够资讯形成版面。</div>

@@ -169,11 +169,6 @@
   background: color-mix(in srgb, var(--accent-violet) 14%, transparent);
   border-color: color-mix(in srgb, var(--accent-violet) 38%, transparent);
 }
-.gh-translate-btn.active {
-  color: var(--accent-cyan);
-  background: var(--accent-cyan-soft);
-  border-color: var(--accent-cyan-border);
-}
 /* AI 情报折叠区：硬编码金底 → accent 软底 */
 .gh-insight {
   background: var(--accent-cyan-softer);
@@ -181,9 +176,6 @@
 }
 .gh-insight-toggle:hover {
   background: var(--accent-cyan-soft);
-}
-.gh-translation {
-  background: var(--accent-cyan-softer);
 }
 
 /* ---------- 6. 空状态：从"虚线框告示"到"有呼吸感的留白" ---------- */

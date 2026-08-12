@@ -20,6 +20,7 @@ export default function NewspaperOverlay({
   translatingItems,
   requestTranslation,
   isEnglishText,
+  intelligenceBriefing,
 }) {
   if (!showNewspaperOverlay) return null;
   return (
@@ -64,6 +65,7 @@ export default function NewspaperOverlay({
             onRequestTranslation={requestTranslation}
             onToggleTranslation={itemId => setTranslationOpen(p => ({ ...p, [itemId]: !p[itemId] }))}
             isEnglishText={isEnglishText}
+            intelligence={intelligenceBriefing}
           />
         </div>
       </aside>

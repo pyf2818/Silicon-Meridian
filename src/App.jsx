@@ -37,8 +37,8 @@ import { useAgents } from './hooks/useAgents.js';
 import { useExternalIntelligence } from './hooks/useExternalIntelligence.js';
 import { useIntelligenceMemos } from './hooks/useIntelligenceMemos.js';
 import { useRecommendationMemos } from './hooks/useRecommendationMemos.js';
+import { selectBriefingLanes } from './domain/intelligence/recommendationEngine.js';
 import { useIntelligenceBriefing } from './hooks/useIntelligenceBriefing.js';
-import IntelligenceBriefingPanel from './components/IntelligenceBriefingPanel.jsx';
 import { useBookmarkMaterial } from './hooks/useBookmarkMaterial.js';
 import { useArticleEditor } from './hooks/useArticleEditor.js';
 import { useBriefingOps } from './hooks/useBriefingOps.js';
@@ -1254,6 +1254,20 @@ function App() {
     const snapLanes = selectedRecommendationSnapshot?.lanes;
     return snapLanes || recommendationLanes;
   }, [recommendationLanes, selectedRecommendationSnapshot]);
+
+  // 今日速报版面：公共热点 / 个人必看各展示 10 条（按 publicScore / personalScore 降序，挑最高分、最有价值、最值得推荐）。
+  // 独立计算，不影响「精准推荐」页（仍用 perLane:5 的 recommendationLanes）。
+  const newspaperLanes = useMemo(() => {
+    if (recommendationCandidates.length > 0) {
+      return selectBriefingLanes(recommendationCandidates, {
+        perLane: 10,
+        maxPerSource: 2,
+        maxCategoryRatio: 0.4,
+      });
+    }
+    const snapLanes = selectedRecommendationSnapshot?.lanes;
+    return snapLanes || { public: [], personal: [] };
+  }, [recommendationCandidates, selectedRecommendationSnapshot]);
   const todayBriefing = useMemo(() => {
     const hasLive = algorithmBriefing && (algorithmBriefing.oneLine || algorithmBriefing.opportunities?.length || algorithmBriefing.risks?.length);
     if (hasLive) return algorithmBriefing;
@@ -2296,11 +2310,6 @@ ${signals}
             />
           )}
 
-          {/* 复刻 Meridian：今日智能简报（语义聚类 + 多智能体 + 跨日演化） */}
-          {nav === 'all' && (
-            <IntelligenceBriefingPanel briefing={intelligenceBriefing} />
-          )}
-
           {/* ALL NEWS */}
           {nav === 'all' && (
             <NewsPage
@@ -2407,9 +2416,6 @@ ${signals}
               isInMaterials={isInMaterials}
               toggleBookmark={toggleBookmark}
               toggleMaterial={toggleMaterial}
-              translationOpen={translationOpen}
-              toggleGithubTranslation={toggleGithubTranslation}
-              getTranslation={getTranslation}
               githubInsights={githubInsights}
               requestGithubInsight={requestGithubInsight}
               githubInsightLoading={githubInsightLoading}
@@ -2587,7 +2593,7 @@ ${signals}
       </main>
 
       {/* 今日速报抽屉：从右侧滑入，点遮罩或 ✕ 关闭 */}
-      <NewspaperOverlay showNewspaperOverlay={showNewspaperOverlay} setShowNewspaperOverlay={setShowNewspaperOverlay} todayBriefing={todayBriefing} todayLanes={todayLanes} recommendationCandidates={recommendationCandidates} loading={loading} loadNews={loadNews} goNav={goNav} recordReading={recordReading} toggleMaterial={toggleMaterial} recommendationSnapshots={recommendationSnapshots} selectedNewsDate={selectedNewsDate} setSelectedNewsDate={setSelectedNewsDate} translations={translations} translationOpen={translationOpen} setTranslationOpen={setTranslationOpen} translatingItems={translatingItems} requestTranslation={requestTranslation} isEnglishText={isEnglishText} />
+      <NewspaperOverlay showNewspaperOverlay={showNewspaperOverlay} setShowNewspaperOverlay={setShowNewspaperOverlay} todayBriefing={todayBriefing} todayLanes={newspaperLanes} recommendationCandidates={recommendationCandidates} loading={loading} loadNews={loadNews} goNav={goNav} recordReading={recordReading} toggleMaterial={toggleMaterial} recommendationSnapshots={recommendationSnapshots} selectedNewsDate={selectedNewsDate} setSelectedNewsDate={setSelectedNewsDate} translations={translations} translationOpen={translationOpen} setTranslationOpen={setTranslationOpen} translatingItems={translatingItems} requestTranslation={requestTranslation} isEnglishText={isEnglishText} intelligenceBriefing={intelligenceBriefing} />
 
       {/* Right Panel */}
 <RightPanel showRightPanel={showRightPanel} panelCollapsed={panelCollapsed} nav={nav} recommendationSnapshots={recommendationSnapshots} selectedNewsDate={selectedNewsDate} setSelectedNewsDate={setSelectedNewsDate} loading={loading} loadNews={loadNews} followKeywords={followKeywords} sortedFollowKeywords={sortedFollowKeywords} matchCountPerKeyword={matchCountPerKeyword} pinnedKeywords={pinnedKeywords} pinFollowKeyword={pinFollowKeyword} unpinFollowKeyword={unpinFollowKeyword} removeFollowKeyword={removeFollowKeyword} newKeyword={newKeyword} setNewKeyword={setNewKeyword} addFollowKeyword={addFollowKeyword} hotTags={hotTags} executeSearch={executeSearch} items={items} setGlobeFullscreenOpen={setGlobeFullscreenOpen} followKeywordUpdates={followKeywordUpdates} todayMustRead={todayMustRead} selectedInterests={selectedInterests} aiInsights={aiInsights} fetchAiInsights={fetchAiInsights} llmConfig={llmConfig} setShowLlmQuickConfig={setShowLlmQuickConfig} llmTesting={llmTesting} />
