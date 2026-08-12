@@ -38,37 +38,39 @@ export default function IntelligenceBriefingPanel({ briefing, maxClusters = 8 })
         </p>
       </header>
 
-      {/* G3 跨日演化 */}
+      {/* G3 跨日演化（固定窗口滚动，避免内容过长撑爆面板） */}
       {evolution && (
         <div className="intel-card intel-card--accent">
           <div className="intel-section-label">跨日演化（{evolution.prevDate} → {evolution.todayDate}）</div>
-          {evolution.ongoing?.length > 0 && (
-            <div>
-              <span className="intel-chip intel-chip--lead">持续演进 {evolution.ongoing.length}</span>
-              {evolution.ongoing.map((o) => (
-                <span key={o.title} className="intel-chip intel-chip--ok">{o.title}</span>
-              ))}
-            </div>
-          )}
-          {evolution.added?.length > 0 && (
-            <div>
-              <span className="intel-chip intel-chip--lead">今日新增 {evolution.added.length}</span>
-              {evolution.added.map((t) => (
-                <span key={t.title} className="intel-chip intel-chip--new">{t.title}</span>
-              ))}
-            </div>
-          )}
-          {evolution.resolved?.length > 0 && (
-            <div>
-              <span className="intel-chip intel-chip--lead">已消退/解决 {evolution.resolved.length}</span>
-              {evolution.resolved.map((r) => (
-                <span key={r.title} className="intel-chip intel-chip--warn">{r.title}</span>
-              ))}
-            </div>
-          )}
-          {!evolution.hasPrevious && (
-            <p className="intel-briefing-sub">首日报送，暂无前日快照可对比。</p>
-          )}
+          <div className="intel-evolution-scroll">
+            {evolution.ongoing?.length > 0 && (
+              <div>
+                <span className="intel-chip intel-chip--lead">持续演进 {evolution.ongoing.length}</span>
+                {evolution.ongoing.map((o) => (
+                  <span key={o.title} className="intel-chip intel-chip--ok">{o.title}</span>
+                ))}
+              </div>
+            )}
+            {evolution.added?.length > 0 && (
+              <div>
+                <span className="intel-chip intel-chip--lead">今日新增 {evolution.added.length}</span>
+                {evolution.added.map((t) => (
+                  <span key={t.title} className="intel-chip intel-chip--new">{t.title}</span>
+                ))}
+              </div>
+            )}
+            {evolution.resolved?.length > 0 && (
+              <div>
+                <span className="intel-chip intel-chip--lead">已消退/解决 {evolution.resolved.length}</span>
+                {evolution.resolved.map((r) => (
+                  <span key={r.title} className="intel-chip intel-chip--warn">{r.title}</span>
+                ))}
+              </div>
+            )}
+            {!evolution.hasPrevious && (
+              <p className="intel-briefing-sub">首日报送，暂无前日快照可对比。</p>
+            )}
+          </div>
         </div>
       )}
 
