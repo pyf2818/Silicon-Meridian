@@ -37,6 +37,8 @@ import { useAgents } from './hooks/useAgents.js';
 import { useExternalIntelligence } from './hooks/useExternalIntelligence.js';
 import { useIntelligenceMemos } from './hooks/useIntelligenceMemos.js';
 import { useRecommendationMemos } from './hooks/useRecommendationMemos.js';
+import { useIntelligenceBriefing } from './hooks/useIntelligenceBriefing.js';
+import IntelligenceBriefingPanel from './components/IntelligenceBriefingPanel.jsx';
 import { useBookmarkMaterial } from './hooks/useBookmarkMaterial.js';
 import { useArticleEditor } from './hooks/useArticleEditor.js';
 import { useBriefingOps } from './hooks/useBriefingOps.js';
@@ -1168,6 +1170,9 @@ function App() {
     selectedNewsDate,
   });
 
+  // 复刻 Meridian G1/G2/G3：语义聚类 + 多智能体分析 + 跨日演化（接入每日简报，最小侵入）
+  const intelligenceBriefing = useIntelligenceBriefing({ items, date: selectedNewsDate, llmConfig });
+
   // Phase 3 Task B17: 删除内联 clusterEvents(filtered)，改用 useRecommendationMemos 暴露的 rawEventClusters
   // rawEventClusters = clusterEvents(items)（基于全量 items 聚类，与 todayMustRead 内部一致）
   // 这里仅做展示过滤：nav !== 'all' → 空；>=2 条目；primary item 必须在 filtered 内（避免展示被筛选掉的聚类）
@@ -2289,6 +2294,11 @@ ${signals}
               sendWorkbenchToElf={sendWorkbenchToElf}
               setShowLlmQuickConfig={setShowLlmQuickConfig}
             />
+          )}
+
+          {/* 复刻 Meridian：今日智能简报（语义聚类 + 多智能体 + 跨日演化） */}
+          {nav === 'all' && (
+            <IntelligenceBriefingPanel briefing={intelligenceBriefing} />
           )}
 
           {/* ALL NEWS */}
