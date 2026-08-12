@@ -4,7 +4,7 @@ import { buildGraphData, TYPE_COLORS } from '../../domain/graphEngine.js';
 const MATERIALS = [
   { id: 'm1', title: '英伟达芯片', type: 'viewpoint', tags: ['芯片', '英伟达'] },
   { id: 'm2', title: '大模型备案', type: 'case', tags: ['政策', '芯片'] },
-  { id: 'm3', title: 'OpenAI 新模型', type: 'knowledge', tags: ['OpenAI'] },
+  { id: 'm3', title: 'OpenAI 金句', type: 'quote', tags: ['OpenAI'] },
 ];
 
 describe('buildGraphData', () => {
@@ -48,9 +48,13 @@ describe('buildGraphData', () => {
 });
 
 describe('TYPE_COLORS', () => {
-  it('覆盖常用素材类型', () => {
-    for (const t of ['viewpoint', 'case', 'knowledge', 'material']) {
-      expect(TYPE_COLORS[t]).toBeTruthy();
+  it('覆盖全部素材类型（与 MATERIAL_TYPES 对齐）', () => {
+    // 必须与 constants/appConstants.jsx 的 MATERIAL_TYPES 键名完全一致
+    const expectedTypes = ['viewpoint', 'case', 'quote', 'data', 'chart', 'project'];
+    for (const t of expectedTypes) {
+      expect(TYPE_COLORS[t], `缺少类型色: ${t}`).toBeTruthy();
     }
+    // 兜底 default 也必须有
+    expect(TYPE_COLORS.default).toBeTruthy();
   });
 });

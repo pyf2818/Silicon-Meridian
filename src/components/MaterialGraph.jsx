@@ -15,6 +15,12 @@ import { buildGraphData, TYPE_COLORS } from '../domain/graphEngine.js';
 
 /**
  * 从当前 CSS 主题读取真实色值（canvas 的 fillStyle 不认 var()，必须取解析值）。
+ * 浅色模式各调色板没有提供 `--accent-*`（节点填充色）的浅色覆盖，会回退到深色值
+ * （如 arctic 近白、champagne 金）导致节点在浅背景上不可见 / 低对比。
+ * 因此优先读取专为知识图谱定义的高对比 `--graph-node-*`，缺失时再回退 `--accent-*`
+ * （深色模式沿用旧逻辑）与内置常量。
+ *
+ * 色键与 MATERIAL_TYPES 完全对齐：viewpoint / case / quote / data / chart / project + default
  * @returns {Object} { typeColors, tag, edge, edgeDim, nodeDim, label }
  */
 function readThemeColors() {
@@ -24,13 +30,18 @@ function readThemeColors() {
     const val = cs.getPropertyValue(name).trim();
     return val || fallback;
   };
+  // 节点填充色：--graph-node-* 优先，否则 --accent-*，否则内置常量（深色模式走这条）
+  const nodeColor = (graphVar, accentVar, typeKey) =>
+    v(graphVar) || v(accentVar, TYPE_COLORS[typeKey]);
   return {
     typeColors: {
-      viewpoint: v('--accent-cyan', TYPE_COLORS.viewpoint),
-      case: v('--accent-emerald', TYPE_COLORS.case),
-      knowledge: v('--accent-amber', TYPE_COLORS.knowledge),
-      material: v('--accent-violet', TYPE_COLORS.material),
-      default: v('--text-muted', TYPE_COLORS.default),
+      viewpoint: nodeColor('--graph-node-viewpoint', '--accent-cyan', 'viewpoint'),
+      case:     nodeColor('--graph-node-case', '--accent-emerald', 'case'),
+      quote:    nodeColor('--graph-node-quote', '--accent-amber', 'quote'),
+      data:     nodeColor('--graph-node-data', '--accent-violet', 'data'),
+      chart:    nodeColor('--graph-node-chart', '--accent-blue', 'chart'),
+      project:  nodeColor('--graph-node-project', '--accent-rose', 'project'),
+      default:  v('--text-muted', TYPE_COLORS.default),
     },
     tag: v('--text-muted', 'rgba(148,163,184,0.85)'),
     edge: v('--border-color', 'rgba(148,163,184,0.35)'),

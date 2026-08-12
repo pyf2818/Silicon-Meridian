@@ -787,3 +787,109 @@ html, html *, html *::before, html *::after {
 .theme-modal-section + .theme-modal-section {
   margin-top: 4px;
 }
+
+/* ============================================================
+   浅色模式 · 知识图谱节点高对比色（MaterialGraph / 知识图谱）
+   浅色 block 未覆盖 --accent-*，节点填充色会回退到深色值（arctic 近白、
+   champagne 金）导致浅背景上不可见 / 低对比。这里为每个浅色调色板提供
+   6 个深而区分度高的节点色（对齐 MATERIAL_TYPES 全部键名）；
+   组件 readThemeColors 优先读 --graph-node-*。
+   深色模式不定义这些变量，沿用 TYPE_COLORS 常量（旧逻辑不变）。
+   色彩语义：viewpoint=蓝 / case=绿 / quote=琥珀 / data=紫 / chart=青 / project=玫瑰
+   ============================================================ */
+:root[data-mode="light"][data-palette="champagne"] {
+  --graph-node-viewpoint: #2563A8;
+  --graph-node-case: #0F8A6A;
+  --graph-node-quote: #C2620A;
+  --graph-node-data: #7C3AED;
+  --graph-node-chart: #0369A1;
+  --graph-node-project: #BE123C;
+}
+:root[data-mode="light"][data-palette="sakura"] {
+  --graph-node-viewpoint: #C2185B;
+  --graph-node-case: #0E8A6B;
+  --graph-node-quote: #E65100;
+  --graph-node-data: #8E24AA;
+  --graph-node-chart: #0D9488;
+  --graph-node-project: #BE123C;
+}
+:root[data-mode="light"][data-palette="forest"] {
+  --graph-node-viewpoint: #15803D;
+  --graph-node-case: #0D9488;
+  --graph-node-quote: #B45309;
+  --graph-node-data: #6D28D9;
+  --graph-node-chart: #0F766E;
+  --graph-node-project: #BE123C;
+}
+:root[data-mode="light"][data-palette="neon"] {
+  --graph-node-viewpoint: #0E7490;
+  --graph-node-case: #0F766E;
+  --graph-node-quote: #BE185D;
+  --graph-node-data: #6D28D9;
+  --graph-node-chart: #0891B2;
+  --graph-node-project: #E11D48;
+}
+:root[data-mode="light"][data-palette="cosmos"] {
+  --graph-node-viewpoint: #1D4ED8;
+  --graph-node-case: #0E7490;
+  --graph-node-quote: #B45309;
+  --graph-node-data: #4F46E5;
+  --graph-node-chart: #0369A1;
+  --graph-node-project: #E11D48;
+}
+:root[data-mode="light"][data-palette="terracotta"] {
+  --graph-node-viewpoint: #C2410C;
+  --graph-node-case: #0F766E;
+  --graph-node-quote: #B45309;
+  --graph-node-data: #7C3AED;
+  --graph-node-chart: #0F766E;
+  --graph-node-project: #BE123C;
+}
+:root[data-mode="light"][data-palette="arctic"] {
+  --graph-node-viewpoint: #334155;
+  --graph-node-case: #0E7490;
+  --graph-node-quote: #B45309;
+  --graph-node-data: #4F46E5;
+  --graph-node-chart: #0369A1;
+  --graph-node-project: #BE123C;
+}
+:root[data-mode="light"][data-palette="aurora"] {
+  --graph-node-viewpoint: #7C3AED;
+  --graph-node-case: #0F766E;
+  --graph-node-quote: #BE185D;
+  --graph-node-data: #4F46E5;
+  --graph-node-chart: #0E7490;
+  --graph-node-project: #E11D48;
+}
+:root[data-mode="light"][data-palette="bamboo"] {
+  --graph-node-viewpoint: #0F766E;
+  --graph-node-case: #15803D;
+  --graph-node-quote: #B45309;
+  --graph-node-data: #6D28D9;
+  --graph-node-chart: #0D9488;
+  --graph-node-project: #BE123C;
+}
+:root[data-mode="light"][data-palette="amber"] {
+  --graph-node-viewpoint: #B45309;
+  --graph-node-case: #15803D;
+  --graph-node-quote: #92400E;
+  --graph-node-data: #7C3AED;
+  --graph-node-chart: #0F766E;
+  --graph-node-project: #BE123C;
+}
+:root[data-mode="light"][data-palette="twilight"] {
+  --graph-node-viewpoint: #1E40AF;
+  --graph-node-case: #0E7490;
+  --graph-node-quote: #B45309;
+  --graph-node-data: #4338CA;
+  --graph-node-chart: #0369A1;
+  --graph-node-project: #BE123C;
+}
+:root[data-mode="light"][data-palette="coral"] {
+  --graph-node-viewpoint: #C2410C;
+  --graph-node-case: #0F766E;
+  --graph-node-quote: #BE123C;
+  --graph-node-data: #7C3AED;
+  --graph-node-chart: #0E7490;
+  --graph-node-project: #E11D48;
+}

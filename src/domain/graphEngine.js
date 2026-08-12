@@ -8,12 +8,21 @@
  *
  * 独立为纯 JS 模块，使其可在 node/vitest 环境中 import（不含 React/canvas）。
  */
+/**
+ * 节点填充色常量（深色模式兜底值）。
+ * 键名必须与 constants/appConstants.jsx 的 MATERIAL_TYPES 完全一致：
+ *   quote / data / case / viewpoint / chart / project + default 兜底。
+ * 之前误用了 knowledge/material 这两个不存在的类型键，导致大部分素材节点
+ * 全部回退到 default 色（全图同灰）。
+ */
 export const TYPE_COLORS = {
-  viewpoint: '#6aa0ff',
-  case: '#22c55e',
-  knowledge: '#f59e0b',
-  material: '#94a3b8',
-  default: '#64748b',
+  viewpoint: '#60a5fa',   // 观点 — 蓝
+  case:     '#22c55e',    // 案例 — 绿
+  quote:    '#f59e0b',    // 金句 — 琥珀
+  data:     '#a855f7',    // 数据 — 紫
+  chart:    '#06b6d4',    // 图表 — 青
+  project:  '#f43f5e',    // 项目 — 玫瑰
+  default:  '#64748b',    // 兜底 — 石板灰
 };
 
 /**
