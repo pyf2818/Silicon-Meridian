@@ -51,6 +51,8 @@
     "editor": "Editor",
     "square": "Community",
     "profileCenter": "Profile",
+    "monitor": "Competitive Monitor",
+    "monitorDesc": "Track rivals & market moves",
     "today": "Today's Briefing",
     "calendarTimeline": "Calendar Timeline",
     "expandVision": "Explore Horizons",
@@ -68,7 +70,8 @@
     "marketAnalysis": "Market Analysis",
     "creativeCenter": "Creative Studio",
     "communitySquare": "Community Square",
-    "userProfile": "User Profile"
+    "userProfile": "User Profile",
+    "monitor": "Competitive Intelligence"
   },
   "settings": {
     "title": "Settings",

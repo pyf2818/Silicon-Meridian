@@ -51,6 +51,8 @@
     "editor": "内容创作",
     "square": "用户广场",
     "profileCenter": "用户画像",
+    "monitor": "竞争监测",
+    "monitorDesc": "追踪竞品与赛道动态",
     "today": "今日总判断",
     "calendarTimeline": "日历时间线",
     "expandVision": "扩展视野",
@@ -68,7 +70,8 @@
     "marketAnalysis": "行情分析",
     "creativeCenter": "智创中心",
     "communitySquare": "用户广场",
-    "userProfile": "用户画像"
+    "userProfile": "用户画像",
+    "monitor": "竞争情报监测"
   },
   "settings": {
     "title": "设置",

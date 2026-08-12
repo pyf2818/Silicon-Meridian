@@ -60,6 +60,7 @@ import CustomUrlPage from './components/CustomUrlPage.jsx';
 import KnowledgeExportPage from './components/KnowledgeExportPage.jsx';
 import InsightDashboardPage from './components/InsightDashboardPage.jsx';
 import GithubPage from './components/GithubPage.jsx';
+import MonitorPage from './components/MonitorPage.jsx';
 import TrendingPage from './components/TrendingPage.jsx';
 import AgentsPage from './components/AgentsPage.jsx';
 import CalendarPage from './components/CalendarPage.jsx';
@@ -2049,6 +2050,7 @@ ${signals}
     square: 'square',
     'profile-center': 'profile-center',
     github: 'github',
+    monitor: 'monitor',
   };
   const activePrimaryNav = navToPrimary[nav] || 'home';
   const activeContextSection = navContextSections[activePrimaryNav] || navContextSections.home;
@@ -2492,6 +2494,11 @@ ${signals}
               showEventForm={showEventForm}
               setShowEventForm={setShowEventForm}
             />
+          )}
+
+          {/* MONITOR - 竞争情报监测（M5） */}
+          {nav === 'monitor' && (
+            <MonitorPage items={items} />
           )}
 
            {/* 洞察分析 - 统一仪表盘 */}
