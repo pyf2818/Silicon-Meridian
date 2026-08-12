@@ -90,6 +90,10 @@
 .intel-evolution-scroll::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
 .intel-evolution-scroll::-webkit-scrollbar-track { background: transparent; }
 
+.intel-cluster-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.intel-badge { font-size: 11px; line-height: 1; padding: 3px 9px; border-radius: 999px; white-space: nowrap; font-weight: 600; letter-spacing: .02em; }
+.intel-badge--verified { color: var(--accent-emerald, #10b981); border: 1px solid var(--accent-emerald, #10b981); background: rgba(16,185,129,.1); }
+
 .intel-agentic { margin-top: 16px; }
 .intel-btn {
   margin-top: 4px;

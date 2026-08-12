@@ -113,6 +113,8 @@ function Story({ item, rank, onOpenItem, onSaveItem, bilingual }) {
   const translation = bilingual?.getTranslation?.(item);
   const translating = Boolean(bilingual?.translatingItems?.[item.id]);
   const translationOpen = Boolean(bilingual?.translationOpen?.[item.id]);
+  const corroboration = item.corroboration ?? item.scoreParts?.public?.corroboration ?? 0;
+  const hasMultiSource = corroboration >= 12.5;
   return (
     <article className="newspaper-story">
       <span className="newspaper-story-rank">{String(rank).padStart(2, '0')}</span>
@@ -124,6 +126,9 @@ function Story({ item, rank, onOpenItem, onSaveItem, bilingual }) {
           <span>{item.source || '未知来源'}</span>
           <span>{item.publishedAt ? new Date(item.publishedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</span>
           <span>{Math.round(item.mustReadScore || 0)} 分</span>
+          {hasMultiSource && (
+            <span className="newspaper-verify-badge" title={`交叉验证分 ${Math.round(corroboration)} · 多个独立来源印证`}>✓ 多源印证</span>
+          )}
           <button type="button" onClick={() => onSaveItem(item)}>沉淀素材</button>
           <BilingualToggle
             item={item}

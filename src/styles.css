@@ -15818,6 +15818,7 @@ body {
 .newspaper-story-title:hover { color: var(--accent-cyan); }
 .newspaper-story p { display: -webkit-box; margin: 7px 0; overflow: hidden; color: var(--text-secondary); font-size: 11px; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .newspaper-story footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-muted); font-size: 9px; }
+.newspaper-verify-badge { color: var(--accent-emerald, #10b981); border: 1px solid var(--accent-emerald, #10b981); border-radius: 999px; padding: 1px 7px; font-size: 9px; line-height: 1.4; white-space: nowrap; }
 .newspaper-story footer button { margin-left: auto; padding: 3px 6px; border: var(--panel-border); border-radius: 4px; background: transparent; color: var(--text-muted); font-size: 9px; cursor: pointer; }
 .newspaper-domain-band { padding: 20px 0; border-bottom: 1px solid var(--text-primary); }
 .newspaper-domain-band > header { display: flex; align-items: baseline; justify-content: space-between; }
@@ -25900,4 +25901,45 @@ body {
 .hud-section-opt.active{background:rgba(0,229,255,0.08);color:#00e5ff;}
 .hud-section-opt svg{width:14px;height:14px;flex-shrink:0;}
 .hud-section-icon{display:flex;align-items:center;}
+
+/* ============================================================
+   竞争情报监测面板（MonitorPage / 调研报告 M5）
+   纯主题变量驱动，深浅模式自适应
+   ============================================================ */
+.monitor-page { padding: 20px 24px 40px; max-width: 1200px; margin: 0 auto; }
+.monitor-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.monitor-title { font-size: 22px; font-weight: 800; color: var(--text-primary); margin: 0; letter-spacing: .01em; }
+.monitor-sub { margin: 6px 0 0; font-size: 13px; color: var(--text-muted); }
+.monitor-stats { display: flex; gap: 12px; }
+.monitor-stat { display: flex; flex-direction: column; align-items: center; min-width: 72px; padding: 10px 14px; background: var(--bg-elevated); border: 1px solid var(--panel-border); border-radius: 10px; }
+.monitor-stat-val { font-size: 22px; font-weight: 800; color: var(--text-primary); line-height: 1.1; }
+.monitor-stat-val.highlight { color: var(--accent-cyan); }
+.monitor-stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+.monitor-add { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.monitor-input { flex: 1 1 280px; min-width: 200px; padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--panel-border); border-radius: 10px; color: var(--text-primary); font-size: 14px; outline: none; }
+.monitor-input::placeholder { color: var(--text-muted); }
+.monitor-input:focus { border-color: var(--accent-cyan); box-shadow: 0 0 0 3px var(--accent-cyan-soft); }
+.monitor-select { padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--panel-border); border-radius: 10px; color: var(--text-primary); font-size: 14px; outline: none; cursor: pointer; }
+.monitor-add-btn { padding: 10px 20px; border: none; border-radius: 10px; background: var(--accent-cyan); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; transition: filter .15s ease; }
+.monitor-add-btn:hover { filter: brightness(1.08); }
+
+.monitor-empty { padding: 28px; background: var(--bg-elevated); border: 1px dashed var(--panel-border); border-radius: 12px; color: var(--text-muted); font-size: 14px; text-align: center; }
+
+.monitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.monitor-card { background: var(--bg-elevated); border: 1px solid var(--panel-border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.monitor-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.monitor-card-id { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.monitor-card-tag { flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; color: var(--accent-cyan); border: 1px solid var(--accent-cyan); background: var(--accent-cyan-soft); }
+.monitor-card-keyword { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.monitor-card-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.monitor-card-count { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.monitor-card-remove { width: 24px; height: 24px; border: 1px solid var(--panel-border); background: transparent; color: var(--text-muted); border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; }
+.monitor-card-remove:hover { color: var(--accent-red, #ef4444); border-color: var(--accent-red, #ef4444); }
+.monitor-card-empty { font-size: 13px; color: var(--text-muted); margin: 0; }
+.monitor-matches { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
+.monitor-match { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--panel-border); }
+.monitor-match:last-child { border-bottom: none; padding-bottom: 0; }
+.monitor-match-title { font-size: 13px; color: var(--text-secondary); line-height: 1.4; }
+.monitor-match-meta { font-size: 11px; color: var(--text-muted); }
 :root[data-mode="light"] .hud-section-dropdown{background:#fff;border-color:rgba(0,180,220,0.2);box-shadow:0 4px 16px rgba(0,0,0,0.1);}

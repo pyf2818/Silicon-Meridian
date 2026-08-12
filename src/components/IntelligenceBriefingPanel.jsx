@@ -84,7 +84,14 @@ export default function IntelligenceBriefingPanel({ briefing, maxClusters = 8 })
         )}
         {shownClusters.map((c) => (
           <div key={c.id} className="intel-cluster">
-            <div className="intel-cluster-title">{c.primaryItem?.title || '(未命名事件)'}</div>
+            <div className="intel-cluster-head">
+              <div className="intel-cluster-title">{c.primaryItem?.title || '(未命名事件)'}</div>
+              {c.independentSourceCount >= 2 && (
+                <span className="intel-badge intel-badge--verified" title={`${c.independentSourceCount} 个独立来源交叉验证`}>
+                  ✓ {c.independentSourceCount} 源印证
+                </span>
+              )}
+            </div>
             <div className="intel-cluster-meta">
               {c.items.length} 篇报道 · {c.independentSourceCount} 个独立来源 · 聚类方式：语义(embeddings)
             </div>
