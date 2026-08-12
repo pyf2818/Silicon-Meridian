@@ -9,16 +9,11 @@ function GithubRepoCard({ repo, index, since = 'weekly', isBookmarked = false, i
   const periodValue = repo.starsToday || repo.starsThisWeek || repo.starsThisMonth || 0;
   const periodLabel = GITHUB_PERIODS.find(p => p.id === since)?.label || '周榜';
 
-  // 「一键启动 AI 情报」：父级一键展开全部卡片的 AI 情报（模拟逐卡点击「AI 情报」）。
-  // 每张卡片仍各自按需调用 onRequestInsight 生成，不另起批量接口；单卡也可独立展开/收起。
+  // 「一键启动 AI 情报」：expandedAll 只控制本卡片的 UI 展开；
+  // 真正的 AI 请求由 GithubPage 串行逐卡触发（避免 25 张卡同时并发打到限流）。
+  // 单卡模式（expandedAll=false 时用户点「AI 情报」）仍由 handleInsightToggle 自行请求。
   useEffect(() => {
-    if (expandedAll) {
-      setInsightExpanded(true);
-      if (!insight && onRequestInsight) onRequestInsight(repo);
-    } else {
-      setInsightExpanded(false);
-    }
-    // 仅响应「一键」信号变化；insight / repo / onRequestInsight 在展开后由卡片自身机制处理
+    setInsightExpanded(expandedAll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedAll]);
 
@@ -79,7 +74,9 @@ function GithubRepoCard({ repo, index, since = 'weekly', isBookmarked = false, i
                 <div className="gh-insight-row"><span className="gh-insight-key">价值判断</span><p>{insight.value}</p></div>
               </>
             )}
-            {!insightLoading && !insight && <p className="gh-insight-empty">分析失败，请重试</p>}
+            {!insightLoading && !insight && (
+              <p className="gh-insight-empty">{expandedAll ? '排队中，即将分析…' : '分析失败，请重试'}</p>
+            )}
             {repo.tutorial && (
               <div className="gh-insight-tutorial">
                 <button className="gh-tutorial-toggle" onClick={() => setTutorialExpanded(v => !v)}>

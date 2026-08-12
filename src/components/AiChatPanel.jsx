@@ -584,62 +584,103 @@ export default function AiChatPanel({
       // 终极兜底：绝不越界
       if (estimateMessages(sendMessages) > STREAM_CONTEXT_BUDGET) sendMessages = sendMessages.slice(-20);
 
-      const response = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          baseUrl: llmConfig.baseUrl,
-          apiKey: llmConfig.apiKey,
-          model: selectedModel,
-          action: 'chat',
-          systemPrompt: finalSystemPrompt,
-          messages: sendMessages.map(m => ({ role: m.role, content: m.content })),
-          max_tokens: 4000,
-          stream: true,
-        }),
-      });
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(typeof errData.error === 'string' ? errData.error : errData.error?.message || `AI 请求失败 (${response.status})`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
+      // ── 带重试的流式 LLM 调用（仅对 429/5xx/网络瞬错重试，最多 3 次）──
+      const MAX_CHAT_RETRIES = 3;
       let rawContent = '';
-      let streamError = null;
+      let lastRetryErr = null;
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data:')) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === '[DONE]') { buffer = ''; continue; }
-          try {
-            const json = JSON.parse(payload);
-            if (json.ok === false) { streamError = json.error || 'AI 请求失败'; break; }
-            if (json.delta) {
-              rawContent += json.delta;
-              // 逐字更新最后一条 assistant 消息
-              setSessions(prev => prev.map(s => {
-                if (s.id !== targetId) return s;
-                const msgs = [...s.messages];
-                msgs[msgs.length - 1] = { role: 'assistant', content: rawContent, loading: false };
-                return { ...s, messages: msgs };
-              }));
+      for (let attempt = 0; attempt <= MAX_CHAT_RETRIES; attempt++) {
+        try {
+          // 重试前清空上轮残留内容（避免重复追加）
+          if (attempt > 0) rawContent = '';
+
+          const response = await fetch('/api/ai-generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              baseUrl: llmConfig.baseUrl,
+              apiKey: llmConfig.apiKey,
+              model: selectedModel,
+              action: 'chat',
+              systemPrompt: finalSystemPrompt,
+              messages: sendMessages.map(m => ({ role: m.role, content: m.content })),
+              max_tokens: 4000,
+              stream: true,
+            }),
+          });
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            const errMsg = typeof errData.error === 'string' ? errData.error : errData.error?.message || `AI 请求失败 (${response.status})`;
+            // 仅对可重试状态码重试（429 限流 / 5xx 服务端错）
+            const retriable = response.status === 429 || response.status >= 500;
+            if (retriable && attempt < MAX_CHAT_RETRIES) {
+              lastRetryErr = new Error(errMsg);
+              await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
+              continue;
             }
-          } catch { /* 跳过不完整行 */ }
+            throw new Error(errMsg);
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+          let streamError = null;
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || !trimmed.startsWith('data:')) continue;
+              const payload = trimmed.slice(5).trim();
+              if (payload === '[DONE]') { buffer = ''; continue; }
+              try {
+                const json = JSON.parse(payload);
+                if (json.ok === false) { streamError = json.error || 'AI 请求失败'; break; }
+                if (json.delta) {
+                  rawContent += json.delta;
+                  // 逐字更新最后一条 assistant 消息
+                  setSessions(prev => prev.map(s => {
+                    if (s.id !== targetId) return s;
+                    const msgs = [...s.messages];
+                    msgs[msgs.length - 1] = { role: 'assistant', content: rawContent, loading: false };
+                    return { ...s, messages: msgs };
+                  }));
+                }
+              } catch { /* 跳过不完整行 */ }
+            }
+            if (streamError) break;
+          }
+
+          if (streamError) {
+            // 流内错误也尝试重试（上游限流可能在流中间断开）
+            if (attempt < MAX_CHAT_RETRIES && /繁忙|频繁|rate.limit|429/i.test(streamError)) {
+              lastRetryErr = new Error(streamError);
+              await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
+              continue;
+            }
+            throw new Error(streamError);
+          }
+
+          // 成功完成，跳出重试循环
+          lastRetryErr = null;
+          break;
+
+        } catch (err) {
+          if (err?.name === 'AbortError') throw err; // 用户取消，不重试
+          if (attempt < MAX_CHAT_RETRIES) {
+            lastRetryErr = err;
+            await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
+            continue;
+          }
+          throw lastRetryErr || err;
         }
-        if (streamError) break;
       }
 
-      if (streamError) throw new Error(streamError);
       if (!rawContent) rawContent = '未能获取回复内容。';
 
       // 引用校验

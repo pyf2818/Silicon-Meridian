@@ -120,24 +120,53 @@ export function useIntelligenceBriefing({ items = [], date, llmConfig }) {
       return;
     }
     setLlmStatus('running');
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    // 上限流可重试：仅对 429 / 繁忙 / 超时类瞬时错误退避重试，避免一次抖动整段失败
+    const isRetryableError = (msg) => /429|频繁|busy|rate|too many|超时|timeout|abo?rt/i.test(String(msg || ''));
+    const withRetry = async (fn, retries = 3) => {
+      let lastErr;
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        try { return await fn(); }
+        catch (e) {
+          lastErr = e;
+          if (attempt < retries && isRetryableError(e.message)) {
+            const delay = Math.min(8000, 1200 * Math.pow(2, attempt)) + Math.random() * 400;
+            await sleep(delay);
+            continue;
+          }
+          throw lastErr;
+        }
+      }
+      throw lastErr;
+    };
+    // 串行节流：两次 LLM 调用之间至少间隔 MIN_GAP，给上游限流留出余量（多智能体≈19 次调用）
+    let lastCallAt = 0;
+    const MIN_GAP = 500;
     const llmCall = async ({ system, user }) => {
-      const res = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: llmConfig.baseUrl,
-          apiKey: llmConfig.apiKey,
-          model: llmConfig.selectedModel,
-          action: 'chat',
-          systemPrompt: system,
-          messages: [{ role: 'user', content: user }],
-          max_tokens: 400,
-        }),
+      const now = Date.now();
+      const wait = Math.max(0, lastCallAt + MIN_GAP - now);
+      if (wait) await sleep(wait);
+      lastCallAt = Date.now();
+      return withRetry(async () => {
+        const res = await fetch('/api/ai-generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            baseUrl: llmConfig.baseUrl,
+            apiKey: llmConfig.apiKey,
+            model: llmConfig.selectedModel,
+            action: 'chat',
+            systemPrompt: system,
+            messages: [{ role: 'user', content: user }],
+            max_tokens: 400,
+          }),
+        });
+        if (!res.ok) throw new Error(`AI 请求失败 (${res.status})`);
+        const data = await res.json();
+        if (data.ok === false) throw new Error(data.error || 'AI 请求失败');
+        if (!data.content) throw new Error('AI 返回为空');
+        return data.content;
       });
-      if (!res.ok) throw new Error(`AI 请求失败 (${res.status})`);
-      const data = await res.json();
-      if (data.ok === false) throw new Error(data.error || 'AI 请求失败');
-      return data.content || '';
     };
     try {
       const result = await buildAgenticBriefing({

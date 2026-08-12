@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { ICONS, GITHUB_PERIODS } from '../constants/index.jsx';
 import GithubRepoCard from './GithubRepoCard.jsx';
 import { buildGithubMaterial } from '../utils/githubMaterial.js';
@@ -16,11 +16,29 @@ function GithubPage({
   githubInsightLoading,
   setLightbox,
 }) {
-  // 一键启动 AI 情报：一键展开全部卡片的 AI 情报（模拟逐卡点击「AI 情报」），
-  // 每张卡片仍各自按需生成，不另起批量接口；单卡也可独立展开/收起（见 GithubRepoCard）。
+  // 一键启动 AI 情报：一键展开全部卡片，并「串行」逐卡请求 AI 情报
+  // （模拟逐卡点击「AI 情报」，不另起批量接口，也不并发打爆限流）。
+  // 收起时自增 runToken 取消仍在排队的请求；单卡仍可独立展开/收起。
   const [expandedAll, setExpandedAll] = useState(false);
+  const runTokenRef = useRef(0);
   const anyInsightLoading = githubRepos.some((r) => githubInsightLoading[r.id]);
-  const handleToggleAllInsights = () => setExpandedAll((v) => !v);
+  const handleToggleAllInsights = useCallback(async () => {
+    if (expandedAll) {
+      setExpandedAll(false);
+      runTokenRef.current += 1; // 取消仍在排队的请求
+      return;
+    }
+    setExpandedAll(true);
+    const token = ++runTokenRef.current;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (const repo of githubRepos) {
+      if (token !== runTokenRef.current) break; // 已收起 / 已重开，停止排队
+      if (githubInsights[repo.id] || githubInsightLoading[repo.id]) continue; // 已有或生成中则跳过
+      await requestGithubInsight(repo);
+      if (token !== runTokenRef.current) break;
+      await sleep(400); // 卡间间隔，给上游限流留出余量
+    }
+  }, [expandedAll, githubRepos, githubInsights, githubInsightLoading, requestGithubInsight]);
 
   return (
     <>

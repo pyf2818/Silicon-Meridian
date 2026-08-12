@@ -126,29 +126,60 @@ export async function runAgentLoop({
       // 终极兜底：即使压缩后仍超长，也保留最近 30 条（与旧行为对齐，绝不越界）
       if (estimateMessages(sendMessages) > CONTEXT_BUDGET) sendMessages = sendMessages.slice(-30);
 
-      const response = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          baseUrl: llmConfig.baseUrl,
-          apiKey: llmConfig.apiKey,
-          model: selectedModel,
-          action: 'chat',
-          systemPrompt: fullSystemPrompt,
-          messages: sendMessages,
-          max_tokens: 4000,
-          tools: toolSchemas,
-          tool_choice: 'auto',
-        }),
-      });
+      // ── 带重试的 LLM 调用（仅对 429/5xx 瞬错重试，最多 2 次）──
+      const MAX_AGENT_RETRIES = 2;
+      let data;
+      for (let attempt = 0; attempt <= MAX_AGENT_RETRIES; attempt++) {
+        try {
+          const response = await fetch('/api/ai-generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              baseUrl: llmConfig.baseUrl,
+              apiKey: llmConfig.apiKey,
+              model: selectedModel,
+              action: 'chat',
+              systemPrompt: fullSystemPrompt,
+              messages: sendMessages,
+              max_tokens: 4000,
+              tools: toolSchemas,
+              tool_choice: 'auto',
+            }),
+          });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(typeof errData.error === 'string' ? errData.error : errData.error?.message || `AI 请求失败 (${response.status})`);
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            const errMsg = typeof errData.error === 'string' ? errData.error : errData.error?.message || `AI 请求失败 (${response.status})`;
+            const retriable = response.status === 429 || response.status >= 500;
+            if (retriable && attempt < MAX_AGENT_RETRIES) {
+              await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
+              continue;
+            }
+            throw new Error(errMsg);
+          }
+
+          data = await response.json();
+          if (data.ok === false) {
+            // 流式/上游限流错误也尝试重试
+            if (/繁忙|频繁|rate.limit|429/i.test(data.error || '') && attempt < MAX_AGENT_RETRIES) {
+              await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
+              continue;
+            }
+            throw new Error(data.error || 'AI 请求失败');
+          }
+          // 成功，跳出重试循环
+          break;
+
+        } catch (err) {
+          if (err?.name === 'AbortError') throw err; // 用户取消
+          if (attempt < MAX_AGENT_RETRIES) {
+            await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
+            continue;
+          }
+          throw err;
+        }
       }
-      const data = await response.json();
-      if (data.ok === false) throw new Error(data.error || 'AI 请求失败');
 
       // 若无 tool_calls，本次即为最终答案
       if (!Array.isArray(data.tool_calls) || data.tool_calls.length === 0) {
