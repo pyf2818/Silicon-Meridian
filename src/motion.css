@@ -70,3 +70,45 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================
+   C2 出入场节奏统一（覆盖层）
+   所有弹层 / 面板 / 卡片的入场「时长 + 缓动」收敛到 C1 token，
+   消除此前 8 种时长（.15/.18/.2/.22/.25/.28/.3/.55s）、5 种缓动
+   （ease/ease-out/三种 cubic-bezier）混用的"呼吸感不统一"。
+   用 animation-duration / animation-timing-function 独立属性覆盖，
+   不碰 animation-name（保留各自 keyframe）与 fill-mode。
+   规则特异性与原声明相同，因 motion.css 最后引入而生效。
+   ============================================================ */
+/* overlay 淡入：利落 ~0.14s */
+.cmd-palette-overlay,
+.template-popover-menu,
+.persona-drawer-overlay,
+.theme-modal-overlay {
+  animation-duration: var(--dur-fast);
+  animation-timing-function: var(--ease-out);
+}
+/* panel / drawer / card 入场：~0.22s */
+.cmd-palette,
+.persona-drawer,
+.theme-modal,
+.globe-detail-panel.fullscreen,
+.newspaper-drawer {
+  animation-duration: var(--dur-base);
+  animation-timing-function: var(--ease-out);
+}
+/* 引导遮罩：与主弹层一致 ~0.22s */
+.onb-overlay {
+  animation-duration: var(--dur-base);
+  animation-timing-function: var(--ease-out);
+}
+/* 引导卡片体：稍慢的优雅滑入 ~0.32s */
+.onb-body {
+  animation-duration: var(--dur-slow);
+  animation-timing-function: var(--ease-out);
+}
+/* 快捷卡片错落上浮：保留 stagger，时长收敛 ~0.5s */
+.chat-suggest-card {
+  animation-duration: var(--dur-slower);
+  animation-timing-function: var(--ease-out);
+}
