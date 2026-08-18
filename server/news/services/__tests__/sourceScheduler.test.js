@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
 import {
   GRADE_INTERVALS_MS,
   createSourceState,
@@ -7,10 +7,20 @@ import {
   recordOutcome,
   pickDueSources,
   runWithConcurrency,
+  bumpSourceAffinity,
+  affinityBoost,
+  getSourceAffinitySnapshot,
+  AFFINITY_HALF_LIFE_MS,
+  AFFINITY_MIN_INTERVAL_MS,
+  __resetAffinityForTests,
 } from '../sourceScheduler.js';
 
 const S_SOURCE = { name: 'OpenAI Blog' };
 const A_SOURCE = { name: 'TechCrunch AI' };
+
+beforeEach(() => {
+  __resetAffinityForTests();
+});
 
 describe('sourceScheduler - 等级间隔', () => {
   it('S 级间隔 15 分钟、D 级（未知源）间隔 6 小时', () => {
@@ -111,6 +121,63 @@ describe('sourceScheduler - 到期挑选', () => {
     const due2 = pickDueSources([S_SOURCE, { name: 'Anthropic News' }], states2, now);
     expect(due2.map(s => s.name)).toEqual(['Anthropic News', 'OpenAI Blog']);
     expect(states.get('OpenAI Blog').failCount).toBe(3);
+  });
+});
+
+describe('sourceScheduler - 源亲和度（画像反哺采集）', () => {
+  it('bump 去重累加、封顶 10 分；boost 分档 1x/1.5x/2x', () => {
+    expect(affinityBoost('OpenAI Blog')).toBe(1);
+    bumpSourceAffinity(['OpenAI Blog', 'OpenAI Blog']); // 同名去重 → +1
+    expect(affinityBoost('OpenAI Blog')).toBe(1);
+    bumpSourceAffinity(['OpenAI Blog']);
+    expect(affinityBoost('OpenAI Blog')).toBe(1.5); // score 2
+    bumpSourceAffinity(['OpenAI Blog']);
+    bumpSourceAffinity(['OpenAI Blog']);
+    expect(affinityBoost('OpenAI Blog')).toBe(2); // score 4
+    for (let i = 0; i < 20; i++) bumpSourceAffinity(['OpenAI Blog']);
+    const snap = getSourceAffinitySnapshot().find(s => s.name === 'OpenAI Blog');
+    expect(snap.score).toBe(10); // 封顶
+  });
+
+  it('亲和度 24h 半衰期：隔 2 个半衰期衰减到 1/4，低于阈值清除', () => {
+    const now = 1_000_000_000;
+    bumpSourceAffinity(['OpenAI Blog'], now);
+    bumpSourceAffinity(['OpenAI Blog'], now);
+    bumpSourceAffinity(['OpenAI Blog'], now);
+    bumpSourceAffinity(['OpenAI Blog'], now); // score 4
+    expect(affinityBoost('OpenAI Blog', now + 2 * AFFINITY_HALF_LIFE_MS + 1)).toBe(1); // 4 * 0.25 = 1 → 无加速
+    // 衰减到接近 0 → 条目被清除
+    bumpSourceAffinity(['SomeSource'], now);
+    const far = now + 10 * AFFINITY_HALF_LIFE_MS;
+    affinityBoost('SomeSource', far);
+    expect(getSourceAffinitySnapshot().find(s => s.name === 'SomeSource')).toBeUndefined();
+  });
+
+  it('亲和源轮询间隔最多缩短一半，但下限 5 分钟', () => {
+    const now = 1_000_000_000;
+    const plain = intervalFor(S_SOURCE, createSourceState(), now);
+    expect(plain).toBe(GRADE_INTERVALS_MS.S);
+    bumpSourceAffinity(['OpenAI Blog'], now);
+    bumpSourceAffinity(['OpenAI Blog'], now);
+    bumpSourceAffinity(['OpenAI Blog'], now);
+    bumpSourceAffinity(['OpenAI Blog'], now); // boost 2x
+    expect(intervalFor(S_SOURCE, createSourceState(), now)).toBe(GRADE_INTERVALS_MS.S / 2);
+    // D 级源 6h，2x 加速 = 3h，仍远高于下限；无源能低于 5min
+    bumpSourceAffinity(['某未分级源'], now);
+    for (let i = 0; i < 10; i++) bumpSourceAffinity(['某未分级源'], now);
+    expect(intervalFor({ name: '某未分级源' }, createSourceState(), now)).toBe(Math.max(AFFINITY_MIN_INTERVAL_MS, GRADE_INTERVALS_MS.D / 2));
+    expect(intervalFor({ name: '某未分级源' }, createSourceState(), now)).toBeGreaterThanOrEqual(AFFINITY_MIN_INTERVAL_MS);
+  });
+
+  it('同级源到期时亲和度高的优先出队', () => {
+    const now = 10 * 24 * 60 * 60 * 1000;
+    bumpSourceAffinity(['Anthropic News'], now);
+    const states = new Map([
+      ['OpenAI Blog', { ...createSourceState(), lastFetchedAt: 1 }],
+      ['Anthropic News', { ...createSourceState(), lastFetchedAt: 1 }],
+    ]);
+    const due = pickDueSources([S_SOURCE, { name: 'Anthropic News' }], states, now);
+    expect(due.map(s => s.name)).toEqual(['Anthropic News', 'OpenAI Blog']);
   });
 });
 

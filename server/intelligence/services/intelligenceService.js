@@ -11,8 +11,12 @@ import { buildProactiveAlerts } from '../processors/proactiveAlerts.js';
 import { buildWeeklySectorAnalysis } from '../processors/weeklySectorAnalysis.js';
 import { createIntelligenceRepository } from '../repositories/intelligenceRepository.js';
 import { getPersonaSummary } from '../../agent/agentMemoryService.js';
+import { bumpSourceAffinity } from '../../news/services/sourceScheduler.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+// 画像反哺采集：高分事件源上报亲和度的最小间隔（防止频繁刷新灌爆亲和度）
+const AFFINITY_BUMP_MIN_GAP_MS = 5 * 60 * 1000;
+let lastAffinityBumpAt = 0;
 const DEFAULT_INTELLIGENCE_TAKE = 80;
 const MAX_INTELLIGENCE_TAKE = 200;
 const DEFAULT_AGENT_TAKE = 24;
@@ -222,6 +226,19 @@ export async function getAgentIntelligenceContext(params = {}) {
   };
 }
 
+/**
+ * 画像反哺采集闭环（第 6 格）：个性化高分事件 → 源亲和度 → 调度优先级/轮询频率。
+ * 5 分钟节流 + 单源 10 分封顶 + 24h 半衰期（见 sourceScheduler）。
+ */
+function reportSourceAffinity(personalizedEvents) {
+  const now = Date.now();
+  if (now - lastAffinityBumpAt < AFFINITY_BUMP_MIN_GAP_MS) return;
+  lastAffinityBumpAt = now;
+  const sources = (personalizedEvents || []).slice(0, 20)
+    .flatMap(ev => ((ev.sources?.length ? ev.sources : [ev.source]) || []).filter(Boolean));
+  if (sources.length) bumpSourceAffinity(sources);
+}
+
 export async function getIntelligenceEvents(params = {}) {
   const options = parseOptions(params);
   const learned = await resolveLearnedPreferences(options);
@@ -235,7 +252,9 @@ export async function getIntelligenceEvents(params = {}) {
 
   if (options.storage === 'stored') {
     const stored = await getStoredIntelligenceEvents({ ...options, take: candidateTake });
-    return { ...stored, events: applyPersonalScores(stored.events, context).slice(0, take) };
+    const personalizedEvents = applyPersonalScores(stored.events, context).slice(0, take);
+    reportSourceAffinity(personalizedEvents);
+    return { ...stored, events: personalizedEvents };
   }
 
   let payload;
@@ -244,15 +263,19 @@ export async function getIntelligenceEvents(params = {}) {
   } catch (error) {
     if (options.storage !== 'auto') throw error;
     const stored = await getStoredIntelligenceEvents({ ...options, take: candidateTake });
-    return { ...stored, events: applyPersonalScores(stored.events, context).slice(0, take), fallback: { reason: 'live-error', message: error.message || 'Live intelligence unavailable' } };
+    const fallbackEvents = applyPersonalScores(stored.events, context).slice(0, take);
+    reportSourceAffinity(fallbackEvents);
+    return { ...stored, events: fallbackEvents, fallback: { reason: 'live-error', message: error.message || 'Live intelligence unavailable' } };
   }
 
   const events = clusterIntelligenceEvents(payload.items);
   const personalizedEvents = applyPersonalScores(events, context).slice(0, take);
+  reportSourceAffinity(personalizedEvents);
 
   if (options.storage === 'auto' && personalizedEvents.length === 0) {
     const stored = await getStoredIntelligenceEvents({ ...options, take: candidateTake });
-    return { ...stored, events: applyPersonalScores(stored.events, context).slice(0, take), fallback: { reason: 'live-empty' } };
+    const emptyFallbackEvents = applyPersonalScores(stored.events, context).slice(0, take);
+    return { ...stored, events: emptyFallbackEvents, fallback: { reason: 'live-empty' } };
   }
 
   return {

@@ -31,6 +31,57 @@ const MAX_DEGRADE_STEPS = 2;
 /** 默认并发池大小 */
 export const DEFAULT_CONCURRENCY = 16;
 
+/* ============ 源亲和度（画像反哺采集闭环） ============
+ * 推荐链路（personalScore 高分事件）→ 源亲和度 → 调度优先级/频率：
+ * 高亲和源出队更靠前、轮询间隔最多缩短一半（下限 5 分钟）。
+ * 亲和度按 24h 半衰期惰性衰减，单源上限 10 分，防止刷请求灌爆。 */
+const sourceAffinity = new Map();
+export const AFFINITY_HALF_LIFE_MS = 24 * 60 * 60 * 1000;
+export const AFFINITY_SCORE_CAP = 10;
+export const AFFINITY_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
+function decayedAffinity(name, now = Date.now()) {
+  const entry = sourceAffinity.get(name);
+  if (!entry) return 0;
+  const elapsed = now - (entry.updatedAt || 0);
+  if (elapsed > AFFINITY_HALF_LIFE_MS) {
+    const halvings = Math.floor(elapsed / AFFINITY_HALF_LIFE_MS);
+    entry.score = entry.score * Math.pow(0.5, halvings);
+    entry.updatedAt = now;
+    if (entry.score < 0.1) {
+      sourceAffinity.delete(name);
+      return 0;
+    }
+  }
+  return entry.score;
+}
+
+/**
+ * 上报一批高表现源（来自个性化推荐高分事件）。每次调用每个源 +1（去重）。
+ */
+export function bumpSourceAffinity(sourceNames = [], now = Date.now()) {
+  const unique = [...new Set(sourceNames.map(n => String(n || '').trim()).filter(Boolean))];
+  for (const name of unique) {
+    const score = Math.min(AFFINITY_SCORE_CAP, decayedAffinity(name, now) + 1);
+    sourceAffinity.set(name, { score, updatedAt: now });
+  }
+  return unique.length;
+}
+
+/** 亲和度加速因子：score>=4 → 2x，score>=2 → 1.5x，其余 1x */
+export function affinityBoost(name, now = Date.now()) {
+  const score = decayedAffinity(name, now);
+  if (score >= 4) return 2;
+  if (score >= 2) return 1.5;
+  return 1;
+}
+
+/** 源亲和度快照（测试/诊断用） */
+export function getSourceAffinitySnapshot() {
+  const now = Date.now();
+  return [...sourceAffinity.entries()].map(([name]) => ({ name, score: decayedAffinity(name, now) }));
+}
+
 /**
  * 新建一个源的调度状态。
  * @returns {{ failCount: number, degradeSteps: number, lastFetchedAt: number, lastOkAt: number }}
@@ -49,21 +100,25 @@ function gradeInterval(source, degradeSteps) {
 }
 
 /**
- * 计算某源下一次应抓取的时间间隔（含退避 + 降档）。
+ * 计算某源下一次应抓取的时间间隔（含退避 + 降档 + 亲和度加速）。
+ * 亲和源最多缩短一半，但绝不低于 AFFINITY_MIN_INTERVAL_MS（5 分钟）。
  */
-export function intervalFor(source, state = createSourceState()) {
+export function intervalFor(source, state = createSourceState(), now = Date.now()) {
   const base = gradeInterval(source, state.degradeSteps);
   const exponent = Math.min(Math.max(0, state.failCount), MAX_BACKOFF_EXPONENT);
-  return base * Math.pow(2, exponent);
+  const raw = base * Math.pow(2, exponent);
+  const boost = affinityBoost(source?.name || '', now);
+  return Math.max(AFFINITY_MIN_INTERVAL_MS, Math.round(raw / boost));
 }
 
 /**
  * 计算某源下一次到期时间戳。
  * 从未抓取过的源（lastFetchedAt=0）视为立即到期——冷启动时全部源进入首轮抓取。
+ * now 必须透传给 intervalFor（内含亲和度惰性衰减，时钟源混用会导致亲和度被误衰减/清除）。
  */
-export function nextDueAt(source, state = createSourceState()) {
+export function nextDueAt(source, state = createSourceState(), now = Date.now()) {
   if (!state.lastFetchedAt) return 0;
-  return state.lastFetchedAt + intervalFor(source, state);
+  return state.lastFetchedAt + intervalFor(source, state, now);
 }
 
 /**
@@ -104,14 +159,18 @@ export function pickDueSources(sources = [], states = new Map(), now = Date.now(
   const due = [];
   for (const source of sources) {
     const state = states.get(source.name) || createSourceState();
-    if (nextDueAt(source, state) <= now) due.push({ source, state });
+    if (nextDueAt(source, state, now) <= now) due.push({ source, state });
   }
   due.sort((a, b) => {
     const ga = GRADE_ORDER[getSourceGrade(a.source.name)] ?? 4;
     const gb = GRADE_ORDER[getSourceGrade(b.source.name)] ?? 4;
     if (ga !== gb) return ga - gb;
+    // 同级源：亲和度高的优先出队（画像反哺采集）
+    const aa = decayedAffinity(a.source.name, now);
+    const ab = decayedAffinity(b.source.name, now);
+    if (aa !== ab) return ab - aa;
     if (a.state.failCount !== b.state.failCount) return a.state.failCount - b.state.failCount;
-    return nextDueAt(a.source, a.state) - nextDueAt(b.source, b.state);
+    return nextDueAt(a.source, a.state, now) - nextDueAt(b.source, b.state, now);
   });
   return due.map(entry => entry.source);
 }
@@ -141,4 +200,9 @@ export async function runWithConcurrency(items = [], worker, concurrency = DEFAU
   });
   await Promise.all(runners);
   return results;
+}
+
+/* 测试辅助：清空源亲和度（仅单测使用） */
+export function __resetAffinityForTests() {
+  sourceAffinity.clear();
 }
