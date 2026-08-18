@@ -350,7 +350,7 @@ export default function Topbar({
               {ICONS.sparkle} {githubExpandedAll ? '收起 AI 情报' : '一键启动 AI 情报'}
               {!githubExpandedAll && githubAnyInsightLoading ? '（生成中…）' : ''}
             </button>
-          ) : (nav !== 'all' && nav !== 'profile-center' && <LanguageSwitcher variant="compact" />)}
+          ) : (nav !== 'all' && nav !== 'profile-center' && nav !== 'studio' && nav !== 'monitor' && nav !== 'agents' && <LanguageSwitcher variant="compact" />)}
         </div>
       </div>
     </header>
