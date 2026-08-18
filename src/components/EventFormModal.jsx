@@ -26,7 +26,7 @@ export default function EventFormModal({
                 date,
                 time,
                 description,
-                color: '#22d3ee'
+                color: 'var(--accent-cyan)'
               }]);
               setShowEventForm(false);
             }}>

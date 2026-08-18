@@ -601,14 +601,29 @@ function App() {
   const feedRef = useRef(null);
   const searchInputRef = useRef(null);
 
+  // 跟随系统：把 'system' 解析为系统 prefers-color-scheme 的 dark/light
+  const resolveThemeMode = (m) => {
+    if (m !== 'system') return m;
+    if (typeof window === 'undefined' || !window.matchMedia) return 'dark';
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  };
   useEffect(() => {
-    document.documentElement.dataset.mode = themeMode;
+    document.documentElement.dataset.mode = resolveThemeMode(themeMode);
     localStorage.setItem('themeMode', themeMode);
   }, [themeMode]);
   useEffect(() => {
     document.documentElement.dataset.palette = palette;
     localStorage.setItem('palette', palette);
   }, [palette]);
+  // 系统主题偏好变化时实时跟随
+  useEffect(() => {
+    if (themeMode !== 'system' || typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const apply = () => { document.documentElement.dataset.mode = mq.matches ? 'light' : 'dark'; };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [themeMode]);
   useEffect(() => { localStorage.setItem('sidebarCollapsed', String(sidebarCollapsed)); }, [sidebarCollapsed]);
   useEffect(() => { localStorage.setItem('panelCollapsed', String(panelCollapsed)); }, [panelCollapsed]);
   // ESC 退出创作中心全屏

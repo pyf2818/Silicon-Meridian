@@ -1,6 +1,7 @@
 import { useRef, useMemo, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Globe from 'react-globe.gl';
+import { useThemeColors } from './hooks/useThemeColors.js';
 
 // source -> 城市坐标映射
 const SOURCE_CITY_MAP = {
@@ -539,6 +540,7 @@ function GlobeContent({ items, isFullscreen, onClose }) {
   }, [heatmapData.points.length]);
 
   const pointsData = heatmapData.points.length > 0 ? heatmapData.points : defaultPoints;
+  const themeColors = useThemeColors();
 
   // 标签 - 始终显示城市名称
   const labelsData = useMemo(() => {
@@ -567,7 +569,7 @@ function GlobeContent({ items, isFullscreen, onClose }) {
     const origin = sorted[0];
     return sorted.slice(1).map(p => ({
       startLat: origin.lat, startLng: origin.lng, endLat: p.lat, endLng: p.lng,
-      color: '#22d3ee', dashLength: 0.4, dashGap: 0.1, dashAnimateTime: 2000 + Math.random() * 1000,
+      color: themeColors.cyan, dashLength: 0.4, dashGap: 0.1, dashAnimateTime: 2000 + Math.random() * 1000,
     }));
   }, [pointsData]);
 
@@ -634,7 +636,7 @@ function GlobeContent({ items, isFullscreen, onClose }) {
   const handleItemClick = (url) => { if (url) window.open(url, '_blank'); };
 
   const getPointTooltip = (point) => {
-    if (!point.items || point.items.length === 0) return `<div style="color:#22d3ee;font-size:12px;">${point.city || '热点城市'}</div>`;
+    if (!point.items || point.items.length === 0) return `<div style="color:var(--accent-cyan);font-size:12px;">${point.city || '热点城市'}</div>`;
     const recentItem = point.items[0];
     return `
       <div style="background:rgba(10,12,16,0.9);backdrop-filter:blur(12px);border:1px solid ${point.color};border-radius:10px;padding:12px 16px;color:#f1f5f9;font-size:13px;max-width:280px;box-shadow:0 4px 20px rgba(0,0,0,0.4);">
@@ -646,7 +648,7 @@ function GlobeContent({ items, isFullscreen, onClose }) {
           <div style="color:#94a3b8;font-size:11px;margin-bottom:4px;">${formatTime(recentItem.publishedAt)}</div>
           <div style="line-height:1.4;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${recentItem.title}</div>
         </div>
-        <div style="margin-top:8px;font-size:11px;color:#22d3ee;">点击查看详情 →</div>
+        <div style="margin-top:8px;font-size:11px;color:var(--accent-cyan);">点击查看详情 →</div>
       </div>
     `;
   };
@@ -726,7 +728,7 @@ function GlobeContent({ items, isFullscreen, onClose }) {
           <Globe ref={globeRef} width={globeSize.width} height={globeSize.height}
             globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
             bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
-            backgroundColor="rgba(0,0,0,0)" atmosphereColor="#22d3ee" atmosphereAltitude={0.15}
+            backgroundColor="rgba(0,0,0,0)" atmosphereColor={themeColors.cyan} atmosphereAltitude={0.15}
             pointsData={pointsData} pointColor="color" pointAltitude={0} pointRadius="size" pointResolution={32}
             pointLabel={getPointTooltip} onPointClick={handlePointClick}
             labelsData={labelsData} labelLat="lat" labelLng="lng" labelText="text" labelColor="color" labelSize="size" labelDotRadius={0.3} labelAltitude={0.02}

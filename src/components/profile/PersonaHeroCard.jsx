@@ -12,12 +12,12 @@ function ConfidenceRing({ value }) {
       <svg viewBox="0 0 80 80">
         <defs>
           <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#00e5ff" />
-            <stop offset="100%" stopColor="#0088aa" />
+            <stop offset="0%" style={{ stopColor: 'var(--accent-cyan)' }} />
+            <stop offset="100%" style={{ stopColor: 'var(--accent-blue)' }} />
           </linearGradient>
         </defs>
         <circle cx="40" cy="40" r={radius} fill="none"
-                stroke="rgba(0,229,255,0.08)" strokeWidth="6" />
+                style={{ stroke: 'color-mix(in srgb, var(--accent-cyan) 8%, transparent)' }} strokeWidth="6" />
         <circle cx="40" cy="40" r={radius} fill="none"
                 stroke="url(#cyanGrad)" strokeWidth="6" strokeLinecap="round"
                 strokeDasharray={circumference}

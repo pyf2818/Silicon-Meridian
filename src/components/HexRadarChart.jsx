@@ -10,9 +10,9 @@ function HexRadarChart({ categories, regions, matrix, maxVal }) {
   const angleStep = (2 * Math.PI) / n;
   const startAngle = -Math.PI / 2;
 
-  const regionColors = { domestic: '#3b82f6', overseas: '#22d3ee', global: '#a78bfa' };
-  const regionGlows = { domestic: 'rgba(59,130,246,0.6)', overseas: 'rgba(34,211,238,0.6)', global: 'rgba(167,139,250,0.6)' };
-  const regionFills = { domestic: 'rgba(59,130,246,0.30)', overseas: 'rgba(34,211,238,0.30)', global: 'rgba(167,139,250,0.30)' };
+  const regionColors = { domestic: 'var(--accent-blue)', overseas: 'var(--accent-cyan)', global: 'var(--accent-violet)' };
+  const regionGlows = { domestic: 'color-mix(in srgb, var(--accent-blue) 60%, transparent)', overseas: 'color-mix(in srgb, var(--accent-cyan) 60%, transparent)', global: 'color-mix(in srgb, var(--accent-violet) 60%, transparent)' };
+  const regionFills = { domestic: 'color-mix(in srgb, var(--accent-blue) 30%, transparent)', overseas: 'color-mix(in srgb, var(--accent-cyan) 30%, transparent)', global: 'color-mix(in srgb, var(--accent-violet) 30%, transparent)' };
 
   const getPoint = (idx, value) => {
     const ratio = maxVal > 0 ? value / maxVal : 0;
@@ -66,7 +66,7 @@ function HexRadarChart({ categories, regions, matrix, maxVal }) {
           );
         })}
         {regions.map(region => (
-          <polygon key={region} points={regionPath(region)} fill={regionFills[region]} stroke={regionColors[region]} strokeWidth="2" strokeLinejoin="round" filter={`url(#glow-${region})`} />
+          <polygon key={region} points={regionPath(region)} style={{ fill: regionFills[region], stroke: regionColors[region] }} strokeWidth="2" strokeLinejoin="round" filter={`url(#glow-${region})`} />
         ))}
         {regions.map(region => categories.map((cat, i) => {
           const v = matrix[region]?.[cat.id] || 0;

@@ -6,9 +6,9 @@
 import { buildPersonaTrendSeries } from '../../utils/dashboardBuilders.js';
 
 const SERIES_STYLE = [
-  { name: '习惯', stroke: '#00e5ff', dash: '' },
-  { name: '性格', stroke: '#0088aa', dash: '3,3' },
-  { name: '需求', stroke: 'rgba(0,229,255,0.4)', dash: '' },
+  { name: '习惯', stroke: 'var(--accent-cyan)', dash: '' },
+  { name: '性格', stroke: 'var(--accent-blue)', dash: '3,3' },
+  { name: '需求', stroke: 'color-mix(in srgb, var(--accent-cyan) 40%, transparent)', dash: '' },
 ];
 
 export default function PersonaEvolutionMiniChart({ history, loading, selectedIdx, onSelectNode }) {
@@ -46,15 +46,16 @@ export default function PersonaEvolutionMiniChart({ history, loading, selectedId
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
           {[20, 40, 60].map(y => (
             <line key={y} x1="0" y1={y} x2={W} y2={y}
-                  stroke="rgba(0,229,255,0.06)" strokeWidth="1" />
+                  style={{ stroke: 'color-mix(in srgb, var(--accent-cyan) 6%, transparent)' }} strokeWidth="1" />
           ))}
           {series.map((s, si) => {
             const style = SERIES_STYLE[si];
             const points = s.values.map((v, i) => `${toX(i)},${toY(v)}`).join(' ');
             return (
               <g key={s.name}>
-                <polyline points={points} fill="none"
-                          stroke={style.stroke} strokeWidth="2"
+                  <polyline points={points} fill="none"
+                          style={{ stroke: style.stroke }}
+                          strokeWidth="2"
                           strokeLinecap="round" strokeLinejoin="round"
                           strokeDasharray={style.dash} />
                 {s.values.map((v, i) => {
@@ -63,7 +64,7 @@ export default function PersonaEvolutionMiniChart({ history, loading, selectedId
                   return (
                     <circle key={i} cx={toX(i)} cy={toY(v)}
                             r={isActive ? 4 : 3}
-                            fill={style.stroke}
+                            style={{ fill: style.stroke }}
                             stroke="#0B0E11" strokeWidth={isActive ? 2 : 0}
                             style={{ cursor: 'pointer' }}
                             onClick={() => onSelectNode(historyIdx)} />

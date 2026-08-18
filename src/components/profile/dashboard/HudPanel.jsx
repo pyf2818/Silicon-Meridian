@@ -6,7 +6,7 @@ import { HudSparkline } from '../charts/HudCharts.jsx';
 export function HudPanel({
   title,
   kicker,
-  accent = '#00e5ff',
+  accent = 'var(--accent-cyan)',
   right,
   scan = true,
   className = '',
@@ -38,7 +38,7 @@ export function KpiStripHud({ items = [] }) {
   return (
     <div className="hud-kpi-strip">
       {items.map((it, i) => (
-        <div className="hud-kpi" key={i} style={{ '--kpi-accent': it.color || '#00e5ff' }}>
+        <div className="hud-kpi" key={i} style={{ '--kpi-accent': it.color || 'var(--accent-cyan)' }}>
           <div className="hud-kpi-top">
             <span className="hud-kpi-value">{it.value}</span>
             {it.trend != null && <span className={`hud-kpi-trend ${it.trend >= 0 ? 'up' : 'down'}`}>{it.trend >= 0 ? '▲' : '▼'}{Math.abs(it.trend)}</span>}
@@ -47,7 +47,7 @@ export function KpiStripHud({ items = [] }) {
           {it.sub && <span className="hud-kpi-sub">{it.sub}</span>}
           <div className="hud-kpi-foot">
             {it.spark && it.spark.length > 0 ? (
-              <HudSparkline values={it.spark} color={it.color || '#00e5ff'} />
+              <HudSparkline values={it.spark} color={it.color} />
             ) : it.meter != null ? (
               <div className="hud-kpi-meter">
                 {Array.from({ length: 12 }).map((_, b) => (

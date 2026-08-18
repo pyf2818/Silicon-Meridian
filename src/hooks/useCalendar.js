@@ -7,7 +7,7 @@ import { showToast } from '../utils/toast.js';
 export function useCalendar() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [events, setEvents] = useState(() => loadLS('calendarEvents', []));
-  const [eventForm, setEventForm] = useState({ title: '', time: '', color: '#22d3ee' });
+  const [eventForm, setEventForm] = useState({ title: '', time: '', color: 'var(--accent-cyan)' });
   const [showEventForm, setShowEventForm] = useState(false);
 
   function fmtDate(d) {
@@ -23,7 +23,7 @@ export function useCalendar() {
       color: eventForm.color,
       date: fmtDate(calendarDate)
     }]);
-    setEventForm({ title: '', time: '', color: '#22d3ee' });
+    setEventForm({ title: '', time: '', color: 'var(--accent-cyan)' });
     setShowEventForm(false);
     showToast('事件已添加');
   }

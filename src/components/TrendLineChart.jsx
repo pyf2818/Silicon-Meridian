@@ -5,7 +5,7 @@ function TrendLineChart({ labels = [], series = [], onSelect = null }) {
   const height = 220;
   const pad = 28;
   const maxValue = Math.max(1, ...series.flatMap(s => s.values || [0]));
-  const colors = ['#22d3ee', '#3b82f6', '#a78bfa', '#34d399', '#fbbf24'];
+  const colors = ['var(--accent-cyan)', 'var(--accent-blue)', 'var(--accent-violet)', 'var(--accent-emerald)', 'var(--accent-amber)'];
   const [hover, setHover] = useState(null);
 
   const pointsFor = (values) => values.map((v, idx) => {
@@ -52,8 +52,8 @@ function TrendLineChart({ labels = [], series = [], onSelect = null }) {
         })}
         {series.map((s, idx) => (
           <g key={s.name}>
-            <path d={areaPathFor(s.values || [])} fill={colors[idx % colors.length]} opacity="0.12" />
-            <path d={wavePathFor(s.values || [])} fill="none" stroke={colors[idx % colors.length]} strokeWidth="2.5" strokeLinecap="round" />
+            <path d={areaPathFor(s.values || [])} style={{ fill: colors[idx % colors.length], opacity: 0.12 }} />
+            <path d={wavePathFor(s.values || [])} fill="none" style={{ stroke: colors[idx % colors.length] }} strokeWidth="2.5" strokeLinecap="round" />
             {(s.values || []).map((v, i) => {
               const x = pad + (i * (width - pad * 2)) / Math.max(1, (s.values.length - 1));
               const y = height - pad - (v / maxValue) * (height - pad * 2);
@@ -63,8 +63,7 @@ function TrendLineChart({ labels = [], series = [], onSelect = null }) {
                   cx={x}
                   cy={y}
                   r={onSelect ? 6 : 4}
-                  fill={colors[idx % colors.length]}
-                  style={onSelect ? { cursor: 'pointer' } : undefined}
+                  style={{ fill: colors[idx % colors.length], ...(onSelect ? { cursor: 'pointer' } : {}) }}
                   onMouseEnter={() => setHover({ x, y, label: labels[i], series: s.name, value: v })}
                   onMouseLeave={() => setHover(null)}
                   onClick={onSelect ? () => onSelect({ index: i, label: labels[i], series: s.name, value: v }) : undefined}
@@ -77,7 +76,7 @@ function TrendLineChart({ labels = [], series = [], onSelect = null }) {
           <g>
             <rect x={hover.x + 8} y={hover.y - 34} width="120" height="30" rx="6" fill="#0b1220" stroke="rgba(255,255,255,0.15)" />
             <text x={hover.x + 14} y={hover.y - 20} fontSize="10" fill="#cbd5e1">{hover.series} · {hover.label}</text>
-            <text x={hover.x + 14} y={hover.y - 9} fontSize="11" fill="#22d3ee">{hover.value}</text>
+            <text x={hover.x + 14} y={hover.y - 9} fontSize="11" style={{ fill: 'var(--accent-cyan)' }}>{hover.value}</text>
           </g>
         )}
       </svg>

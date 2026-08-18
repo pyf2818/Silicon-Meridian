@@ -55,7 +55,7 @@ export default function CalendarPage({
               e.preventDefault();
               const { title, date, time, description } = e.target.elements;
               if (!title.value || !date.value) return;
-              setEvents(prev => [...prev, { id: Date.now(), title: title.value, date: date.value, time: time.value, description: description.value, color: "#22d3ee" }]);
+              setEvents(prev => [...prev, { id: Date.now(), title: title.value, date: date.value, time: time.value, description: description.value, color: "var(--accent-cyan)" }]);
               setShowEventForm(false);
             }}>
               <div className="form-group">

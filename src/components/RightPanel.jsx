@@ -157,7 +157,7 @@ export default function RightPanel({ showRightPanel, panelCollapsed, nav, recomm
                 <div className="must-read-list">
                   {todayMustRead.map((item, idx) => {
                     const isTopTier = item.mustReadScore >= 50;
-                    const scoreColor = isTopTier ? '#22d3ee' : (item.mustReadScore >= 30 ? '#f59e0b' : '#64748b');
+                    const scoreColor = isTopTier ? 'var(--accent-cyan)' : (item.mustReadScore >= 30 ? '#f59e0b' : '#64748b');
                     return (
                       <a
                         key={item.id}
@@ -168,7 +168,7 @@ export default function RightPanel({ showRightPanel, panelCollapsed, nav, recomm
                         title={item.title}
                         onClick={(e) => { e.stopPropagation(); }}
                       >
-                        <div className="must-read-rank" style={{ background: isTopTier ? '#22d3ee' : '#64748b' }}>{idx + 1}</div>
+                        <div className="must-read-rank" style={{ background: isTopTier ? 'var(--accent-cyan)' : '#64748b' }}>{idx + 1}</div>
                         <div className="must-read-info">
                           <span className="must-read-title">{item.title}</span>
                           <div className="must-read-meta">

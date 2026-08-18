@@ -3272,9 +3272,9 @@ body {
 .profile-tier-control button {
   min-height: 32px;
   padding: 5px 7px;
-  border: 1px solid rgba(0,229,255,0.08);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   border-radius: 4px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   color: var(--text-muted);
   font-size: 11px;
   cursor: pointer;
@@ -3284,18 +3284,18 @@ body {
 
 .profile-tier-control button:hover,
 .profile-tier-control button:focus-visible {
-  border-color: rgba(0,229,255,0.25);
-  color: rgba(0,229,255,0.7);
-  background: rgba(0,229,255,0.05);
+  border-color: color-mix(in srgb, var(--accent-cyan) 25%, transparent);
+  color: color-mix(in srgb, var(--accent-cyan) 70%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 5%, transparent);
   outline: none;
 }
 
 .profile-tier-control button.active {
-  border-color: rgba(0,229,255,0.4);
-  background: rgba(0,229,255,0.1);
-  color: #00e5ff;
+  border-color: color-mix(in srgb, var(--accent-cyan) 40%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+  color: var(--accent-cyan);
   font-weight: 700;
-  box-shadow: 0 0 8px rgba(0,229,255,0.15);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 
 .profile-snapshot-list {
@@ -3305,9 +3305,9 @@ body {
 
 .profile-snapshot {
   padding: 14px;
-  border: 1px solid rgba(0,229,255,0.1);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   position: relative;
 }
 
@@ -3318,12 +3318,12 @@ body {
   top: 12px;
   bottom: 12px;
   width: 2px;
-  background: linear-gradient(180deg, #00e5ff, transparent);
+  background: linear-gradient(180deg, var(--accent-cyan), transparent);
   border-radius: 1px;
 }
 
 .profile-snapshot span {
-  color: rgba(0,229,255,0.5);
+  color: color-mix(in srgb, var(--accent-cyan) 50%, transparent);
   font-size: 11px;
   font-weight: 700;
   font-family: 'Courier New', monospace;
@@ -12432,8 +12432,8 @@ body {
   align-items: center;
   gap: 2px;
   padding: 10px 6px;
-  background: linear-gradient(180deg, rgba(0, 229, 255, 0.06), transparent);
-  border: 1px solid rgba(0, 229, 255, 0.18);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 6%, transparent), transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 18%, transparent);
   border-radius: 10px;
 }
 
@@ -21531,8 +21531,8 @@ body {
   margin: 16px 0;
   padding: 20px;
   border-radius: 10px;
-  background: rgba(0,229,255,0.02);
-  border: 1px solid rgba(0,229,255,0.1);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   position: relative;
 }
 .profile-agent-memory::before {
@@ -21540,19 +21540,19 @@ body {
   position: absolute;
   top: 0; left: 16px; right: 16px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.2), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-cyan) 20%, transparent), transparent);
 }
 .profile-pending-suggestions .pending-count {
   display: inline-block;
   margin-left: 8px;
   padding: 2px 10px;
   border-radius: 10px;
-  background: rgba(0,229,255,0.1);
-  color: #00e5ff;
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+  color: var(--accent-cyan);
   font-size: 12px;
   font-weight: 600;
   font-family: 'Courier New', monospace;
-  border: 1px solid rgba(0,229,255,0.15);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 .pending-suggestions-grid {
   display: grid;
@@ -21563,13 +21563,13 @@ body {
 .pending-suggestion-card {
   padding: 14px;
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
-  border: 1px solid rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   transition: all 0.2s ease;
 }
 .pending-suggestion-card:hover {
-  border-color: rgba(0,229,255,0.15);
-  box-shadow: 0 0 12px rgba(0,229,255,0.06);
+  border-color: color-mix(in srgb, var(--accent-cyan) 15%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 6%, transparent);
 }
 .suggestion-header {
   display: flex;
@@ -21815,7 +21815,7 @@ body {
 .persona-column h3 {
   font-size: 13px;
   margin: 0 0 12px;
-  color: rgba(0,229,255,0.6);
+  color: color-mix(in srgb, var(--accent-cyan) 60%, transparent);
   font-weight: 600;
   letter-spacing: 0.06em;
   font-family: 'Courier New', monospace;
@@ -21826,7 +21826,7 @@ body {
 .persona-column h3::before {
   content: "◆";
   font-size: 8px;
-  color: rgba(0,229,255,0.3);
+  color: color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 .persona-column ul {
   list-style: none;
@@ -21837,7 +21837,7 @@ body {
   display: flex;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(0,229,255,0.05);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-cyan) 5%, transparent);
   font-size: 13px;
 }
 .persona-content {
@@ -21846,7 +21846,7 @@ body {
   line-height: 1.5;
 }
 .persona-weight {
-  color: rgba(0,229,255,0.35);
+  color: color-mix(in srgb, var(--accent-cyan) 35%, transparent);
   font-size: 12px;
   font-family: 'Courier New', monospace;
 }
@@ -21865,7 +21865,7 @@ body {
 }
 .profile-snapshot-history .section-desc {
   font-size: 13px;
-  color: rgba(0,229,255,0.4);
+  color: color-mix(in srgb, var(--accent-cyan) 40%, transparent);
   margin: 0;
   font-family: 'Courier New', monospace;
 }
@@ -21874,8 +21874,8 @@ body {
   text-align: center;
   color: var(--text-muted, #666);
   font-size: 14px;
-  background: rgba(0,229,255,0.02);
-  border: 1px dashed rgba(0,229,255,0.1);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-radius: 8px;
   margin-top: 12px;
 }
@@ -22021,8 +22021,8 @@ body {
 .profile-tabs {
   display: flex;
   gap: 2px;
-  background: rgba(0,229,255,0.04);
-  border: 1px solid rgba(0,229,255,0.15);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 15%, transparent);
   border-radius: 6px;
   padding: 3px;
   margin: 0 0 24px;
@@ -22034,7 +22034,7 @@ body {
   position: absolute;
   inset: -1px;
   border-radius: 7px;
-  background: linear-gradient(135deg, rgba(0,229,255,0.2), transparent 40%, transparent 60%, rgba(201,169,97,0.15));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 20%, transparent), transparent 40%, transparent 60%, rgba(201,169,97,0.15));
   pointer-events: none;
   z-index: 0;
 }
@@ -22054,16 +22054,16 @@ body {
   z-index: 1;
 }
 .profile-tab:hover {
-  color: rgba(0,229,255,0.8);
-  background: rgba(0,229,255,0.06);
-  border-color: rgba(0,229,255,0.12);
+  color: color-mix(in srgb, var(--accent-cyan) 80%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
+  border-color: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
 }
 .profile-tab.active {
-  background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(0,229,255,0.06));
-  color: #00e5ff;
-  border-color: rgba(0,229,255,0.3);
-  box-shadow: 0 0 12px rgba(0,229,255,0.15), inset 0 1px 0 rgba(0,229,255,0.1);
-  text-shadow: 0 0 8px rgba(0,229,255,0.3);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 12%, transparent), color-mix(in srgb, var(--accent-cyan) 6%, transparent));
+  color: var(--accent-cyan);
+  border-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 15%, transparent), inset 0 1px 0 color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 
 /* 双栏布局 — 赛博网格 */
@@ -22094,9 +22094,9 @@ body {
 /* ===== 时间轴 — HUD 侧边栏 ===== */
 .timeline-rail {
   background:
-    linear-gradient(180deg, rgba(0,229,255,0.03) 0%, rgba(0,229,255,0.01) 100%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 3%, transparent) 0%, color-mix(in srgb, var(--accent-cyan) 1%, transparent) 100%),
     var(--bg-card-solid, #14181C);
-  border: 1px solid rgba(0,229,255,0.12);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 12%, transparent);
   border-radius: 12px;
   padding: 20px 16px;
   position: sticky;
@@ -22105,19 +22105,19 @@ body {
   overflow-y: auto;
   /* 扫描线叠加 */
   background-image:
-    repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,229,255,0.015) 3px, rgba(0,229,255,0.015) 4px),
-    linear-gradient(180deg, rgba(0,229,255,0.03) 0%, rgba(0,229,255,0.01) 100%);
+    repeating-linear-gradient(0deg, transparent, transparent 3px, color-mix(in srgb, var(--accent-cyan) 1.5%, transparent) 3px, color-mix(in srgb, var(--accent-cyan) 1.5%, transparent) 4px),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 3%, transparent) 0%, color-mix(in srgb, var(--accent-cyan) 1%, transparent) 100%);
   /* HUD 左上角标 */
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
 }
 .timeline-header {
   font-size: 10px;
-  color: rgba(0,229,255,0.6);
+  color: color-mix(in srgb, var(--accent-cyan) 60%, transparent);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(0,229,255,0.1);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   font-family: 'Courier New', monospace;
   display: flex;
   align-items: center;
@@ -22125,7 +22125,7 @@ body {
 }
 .timeline-header::before {
   content: "▸";
-  color: rgba(0,229,255,0.4);
+  color: color-mix(in srgb, var(--accent-cyan) 40%, transparent);
 }
 .timeline-loading,
 .timeline-empty {
@@ -22146,7 +22146,7 @@ body {
   top: 8px;
   bottom: 8px;
   width: 1px;
-  background: linear-gradient(180deg, transparent, rgba(0,229,255,0.25) 10%, rgba(0,229,255,0.25) 90%, transparent);
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent-cyan) 25%, transparent) 10%, color-mix(in srgb, var(--accent-cyan) 25%, transparent) 90%, transparent);
 }
 .timeline-node {
   position: relative;
@@ -22156,7 +22156,7 @@ body {
   border-radius: 4px;
 }
 .timeline-node:hover {
-  background: rgba(0,229,255,0.04);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
 }
 .timeline-node::before {
   content: "";
@@ -22167,23 +22167,23 @@ body {
   height: 10px;
   border-radius: 50%;
   background: var(--bg-card-solid, #14181C);
-  border: 2px solid rgba(0,229,255,0.25);
+  border: 2px solid color-mix(in srgb, var(--accent-cyan) 25%, transparent);
   transition: all 0.25s ease;
   z-index: 1;
 }
 .timeline-node:hover::before {
-  border-color: rgba(0,229,255,0.6);
-  box-shadow: 0 0 6px rgba(0,229,255,0.3);
+  border-color: color-mix(in srgb, var(--accent-cyan) 60%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 .timeline-node.active::before {
-  background: #00e5ff;
-  border-color: #00e5ff;
-  box-shadow: 0 0 0 4px rgba(0,229,255,0.15), 0 0 16px rgba(0,229,255,0.5);
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-cyan) 15%, transparent), 0 0 16px color-mix(in srgb, var(--accent-cyan) 50%, transparent);
   animation: hud-pulse-dot 2s ease-in-out infinite;
 }
 @keyframes hud-pulse-dot {
-  0%, 100% { box-shadow: 0 0 0 4px rgba(0,229,255,0.15), 0 0 16px rgba(0,229,255,0.5); }
-  50% { box-shadow: 0 0 0 6px rgba(0,229,255,0.1), 0 0 24px rgba(0,229,255,0.6); }
+  0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-cyan) 15%, transparent), 0 0 16px color-mix(in srgb, var(--accent-cyan) 50%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent-cyan) 10%, transparent), 0 0 24px color-mix(in srgb, var(--accent-cyan) 60%, transparent); }
 }
 .timeline-node-date {
   font-size: 12px;
@@ -22191,9 +22191,9 @@ body {
   font-weight: 500;
 }
 .timeline-node.active .timeline-node-date {
-  color: #00e5ff;
+  color: var(--accent-cyan);
   font-weight: 600;
-  text-shadow: 0 0 6px rgba(0,229,255,0.3);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 .timeline-node-meta {
   font-size: 10px;
@@ -22204,7 +22204,7 @@ body {
   gap: 4px;
   font-family: 'Courier New', monospace;
 }
-.timeline-node.active .timeline-node-meta { color: rgba(0,229,255,0.5); }
+.timeline-node.active .timeline-node-meta { color: color-mix(in srgb, var(--accent-cyan) 50%, transparent); }
 .delta-chip {
   display: inline-flex;
   align-items: center;
@@ -22220,9 +22220,9 @@ body {
 .timeline-footer {
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid rgba(0,229,255,0.1);
+  border-top: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   font-size: 10px;
-  color: rgba(0,229,255,0.35);
+  color: color-mix(in srgb, var(--accent-cyan) 35%, transparent);
   text-align: center;
   font-family: 'Courier New', monospace;
   letter-spacing: 0.1em;
@@ -22231,16 +22231,16 @@ body {
 /* ===== Persona Hero Card — 全息主卡 ===== */
 .persona-hero {
   background:
-    linear-gradient(180deg, rgba(0,229,255,0.04) 0%, rgba(0,229,255,0.01) 40%, var(--bg-card-solid, #14181C) 100%);
-  border: 1px solid rgba(0,229,255,0.15);
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 4%, transparent) 0%, color-mix(in srgb, var(--accent-cyan) 1%, transparent) 40%, var(--bg-card-solid, #14181C) 100%);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 15%, transparent);
   border-radius: 12px;
   padding: 28px 32px;
   position: relative;
   overflow: hidden;
   box-shadow:
     0 20px 60px rgba(0,0,0,0.5),
-    0 0 30px rgba(0,229,255,0.08),
-    inset 0 1px 0 rgba(0,229,255,0.08);
+    0 0 30px color-mix(in srgb, var(--accent-cyan) 8%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   /* HUD 切角 */
   clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
 }
@@ -22250,7 +22250,7 @@ body {
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #00e5ff, transparent);
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
   opacity: 0.6;
 }
 /* 右上角全息光晕 */
@@ -22261,7 +22261,7 @@ body {
   right: -15%;
   width: 300px;
   height: 300px;
-  background: radial-gradient(circle, rgba(0,229,255,0.08), transparent 65%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent-cyan) 8%, transparent), transparent 65%);
   pointer-events: none;
   animation: hero-holo-glow 6s ease-in-out infinite;
 }
@@ -22280,7 +22280,7 @@ body {
 }
 .hero-label {
   font-size: 10px;
-  color: rgba(0,229,255,0.7);
+  color: color-mix(in srgb, var(--accent-cyan) 70%, transparent);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   margin-bottom: 8px;
@@ -22293,27 +22293,27 @@ body {
   content: "";
   width: 16px;
   height: 1px;
-  background: rgba(0,229,255,0.5);
+  background: color-mix(in srgb, var(--accent-cyan) 50%, transparent);
 }
 .hero-label::after {
   content: "";
   width: 4px;
   height: 4px;
-  background: #00e5ff;
+  background: var(--accent-cyan);
   border-radius: 1px;
   transform: rotate(45deg);
-  box-shadow: 0 0 6px rgba(0,229,255,0.5);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent-cyan) 50%, transparent);
 }
 .hero-title {
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text-primary, #EDEFF2);
-  text-shadow: 0 0 20px rgba(0,229,255,0.1);
+  text-shadow: 0 0 20px color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
 .hero-subtitle {
   font-size: 12px;
-  color: rgba(0,229,255,0.4);
+  color: color-mix(in srgb, var(--accent-cyan) 40%, transparent);
   margin-top: 6px;
   font-family: 'Courier New', monospace;
 }
@@ -22324,14 +22324,14 @@ body {
   font-size: 13px;
   position: relative;
   z-index: 1;
-  border: 1px dashed rgba(0,229,255,0.12);
+  border: 1px dashed color-mix(in srgb, var(--accent-cyan) 12%, transparent);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
 }
 .hero-clear-diff {
   background: transparent;
-  border: 1px solid rgba(0,229,255,0.2);
-  color: rgba(0,229,255,0.6);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+  color: color-mix(in srgb, var(--accent-cyan) 60%, transparent);
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
@@ -22341,10 +22341,10 @@ body {
   font-family: inherit;
 }
 .hero-clear-diff:hover {
-  background: rgba(0,229,255,0.08);
-  color: #00e5ff;
-  border-color: rgba(0,229,255,0.4);
-  box-shadow: 0 0 12px rgba(0,229,255,0.2);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+  color: var(--accent-cyan);
+  border-color: color-mix(in srgb, var(--accent-cyan) 40%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
 }
 
 /* 置信度环 — 青光脉冲 */
@@ -22370,13 +22370,13 @@ body {
 .confidence-value strong {
   font-size: 24px;
   font-weight: 700;
-  color: #00e5ff;
+  color: var(--accent-cyan);
   line-height: 1;
-  text-shadow: 0 0 12px rgba(0,229,255,0.4);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 40%, transparent);
 }
 .confidence-value span {
   font-size: 8px;
-  color: rgba(0,229,255,0.4);
+  color: color-mix(in srgb, var(--accent-cyan) 40%, transparent);
   margin-top: 3px;
   letter-spacing: 0.12em;
   font-family: 'Courier New', monospace;
@@ -22393,15 +22393,15 @@ body {
 .persona-col {
   position: relative;
   padding: 14px 14px 14px 18px;
-  background: rgba(0,229,255,0.02);
-  border: 1px solid rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   border-radius: 8px;
   /* 左侧发光线 */
-  border-left: 2px solid rgba(0,229,255,0.2);
+  border-left: 2px solid color-mix(in srgb, var(--accent-cyan) 20%, transparent);
 }
 .persona-col:hover {
-  background: rgba(0,229,255,0.04);
-  border-color: rgba(0,229,255,0.15);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
+  border-color: color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 .persona-col-header {
   display: flex;
@@ -22409,11 +22409,11 @@ body {
   justify-content: space-between;
   margin-bottom: 10px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(0,229,255,0.08);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-cyan) 8%, transparent);
 }
 .persona-col-title {
   font-size: 11px;
-  color: rgba(0,229,255,0.6);
+  color: color-mix(in srgb, var(--accent-cyan) 60%, transparent);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -22421,8 +22421,8 @@ body {
 }
 .persona-col-count {
   font-size: 11px;
-  color: #00e5ff;
-  background: rgba(0,229,255,0.1);
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   padding: 2px 8px;
   border-radius: 4px;
   font-weight: 700;
@@ -22430,7 +22430,7 @@ body {
   align-items: center;
   gap: 4px;
   font-family: 'Courier New', monospace;
-  border: 1px solid rgba(0,229,255,0.15);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 .count-added {
   background: rgba(0,255,136,0.15);
@@ -22475,7 +22475,7 @@ body {
 }
 .persona-col li::before {
   content: "▹";
-  color: rgba(0,229,255,0.5);
+  color: color-mix(in srgb, var(--accent-cyan) 50%, transparent);
   font-weight: 700;
   flex-shrink: 0;
   font-size: 11px;
@@ -22489,10 +22489,10 @@ body {
 .info-card {
   background:
     linear-gradient(180deg,
-      rgba(0,229,255,0.03) 0%,
-      rgba(0,229,255,0.01) 40%,
+      color-mix(in srgb, var(--accent-cyan) 3%, transparent) 0%,
+      color-mix(in srgb, var(--accent-cyan) 1%, transparent) 40%,
       var(--bg-card-solid, #14181C) 100%);
-  border: 1px solid rgba(0,229,255,0.1);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-radius: 10px;
   padding: 18px 20px;
   backdrop-filter: blur(8px);
@@ -22508,7 +22508,7 @@ body {
   position: absolute;
   top: 0; left: 16px; right: 16px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.25), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-cyan) 25%, transparent), transparent);
   opacity: 0.8;
 }
 /* 右下角装饰点 */
@@ -22519,14 +22519,14 @@ body {
   right: 10px;
   width: 4px;
   height: 4px;
-  background: rgba(0,229,255,0.2);
+  background: color-mix(in srgb, var(--accent-cyan) 20%, transparent);
   border-radius: 1px;
   transform: rotate(45deg);
 }
 .info-card:hover {
-  border-color: rgba(0,229,255,0.25);
+  border-color: color-mix(in srgb, var(--accent-cyan) 25%, transparent);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px -4px rgba(0,0,0,.3), 0 0 20px rgba(0,229,255,0.08);
+  box-shadow: 0 8px 24px -4px rgba(0,0,0,.3), 0 0 20px color-mix(in srgb, var(--accent-cyan) 8%, transparent);
 }
 .info-card-header {
   display: flex;
@@ -22546,12 +22546,12 @@ body {
   content: "";
   width: 3px;
   height: 14px;
-  background: linear-gradient(180deg, #00e5ff, rgba(0,229,255,0.2));
+  background: linear-gradient(180deg, var(--accent-cyan), color-mix(in srgb, var(--accent-cyan) 20%, transparent));
   border-radius: 2px;
 }
 .info-card-meta {
   font-size: 10px;
-  color: rgba(0,229,255,0.35);
+  color: color-mix(in srgb, var(--accent-cyan) 35%, transparent);
   font-family: 'Courier New', monospace;
 }
 .card-loading,
@@ -22572,9 +22572,9 @@ body {
   margin-bottom: 12px;
 }
 .pref-tag {
-  background: rgba(0,229,255,0.08);
-  color: rgba(0,229,255,0.8);
-  border: 1px solid rgba(0,229,255,0.15);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+  color: color-mix(in srgb, var(--accent-cyan) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 15%, transparent);
   padding: 4px 12px;
   border-radius: 999px;
   font-size: 11px;
@@ -22583,35 +22583,35 @@ body {
   transition: all 0.2s ease;
 }
 .pref-tag:hover {
-  background: rgba(0,229,255,0.12);
-  box-shadow: 0 0 8px rgba(0,229,255,0.15);
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 .prefs-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
-  border-top: 1px solid rgba(0,229,255,0.05);
+  border-top: 1px solid color-mix(in srgb, var(--accent-cyan) 5%, transparent);
   font-size: 12px;
 }
 .prefs-row:first-of-type { border-top: none; }
 .prefs-row .label { color: var(--text-muted, #8B94A0); }
 .prefs-row .value {
-  color: #00e5ff;
+  color: var(--accent-cyan);
   font-weight: 500;
-  background: rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   padding: 2px 10px;
   border-radius: 4px;
-  border: 1px solid rgba(0,229,255,0.12);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 12%, transparent);
   font-family: 'Courier New', monospace;
 }
 
 /* PreheatCard */
 .preheat-card .preheat-btn {
   width: 100%;
-  background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(0,229,255,0.04));
-  border: 1px solid rgba(0,229,255,0.2);
-  color: #00e5ff;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 12%, transparent), color-mix(in srgb, var(--accent-cyan) 4%, transparent));
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+  color: var(--accent-cyan);
   padding: 10px 14px;
   border-radius: 6px;
   font-size: 13px;
@@ -22622,10 +22622,10 @@ body {
   letter-spacing: 0.04em;
 }
 .preheat-card .preheat-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(0,229,255,0.2), rgba(0,229,255,0.08));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 20%, transparent), color-mix(in srgb, var(--accent-cyan) 8%, transparent));
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(0,229,255,0.2);
-  text-shadow: 0 0 8px rgba(0,229,255,0.3);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 .preheat-card .preheat-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .preheat-card .preheat-error {
@@ -22669,7 +22669,7 @@ body {
 /* ===== KPI 细条 — 数据仪表 ===== */
 .kpi-strip {
   background: var(--bg-card-solid, #14181C);
-  border: 1px solid rgba(0,229,255,0.1);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-radius: 10px;
   padding: 16px 24px;
   display: flex;
@@ -22686,7 +22686,7 @@ body {
   left: 10%;
   right: 10%;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.3), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-cyan) 30%, transparent), transparent);
 }
 .kpi-item {
   display: flex;
@@ -22704,20 +22704,20 @@ body {
   transform: translateY(-50%);
   width: 1px;
   height: 20px;
-  background: linear-gradient(180deg, transparent, rgba(0,229,255,0.15), transparent);
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent-cyan) 15%, transparent), transparent);
 }
 .kpi-value {
   font-size: 24px;
   font-weight: 700;
-  color: #00e5ff;
+  color: var(--accent-cyan);
   line-height: 1;
   font-variant-numeric: tabular-nums;
   font-family: 'Courier New', monospace;
-  text-shadow: 0 0 10px rgba(0,229,255,0.25);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent-cyan) 25%, transparent);
 }
 .kpi-label {
   font-size: 11px;
-  color: rgba(0,229,255,0.4);
+  color: color-mix(in srgb, var(--accent-cyan) 40%, transparent);
   letter-spacing: 0.06em;
   font-family: 'Courier New', monospace;
 }
@@ -22725,7 +22725,7 @@ body {
 /* ===== 进化趋势 mini chart — 赛博图表 ===== */
 .evolution-card {
   background: var(--bg-card-solid, #14181C);
-  border: 1px solid rgba(0,229,255,0.1);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-radius: 10px;
   padding: 18px 20px;
   position: relative;
@@ -22777,8 +22777,8 @@ body {
     0deg,
     transparent,
     transparent 2px,
-    rgba(0,229,255,0.008) 2px,
-    rgba(0,229,255,0.008) 4px
+    color-mix(in srgb, var(--accent-cyan) 0.8%, transparent) 2px,
+    color-mix(in srgb, var(--accent-cyan) 0.8%, transparent) 4px
   );
   animation: scanline-drift 8s linear infinite;
 }
@@ -22797,8 +22797,8 @@ body {
 .hud-corner-tl {
   top: 12px;
   left: 12px;
-  border-top: 1px solid rgba(0,229,255,0.25);
-  border-left: 1px solid rgba(0,229,255,0.25);
+  border-top: 1px solid color-mix(in srgb, var(--accent-cyan) 25%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--accent-cyan) 25%, transparent);
 }
 .hud-corner-tl::after {
   content: "";
@@ -22807,15 +22807,15 @@ body {
   left: 0;
   width: 6px;
   height: 6px;
-  background: #00e5ff;
+  background: var(--accent-cyan);
   opacity: 0.5;
-  box-shadow: 0 0 6px rgba(0,229,255,0.4);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent-cyan) 40%, transparent);
 }
 .hud-corner-br {
   bottom: 12px;
   right: 12px;
-  border-bottom: 1px solid rgba(0,229,255,0.15);
-  border-right: 1px solid rgba(0,229,255,0.15);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-cyan) 15%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 .hud-corner-br::after {
   content: "";
@@ -22824,8 +22824,8 @@ body {
   right: 0;
   width: 6px;
   height: 6px;
-  background: rgba(0,229,255,0.3);
-  box-shadow: 0 0 6px rgba(0,229,255,0.2);
+  background: color-mix(in srgb, var(--accent-cyan) 30%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
 }
 
 /* ===== section-header 科幻风格 ===== */
@@ -22845,12 +22845,12 @@ body {
   content: "";
   width: 3px;
   height: 16px;
-  background: linear-gradient(180deg, #00e5ff, rgba(0,229,255,0.2));
+  background: linear-gradient(180deg, var(--accent-cyan), color-mix(in srgb, var(--accent-cyan) 20%, transparent));
   border-radius: 2px;
 }
 .profile-center-page .section-desc {
   font-size: 12px;
-  color: rgba(0,229,255,0.35);
+  color: color-mix(in srgb, var(--accent-cyan) 35%, transparent);
   margin: 0;
   line-height: 1.5;
   font-family: 'Courier New', monospace;
@@ -22867,23 +22867,23 @@ body {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border: 1px solid rgba(0,229,255,0.08);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   border-radius: 6px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   transition: all 0.2s ease;
 }
 .profile-special-follows .special-follow-item:hover {
-  border-color: rgba(0,229,255,0.15);
-  background: rgba(0,229,255,0.04);
+  border-color: color-mix(in srgb, var(--accent-cyan) 15%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
 }
 .profile-special-follows .special-follow-type {
   font-size: 10px;
   padding: 2px 8px;
   border-radius: 3px;
-  background: rgba(0,229,255,0.08);
-  color: rgba(0,229,255,0.6);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+  color: color-mix(in srgb, var(--accent-cyan) 60%, transparent);
   font-family: 'Courier New', monospace;
-  border: 1px solid rgba(0,229,255,0.12);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 12%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -22901,18 +22901,18 @@ body {
 .profile-special-follows .special-follow-remove {
   padding: 4px 10px;
   border-radius: 4px;
-  border: 1px solid rgba(0,229,255,0.1);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   background: transparent;
-  color: rgba(0,229,255,0.5);
+  color: color-mix(in srgb, var(--accent-cyan) 50%, transparent);
   font-size: 11px;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
 }
 .profile-special-follows .special-follow-edit:hover {
-  background: rgba(0,229,255,0.08);
-  color: #00e5ff;
-  border-color: rgba(0,229,255,0.3);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+  color: var(--accent-cyan);
+  border-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 .profile-special-follows .special-follow-remove:hover {
   background: rgba(255,51,102,0.08);
@@ -22928,9 +22928,9 @@ body {
 .profile-special-follows .special-follow-form select,
 .profile-special-follows .special-follow-form input {
   padding: 8px 12px;
-  border: 1px solid rgba(0,229,255,0.1);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-radius: 6px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   color: var(--text-primary);
   font-size: 12px;
   outline: none;
@@ -22939,23 +22939,23 @@ body {
 }
 .profile-special-follows .special-follow-form select:focus,
 .profile-special-follows .special-follow-form input:focus {
-  border-color: rgba(0,229,255,0.3);
-  box-shadow: 0 0 8px rgba(0,229,255,0.1);
+  border-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
 .profile-special-follows .special-follow-form button {
   padding: 8px 16px;
-  border: 1px solid rgba(0,229,255,0.2);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 20%, transparent);
   border-radius: 6px;
-  background: rgba(0,229,255,0.06);
-  color: #00e5ff;
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
+  color: var(--accent-cyan);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
 }
 .profile-special-follows .special-follow-form button:hover {
-  background: rgba(0,229,255,0.12);
-  box-shadow: 0 0 8px rgba(0,229,255,0.15);
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 
 /* ===== AI 画像相关 section 通用 ===== */
@@ -22964,7 +22964,7 @@ body {
 .profile-center-page .profile-calibration-panel,
 .profile-center-page .profile-memory-panel {
   background: var(--bg-card-solid, #14181C);
-  border: 1px solid rgba(0,229,255,0.1);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-radius: 10px;
   padding: 20px 24px;
   position: relative;
@@ -22978,19 +22978,19 @@ body {
   position: absolute;
   top: 0; left: 16px; right: 16px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.2), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-cyan) 20%, transparent), transparent);
 }
 .profile-center-page .empty-state {
   padding: 24px;
   text-align: center;
   color: var(--text-muted);
-  border: 1px dashed rgba(0,229,255,0.1);
+  border: 1px dashed color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
 }
 .profile-center-page .empty-state-hint {
   font-size: 12px;
-  color: rgba(0,229,255,0.3);
+  color: color-mix(in srgb, var(--accent-cyan) 30%, transparent);
   margin-top: 4px;
 }
 .profile-center-page .priority-list {
@@ -23003,14 +23003,14 @@ body {
   gap: 12px;
   align-items: center;
   padding: 8px 12px;
-  border: 1px solid rgba(0,229,255,0.05);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 5%, transparent);
   border-radius: 6px;
   transition: all 0.2s ease;
   font-size: 13px;
 }
 .profile-center-page .priority-row:hover {
-  background: rgba(0,229,255,0.03);
-  border-color: rgba(0,229,255,0.1);
+  background: color-mix(in srgb, var(--accent-cyan) 3%, transparent);
+  border-color: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
 
 /* ===== 推荐校准卡片 ===== */
@@ -23022,17 +23022,17 @@ body {
 }
 .profile-calibration-card {
   padding: 14px;
-  border: 1px solid rgba(0,229,255,0.08);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   transition: all 0.2s ease;
 }
 .profile-calibration-card:hover {
-  border-color: rgba(0,229,255,0.15);
+  border-color: color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 .profile-calibration-card span {
   font-size: 11px;
-  color: rgba(0,229,255,0.5);
+  color: color-mix(in srgb, var(--accent-cyan) 50%, transparent);
   font-family: 'Courier New', monospace;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -23041,9 +23041,9 @@ body {
   display: block;
   font-size: 20px;
   font-weight: 700;
-  color: #00e5ff;
+  color: var(--accent-cyan);
   margin: 4px 0;
-  text-shadow: 0 0 8px rgba(0,229,255,0.2);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
 }
 .profile-calibration-card p {
   font-size: 12px;
@@ -23070,24 +23070,24 @@ body {
   border: 1px solid;
 }
 .profile-hero .ai-primary-action {
-  background: linear-gradient(135deg, rgba(0,229,255,0.15), rgba(0,229,255,0.05));
-  border-color: rgba(0,229,255,0.3);
-  color: #00e5ff;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 15%, transparent), color-mix(in srgb, var(--accent-cyan) 5%, transparent));
+  border-color: color-mix(in srgb, var(--accent-cyan) 30%, transparent);
+  color: var(--accent-cyan);
 }
 .profile-hero .ai-primary-action:hover {
-  background: linear-gradient(135deg, rgba(0,229,255,0.25), rgba(0,229,255,0.1));
-  box-shadow: 0 4px 16px rgba(0,229,255,0.2);
-  text-shadow: 0 0 8px rgba(0,229,255,0.3);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 25%, transparent), color-mix(in srgb, var(--accent-cyan) 10%, transparent));
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 .profile-hero .secondary-action {
   background: transparent;
-  border-color: rgba(0,229,255,0.12);
-  color: rgba(0,229,255,0.5);
+  border-color: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  color: color-mix(in srgb, var(--accent-cyan) 50%, transparent);
 }
 .profile-hero .secondary-action:hover {
-  border-color: rgba(0,229,255,0.25);
-  color: rgba(0,229,255,0.7);
-  background: rgba(0,229,255,0.04);
+  border-color: color-mix(in srgb, var(--accent-cyan) 25%, transparent);
+  color: color-mix(in srgb, var(--accent-cyan) 70%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
 }
 
 /* ============ 水墨氛围视觉层 ============ */
@@ -23539,13 +23539,13 @@ body {
  * ============================================================ */
 
 .profile-center-page {
-  --hud-cyan: #00e5ff;
-  --hud-cyan-dim: rgba(0, 229, 255, 0.6);
-  --hud-cyan-faint: rgba(0, 229, 255, 0.25);
-  --hud-cyan-ghost: rgba(0, 229, 255, 0.08);
+  --hud-cyan: var(--accent-cyan);
+  --hud-cyan-dim: color-mix(in srgb, var(--accent-cyan) 60%, transparent);
+  --hud-cyan-faint: color-mix(in srgb, var(--accent-cyan) 25%, transparent);
+  --hud-cyan-ghost: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   --hud-bg: #0d1116;
   --hud-panel: rgba(13, 17, 22, 0.82);
-  --hud-grid: rgba(0, 229, 255, 0.035);
+  --hud-grid: color-mix(in srgb, var(--accent-cyan) 3.5%, transparent);
   --hud-font-mono: 'Courier New', 'SFMono-Regular', Consolas, monospace;
   --hud-radius: 12px;
   --hud-cut: 16px;
@@ -23562,13 +23562,13 @@ body {
   border: 1px solid var(--hud-cyan-faint);
   border-radius: var(--hud-radius);
   background:
-    linear-gradient(135deg, rgba(0,229,255,0.06) 0%, transparent 40%),
-    linear-gradient(180deg, rgba(0,229,255,0.04) 0%, transparent 60%),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 6%, transparent) 0%, transparent 40%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 4%, transparent) 0%, transparent 60%),
     var(--hud-panel);
   box-shadow:
     0 24px 70px rgba(0,0,0,0.55),
-    0 0 40px rgba(0,229,255,0.06),
-    inset 0 1px 0 rgba(0,229,255,0.08);
+    0 0 40px color-mix(in srgb, var(--accent-cyan) 6%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   clip-path: polygon(
     0 0,
     calc(100% - var(--hud-cut)) 0,
@@ -23590,8 +23590,8 @@ body {
       0deg,
       transparent,
       transparent 2px,
-      rgba(0,229,255,0.02) 2px,
-      rgba(0,229,255,0.02) 3px
+      color-mix(in srgb, var(--accent-cyan) 2%, transparent) 2px,
+      color-mix(in srgb, var(--accent-cyan) 2%, transparent) 3px
     );
   pointer-events: none;
   animation: hud-scanline 6s linear infinite;
@@ -23654,7 +23654,7 @@ body {
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--text-primary);
-  text-shadow: 0 0 24px rgba(0,229,255,0.15);
+  text-shadow: 0 0 24px color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 
 .profile-center-page .profile-hero p {
@@ -23680,7 +23680,7 @@ body {
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
   background:
-    linear-gradient(135deg, rgba(0,229,255,0.16), rgba(0,229,255,0.06)),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 16%, transparent), color-mix(in srgb, var(--accent-cyan) 6%, transparent)),
     var(--hud-panel);
   color: var(--hud-cyan);
   font-weight: 800;
@@ -23689,23 +23689,23 @@ body {
   cursor: pointer;
   overflow: hidden;
   transition: all 0.25s ease;
-  box-shadow: 0 0 16px rgba(0,229,255,0.1);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
 
 .profile-center-page .ai-primary-action::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.15), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-cyan) 15%, transparent), transparent);
   transform: translateX(-100%);
   transition: transform 0.5s ease;
 }
 
 .profile-center-page .ai-primary-action:hover {
   border-color: var(--hud-cyan-dim);
-  background: linear-gradient(135deg, rgba(0,229,255,0.24), rgba(0,229,255,0.1));
-  box-shadow: 0 0 24px rgba(0,229,255,0.2);
-  text-shadow: 0 0 8px rgba(0,229,255,0.4);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 24%, transparent), color-mix(in srgb, var(--accent-cyan) 10%, transparent));
+  box-shadow: 0 0 24px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 40%, transparent);
 }
 
 .profile-center-page .ai-primary-action:hover::before {
@@ -23740,10 +23740,10 @@ body {
 }
 
 .profile-center-page .profile-tab.active {
-  background: linear-gradient(135deg, rgba(0,229,255,0.18), rgba(0,229,255,0.08));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 18%, transparent), color-mix(in srgb, var(--accent-cyan) 8%, transparent));
   color: var(--hud-cyan);
   border-color: var(--hud-cyan-dim);
-  box-shadow: 0 0 16px rgba(0,229,255,0.18), inset 0 1px 0 rgba(0,229,255,0.12);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent-cyan) 18%, transparent), inset 0 1px 0 color-mix(in srgb, var(--accent-cyan) 12%, transparent);
 }
 
 /* ---- 通用科技面板容器 ---- */
@@ -23761,7 +23761,7 @@ body {
   border: 1px solid var(--hud-cyan-faint);
   border-radius: var(--hud-radius);
   background:
-    linear-gradient(180deg, rgba(0,229,255,0.03) 0%, transparent 50%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 3%, transparent) 0%, transparent 50%),
     var(--hud-panel);
   box-shadow: 0 12px 40px rgba(0,0,0,0.35);
   overflow: hidden;
@@ -23857,15 +23857,15 @@ body {
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 10px;
   background:
-    linear-gradient(180deg, rgba(0,229,255,0.03) 0%, transparent 60%),
-    rgba(0,229,255,0.02);
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 3%, transparent) 0%, transparent 60%),
+    color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   transition: all 0.25s ease;
 }
 
 .profile-center-page .profile-summary-grid > div:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.04);
-  box-shadow: 0 0 20px rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   transform: translateY(-2px);
 }
 
@@ -23881,7 +23881,7 @@ body {
   font-size: 32px;
   font-weight: 800;
   color: var(--hud-cyan);
-  text-shadow: 0 0 16px rgba(0,229,255,0.25);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--accent-cyan) 25%, transparent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -23902,16 +23902,16 @@ body {
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 10px;
   background:
-    linear-gradient(180deg, rgba(0,229,255,0.03) 0%, transparent 60%),
-    rgba(0,229,255,0.02);
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 3%, transparent) 0%, transparent 60%),
+    color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   box-shadow: none;
   transition: all 0.25s ease;
 }
 
 .profile-center-page .block-stat-card:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.04);
-  box-shadow: 0 0 20px rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   transform: translateY(-2px);
 }
 
@@ -23927,7 +23927,7 @@ body {
   font-size: 32px;
   font-weight: 800;
   color: var(--hud-cyan);
-  text-shadow: 0 0 16px rgba(0,229,255,0.25);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--accent-cyan) 25%, transparent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -23947,7 +23947,7 @@ body {
   font-size: 44px;
   font-weight: 800;
   color: var(--hud-cyan);
-  text-shadow: 0 0 24px rgba(0,229,255,0.3);
+  text-shadow: 0 0 24px color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 
 .profile-center-page .profile-learning-score span {
@@ -23965,7 +23965,7 @@ body {
 
 .profile-center-page .profile-learning-actions button {
   border: 1px solid var(--hud-cyan-faint);
-  background: rgba(0,229,255,0.04);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 700;
@@ -23974,9 +23974,9 @@ body {
 
 .profile-center-page .profile-learning-actions button:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   color: var(--hud-cyan);
-  box-shadow: 0 0 12px rgba(0,229,255,0.1);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
 
 .profile-center-page .profile-learning-side {
@@ -23989,7 +23989,7 @@ body {
   padding: 12px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
 }
 
 .profile-center-page .profile-learning-side span {
@@ -24016,13 +24016,13 @@ body {
   padding: 12px 14px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   transition: all 0.2s ease;
 }
 
 .profile-center-page .priority-row:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.04);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
 }
 
 .profile-center-page .priority-row span {
@@ -24037,7 +24037,7 @@ body {
 
 .profile-center-page .profile-tier-control button {
   border: 1px solid var(--hud-cyan-faint);
-  background: rgba(0,229,255,0.03);
+  background: color-mix(in srgb, var(--accent-cyan) 3%, transparent);
   color: var(--text-muted);
   transition: all 0.2s ease;
 }
@@ -24045,16 +24045,16 @@ body {
 .profile-center-page .profile-tier-control button:hover,
 .profile-center-page .profile-tier-control button:focus-visible {
   border-color: var(--hud-cyan-dim);
-  color: rgba(0,229,255,0.8);
-  background: rgba(0,229,255,0.06);
+  color: color-mix(in srgb, var(--accent-cyan) 80%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
 }
 
 .profile-center-page .profile-tier-control button.active {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.12);
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
   color: var(--hud-cyan);
-  box-shadow: 0 0 12px rgba(0,229,255,0.15);
-  text-shadow: 0 0 8px rgba(0,229,255,0.3);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 15%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 
 /* ---- 特别关注 ---- */
@@ -24072,13 +24072,13 @@ body {
   padding: 12px 14px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
 }
 
 .profile-center-page .special-follow-type {
   padding: 3px 8px;
   border-radius: 4px;
-  background: rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   border: 1px solid var(--hud-cyan-faint);
   color: var(--hud-cyan);
   font-size: 10px;
@@ -24112,7 +24112,7 @@ body {
 
 .profile-center-page .special-follow-edit:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.06);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
   color: var(--hud-cyan);
 }
 
@@ -24137,7 +24137,7 @@ body {
   padding: 0 12px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
-  background: rgba(0,229,255,0.03);
+  background: color-mix(in srgb, var(--accent-cyan) 3%, transparent);
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
@@ -24147,7 +24147,7 @@ body {
 .profile-center-page .special-follow-form select:focus,
 .profile-center-page .special-follow-form input:focus {
   border-color: var(--hud-cyan-dim);
-  box-shadow: 0 0 12px rgba(0,229,255,0.1);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
 
 .profile-center-page .special-follow-form button {
@@ -24155,7 +24155,7 @@ body {
   padding: 0 18px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
-  background: rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   color: var(--hud-cyan);
   font-weight: 700;
   font-size: 13px;
@@ -24165,8 +24165,8 @@ body {
 
 .profile-center-page .special-follow-form button:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.14);
-  box-shadow: 0 0 16px rgba(0,229,255,0.12);
+  background: color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent-cyan) 12%, transparent);
 }
 
 /* ---- 推荐校准状态 ---- */
@@ -24182,14 +24182,14 @@ body {
   padding: 16px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 10px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   transition: all 0.25s ease;
 }
 
 .profile-center-page .profile-calibration-card:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.04);
-  box-shadow: 0 0 16px rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent-cyan) 8%, transparent);
 }
 
 .profile-center-page .profile-calibration-card span {
@@ -24203,7 +24203,7 @@ body {
 .profile-center-page .profile-calibration-card strong {
   font-size: 28px;
   color: var(--hud-cyan);
-  text-shadow: 0 0 14px rgba(0,229,255,0.2);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
 }
 
 .profile-center-page .profile-calibration-card p {
@@ -24239,7 +24239,7 @@ body {
   padding: 14px 16px;
   border: 1px dashed var(--hud-cyan-faint);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(0,229,255,0.03), rgba(8,11,15,0.35));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 3%, transparent), rgba(8,11,15,0.35));
 }
 .profile-center-page .calibration-console-head {
   display: flex;
@@ -24276,8 +24276,8 @@ body {
 .profile-center-page .calibration-type-toggle button.active {
   border-color: var(--hud-cyan);
   color: var(--hud-cyan);
-  background: rgba(0,229,255,0.08);
-  box-shadow: 0 0 10px rgba(0,229,255,0.15);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 .profile-center-page .calibration-console-row { display: flex; gap: 10px; }
 .profile-center-page .calibration-console-input {
@@ -24293,13 +24293,13 @@ body {
 .profile-center-page .calibration-console-input:focus {
   outline: none;
   border-color: var(--hud-cyan);
-  box-shadow: 0 0 0 2px rgba(0,229,255,0.15);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 .profile-center-page .calibration-apply { white-space: nowrap; }
 .profile-center-page .calibration-summary {
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(0,229,255,0.08);
+  border-top: 1px solid color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   font-size: 11px;
   color: var(--text-muted);
 }
@@ -24311,13 +24311,13 @@ body {
   padding: 16px 16px 16px 20px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   transition: all 0.2s ease;
 }
 
 .profile-center-page .profile-snapshot:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.04);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
 }
 
 .profile-center-page .profile-snapshot::before {
@@ -24357,7 +24357,7 @@ body {
   padding: 0 12px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
-  background: rgba(0,229,255,0.03);
+  background: color-mix(in srgb, var(--accent-cyan) 3%, transparent);
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
@@ -24377,7 +24377,7 @@ body {
 
 .profile-center-page .memory-toolbar button:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.06);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
   color: var(--hud-cyan);
 }
 
@@ -24385,7 +24385,7 @@ body {
   padding: 14px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   margin-bottom: 10px;
 }
 
@@ -24397,7 +24397,7 @@ body {
   font-family: var(--hud-font-mono);
   text-transform: uppercase;
   border: 1px solid var(--hud-cyan-faint);
-  background: rgba(0,229,255,0.06);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
   color: var(--hud-cyan);
 }
 
@@ -24457,7 +24457,7 @@ body {
   padding: 12px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
 }
 
 .profile-center-page .evidence-item {
@@ -24475,7 +24475,7 @@ body {
   margin-right: 8px;
   padding: 1px 6px;
   border-radius: 3px;
-  background: rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   color: var(--hud-cyan);
   font-size: 10px;
   font-family: var(--hud-font-mono);
@@ -24510,7 +24510,7 @@ body {
   padding: 12px 14px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   margin-bottom: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -24518,7 +24518,7 @@ body {
 
 .profile-center-page .snapshot-item:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.04);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
 }
 
 .profile-center-page .snapshot-date {
@@ -24551,7 +24551,7 @@ body {
 
 .profile-center-page .snapshot-status.status-pending,
 .profile-center-page .snapshot-status.status-unknown {
-  background: rgba(0,229,255,0.06);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
   color: var(--hud-cyan-dim);
 }
 
@@ -24571,7 +24571,7 @@ body {
   padding: 18px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 10px;
-  background: rgba(0,229,255,0.03);
+  background: color-mix(in srgb, var(--accent-cyan) 3%, transparent);
 }
 
 .profile-center-page .snapshot-detail-header {
@@ -24628,7 +24628,7 @@ body {
   padding: 10px 12px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   font-size: 12px;
 }
 
@@ -24652,7 +24652,7 @@ body {
 }
 
 .profile-center-page .snapshot-detail-score {
-  background: rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   border: 1px solid var(--hud-cyan-faint);
   color: var(--hud-cyan);
 }
@@ -24694,7 +24694,7 @@ body {
   text-align: center;
   border: 1px dashed var(--hud-cyan-faint);
   border-radius: 10px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   color: var(--text-muted);
   font-size: 13px;
 }
@@ -24710,7 +24710,7 @@ body {
   padding: 0 18px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
-  background: rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   color: var(--hud-cyan);
   font-weight: 700;
   cursor: pointer;
@@ -24719,7 +24719,7 @@ body {
 
 .profile-center-page .empty-state button:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.14);
+  background: color-mix(in srgb, var(--accent-cyan) 14%, transparent);
 }
 
 /* ---- 待确认建议 ---- */
@@ -24740,7 +24740,7 @@ body {
   padding: 16px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 10px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
 }
 
 .profile-center-page .persona-column h3 {
@@ -24772,13 +24772,13 @@ body {
   padding: 16px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 10px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
   transition: all 0.2s ease;
 }
 
 .profile-center-page .pending-suggestion-card:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.04);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
 }
 
 .profile-center-page .pending-count {
@@ -24790,7 +24790,7 @@ body {
   margin-left: 8px;
   padding: 0 6px;
   border-radius: 10px;
-  background: rgba(0,229,255,0.12);
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
   border: 1px solid var(--hud-cyan-faint);
   color: var(--hud-cyan);
   font-size: 11px;
@@ -24806,13 +24806,13 @@ body {
   /* HUD 变量兜底：ProfileModal 是全局弹窗，渲染在 .profile-center-page 容器之外，
      必须在此自行定义全套 --hud-* 令牌，否则背景/边框变量失效导致透明。
      深色模式用青黑面板；浅色模式在下方 [data-mode="light"] 覆盖为白玻璃。 */
-  --hud-cyan: #00e5ff;
-  --hud-cyan-dim: rgba(0, 229, 255, 0.6);
-  --hud-cyan-faint: rgba(0, 229, 255, 0.25);
-  --hud-cyan-ghost: rgba(0, 229, 255, 0.08);
+  --hud-cyan: var(--accent-cyan);
+  --hud-cyan-dim: color-mix(in srgb, var(--accent-cyan) 60%, transparent);
+  --hud-cyan-faint: color-mix(in srgb, var(--accent-cyan) 25%, transparent);
+  --hud-cyan-ghost: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   --hud-panel: rgba(13, 17, 22, 0.94);
   --hud-panel-deep: rgba(10, 14, 20, 0.98);
-  --hud-grid: rgba(0, 229, 255, 0.035);
+  --hud-grid: color-mix(in srgb, var(--accent-cyan) 3.5%, transparent);
   --hud-text: var(--text-primary);
   --hud-dim: var(--text-muted);
   --hud-font-mono: 'Share Tech Mono', 'JetBrains Mono', Consolas, monospace;
@@ -24825,11 +24825,11 @@ body {
   border: 1px solid var(--hud-cyan-faint);
   border-radius: var(--hud-radius);
   background:
-    linear-gradient(180deg, rgba(0,229,255,0.04) 0%, transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 4%, transparent) 0%, transparent 30%),
     var(--hud-panel);
   box-shadow:
     0 32px 80px rgba(0,0,0,0.6),
-    0 0 60px rgba(0,229,255,0.08);
+    0 0 60px color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   clip-path: polygon(
     0 0,
     calc(100% - var(--hud-cut)) 0,
@@ -24880,8 +24880,8 @@ body {
   position: relative;
   height: 110px;
   background:
-    linear-gradient(120deg, rgba(0,229,255,0.18), rgba(0,229,255,0.06) 55%, transparent),
-    linear-gradient(180deg, rgba(0,229,255,0.08), transparent);
+    linear-gradient(120deg, color-mix(in srgb, var(--accent-cyan) 18%, transparent), color-mix(in srgb, var(--accent-cyan) 6%, transparent) 55%, transparent),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 8%, transparent), transparent);
   border-bottom: 1px solid var(--hud-cyan-faint);
 }
 
@@ -24894,8 +24894,8 @@ body {
       0deg,
       transparent,
       transparent 2px,
-      rgba(0,229,255,0.02) 2px,
-      rgba(0,229,255,0.02) 3px
+      color-mix(in srgb, var(--accent-cyan) 2%, transparent) 2px,
+      color-mix(in srgb, var(--accent-cyan) 2%, transparent) 3px
     );
   pointer-events: none;
 }
@@ -24910,7 +24910,7 @@ body {
   place-items: center;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
-  background: rgba(0,229,255,0.06);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
   color: var(--hud-cyan-dim);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -24919,9 +24919,9 @@ body {
 
 .profile-modal .modal-close:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.12);
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
   color: var(--hud-cyan);
-  box-shadow: 0 0 12px rgba(0,229,255,0.15);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 
 .profile-modal .profile-modal-body {
@@ -24944,7 +24944,7 @@ body {
   box-shadow:
     0 0 0 4px var(--hud-panel),
     0 0 0 6px var(--hud-cyan-faint),
-    0 0 30px rgba(0,229,255,0.25);
+    0 0 30px color-mix(in srgb, var(--accent-cyan) 25%, transparent);
   transition: all 0.3s ease;
 }
 
@@ -24952,7 +24952,7 @@ body {
   box-shadow:
     0 0 0 4px var(--hud-panel),
     0 0 0 6px var(--hud-cyan-dim),
-    0 0 40px rgba(0,229,255,0.4);
+    0 0 40px color-mix(in srgb, var(--accent-cyan) 40%, transparent);
 }
 
 .profile-modal .profile-avatar-default {
@@ -24965,7 +24965,7 @@ body {
   font-size: 24px;
   font-weight: 800;
   color: var(--text-primary);
-  text-shadow: 0 0 16px rgba(0,229,255,0.15);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--accent-cyan) 15%, transparent);
 }
 
 .profile-modal .profile-username {
@@ -24976,15 +24976,15 @@ body {
 
 .profile-modal .profile-avatar-change {
   border: 1px solid var(--hud-cyan-faint);
-  background: rgba(0,229,255,0.06);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
   color: var(--hud-cyan);
   transition: all 0.2s ease;
 }
 
 .profile-modal .profile-avatar-change:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.12);
-  box-shadow: 0 0 12px rgba(0,229,255,0.12);
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 12%, transparent);
 }
 
 .profile-modal .profile-avatar-remove:hover {
@@ -25012,7 +25012,7 @@ body {
   padding: 0 14px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
-  background: rgba(0,229,255,0.03);
+  background: color-mix(in srgb, var(--accent-cyan) 3%, transparent);
   color: var(--text-primary);
   font-size: 14px;
   outline: none;
@@ -25022,7 +25022,7 @@ body {
 
 .profile-modal .auth-field input:focus {
   border-color: var(--hud-cyan-dim);
-  box-shadow: 0 0 14px rgba(0,229,255,0.12);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent-cyan) 12%, transparent);
 }
 
 .profile-modal .profile-interest-section {
@@ -25039,15 +25039,15 @@ body {
 }
 
 .profile-modal .profile-interest-tag {
-  background: rgba(0,229,255,0.08);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
   border: 1px solid var(--hud-cyan-faint);
   color: var(--hud-cyan);
   transition: all 0.2s ease;
 }
 
 .profile-modal .profile-interest-tag:hover {
-  background: rgba(0,229,255,0.14);
-  box-shadow: 0 0 10px rgba(0,229,255,0.1);
+  background: color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
 
 .profile-modal .profile-interest-edit {
@@ -25059,7 +25059,7 @@ body {
 
 .profile-modal .profile-interest-edit:hover {
   border-color: var(--hud-cyan-dim);
-  background: rgba(0,229,255,0.06);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
   color: var(--hud-cyan);
 }
 
@@ -25067,7 +25067,7 @@ body {
   padding: 12px 14px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 8px;
-  background: rgba(0,229,255,0.02);
+  background: color-mix(in srgb, var(--accent-cyan) 2%, transparent);
 }
 
 .profile-modal .profile-meta-label {
@@ -25093,20 +25093,20 @@ body {
   min-height: 44px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 6px;
-  background: linear-gradient(135deg, rgba(0,229,255,0.16), rgba(0,229,255,0.06));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 16%, transparent), color-mix(in srgb, var(--accent-cyan) 6%, transparent));
   color: var(--hud-cyan);
   font-weight: 800;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.25s ease;
-  box-shadow: 0 0 16px rgba(0,229,255,0.1);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
 
 .profile-modal .auth-submit-btn:hover {
   border-color: var(--hud-cyan-dim);
-  background: linear-gradient(135deg, rgba(0,229,255,0.24), rgba(0,229,255,0.12));
-  box-shadow: 0 0 24px rgba(0,229,255,0.18);
-  text-shadow: 0 0 8px rgba(0,229,255,0.3);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 24%, transparent), color-mix(in srgb, var(--accent-cyan) 12%, transparent));
+  box-shadow: 0 0 24px color-mix(in srgb, var(--accent-cyan) 18%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 30%, transparent);
 }
 
 .profile-modal .profile-logout-btn {
@@ -25204,7 +25204,7 @@ body {
   padding: 18px;
   border-radius: var(--hud-radius);
   background:
-    radial-gradient(120% 80% at 50% -10%, rgba(0,229,255,0.10), transparent 60%),
+    radial-gradient(120% 80% at 50% -10%, color-mix(in srgb, var(--accent-cyan) 10%, transparent), transparent 60%),
     rgba(8, 11, 15, 0.55);
   border: 1px solid var(--hud-cyan-faint);
   overflow: hidden;
@@ -25269,9 +25269,9 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border: 1px solid rgba(0,229,255,0.28);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 28%, transparent);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(0,229,255,0.05), rgba(8,11,15,0.6));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 5%, transparent), rgba(8,11,15,0.6));
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 12px 30px rgba(0,0,0,0.42);
   overflow: hidden;
 }
@@ -25280,13 +25280,13 @@ body {
   position: absolute;
   left: 0; right: 0; top: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--panel-accent, #00e5ff), transparent);
+  background: linear-gradient(90deg, transparent, var(--panel-accent, var(--accent-cyan)), transparent);
   opacity: 0.7;
 }
 .profile-center-page .hud-corner {
   position: absolute;
   width: 14px; height: 14px;
-  border: 2px solid var(--panel-accent, #00e5ff);
+  border: 2px solid var(--panel-accent, var(--accent-cyan));
   opacity: 0.85;
   z-index: 2;
 }
@@ -25301,8 +25301,8 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(0,229,255,0.12);
-  background: linear-gradient(180deg, rgba(0,229,255,0.05), transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 5%, transparent), transparent);
 }
 .profile-center-page .hud-panel-titles { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .profile-center-page .hud-panel-kicker {
@@ -25357,7 +25357,7 @@ body {
   padding: 16px 18px 14px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(0,229,255,0.05), rgba(8,11,15,0.5));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 5%, transparent), rgba(8,11,15,0.5));
   overflow: hidden;
 }
 .profile-center-page .hud-kpi::before {
@@ -25455,7 +25455,7 @@ body {
   box-shadow: 0 6px 18px rgba(0,0,0,0.5);
   z-index: 5;
 }
-.profile-center-page .hud-tip-label { display: block; color: var(--hradar-cyan, #00e5ff); margin-bottom: 3px; }
+.profile-center-page .hud-tip-label { display: block; color: var(--hradar-cyan, var(--accent-cyan)); margin-bottom: 3px; }
 .profile-center-page .hud-tip-row { display: flex; align-items: center; gap: 5px; }
 .profile-center-page .hud-tip-row i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 
@@ -25547,7 +25547,7 @@ body {
   padding: 12px 14px 13px;
   border: 1px solid var(--hud-cyan-faint);
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(0, 229, 255, 0.05), rgba(8, 11, 15, 0.5));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-cyan) 5%, transparent), rgba(8, 11, 15, 0.5));
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -25558,8 +25558,8 @@ body {
   position: absolute;
   top: 7px; left: 7px;
   width: 11px; height: 11px;
-  border-top: 2px solid var(--hud-accent, #00e5ff);
-  border-left: 2px solid var(--hud-accent, #00e5ff);
+  border-top: 2px solid var(--hud-accent, var(--accent-cyan));
+  border-left: 2px solid var(--hud-accent, var(--accent-cyan));
   opacity: 0.8;
   pointer-events: none;
 }
@@ -25577,7 +25577,7 @@ body {
   font-weight: 800;
   line-height: 1;
   color: var(--text-primary);
-  text-shadow: 0 0 14px rgba(0, 229, 255, 0.45);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--accent-cyan) 45%, transparent);
   padding-left: 14px;
 }
 .profile-center-page .hud-stat-sub {
@@ -25592,15 +25592,15 @@ body {
   display: block;
   height: 4px;
   margin-top: 7px;
-  background: rgba(0, 229, 255, 0.1);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   border-radius: 2px;
   overflow: hidden;
 }
 .profile-center-page .hud-stat-bar i {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #00e5ff, #37f5b6);
-  box-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
+  background: linear-gradient(90deg, var(--accent-cyan), #37f5b6);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 50%, transparent);
   border-radius: 2px;
   transition: width 0.6s ease;
 }
@@ -25637,12 +25637,12 @@ body {
   padding-right: 4px;
   /* 细滚动条 */
   scrollbar-width: thin;
-  scrollbar-color: rgba(0,229,255,0.25) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent-cyan) 25%, transparent) transparent;
 }
 .profile-center-page .profile-snapshot-list::-webkit-scrollbar { width: 5px; }
 .profile-center-page .profile-snapshot-list::-webkit-scrollbar-track { background: transparent; }
 .profile-center-page .profile-snapshot-list::-webkit-scrollbar-thumb {
-  background: rgba(0,229,255,0.2);
+  background: color-mix(in srgb, var(--accent-cyan) 20%, transparent);
   border-radius: 3px;
 }
 
@@ -25651,12 +25651,12 @@ body {
   overflow-y: auto;
   padding-right: 4px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0,229,255,0.25) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent-cyan) 25%, transparent) transparent;
 }
 .profile-center-page .snapshot-list::-webkit-scrollbar { width: 5px; }
 .profile-center-page .snapshot-list::-webkit-scrollbar-track { background: transparent; }
 .profile-center-page .snapshot-list::-webkit-scrollbar-thumb {
-  background: rgba(0,229,255,0.2);
+  background: color-mix(in srgb, var(--accent-cyan) 20%, transparent);
   border-radius: 3px;
 }
 
@@ -25665,12 +25665,12 @@ body {
   overflow-y: auto;
   padding-right: 4px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0,229,255,0.25) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent-cyan) 25%, transparent) transparent;
 }
 .profile-center-page .memory-list::-webkit-scrollbar { width: 5px; }
 .profile-center-page .memory-list::-webkit-scrollbar-track { background: transparent; }
 .profile-center-page .memory-list::-webkit-scrollbar-thumb {
-  background: rgba(0,229,255,0.2);
+  background: color-mix(in srgb, var(--accent-cyan) 20%, transparent);
   border-radius: 3px;
 }
 
@@ -25698,10 +25698,10 @@ body {
 
 /* ---- 可折叠面板（<details>）—— 低优先级信息默认收起 ---- */
 .profile-center-page .pset-collapsible {
-  border: 1px solid var(--hud-cyan-faint, rgba(0,229,255,0.1));
-  border-left: 2px solid rgba(0,229,255,0.25);
+  border: 1px solid var(--hud-cyan-faint, color-mix(in srgb, var(--accent-cyan) 10%, transparent));
+  border-left: 2px solid color-mix(in srgb, var(--accent-cyan) 25%, transparent);
   border-radius: var(--hud-radius, 10px);
-  background: linear-gradient(180deg, rgba(0,229,255,0.02), rgba(8,11,15,0.4));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 2%, transparent), rgba(8,11,15,0.4));
   overflow: hidden;
 }
 .profile-center-page .pset-collapsible summary {
@@ -25713,12 +25713,12 @@ body {
   gap: 8px;
   font-family: var(--hud-font-mono, 'Courier New', monospace);
   font-size: 13px;
-  color: var(--hud-cyan-dim, rgba(0,229,255,0.6));
+  color: var(--hud-cyan-dim, color-mix(in srgb, var(--accent-cyan) 60%, transparent));
   user-select: none;
   transition: background 0.15s;
 }
 .profile-center-page .pset-collapsible summary:hover {
-  background: rgba(0,229,255,0.04);
+  background: color-mix(in srgb, var(--accent-cyan) 4%, transparent);
 }
 .profile-center-page .pset-collapsible summary::after {
   content: "▸";
@@ -25805,7 +25805,7 @@ body {
 .aviation-gauge-label{font-size:12px;font-weight:600;color:var(--text-secondary);}
 .aviation-gauge-sub{font-size:10px;color:var(--text-muted);}
 .profile-center-page .dash-aviation{grid-column:1 / -1;}
-.profile-center-page .dash-aviation .hud-panel.aviation{background:radial-gradient(120% 120% at 50% 0%,rgba(0,229,255,0.05),transparent 60%),var(--hud-panel);}
+.profile-center-page .dash-aviation .hud-panel.aviation{background:radial-gradient(120% 120% at 50% 0%,color-mix(in srgb, var(--accent-cyan) 5%, transparent),transparent 60%),var(--hud-panel);}
 .aviation-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;justify-items:center;padding:8px 4px;}
 @media (max-width:1200px){.aviation-grid{grid-template-columns:repeat(2,1fr);}}
 @media (max-width:600px){.aviation-grid{grid-template-columns:repeat(2,1fr);gap:10px;}}
@@ -25892,13 +25892,13 @@ body {
 
 /* === Profile section menu in HUD telemetry bar === */
 .hud-section-menu{position:relative;display:inline-flex;align-items:center;}
-.hud-section-menu-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid rgba(0,229,255,0.2);border-radius:6px;background:rgba(0,229,255,0.03);color:rgba(0,229,255,0.7);cursor:pointer;transition:all .2s ease;}
-.hud-section-menu-btn:hover{border-color:rgba(0,229,255,0.4);background:rgba(0,229,255,0.08);color:#00e5ff;}
+.hud-section-menu-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid color-mix(in srgb, var(--accent-cyan) 20%, transparent);border-radius:6px;background:color-mix(in srgb, var(--accent-cyan) 3%, transparent);color:color-mix(in srgb, var(--accent-cyan) 70%, transparent);cursor:pointer;transition:all .2s ease;}
+.hud-section-menu-btn:hover{border-color:color-mix(in srgb, var(--accent-cyan) 40%, transparent);background:color-mix(in srgb, var(--accent-cyan) 8%, transparent);color:var(--accent-cyan);}
 .hud-section-menu-btn svg{width:14px;height:14px;}
 .hud-section-dropdown{position:absolute;top:100%;right:0;margin-top:6px;min-width:160px;background:var(--bg-card);border:1px solid var(--accent-cyan-border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:100;overflow:hidden;}
 .hud-section-opt{display:flex;align-items:center;gap:8px;width:100%;padding:9px 14px;border:none;background:transparent;color:var(--text-secondary);font-size:13px;font-weight:600;text-align:left;cursor:pointer;transition:all .15s ease;}
 .hud-section-opt:hover{background:var(--bg-hover);color:var(--text-primary);}
-.hud-section-opt.active{background:rgba(0,229,255,0.08);color:#00e5ff;}
+.hud-section-opt.active{background:color-mix(in srgb, var(--accent-cyan) 8%, transparent);color:var(--accent-cyan);}
 .hud-section-opt svg{width:14px;height:14px;flex-shrink:0;}
 .hud-section-icon{display:flex;align-items:center;}
 
