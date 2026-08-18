@@ -55,9 +55,9 @@ export default function SourceOpsPanel({
   const focusActions = [
     {
       id: 'premium',
-      label: 'High Value',
+      label: '高价值',
       value: premiumSourceCount,
-      note: 'S/A sources',
+      note: 'S/A 级源',
       onClick: () => {
         setSourceTypeTab('builtin');
         setGradeFilter?.('S');
@@ -66,9 +66,9 @@ export default function SourceOpsPanel({
     },
     {
       id: 'review',
-      label: 'Needs Review',
+      label: '待复核',
       value: reviewCount,
-      note: 'warning/error',
+      note: '警告/异常',
       attention: reviewCount > 0,
       onClick: () => {
         setSourceTypeTab('custom');
@@ -77,9 +77,9 @@ export default function SourceOpsPanel({
     },
     {
       id: 'disabled',
-      label: 'Disabled',
+      label: '已禁用',
       value: disabledCount,
-      note: 'not in feed',
+      note: '未投喂',
       onClick: () => {
         setSourceTypeTab('builtin');
         setStatusFilter?.('disabled');
@@ -88,9 +88,9 @@ export default function SourceOpsPanel({
     },
     {
       id: 'custom',
-      label: 'Custom',
+      label: '自定义',
       value: customCount,
-      note: 'user sources',
+      note: '用户源',
       onClick: () => {
         setSourceTypeTab('custom');
         resetCommonFilters();
@@ -98,9 +98,9 @@ export default function SourceOpsPanel({
     },
     {
       id: 'verified',
-      label: 'Verified',
+      label: '已检测',
       value: `${healthCoverageRatio}%`,
-      note: 'health coverage',
+      note: '健康覆盖率',
       onClick: () => verifyAllSources?.(),
       disabled: verifyingAllSources,
     },
@@ -108,36 +108,36 @@ export default function SourceOpsPanel({
 
   const recommendedActions = [
     reviewCount > 0 && {
-      title: 'Review unstable sources first',
-      detail: `${reviewCount} source health signals need attention before expanding coverage.`,
-      action: 'Open review',
+      title: '优先复核不稳定源',
+      detail: `${reviewCount} 个源存在健康信号，扩展覆盖前需要先关注。`,
+      action: '前往复核',
       onClick: () => {
         setSourceTypeTab('custom');
         setCustomSourceFilter?.(errorCount > 0 ? 'error' : 'warning');
       },
     },
     duplicateUrlCount > 0 && {
-      title: 'Reduce duplicate feeds',
-      detail: `${duplicateUrlCount} feed URLs repeat across the library and can waste fetch quota.`,
-      action: 'Show sources',
+      title: '清理重复订阅',
+      detail: `${duplicateUrlCount} 个订阅链接在库中重复，会浪费抓取配额。`,
+      action: '查看源',
       onClick: () => {
         setSourceTypeTab('builtin');
         resetCommonFilters();
       },
     },
     premiumRatio < 35 && {
-      title: 'Increase high-grade density',
-      detail: `Only ${premiumRatio}% of managed sources are S/A grade. Prioritize trusted sources over broad coverage.`,
-      action: 'View S grade',
+      title: '提升高等级源密度',
+      detail: `当前仅 ${premiumRatio}% 的源为 S/A 级，优先信任源而非广覆盖。`,
+      action: '查看 S 级',
       onClick: () => {
         setSourceTypeTab('builtin');
         setGradeFilter?.('S');
       },
     },
     customCount === 0 && {
-      title: 'Add your first focused source',
-      detail: 'Use source discovery to add niche feeds that match the user profile.',
-      action: 'Custom sources',
+      title: '添加第一个聚焦源',
+      detail: '通过源发现，添加匹配你画像的小众订阅。',
+      action: '自定义源',
       onClick: () => {
         setSourceTypeTab('custom');
         resetCommonFilters();
@@ -150,24 +150,24 @@ export default function SourceOpsPanel({
       <div className="source-ops-dashboard">
         <div className="source-ops-header">
           <div>
-            <span>Operations View</span>
-            <strong>Manage fewer, better sources</strong>
+            <span>运营视图</span>
+            <strong>少而精，管理优质信息源</strong>
           </div>
           <div className="source-ops-actions">
-            <button type="button" onClick={() => setSourceTypeTab('custom')}>Custom</button>
-            <button type="button" onClick={() => { setGradeFilter('S'); setSourceTypeTab('builtin'); }}>S grade</button>
+            <button type="button" onClick={() => setSourceTypeTab('custom')}>自定义</button>
+            <button type="button" onClick={() => { setGradeFilter('S'); setSourceTypeTab('builtin'); }}>S 级</button>
             <button type="button" onClick={verifyAllSources} disabled={verifyingAllSources}>
-              {verifyingAllSources ? 'Checking...' : 'Verify'}
+              {verifyingAllSources ? '检测中...' : '检测'}
             </button>
           </div>
         </div>
         <div className="source-ops-grid">
-          <div className="source-ops-card"><span>Total</span><strong>{managedSources.length}</strong><small>{enabledSources.length} enabled</small></div>
-          <div className="source-ops-card"><span>Premium</span><strong>{premiumSourceCount}</strong><small>{premiumRatio}% S/A grade</small></div>
-          <div className="source-ops-card"><span>Health</span><strong>{healthyCount}</strong><small>{warningCount} warning / {errorCount} error</small></div>
-          <div className={`source-ops-card ${duplicateUrlCount ? 'attention' : ''}`}><span>Duplicates</span><strong>{duplicateUrlCount}</strong><small>{duplicateUrlCount ? 'Review repeated feeds' : 'No repeated feeds'}</small></div>
+          <div className="source-ops-card"><span>总数</span><strong>{managedSources.length}</strong><small>{enabledSources.length} 个已启用</small></div>
+          <div className="source-ops-card"><span>高质量</span><strong>{premiumSourceCount}</strong><small>S/A 级占比 {premiumRatio}%</small></div>
+          <div className="source-ops-card"><span>健康</span><strong>{healthyCount}</strong><small>{warningCount} 警告 / {errorCount} 异常</small></div>
+          <div className={`source-ops-card ${duplicateUrlCount ? 'attention' : ''}`}><span>重复源</span><strong>{duplicateUrlCount}</strong><small>{duplicateUrlCount ? '存在重复订阅，请检查' : '无重复订阅'}</small></div>
         </div>
-        <div className="source-focus-strip" aria-label="Source focus filters">
+        <div className="source-focus-strip" aria-label="信息源聚焦筛选">
           {focusActions.map(action => (
             <button
               key={action.id}
@@ -185,8 +185,8 @@ export default function SourceOpsPanel({
         {recommendedActions.length > 0 && (
           <div className="source-action-queue">
             <div className="source-action-queue-title">
-              <span>Next Best Actions</span>
-              <strong>Keep the source library smaller and smarter</strong>
+              <span>下一步行动</span>
+              <strong>让信息源库更小更智能</strong>
             </div>
             <div className="source-action-list">
               {recommendedActions.map(action => (
@@ -205,9 +205,9 @@ export default function SourceOpsPanel({
 
       <div className="source-discovery-panel">
         <div className="source-discovery-copy">
-          <span>Source Discovery</span>
-          <strong>Find reliable RSS / Atom feeds</strong>
-          <p>Enter a homepage or feed URL. The system discovers candidates, verifies them, and lets you add the best one.</p>
+          <span>信息源发现</span>
+          <strong>发现可靠的 RSS / Atom 订阅</strong>
+          <p>输入主页或订阅链接，系统自动发现候选、验证，并让你添加最佳源。</p>
         </div>
         <div className="source-discovery-form">
           <input
@@ -219,7 +219,7 @@ export default function SourceOpsPanel({
             className="source-search-input"
           />
           <button type="button" onClick={discoverSource} disabled={sourceDiscoveryState.loading}>
-            {sourceDiscoveryState.loading ? 'Discovering...' : 'Discover'}
+            {sourceDiscoveryState.loading ? '发现中...' : '发现'}
           </button>
         </div>
         {sourceDiscoveryState.error && (
@@ -232,15 +232,15 @@ export default function SourceOpsPanel({
                 <div className="source-discovery-main">
                   <strong>{candidate.title}</strong>
                   <span title={candidate.url}>{truncateUrl(candidate.url, 76)}</span>
-                  <p>{candidate.description || candidate.message || 'Verified feed candidate'}</p>
+                  <p>{candidate.description || candidate.message || '已验证的候选源'}</p>
                 </div>
                 <div className="source-discovery-meta">
-                  <span>{candidate.itemCount || 0} items</span>
-                  <span>{candidate.suggestedGrade || 'D'} grade</span>
+                  <span>{candidate.itemCount || 0} 条</span>
+                  <span>{candidate.suggestedGrade || 'D'} 级</span>
                   <span>{candidate.score || 0}/100</span>
                 </div>
                 <div className="source-discovery-actions">
-                  <button type="button" onClick={() => addDiscoveredSource(candidate)}>Add</button>
+                  <button type="button" onClick={() => addDiscoveredSource(candidate)}>添加</button>
                 </div>
               </div>
             ))}
