@@ -1,21 +1,22 @@
 /**
  * EntranceSplash - 进场动画「墨染宣纸 · 落笔成川」
  *
- * 全屏覆盖层，每次整页加载播放一次（约 3.2s）：
- *   宣纸画卷渐显 → 一滴浓墨自顶而落、砸在纸上 → 涟漪一圈圈荡开（明显）
- *   → 品牌书法随墨韵由中心化开（wet→dry 由虚到实）→ 朱印落款 → 墨线 → 帷幕化开。
- * 背景是一幅带装裱边框的宣纸水墨：暖纸 + 纸纹 + 淡墨晕染 + 远山 + 淡月 + 暗角。
+ * 全屏覆盖层，每次整页加载播放一次（起跑后约 3.25s）：
+ *   宣纸画卷渐显（立即）→ 书法字就绪起跑 → 一滴浓墨自顶而落、沉入纸面
+ *   → 墨点晕开 + 涟漪一圈圈荡开（明显）→ 品牌书法由中心化开（清晰锐利）
+ *   → 朱印落款 → 墨线 → 帷幕化开。
  *
- * 设计约束（与既有架构自洽）：
- * - 复用 motion.css 的 --ease-* / --dur-* 令牌与 fadeUp keyframe。
- * - 印章用跨调色板固定 --status-critical（朱红）。
- * - 墨色统一走 var(--text-primary)：浅纸=浓墨、深纸=淡墨（泥金月光），随深浅自适应。
- * - 点击 / Esc 可跳过（立即离场）。
- * - prefers-reduced-motion：直接卸载，无动画。
- * - 与 OnboardingFlow 互不冲突：本层 z-index 更高，播完淡出卸载后，
- *   首访引导（若有）在下方正常显现。
+ * 丝滑三原则（本次重构核心）：
+ * 1. 全程只动画 transform / opacity（合成器驱动，零重绘抖动）；
+ *    品牌用 clip-path circle 圆扩（单元素、局部重绘）。
+ * 2. 等品牌字体真正就绪（document.fonts.load + 超时兜底）再加 is-run 起跑，
+ *    杜绝「先系统衬线虚影、中途换毛笔字」的虚化感。
+ * 3. 深浅模式分治纸纹/暗角浓度（深色克制、浅色适中），背景安静不噪。
  *
- * 生命周期：onReveal 在「开始离场」时调用（驱动 App 内容随帷幕升起），
+ * 其余约束：复用 motion.css 令牌；印章用跨调色板固定 --status-critical；
+ * 点击 / Esc 可跳过；prefers-reduced-motion 直接卸载；z-index 10000 防穿透。
+ *
+ * 生命周期：onReveal 在「开始离场」时调用（App 内容随帷幕升起），
  * onDone 在「完全离场」后调用（由 App 卸载本组件）。
  */
 import { useEffect, useRef, useState } from 'react';
@@ -23,26 +24,33 @@ import { useEffect, useRef, useState } from 'react';
 const FONT_HREF =
   'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;900&display=swap';
 
-// 异步加载品牌书法字体（失败则回退系统衬线，不影响动画）
-function injectFont() {
-  if (document.getElementById('entrance-font')) return;
-  const link = document.createElement('link');
-  link.id = 'entrance-font';
-  link.rel = 'stylesheet';
-  link.href = FONT_HREF;
-  link.media = 'print';
-  link.onload = () => { link.media = 'all'; };
-  document.head.appendChild(link);
-}
+const REVEAL_AT = 2550;    // 起跑后：开始离场、内容升起
+const DONE_AT = 3250;      // 起跑后：完全离场、卸载
+const SKIP_FADE = 560;     // 跳过时离场过渡时长
+const FONT_WAIT_MAX = 600; // 书法字最多等这么久，超时直接起跑（回退系统衬线）
 
-const REVEAL_AT = 2500;   // 开始离场、内容升起
-const DONE_AT = 3200;     // 完全离场、卸载
-const SKIP_FADE = 560;    // 跳过时离场过渡时长
+// 异步注入品牌书法字样式表；resolve 在 CSS 就绪或失败时（绝不 pending）
+function injectFont() {
+  return new Promise((resolve) => {
+    if (document.getElementById('entrance-font')) { resolve(); return; }
+    const link = document.createElement('link');
+    link.id = 'entrance-font';
+    link.rel = 'stylesheet';
+    link.href = FONT_HREF;
+    link.media = 'print';
+    link.onload = () => { link.media = 'all'; resolve(); };
+    link.onerror = () => resolve();
+    document.head.appendChild(link);
+  });
+}
 
 export default function EntranceSplash({ onReveal, onDone }) {
   const [hidden, setHidden] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [run, setRun] = useState(false);
   const timers = useRef([]);
+  const started = useRef(false);
+  const dead = useRef(false);
   // 用 ref 持有最新回调，避免把回调放进依赖导致 effect 重跑
   const cb = useRef({ onReveal, onDone });
   cb.current = { onReveal, onDone };
@@ -56,22 +64,43 @@ export default function EntranceSplash({ onReveal, onDone }) {
       return;
     }
 
-    injectFont();
+    // 等品牌书法字真正可渲染再起跑（背景纸不受影响、已先行渐显）
+    const begin = () => {
+      if (started.current || dead.current) return;
+      started.current = true;
+      setRun(true);
+      timers.current = [
+        setTimeout(() => cb.current.onReveal?.(), REVEAL_AT),
+        setTimeout(() => setLeaving(true), REVEAL_AT),
+        setTimeout(() => {
+          cb.current.onDone?.();
+          setHidden(true);
+        }, DONE_AT),
+      ];
+    };
+    const fallback = setTimeout(begin, FONT_WAIT_MAX);
+    const ready = injectFont()
+      .then(() =>
+        Promise.all([
+          document.fonts.load('64px "Ma Shan Zheng"', '万般硅川'),
+          document.fonts.load('900 24px "Noto Serif SC"', '印'),
+        ])
+      )
+      .catch(() => {});
+    ready.then(() => {
+      clearTimeout(fallback);
+      begin();
+    });
 
-    const t = [
-      setTimeout(() => cb.current.onReveal?.(), REVEAL_AT),
-      setTimeout(() => setLeaving(true), REVEAL_AT),
-      setTimeout(() => {
-        cb.current.onDone?.();
-        setHidden(true);
-      }, DONE_AT),
-    ];
-    timers.current = t;
-    return () => t.forEach(clearTimeout);
+    return () => {
+      clearTimeout(fallback);
+      timers.current.forEach(clearTimeout);
+    };
   }, []);
 
   const skip = () => {
     if (leaving) return;
+    dead.current = true;
     timers.current.forEach(clearTimeout);
     cb.current.onReveal?.();
     setLeaving(true);
@@ -87,14 +116,14 @@ export default function EntranceSplash({ onReveal, onDone }) {
 
   return (
     <div
-      className={`entrance${leaving ? ' entrance--leaving' : ''}`}
+      className={`entrance${run ? ' is-run' : ''}${leaving ? ' entrance--leaving' : ''}`}
       onClick={skip}
       role="presentation"
       aria-hidden="true"
       tabIndex={-1}
       onKeyDown={(e) => { if (e.key === 'Escape') skip(); }}
     >
-      {/* 宣纸画卷：暖纸 + 淡墨晕染 + 远山 + 淡月 + 纸纹 + 暗角 + 装裱边框 */}
+      {/* 宣纸画卷：暖纸 + 淡墨晕染 + 远山 + 淡月 + 纸纹 + 暗角 + 装裱边框（立即渐显） */}
       <div className="entrance__bg">
         <div className="entrance__stain entrance__stain--a" />
         <div className="entrance__stain entrance__stain--b" />
@@ -108,11 +137,11 @@ export default function EntranceSplash({ onReveal, onDone }) {
         <div className="entrance__frame" />
       </div>
 
-      {/* 一滴浓墨落纸 → 涟漪一圈圈荡开 */}
+      {/* 一滴浓墨落纸沉入 → 墨点晕开 → 涟漪荡漾（is-run 起跑） */}
       <div className="entrance__ink">
         <span className="entrance__drop" />
+        <span className="entrance__blot" />
         <div className="entrance__ripples">
-          <span className="entrance__ripple" />
           <span className="entrance__ripple" />
           <span className="entrance__ripple" />
           <span className="entrance__ripple" />
@@ -120,7 +149,7 @@ export default function EntranceSplash({ onReveal, onDone }) {
         </div>
       </div>
 
-      {/* 品牌随墨韵化开 + 朱印落款 + 英文副题 */}
+      {/* 品牌由中心化开（清晰锐利）+ 朱印落款 + 英文副题 */}
       <div className="entrance__center">
         <div className="entrance__halo" />
         <div className="entrance__brand">万般硅川</div>

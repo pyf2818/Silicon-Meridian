@@ -1,15 +1,15 @@
 /* ============================================================
    entrance.css — 进场动画「墨染宣纸 · 落笔成川」（覆盖层）
    引入顺序：onboarding.css → entrance.css → motion.css
-   （motion.css 最后、优先级最高；本文件只新增 keyframe/类，
-    复用 motion.css 的 --ease-* / --dur-* 令牌，不与之冲突）
 
-   设计：宣纸画卷渐显 → 一滴浓墨自顶而落、砸在纸上 → 涟漪一圈圈荡开（明显）
-   → 品牌书法随墨韵由中心化开（wet→dry）→ 朱印落款 → 墨线 → 帷幕化开
-   - 背景是一幅带装裱边框的宣纸水墨：暖纸 + 纸纹 + 淡墨晕染 + 远山 + 淡月 + 暗角
-   - 墨色统一走 var(--text-primary)：浅纸=浓墨、深纸=淡墨（泥金月光），随深浅自适应
-   - 印章用跨调色板固定 --status-critical（朱红）
-   - 约 3.2s 总时长；点击 / Esc 可跳过；尊重 prefers-reduced-motion
+   丝滑三原则：
+   1) 全程只动 transform / opacity（合成器驱动）；品牌 clip-path 圆扩为局部重绘
+   2) .is-run 由组件在品牌字体就绪后添加（JSX 内 document.fonts.load），
+      纸面先行渐显、墨戏随后起跑——杜绝字体中途 swap 造成的虚化
+   3) 深浅分治：深色纸纹/暗角更克制（安静不噪），浅色保持宣纸质感
+
+   设计：宣纸画卷 → 浓墨自顶而落、沉入纸面 → 墨点晕开 + 涟漪荡漾（明显）
+   → 品牌书法由中心化开（锐利）→ 朱印 → 墨线 → 帷幕化开（~3.25s）
    ============================================================ */
 
 .entrance {
@@ -36,7 +36,7 @@
 }
 
 /* ============================================================
-   宣纸画卷（背景层）
+   宣纸画卷（背景层，挂载即渐显，不依赖字体）
    ============================================================ */
 .entrance__bg {
   position: absolute;
@@ -51,7 +51,7 @@
   position: absolute;
   border-radius: 50%;
   background: radial-gradient(circle,
-    color-mix(in srgb, var(--text-primary, #2b2b2b) 13%, transparent) 0%,
+    color-mix(in srgb, var(--text-primary, #2b2b2b) 12%, transparent) 0%,
     transparent 68%);
   filter: blur(34px);
   opacity: 0;
@@ -91,22 +91,30 @@
 .entrance__ridge--far  { fill: color-mix(in srgb, var(--text-primary, #2b2b2b) 9%,  transparent); }
 .entrance__ridge--near { fill: color-mix(in srgb, var(--text-primary, #2b2b2b) 16%, transparent); }
 
-/* 纸纹：SVG 分形噪点做宣纸纤维（soft-light 叠加，深浅两相宜） */
+/* 纸纹：SVG 分形噪点做宣纸纤维（soft-light 叠加；深色克制、浅色适中） */
 .entrance__grain {
   position: absolute;
   inset: 0;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='280' height='280'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='280' height='280' filter='url(%23g)'/></svg>");
-  background-size: 280px 280px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='300' height='300' filter='url(%23g)'/></svg>");
+  background-size: 300px 300px;
   mix-blend-mode: soft-light;
-  opacity: 0.55;
+  opacity: 0;                           /* 深色底：完全关掉（避免 soft-light 亮斑噪点） */
+  display: none;                        /* 深色底：彻底从合成树移除 */
   animation: entranceFade 1.1s var(--ease-out, ease-out) both;
 }
+:root[data-mode="light"] .entrance .entrance__grain {
+  opacity: 0.4;                         /* 浅色宣纸：纤维感 */
+  display: block;
+}
 
-/* 暗角：边缘压暗，卷轴装裱的纵深 */
+/* 暗角：边缘压暗，卷轴装裱的纵深（深色更轻，避免发闷） */
 .entrance__vignette {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 46%, transparent 50%, rgba(0, 0, 0, 0.40) 100%);
+  background: radial-gradient(ellipse at 50% 46%, transparent 52%, rgba(0, 0, 0, 0.24) 100%);
+}
+:root[data-mode="light"] .entrance .entrance__vignette {
+  background: radial-gradient(ellipse at 50% 46%, transparent 52%, rgba(0, 0, 0, 0.36) 100%);
 }
 
 /* 装裱边框：册页/立轴的双线框（外细内更细），古风收边 */
@@ -121,7 +129,7 @@
 }
 
 /* ============================================================
-   一滴浓墨落纸 → 涟漪荡漾
+   墨戏（is-run 起跑后才动；静止态全部隐形，绝不抢戏）
    ============================================================ */
 .entrance__ink {
   position: absolute;
@@ -130,7 +138,7 @@
   pointer-events: none;
 }
 
-/* 墨滴：自顶而落，着纸一瞬压扁回弹，再化开消散 */
+/* 墨滴：自顶而落、沉入纸面（只动 transform/opacity，重力加速） */
 .entrance__drop {
   position: absolute;
   left: 50%;
@@ -143,13 +151,35 @@
     color-mix(in srgb, var(--text-primary, #2b2b2b) 96%, transparent) 0%,
     color-mix(in srgb, var(--text-primary, #2b2b2b) 80%, transparent) 58%,
     color-mix(in srgb, var(--text-primary, #2b2b2b) 48%, transparent) 100%);
-  filter: blur(0.4px);
-  transform-origin: 50% 100%;
   opacity: 0;
-  animation: entranceDrop 1.35s cubic-bezier(0.55, 0.06, 0.68, 0.4) both;
+  will-change: transform, opacity;
+}
+.entrance.is-run .entrance__drop {
+  animation: entranceDrop 0.95s cubic-bezier(0.5, 0.04, 0.74, 0.38) both;
 }
 
-/* 涟漪：5 圈同心圆由落点荡开，边框由粗到细、由实到虚（明显） */
+/* 墨点：落点晕开的一小团湿墨（墨滴沉入后接棒） */
+.entrance__blot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9vmin;
+  height: 9vmin;
+  margin: -4.5vmin 0 0 -4.5vmin;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    color-mix(in srgb, var(--text-primary, #2b2b2b) 52%, transparent) 0%,
+    color-mix(in srgb, var(--text-primary, #2b2b2b) 28%, transparent) 45%,
+    transparent 72%);
+  opacity: 0;
+  transform: scale(0.15);
+  will-change: transform, opacity;
+}
+.entrance.is-run .entrance__blot {
+  animation: entranceBlot 1.5s var(--ease-out, ease-out) 0.72s both;
+}
+
+/* 涟漪：4 圈同心圆由落点荡开（定宽描边，只动 transform/opacity） */
 .entrance__ripples { position: absolute; inset: 0; }
 .entrance__ripple {
   position: absolute;
@@ -159,20 +189,21 @@
   height: 96vmin;
   margin: -48vmin 0 0 -48vmin;
   border-radius: 50%;
-  border: 3.5px solid color-mix(in srgb, var(--text-primary, #2b2b2b) 74%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-primary, #2b2b2b) 10%, transparent) inset;
-  transform: scale(0.02);
+  border: 2px solid color-mix(in srgb, var(--text-primary, #2b2b2b) 70%, transparent);
   opacity: 0;
-  animation: entranceRipple 2.0s cubic-bezier(0.17, 0.67, 0.35, 1) both;
+  transform: scale(0.03);
+  will-change: transform, opacity;
 }
-.entrance__ripple:nth-child(1) { animation-delay: 0.60s; }
-.entrance__ripple:nth-child(2) { animation-delay: 0.74s; border-color: color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 68%, transparent); }
-.entrance__ripple:nth-child(3) { animation-delay: 0.88s; }
-.entrance__ripple:nth-child(4) { animation-delay: 1.02s; border-color: color-mix(in srgb, var(--ink-glow-2, var(--text-primary, #2b2b2b)) 64%, transparent); }
-.entrance__ripple:nth-child(5) { animation-delay: 1.16s; }
+.entrance.is-run .entrance__ripple {
+  animation: entranceRipple 2.05s cubic-bezier(0.12, 0.55, 0.25, 1) both;
+}
+.entrance.is-run .entrance__ripple:nth-child(1) { animation-delay: 0.74s; }
+.entrance.is-run .entrance__ripple:nth-child(2) { animation-delay: 0.90s; border-color: color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 64%, transparent); }
+.entrance.is-run .entrance__ripple:nth-child(3) { animation-delay: 1.06s; }
+.entrance.is-run .entrance__ripple:nth-child(4) { animation-delay: 1.22s; border-color: color-mix(in srgb, var(--ink-glow-2, var(--text-primary, #2b2b2b)) 60%, transparent); }
 
 /* ============================================================
-   品牌随墨韵化开 + 朱印 + 副题
+   品牌化开 + 朱印 + 副题（is-run 起跑）
    ============================================================ */
 .entrance__center {
   position: relative;
@@ -180,10 +211,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 22px;
+  gap: 24px;
 }
 
-/* 墨韵光晕：品牌化开时身后的一团湿墨光 */
+/* 墨韵光晕：品牌化开时身后的一团湿墨光（静态 blur，一次性光栅） */
 .entrance__halo {
   position: absolute;
   left: 50%;
@@ -194,16 +225,19 @@
   margin: -38vmin 0 0 -38vmin;
   border-radius: 50%;
   background: radial-gradient(circle,
-    color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 34%, transparent) 0%,
-    color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 12%, transparent) 42%,
+    color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 30%, transparent) 0%,
+    color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 11%, transparent) 42%,
     transparent 66%);
   filter: blur(14px);
-  transform: scale(0.15);
   opacity: 0;
-  animation: entranceHalo 1.6s var(--ease-out, ease-out) 0.7s both;
+  transform: scale(0.15);
+  will-change: transform, opacity;
+}
+.entrance.is-run .entrance__halo {
+  animation: entranceHalo 1.6s var(--ease-out, ease-out) 0.8s both;
 }
 
-/* —— 品牌书法：随墨韵由中心荡开（clip 圆扩），湿墨由虚到实（blur→0），字距由散到收 —— */
+/* —— 品牌书法：由中心荡开（clip 圆扩 + 轻微上浮），全程锐利无虚化 —— */
 .entrance__brand {
   position: relative;
   z-index: 1;
@@ -215,16 +249,17 @@
   text-indent: 0.14em;
   background: linear-gradient(180deg,
     var(--text-primary, #2b2b2b) 0%,
-    color-mix(in srgb, var(--text-primary, #2b2b2b) 78%, var(--ink-glow-1, var(--text-primary, #2b2b2b))) 100%);
+    color-mix(in srgb, var(--text-primary, #2b2b2b) 92%, var(--ink-glow-1, var(--text-primary, #2b2b2b))) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
   clip-path: circle(0% at 50% 50%);
   opacity: 0;
-  filter: blur(14px);
-  will-change: clip-path, filter, opacity;
-  animation: entranceBrand 1.2s cubic-bezier(0.22, 0.8, 0.3, 1) 0.82s both;
+  will-change: clip-path, opacity;
+}
+.entrance.is-run .entrance__brand {
+  animation: entranceBrand 1.05s cubic-bezier(0.19, 1, 0.22, 1) 0.92s both;
 }
 
 /* —— 墨线 + 朱印 一行 —— */
@@ -242,7 +277,9 @@
   transform-origin: left center;
   transform: scaleX(0);
   background: color-mix(in srgb, var(--text-primary, #2b2b2b) 46%, transparent);
-  animation: entranceLine 0.55s var(--ease-out, ease-out) 1.8s both;
+}
+.entrance.is-run .entrance__line {
+  animation: entranceLine 0.55s var(--ease-out, ease-out) 1.9s both;
 }
 .entrance__seal {
   flex: 0 0 auto;
@@ -260,7 +297,10 @@
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
   opacity: 0;
   transform: scale(0.6) rotate(-9deg);
-  animation: entranceSeal 0.5s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) 1.65s both;
+  will-change: transform, opacity;
+}
+.entrance.is-run .entrance__seal {
+  animation: entranceSeal 0.5s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) 1.75s both;
 }
 
 /* —— 英文副题（极淡、宽字距） —— */
@@ -274,40 +314,45 @@
   text-indent: 0.52em;
   color: color-mix(in srgb, var(--text-muted, #7a7a7a) 92%, transparent);
   opacity: 0;
-  animation: entranceSub 0.6s var(--ease-out, ease-out) 2.25s both;
+}
+.entrance.is-run .entrance__sub {
+  animation: entranceSub 0.55s var(--ease-out, ease-out) 2.28s both;
 }
 
 /* ============================================================
-   keyframes
+   keyframes（全部只插值 transform / opacity / clip-path）
    ============================================================ */
 @keyframes entranceFade {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 @keyframes entranceDrop {
-  0%   { opacity: 0; transform: translateY(-52vh) scale(0.9); }
-  7%   { opacity: 1; }
-  46%  { opacity: 1; transform: translateY(0) scale(1.05, 1.18); }  /* 落下、略拉长 */
-  54%  { transform: translateY(0) scale(1.5, 0.5); }                /* 着纸压扁 */
-  66%  { transform: scale(0.9, 1.12); }                              /* 回弹 */
-  78%  { transform: scale(1.15, 0.9); opacity: 0.95; }
-  100% { transform: scale(3.1); opacity: 0; }                        /* 墨化开消散 */
+  0%   { opacity: 0; transform: translateY(-50vh); }
+  12%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(0); }
+}
+@keyframes entranceBlot {
+  0%   { opacity: 0;    transform: scale(0.15); }
+  22%  { opacity: 0.95; }
+  60%  { opacity: 0.8; }
+  100% { opacity: 0;    transform: scale(1.15); }
 }
 @keyframes entranceRipple {
-  0%   { opacity: 0;    transform: scale(0.02); border-width: 3.5px; }
-  8%   { opacity: 1; }
-  52%  { opacity: 0.6; }
-  100% { opacity: 0;    transform: scale(1);    border-width: 0.8px; }
+  0%   { opacity: 0;    transform: scale(0.03); }
+  12%  { opacity: 0.9; }
+  55%  { opacity: 0.55; }
+  100% { opacity: 0;    transform: scale(1); }
 }
 @keyframes entranceHalo {
   0%   { transform: scale(0.15); opacity: 0; }
-  25%  { opacity: 0.9; }
+  25%  { opacity: 0.85; }
   100% { transform: scale(1.05); opacity: 0; }
 }
 @keyframes entranceBrand {
-  0%   { opacity: 0; clip-path: circle(0% at 50% 50%);   filter: blur(14px); letter-spacing: 0.26em; }
-  30%  { opacity: 1; }
-  100% { opacity: 1; clip-path: circle(120% at 50% 50%); filter: blur(0);    letter-spacing: 0.14em; }
+  0%   { opacity: 0; clip-path: circle(0% at 50% 50%);   transform: translateY(12px); }
+  16%  { opacity: 1; }
+  100% { opacity: 1; clip-path: circle(125% at 50% 50%); transform: translateY(0); }
 }
 @keyframes entranceLine {
   from { transform: scaleX(0); }
