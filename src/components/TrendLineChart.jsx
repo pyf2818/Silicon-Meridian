@@ -5,7 +5,7 @@ function TrendLineChart({ labels = [], series = [], onSelect = null }) {
   const height = 220;
   const pad = 28;
   const maxValue = Math.max(1, ...series.flatMap(s => s.values || [0]));
-  const colors = ['var(--accent-cyan)', 'var(--accent-blue)', 'var(--accent-violet)', 'var(--accent-emerald)', 'var(--accent-amber)'];
+  const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
   const [hover, setHover] = useState(null);
 
   const pointsFor = (values) => values.map((v, idx) => {

@@ -239,7 +239,7 @@ const InsightDashboardPage = ({
                         const count = cat.daily30[dayIdx];
                         const maxVal = Math.max(...cat.daily30);
                         const height = maxVal > 0 ? Math.max((count / maxVal) * 100, 4) : 4;
-                        const colors = ['var(--accent-cyan)', 'var(--accent-violet)', 'var(--accent-emerald)', 'var(--accent-amber)', 'var(--accent-rose)'];
+                        const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
                         return (
                           <div
                             key={cat.id}
@@ -254,7 +254,7 @@ const InsightDashboardPage = ({
                 </div>
                 <div className="trend-comparison-legend">
                   {insightData.categoryTrend30.slice(0, 5).map((cat, idx) => {
-                    const colors = ['var(--accent-cyan)', 'var(--accent-violet)', 'var(--accent-emerald)', 'var(--accent-amber)', 'var(--accent-rose)'];
+                    const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
                     return (
                       <span key={cat.id} className="trend-legend-item">
                         <span className="trend-legend-dot" style={{ background: colors[idx % colors.length] }} />
@@ -438,11 +438,11 @@ const InsightDashboardPage = ({
             {trackTargets.map(target => {
               const st = getTrackerStatus(target);
               let statusLabel = '—', statusColor = '#6b7280', statusIcon = '';
-              if (st.isSurge) { statusLabel = '今日突增'; statusColor = '#f59e0b'; statusIcon = '!'; }
-              else if (st.isStreak) { statusLabel = '连续增长'; statusColor = '#10b981'; statusIcon = '+'; }
-              else if (st.isDrop) { statusLabel = '显著降温'; statusColor = '#ef4444'; statusIcon = '-'; }
-              else if (st.growth > 0) { statusLabel = '小幅增长'; statusColor = 'var(--accent-cyan)'; statusIcon = '↑'; }
-              else if (st.growth < 0) { statusLabel = '小幅下降'; statusColor = '#f87171'; statusIcon = '↓'; }
+              if (st.isSurge) { statusLabel = '今日突增'; statusColor = 'var(--status-warn)'; statusIcon = '!'; }
+              else if (st.isStreak) { statusLabel = '连续增长'; statusColor = 'var(--status-ok)'; statusIcon = '+'; }
+              else if (st.isDrop) { statusLabel = '显著降温'; statusColor = 'var(--status-critical)'; statusIcon = '-'; }
+              else if (st.growth > 0) { statusLabel = '小幅增长'; statusColor = 'var(--status-info)'; statusIcon = '↑'; }
+              else if (st.growth < 0) { statusLabel = '小幅下降'; statusColor = 'var(--status-warn)'; statusIcon = '↓'; }
 
               // 获取相关新闻
               const relatedNews = items.filter(i => {

@@ -30,7 +30,7 @@ function TimelineChart({ points, preClose }) {
         </g>
       ))}
       {yZero !== null && <line x1={pad.left} y1={yZero} x2={pad.left + w} y2={yZero} stroke="var(--text-muted)" strokeWidth="0.8" strokeDasharray="4 4" opacity="0.6" />}
-      <path d={pathAvg} fill="none" stroke="var(--accent-amber)" strokeWidth="1" opacity="0.7" />
+      <path d={pathAvg} fill="none" stroke="var(--chart-4)" strokeWidth="1" opacity="0.7" />
       <path d={pathPrice} fill="none" stroke={lineColor} strokeWidth="1.4" />
       <path d={`${pathPrice} L ${x(points.length - 1)} ${pad.top + h} L ${pad.left} ${pad.top + h} Z`} fill={lineColor} opacity="0.08" />
       {[0, 0.5, 1].map(t => {

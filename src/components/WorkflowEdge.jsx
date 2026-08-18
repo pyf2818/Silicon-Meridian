@@ -23,11 +23,11 @@ export default function WorkflowEdge({
   }
 
   const statusClass = status ? `status-${status}` : '';
-  const strokeColor = status === 'running' ? 'var(--accent-cyan)' :
-                      status === 'completed' ? 'var(--accent-emerald)' :
-                      status === 'failed' ? 'var(--accent-rose)' :
-                      status === 'error' ? 'var(--accent-rose)' :
-                      status === 'blocked' ? 'var(--accent-amber)' :
+  const strokeColor = status === 'running' ? 'var(--status-info)' :
+                      status === 'completed' ? 'var(--status-ok)' :
+                      status === 'failed' ? 'var(--status-critical)' :
+                      status === 'error' ? 'var(--status-critical)' :
+                      status === 'blocked' ? 'var(--status-warn)' :
                       'var(--border-color)';
 
   return (

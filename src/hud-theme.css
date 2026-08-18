@@ -24,9 +24,10 @@
   /* 霓虹色 = 主题强调色：切 palette 即跟随变化（香槟金/樱花粉/森林绿/...） */
   --hud-cyan: var(--accent-cyan);          /* 主信号色 */
   --hud-teal: var(--accent-blue);          /* 交互次级 */
-  --hud-green: var(--accent-emerald);      /* 锁定/成功 */
-  --hud-amber: var(--accent-amber);        /* 注意/警告 */
-  --hud-red: var(--accent-rose);           /* 关键 */
+  --hud-green: var(--status-ok);           /* 锁定/成功 */
+  --hud-amber: var(--status-warn);         /* 注意/警告 */
+  --hud-red: var(--status-critical);       /* 关键 */
+  --hud-info: var(--status-info);          /* 进行中/中性 */
   --hud-violet: var(--accent-violet);      /* 特殊/装饰 */
   --hud-text: var(--text-primary);
   --hud-dim: var(--text-muted);

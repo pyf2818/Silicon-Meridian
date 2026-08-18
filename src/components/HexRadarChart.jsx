@@ -10,9 +10,9 @@ function HexRadarChart({ categories, regions, matrix, maxVal }) {
   const angleStep = (2 * Math.PI) / n;
   const startAngle = -Math.PI / 2;
 
-  const regionColors = { domestic: 'var(--accent-blue)', overseas: 'var(--accent-cyan)', global: 'var(--accent-violet)' };
-  const regionGlows = { domestic: 'color-mix(in srgb, var(--accent-blue) 60%, transparent)', overseas: 'color-mix(in srgb, var(--accent-cyan) 60%, transparent)', global: 'color-mix(in srgb, var(--accent-violet) 60%, transparent)' };
-  const regionFills = { domestic: 'color-mix(in srgb, var(--accent-blue) 30%, transparent)', overseas: 'color-mix(in srgb, var(--accent-cyan) 30%, transparent)', global: 'color-mix(in srgb, var(--accent-violet) 30%, transparent)' };
+  const regionColors = { domestic: 'var(--chart-2)', overseas: 'var(--chart-1)', global: 'var(--chart-3)' };
+  const regionGlows = { domestic: 'color-mix(in srgb, var(--chart-2) 60%, transparent)', overseas: 'color-mix(in srgb, var(--chart-1) 60%, transparent)', global: 'color-mix(in srgb, var(--chart-3) 60%, transparent)' };
+  const regionFills = { domestic: 'color-mix(in srgb, var(--chart-2) 30%, transparent)', overseas: 'color-mix(in srgb, var(--chart-1) 30%, transparent)', global: 'color-mix(in srgb, var(--chart-3) 30%, transparent)' };
 
   const getPoint = (idx, value) => {
     const ratio = maxVal > 0 ? value / maxVal : 0;

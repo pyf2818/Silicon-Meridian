@@ -137,14 +137,14 @@
 
 /* 错误态修饰：glyph 转琥珀 / 红，提示"需要人介入"而非"系统崩了" */
 .app-state--error .app-state__glyph {
-  color: var(--accent-amber);
-  border-color: color-mix(in srgb, var(--accent-amber) 46%, transparent);
-  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--accent-amber) 16%, transparent) 0%, transparent 70%);
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent-amber) 9%, transparent);
+  color: var(--status-warn);
+  border-color: color-mix(in srgb, var(--status-warn) 46%, transparent);
+  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--status-warn) 16%, transparent) 0%, transparent 70%);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--status-warn) 9%, transparent);
 }
 .app-state--error .app-state__desc code {
   font-family: var(--font-mono, ui-monospace, Menlo, monospace);
-  background: color-mix(in srgb, var(--accent-amber) 12%, transparent);
+  background: color-mix(in srgb, var(--status-warn) 12%, transparent);
   padding: 1px 6px;
   border-radius: 5px;
   color: var(--text-primary);

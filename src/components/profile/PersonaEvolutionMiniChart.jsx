@@ -6,9 +6,9 @@
 import { buildPersonaTrendSeries } from '../../utils/dashboardBuilders.js';
 
 const SERIES_STYLE = [
-  { name: '习惯', stroke: 'var(--accent-cyan)', dash: '' },
-  { name: '性格', stroke: 'var(--accent-blue)', dash: '3,3' },
-  { name: '需求', stroke: 'color-mix(in srgb, var(--accent-cyan) 40%, transparent)', dash: '' },
+  { name: '习惯', stroke: 'var(--chart-1)', dash: '' },
+  { name: '性格', stroke: 'var(--chart-2)', dash: '3,3' },
+  { name: '需求', stroke: 'color-mix(in srgb, var(--chart-1) 40%, transparent)', dash: '' },
 ];
 
 export default function PersonaEvolutionMiniChart({ history, loading, selectedIdx, onSelectNode }) {
