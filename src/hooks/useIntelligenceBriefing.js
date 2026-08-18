@@ -175,11 +175,22 @@ export function useIntelligenceBriefing({ items = [], date, llmConfig }) {
         opts: { maxClusters: 3 },
       });
       setAgentic(result);
+      // B5：大模型多智能体分析沉淀进当日快照（localStorage 本地数据库），跨日回溯可读
+      // setValidatedAi 语义：当日快照已存在 ai 时不覆盖（当天首份分析即权威沉淀）
+      if (store && date) {
+        try {
+          store.setValidatedAi(date, {
+            generatedAt: new Date().toISOString(),
+            model: llmConfig.selectedModel,
+            analysis: result,
+          });
+        } catch { /* 快照缺失或已锁存：静默 */ }
+      }
       setLlmStatus('done');
     } catch {
       setLlmStatus('error');
     }
-  }, [llmConfig, semanticClusters]);
+  }, [llmConfig, semanticClusters, store, date]);
 
   return {
     todayItems,

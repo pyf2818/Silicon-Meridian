@@ -167,13 +167,20 @@ export function createIntelligenceRepository(db = getPool()) {
       });
     },
 
-    async listEvents({ limit = 30, category = '' } = {}) {
+    async listEvents({ limit = 30, category = '', date = '' } = {}) {
       const boundedLimit = Math.min(200, Math.max(1, Number.parseInt(limit, 10) || 30));
       const params = [boundedLimit];
       let where = '';
+      let paramIdx = 1;
       if (category) {
+        paramIdx += 1;
         params.push(category);
-        where = 'where category = $2';
+        where = `where category = $${paramIdx}`;
+      }
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+        paramIdx += 2;
+        params.push(`${date}T00:00:00.000Z`, `${date}T23:59:59.999Z`);
+        where = `${where ? where + ' and' : 'where'} last_seen_at between $${paramIdx - 1} and $${paramIdx}`;
       }
       const result = await db.query(
         `select * from intelligence_events ${where}

@@ -136,7 +136,7 @@ describe('intelligence processors', () => {
     expect(briefing.ok).toBe(true);
     expect(briefing.date).toBe('2026-07-24');
     expect(briefing.lead.id).toBe('event-1');
-    expect(briefing.sections[0].label).toBe('Model Releases');
+    expect(briefing.sections[0].label).toBe('模型发布');
     expect(briefing.watchEntities).toContain('OpenAI');
   });
 

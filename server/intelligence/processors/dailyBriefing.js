@@ -1,9 +1,9 @@
 const SECTION_LABELS = {
-  'ai-models': 'Model Releases',
-  'ai-products': 'Product Updates',
-  industry: 'Industry Moves',
-  paper: 'Research',
-  tip: 'Techniques and Views',
+  'ai-models': '模型发布',
+  'ai-products': '产品动态',
+  industry: '行业动向',
+  paper: '前沿研究',
+  tip: '技术观点',
 };
 
 function unique(values) {
@@ -12,17 +12,17 @@ function unique(values) {
 
 function buildOpportunity(event) {
   const entities = event.entities?.length ? ` (${event.entities.slice(0, 3).join(', ')})` : '';
-  if ((event.impactScore || 0) >= 70) return `High-impact signal${entities}: ${event.title}`;
-  if ((event.sources || []).length >= 2) return `Multi-source confirmation${entities}: ${event.title}`;
-  return `Track for follow-up${entities}: ${event.title}`;
+  if ((event.impactScore || 0) >= 70) return `高影响信号${entities}：${event.title}`;
+  if ((event.sources || []).length >= 2) return `多源交叉验证${entities}：${event.title}`;
+  return `值得跟进${entities}：${event.title}`;
 }
 
 function buildRisk(event) {
   const text = `${event.title || ''} ${event.summary || ''}`.toLowerCase();
   if (/regulation|lawsuit|copyright|safety|risk|监管|诉讼|版权|安全|风险/.test(text)) {
-    return `Risk signal: ${event.title}`;
+    return `风险信号：${event.title}`;
   }
-  if ((event.confidence || 0) < 40) return `Needs more confirmation: ${event.title}`;
+  if ((event.confidence || 0) < 40) return `需更多确认：${event.title}`;
   return '';
 }
 
@@ -48,8 +48,8 @@ export function buildDailyIntelligenceBriefing({ events = [], date = new Date().
     date,
     generatedAt,
     oneLine: lead
-      ? `${lead.title} is the leading AI intelligence event today, with impact ${Math.round(lead.impactScore || 0)} and intelligence score ${Math.round(lead.intelligenceScore || 0)}.`
-      : 'No AI intelligence events are available for today yet.',
+      ? `${lead.title} 是今日领跑的 AI 情报事件，影响力 ${Math.round(lead.impactScore || 0)}，智能评分 ${Math.round(lead.intelligenceScore || 0)}。`
+      : '今日暂无可用 AI 情报事件。',
     lead,
     topEvents,
     sections: categories.map(category => ({
