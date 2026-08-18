@@ -836,6 +836,22 @@ export default function AiChatPanel({
     inputRef?.current?.focus?.();
   }, [setInput, inputRef]);
 
+  // 右栏「工具能力」双击 → 预填该工具的调用指令到输入框并聚焦
+  // 设计取舍（钢人论证）：工具需参数 + 经 LLM function calling 真正触发，
+  // 故「双击调用」= 预填友好提示（而非空参直发），用户补参数回车即真正调用。
+  const TOOL_INVOKE_PROMPTS = {
+    search_news: '请检索科技资讯：',
+    web_search: '请联网搜索：',
+    fetch_page: '请抓取并总结这个网页：',
+    list_mcp_tools: '请列出当前已配置的 MCP 服务器：',
+    mcp_call: '请调用 MCP 工具（server / tool / args）：',
+  };
+  const handleInvokeTool = useCallback((name, label) => {
+    const tmpl = TOOL_INVOKE_PROMPTS[name] || `请使用「${label || name}」工具执行：`;
+    setInput(prev => (prev ? prev + '\n' : '') + tmpl);
+    inputRef?.current?.focus?.();
+  }, [setInput, inputRef]);
+
   const dismissPlan = useCallback((i) => {
     setSessions(prev => prev.map(s => {
       if (s.id !== activeSessionId) return s;
@@ -1459,6 +1475,7 @@ export default function AiChatPanel({
           lastEvolvedAt={lastEvolvedAt}
           skillsHook={skillsHook}
           input={input}
+          onInvokeTool={handleInvokeTool}
         />
       )}
       <PersonaDrawer

@@ -63,6 +63,7 @@ export default function AgentPanel({
   lastEvolvedAt,
   skillsHook,
   input = '',
+  onInvokeTool,
 }) {
   const [activeTab, setActiveTab] = useState('skills'); // skills | agent | memory
 
@@ -252,11 +253,19 @@ export default function AgentPanel({
                 </header>
                 <div className="agent-capabilities">
                   {agentTools.map(t => (
-                    <div key={t.name} className="agent-capability-chip" title={t.desc}>
+                    <div
+                      key={t.name}
+                      className="agent-capability-chip"
+                      role="button"
+                      tabIndex={0}
+                      title={`${t.desc}\n（双击可快速调用，指令将填入输入框）`}
+                      onDoubleClick={() => onInvokeTool?.(t.name, t.label)}
+                    >
                       <span className="agent-capability-icon">{ICONS[t.iconKey] || ICONS.settings}</span>
                       <span className="agent-capability-name">{t.label}</span>
                     </div>
                   ))}
+                  <p className="agent-capabilities-hint">双击工具可快速调用 · 指令将填入输入框，补充参数后回车即执行</p>
                 </div>
               </section>
             )}

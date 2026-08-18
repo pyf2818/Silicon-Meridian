@@ -18624,13 +18624,20 @@ body {
   background: var(--bg-card);
   font-size: 11px;
   color: var(--text-primary);
-  cursor: default;
-  transition: border-color .15s, background .15s;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .15s, background .15s, transform .1s;
 }
 
 .agent-capability-chip:hover {
   border-color: var(--accent-cyan, #06b6d4);
   background: rgba(6, 182, 212, .06);
+}
+
+.agent-capability-chip:active {
+  transform: scale(0.97);
+  border-color: var(--accent-cyan, #06b6d4);
+  background: rgba(6, 182, 212, .1);
 }
 
 .agent-capability-icon {
