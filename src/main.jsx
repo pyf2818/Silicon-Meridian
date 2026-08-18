@@ -13,6 +13,7 @@ import './intelligence-briefing.css';
 import './onboarding.css'; // B2 首跑引导向导样式
 import './entrance.css'; // 进场动画「水墨开卷」（在 motion.css 之前，复用其令牌）
 import './motion.css'; // C1 统一微交互与动效令牌（最后引入，优先级最高）
+import './settings.css'; // 墨仪·智控册页 设置设计系统（在 motion 之后，确保表层令牌覆盖）
 import BackgroundLayer from './components/visual/BackgroundLayer.jsx';
 import NoiseLayer from './components/visual/NoiseLayer.jsx';
 // ParticleField 懒加载：首屏先显示背景与噪点，粒子稍后出现，不阻塞首屏

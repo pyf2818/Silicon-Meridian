@@ -6,8 +6,6 @@ import ArticleEditor from './components/ArticleEditor.jsx';
 import CreativeWorkspace from './components/CreativeWorkspace.jsx';
 import ColorfulBubbles from './components/ColorfulBubbles.jsx';
 import AiChatPanel from './components/AiChatPanel.jsx';
-import ThemePicker from './ThemePicker.jsx';
-import { PALETTES } from './ThemePicker.jsx';
 import { formatTime, formatRelative, getGradeColors, isEnglishText, isChineseText, isFreshNews } from './utils/format.js';
 import { validateWorkflowDraft } from './utils/workflowValidation.js';
 import { loadLS, saveLS, clearStaleLS } from './utils/localStorage.js';
@@ -135,8 +133,6 @@ function App() {
   }, [t, i18n.language]);
 
   // ===== UI 状态从 useUiStore 获取（Zustand 全局 store）=====
-  const showThemePicker = useUiStore(s => s.showThemePicker);
-  const setShowThemePicker = useUiStore(s => s.setShowThemePicker);
   const themeMode = useUiStore(s => s.themeMode);
   const setThemeMode = useUiStore(s => s.setThemeMode);
   const editorFullscreen = useUiStore(s => s.editorFullscreen);
@@ -2229,10 +2225,7 @@ ${signals}
       {mobileMenuOpen && <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)} />}
 
       {/* Sidebar */}
-<Sidebar sidebarCollapsed={sidebarCollapsed} setSidebarCollapsed={setSidebarCollapsed} mobileMenuOpen={mobileMenuOpen} nav={nav} goNav={goNav} addRecentVisit={addRecentVisit} onPrefetchNav={prefetchNav} activePrimaryNav={activePrimaryNav} activeContextItems={activeContextItems} contextGroupOpen={contextGroupOpen} setContextGroupOpen={setContextGroupOpen} agents={agents} currentAgent={currentAgent} setCurrentAgent={setCurrentAgent} setElfQuotedContext={setElfQuotedContext} buildWorkbenchContext={buildWorkbenchContext} showFollowDropdown={showFollowDropdown} setShowFollowDropdown={setShowFollowDropdown} followKeywords={followKeywords} sortedFollowKeywords={sortedFollowKeywords} pinnedKeywords={pinnedKeywords} pinFollowKeyword={pinFollowKeyword} unpinFollowKeyword={unpinFollowKeyword} removeFollowKeyword={removeFollowKeyword} executeSearch={executeSearch} newKeyword={newKeyword} setNewKeyword={setNewKeyword} addFollowKeyword={addFollowKeyword} bookmarks={bookmarks} filtered={filtered} isLoggedIn={isLoggedIn} user={user} setShowProfileModal={setShowProfileModal} setAuthMode={setAuthMode} setShowAuthModal={setShowAuthModal} setShowThemePicker={setShowThemePicker} setShowSettings={setShowSettings} setShowShortcuts={setShowShortcuts} PRODUCT_NAME={PRODUCT_NAME} PRODUCT_TAGLINE={PRODUCT_TAGLINE} PRIMARY_NAV_ITEMS={primaryNavItems} />
-
-      {/* Theme picker modal */}
-      <ThemePicker mode={themeMode} setMode={setThemeMode} palette={palette} setPalette={setPalette} show={showThemePicker} onClose={() => setShowThemePicker(false)} />
+<Sidebar sidebarCollapsed={sidebarCollapsed} setSidebarCollapsed={setSidebarCollapsed} mobileMenuOpen={mobileMenuOpen} nav={nav} goNav={goNav} addRecentVisit={addRecentVisit} onPrefetchNav={prefetchNav} activePrimaryNav={activePrimaryNav} activeContextItems={activeContextItems} contextGroupOpen={contextGroupOpen} setContextGroupOpen={setContextGroupOpen} agents={agents} currentAgent={currentAgent} setCurrentAgent={setCurrentAgent} setElfQuotedContext={setElfQuotedContext} buildWorkbenchContext={buildWorkbenchContext} showFollowDropdown={showFollowDropdown} setShowFollowDropdown={setShowFollowDropdown} followKeywords={followKeywords} sortedFollowKeywords={sortedFollowKeywords} pinnedKeywords={pinnedKeywords} pinFollowKeyword={pinFollowKeyword} unpinFollowKeyword={unpinFollowKeyword} removeFollowKeyword={removeFollowKeyword} executeSearch={executeSearch} newKeyword={newKeyword} setNewKeyword={setNewKeyword} addFollowKeyword={addFollowKeyword} bookmarks={bookmarks} filtered={filtered} isLoggedIn={isLoggedIn} user={user} setShowProfileModal={setShowProfileModal} setAuthMode={setAuthMode} setShowAuthModal={setShowAuthModal} setShowSettings={setShowSettings} setSettingsTab={setSettingsTab} setShowShortcuts={setShowShortcuts} PRODUCT_NAME={PRODUCT_NAME} PRODUCT_TAGLINE={PRODUCT_TAGLINE} PRIMARY_NAV_ITEMS={primaryNavItems} />
 
       {/* Main */}
       <main data-nav={nav} className={`main ${(nav === 'home' || nav === 'recommendations') ? 'main-workbench' : ''}`}>
@@ -2837,7 +2830,7 @@ ${signals}
         recentVisits={recentVisits}
         actions={[
           { id: 'refresh', label: '刷新资讯', icon: 'refresh', hint: '动作', run: () => loadNews(blocked, false, debouncedQuery, { forceRefresh: true }) },
-          { id: 'theme', label: '切换主题', icon: 'palette', hint: '动作', run: () => setShowThemePicker(true) },
+          { id: 'theme', label: '切换主题', icon: 'palette', hint: '动作', run: () => { setSettingsTab('appearance'); setShowSettings(true); } },
           { id: 'settings', label: '打开设置', icon: 'settings', hint: '动作', run: () => setShowSettings(true) },
           { id: 'repreheat', label: '重新预热今日简报', icon: 'refresh', hint: '动作', run: () => {
             fetch('/api/profile/snapshots/preheat', { method: 'POST', credentials: 'same-origin' })
