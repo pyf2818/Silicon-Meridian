@@ -25984,3 +25984,218 @@ body {
 .monitor-match-title { font-size: 13px; color: var(--text-secondary); line-height: 1.4; }
 .monitor-match-meta { font-size: 11px; color: var(--text-muted); }
 :root[data-mode="light"] .hud-section-dropdown{background:#fff;border-color:rgba(0,180,220,0.2);box-shadow:0 4px 16px rgba(0,0,0,0.1);}
+
+/* ============================================================
+   设置面板 → 关于 Tab（产品信息 + 作者联系）
+   复用 .setting-item / .modal 设计系统；走主题变量随 12 palette + 深浅自动迁移
+   ============================================================ */
+.about-tab { display: flex; flex-direction: column; gap: 16px; }
+
+/* —— 产品信息卡 —— */
+.about-product-card {
+  padding: 16px;
+  background: var(--bg-secondary, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.about-product-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.about-brand-mark {
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Ma Shan Zheng', 'Noto Serif SC', serif;
+  font-size: 26px; line-height: 1;
+  color: var(--bg-primary);
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-emerald, var(--accent-cyan)));
+  border-radius: 10px;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent-cyan) 28%, transparent);
+  flex-shrink: 0;
+}
+.about-product-meta { display: flex; flex-direction: column; gap: 2px; }
+.about-product-name {
+  font-size: 17px; font-weight: 700; color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+.about-product-tagline {
+  font-size: 12px; color: var(--accent-cyan);
+  letter-spacing: 0.06em;
+}
+.about-product-desc { margin: 4px 0 12px; line-height: 1.6; }
+.about-feature-list {
+  list-style: none; padding: 0; margin: 0 0 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.about-feature-list li {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 12.5px; color: var(--text-primary);
+  line-height: 1.5;
+}
+.about-feature-glyph {
+  color: var(--accent-cyan); font-weight: 700; flex-shrink: 0;
+  margin-top: 1px;
+}
+.about-product-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color);
+  font-size: 11px; color: var(--text-muted);
+}
+.about-version-pill {
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+  color: var(--accent-cyan);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 36%, transparent);
+  border-radius: 999px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+.about-copyright { letter-spacing: 0.03em; }
+
+/* —— 作者联系卡 —— */
+.about-author-card {
+  padding: 16px;
+  background: var(--bg-secondary, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.about-author-card > label { margin-bottom: 12px; }
+.about-author-head {
+  display: flex; align-items: center; gap: 12px;
+  padding-bottom: 14px; margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+.about-author-avatar {
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 600;
+  color: var(--bg-primary);
+  background: linear-gradient(135deg, var(--accent-rose, var(--accent-amber, var(--accent-cyan))), var(--accent-amber, var(--accent-cyan)));
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent-rose, var(--accent-cyan)) 22%, transparent);
+}
+.about-author-name { font-size: 15px; font-weight: 600; color: var(--text-primary); line-height: 1.2; }
+.about-author-role { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; letter-spacing: 0.02em; }
+
+.about-contact-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.about-contact-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: border-color var(--dur-fast, 0.14s) var(--ease-out, ease-out);
+}
+.about-contact-row:hover { border-color: var(--accent-cyan); }
+.about-contact-key {
+  flex: 0 0 36px;
+  font-size: 11.5px; color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.about-contact-value {
+  flex: 1; min-width: 0;
+  font-size: 13px; color: var(--text-primary);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  text-decoration: none;
+  word-break: break-all;
+}
+.about-contact-value:hover { color: var(--accent-cyan); }
+.about-copy-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 11px; font-weight: 500;
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 30%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--dur-fast, 0.14s) var(--ease-out, ease-out), color var(--dur-fast, 0.14s) var(--ease-out, ease-out);
+}
+.about-copy-btn:hover {
+  background: color-mix(in srgb, var(--accent-cyan) 22%, transparent);
+  color: var(--text-primary);
+}
+.about-copy-btn:active { transform: scale(0.96); }
+
+/* —— 微信 QR 区块 —— */
+.about-wechat-block {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+.about-wechat-text { flex: 1; min-width: 0; }
+.about-wechat-text .about-contact-key { flex: none; margin-bottom: 4px; }
+.about-wechat-nick {
+  font-size: 13px; color: var(--text-primary);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.about-wechat-block .setting-note { margin: 0; }
+.about-qr-thumb {
+  flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 6px;
+  background: var(--bg-secondary, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color var(--dur-fast, 0.14s) var(--ease-out, ease-out), transform var(--dur-fast, 0.14s) var(--ease-out, ease-out);
+}
+.about-qr-thumb:hover { border-color: var(--accent-cyan); transform: translateY(-1px); }
+.about-qr-thumb:active { transform: scale(0.98); }
+.about-qr-thumb img {
+  width: 92px; height: 92px;
+  display: block;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.about-qr-hint { font-size: 10.5px; color: var(--text-muted); letter-spacing: 0.02em; }
+
+/* —— QR 放大浮层 —— */
+.about-qr-modal {
+  position: fixed; inset: 0; z-index: 11000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  animation: aboutQrFadeIn 0.18s var(--ease-out, ease-out) both;
+  cursor: zoom-out;
+}
+.about-qr-modal-card {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 20px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  cursor: default;
+  animation: aboutQrPopIn 0.22s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+}
+.about-qr-modal-img {
+  width: 280px; height: 280px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #fff;
+  padding: 8px;
+}
+.about-qr-modal-caption { text-align: center; }
+.about-qr-modal-name { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.about-qr-modal-nick { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.about-qr-modal-close {
+  position: absolute; top: 8px; right: 8px;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; line-height: 1;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color var(--dur-fast, 0.14s) var(--ease-out, ease-out), border-color var(--dur-fast, 0.14s) var(--ease-out, ease-out);
+}
+.about-qr-modal-close:hover { color: var(--text-primary); border-color: var(--accent-cyan); }
+
+@keyframes aboutQrFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes aboutQrPopIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }

@@ -84,6 +84,21 @@
       "data": "Data",
       "about": "About"
     },
+    "about": {
+      "features": "Core Features",
+      "featureNews": "Aggregate 265+ sources, AI smart summary & profile-driven reading",
+      "featureAgent": "AI Workstation · ReAct agent · sandbox approval · streaming tool calls",
+      "featureStudio": "Studio · asset library · one-click article · multi-format export",
+      "featureStock": "Stock terminal · watchlist · AI market briefing",
+      "authorLabel": "Author",
+      "authorRole": "Product / Design / Full-stack · Indie dev",
+      "email": "Email",
+      "phone": "Phone",
+      "copy": "Copy",
+      "wechat": "WeChat",
+      "wechatHint": "Scan to add, mention \"Silicon Meridian\" for priority pass",
+      "qrEnlarge": "Click to enlarge"
+    },
     "general": {
       "language": "Language",
       "languageDesc": "Switch the interface display language",

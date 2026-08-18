@@ -8,6 +8,7 @@ import CustomToolsPanel from './settings/CustomToolsPanel.jsx';
 import SandboxPanel from './settings/SandboxPanel.jsx';
 import LlmTab from './settings/LlmTab.jsx';
 import LanguageSwitcher from './LanguageSwitcher.jsx';
+import AboutTab from './settings/AboutTab.jsx';
 // Helper functions (local to this component)
 function truncateUrl(url, maxLength) {
   if (!url) return '';
@@ -116,6 +117,7 @@ export default function SettingsModal({
                   <button className={`settings-nav-item ${settingsTab === 'agents' ? 'active' : ''}`} onClick={() => setSettingsTab('agents')}>Agent管理</button>
                   <button className={`settings-nav-item ${settingsTab === 'tools' ? 'active' : ''}`} onClick={() => setSettingsTab('tools')}>自定义工具</button>
                   <button className={`settings-nav-item ${settingsTab === 'sandbox' ? 'active' : ''}`} onClick={() => setSettingsTab('sandbox')}>沙箱</button>
+                  <button className={`settings-nav-item ${settingsTab === 'about' ? 'active' : ''}`} onClick={() => setSettingsTab('about')}>{t('settings.tabs.about')}</button>
                 </div>
                 <div className={`settings-content ${settingsTab === 'sources' && !showSourceAdvanced ? 'sources-simple-mode' : ''}`}>
                 {settingsTab === 'general' && (
@@ -244,6 +246,10 @@ export default function SettingsModal({
 
                 {settingsTab === 'sandbox' && (
                   <SandboxPanel />
+                )}
+
+                {settingsTab === 'about' && (
+                  <AboutTab />
                 )}
               </div>
               </div>

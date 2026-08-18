@@ -84,6 +84,21 @@
       "data": "数据",
       "about": "关于"
     },
+    "about": {
+      "features": "核心特性",
+      "featureNews": "聚合 265+ 优质信源，AI 智能摘要与画像化阅读",
+      "featureAgent": "AI 工作站 · ReAct 智能体 · 沙箱审批 · 流式工具调用",
+      "featureStudio": "智创中心 · 素材库 · 一键成稿 · 多格式导出",
+      "featureStock": "股市终端 · 自选盯盘 · AI 行情简报",
+      "authorLabel": "作者联系",
+      "authorRole": "产品 / 设计 / 全栈 · 独立开发者",
+      "email": "邮箱",
+      "phone": "电话",
+      "copy": "复制",
+      "wechat": "微信",
+      "wechatHint": "扫码添加，备注「硅川」优先通过",
+      "qrEnlarge": "点击放大"
+    },
     "general": {
       "language": "语言",
       "languageDesc": "切换界面显示语言",

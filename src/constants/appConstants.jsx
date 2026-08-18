@@ -7,6 +7,15 @@ export const PRODUCT_NAME = '万般硅川';
 export const PRODUCT_TAGLINE = '高质量多领域智能资讯生态';
 export const PRODUCT_DESCRIPTION = '面向 AI 时代的个人情报、开源发现、智能体创作与知识资产平台。';
 
+// 作者/联系信息（设置面板 → 关于 Tab 使用）
+export const AUTHOR_INFO = {
+  name: '潘裕丰',
+  email: '2818932783@qq.com',
+  phone: '15259751931',
+  wechatQr: '/qr/wechat.png',
+  wechatNickname: '江月光于水',
+};
+
 export const MOTIVATIONAL_QUOTES = [
   '保持饥饿',
   '保持愚蠢',
