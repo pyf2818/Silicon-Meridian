@@ -141,32 +141,52 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
     console.log('[getNews] Cache invalid, fetching from sources...', { total: allSources.length });
     // 全部源并行抓取：每个 fetchSource 内部已有 10s 超时控制
     // 之前是分批串行（18 个/批 × 12 批 × 10s = 2 分钟），改为并行后总耗时 ≈ 单源最慢超时（10s）
+    let rawItems; // 在 if/else 两个分支都会被赋值或保持 undefined，超时分支赋空数组
+    const FETCH_TOTAL_BUDGET_MS = 12_000;
     const doFetch = async () => {
       console.log(`[getNews] Fetching all ${allSources.length} sources in parallel...`);
-      const settled = await Promise.allSettled(allSources.map(source => fetchSource(source)));
+      const fetchPromise = Promise.allSettled(allSources.map(source => fetchSource(source)));
+      // 全局总预算：超过后让 fetch 继续在后台填缓存，caller 拿到 []（空数据 + 失败数标记），
+      // 避免 265 源并发 + 网络卡顿导致整个请求被无限挂起的事件循环饿死。
+      const timer = new Promise(resolve => setTimeout(() => resolve('__timeout__'), FETCH_TOTAL_BUDGET_MS));
+      const result = await Promise.race([fetchPromise, timer]);
+      if (result === '__timeout__') {
+        console.warn(`[getNews] Fetch exceeded ${FETCH_TOTAL_BUDGET_MS}ms budget; returning [] to caller (fetch continues in background)`);
+        return [];
+      }
       console.log('[getNews] Fetch done', {
-        total: settled.length,
-        fulfilled: settled.filter(r => r.status === 'fulfilled').length,
-        rejected: settled.filter(r => r.status === 'rejected').length,
+        total: result.length,
+        fulfilled: result.filter(r => r.status === 'fulfilled').length,
+        rejected: result.filter(r => r.status === 'rejected').length,
       });
-      return settled;
+      return result;
     };
     fetchingPromise = doFetch().then(r => { fetchingPromise = null; return r; }).catch(e => { fetchingPromise = null; throw e; });
     const settled = await fetchingPromise;
-    console.log('[getNews] Fetch results:', { total: settled.length, fulfilled: settled.filter(r => r.status === 'fulfilled').length, rejected: settled.filter(r => r.status === 'rejected').length });
-    sourceResults = settled
-      .filter(result => result.status === 'fulfilled')
-      .map(result => result.value);
-    const rawItems = sourceResults.flatMap(result => result.items);
-    console.log('[getNews] Raw items:', rawItems.length);
-    failedSources = settled.filter(result => result.status === 'rejected').length;
-    const cleaned = applyBlockedWords(rawItems, blocked)
-      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-    const deduped = mergeDiverseItems(cleaned, sourceResults, MAX_NEWS_ITEMS, MAX_ITEMS_PER_SOURCE);
-    blockedCount = rawItems.length - cleaned.length;
+    // 超时降级路径：settled 为 [] 时返回空 + 全失败标记，让 caller 快速拿到响应（fill cache 由后台 fetch 继续负责）
+    if (!Array.isArray(settled) || settled.length === 0) {
+      console.warn('[getNews] Settled empty (fetch timed out); returning empty payload');
+      fullItems = [];
+      sourceResults = [];
+      rawItems = [];
+      failedSources = allSources.length;
+      blockedCount = 0;
+    } else {
+      console.log('[getNews] Fetch results:', { total: settled.length, fulfilled: settled.filter(r => r.status === 'fulfilled').length, rejected: settled.filter(r => r.status === 'rejected').length });
+      sourceResults = settled
+        .filter(result => result.status === 'fulfilled')
+        .map(result => result.value);
+      rawItems = sourceResults.flatMap(result => result.items);
+      console.log('[getNews] Raw items:', rawItems.length);
+      failedSources = settled.filter(result => result.status === 'rejected').length;
+      const cleaned = applyBlockedWords(rawItems, blocked)
+        .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+      const deduped = mergeDiverseItems(cleaned, sourceResults, MAX_NEWS_ITEMS, MAX_ITEMS_PER_SOURCE);
+      blockedCount = rawItems.length - cleaned.length;
 
-    // 多源交叉验证 + 质量评分
-    fullItems = crossVerifyItems(deduped);
+      // 多源交叉验证 + 质量评分
+      fullItems = crossVerifyItems(deduped);
+    }
 
     // 为每个item添加源等级信息 + 预计算涉华标记
     fullItems.forEach(item => {

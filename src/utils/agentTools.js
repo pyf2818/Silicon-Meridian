@@ -177,26 +177,84 @@ async function toolSearchNews(args, ctx) {
   const keyword = String(args?.keyword || '').trim();
   if (!keyword) return '错误：keyword 参数不能为空';
   const pageSize = Math.max(1, Math.min(Number(args?.pageSize) || 8, 20));
-  const res = await fetch(`/api/news?search=${encodeURIComponent(keyword)}&pageSize=${pageSize}`);
-  if (!res.ok) return `错误：资讯接口返回 ${res.status}`;
-  const data = await res.json();
-  if (!data?.ok) return `错误：${data?.error || '资讯查询失败'}`;
-  let items = Array.isArray(data.items) ? data.items : [];
-  // 缓存未命中或结果为空时，尝试增大 pageSize 重新搜索
-  if (items.length === 0) {
-    const retryRes = await fetch(`/api/news?search=${encodeURIComponent(keyword)}&pageSize=40`);
-    if (retryRes.ok) {
-      const retryData = await retryRes.json();
-      if (retryData?.ok) {
-        const allItems = Array.isArray(retryData.items) ? retryData.items : [];
-        // 客户端关键词匹配 fallback
-        const kw = keyword.toLowerCase();
-        items = allItems.filter(item =>
-          (item.title || '').toLowerCase().includes(kw) ||
-          (item.summary || '').toLowerCase().includes(kw)
-        ).slice(0, pageSize);
-      }
+
+  // 防御 cold-cache：newsService 首次会并发抓 265 个 RSS 源（沙盒网络受限下可能 30s 都抓不完），
+  // 给首次 fetch 加 10s 预算，超时立即降级到 /api/intelligence/events（事件聚类已缓存，无 RSS 冷启动）。
+  const withTimeout = (url, opts = {}, ms = 10000) =>
+    Promise.race([
+      fetch(url, opts),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`请求超时（${ms / 1000}s）`)), ms)),
+    ]);
+
+  let items = [];
+  let newsTimedOut = false;
+  try {
+    const res = await withTimeout(`/api/news?search=${encodeURIComponent(keyword)}&pageSize=${pageSize}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.ok) items = Array.isArray(data.items) ? data.items : [];
     }
+  } catch (err) {
+    if (/超时/.test(String(err?.message || ''))) newsTimedOut = true;
+  }
+
+  // 主路径（/api/news）结果为空或超时：降级到 intelligence 事件接口（已有聚类缓存，不依赖 RSS 冷启动）
+  if (items.length === 0) {
+    try {
+      const intRes = await withTimeout(
+        `/api/intelligence/events?take=80&storage=auto&q=${encodeURIComponent(keyword)}`,
+        {},
+        10000,
+      );
+      if (intRes.ok) {
+        const intData = await intRes.json();
+        if (intData?.ok && Array.isArray(intData.events)) {
+          const kw = keyword.toLowerCase();
+          // intelligence 返回的事件字段是 {id, title, summary, source, url, sources[], entities[], category, ...}
+          // 客户端按关键词命中过滤（title/summary/entities），并按 intelligenceScore 排序取 pageSize
+          const matched = intData.events
+            .filter(ev => {
+              if (kw.length === 0) return true;
+              const text = `${ev.title || ''} ${ev.summary || ''} ${(ev.entities || []).join(' ')}`.toLowerCase();
+              return text.includes(kw);
+            })
+            .sort((a, b) => (b.intelligenceScore || 0) - (a.intelligenceScore || 0))
+            .slice(0, pageSize)
+            .map(ev => ({
+              id: ev.id,
+              title: ev.title,
+              summary: ev.summary,
+              source: (ev.sources || [])[0] || ev.source || '情报事件',
+              url: ev.url,
+              publishedAt: ev.lastSeenAt || ev.publishedAt,
+              category: ev.category,
+              categoryLabel: ev.categoryLabel,
+            }));
+          items = matched;
+        }
+      }
+    } catch {
+      // 静默：后续 fallback 兜底
+    }
+  }
+
+  // 缓存未命中或结果为空时，尝试增大 pageSize 重新搜索（仅当 news 未超时时）
+  if (items.length === 0 && !newsTimedOut) {
+    try {
+      const retryRes = await withTimeout(`/api/news?search=${encodeURIComponent(keyword)}&pageSize=40`, {}, 10000);
+      if (retryRes.ok) {
+        const retryData = await retryRes.json();
+        if (retryData?.ok) {
+          const allItems = Array.isArray(retryData.items) ? retryData.items : [];
+          // 客户端关键词匹配 fallback
+          const kw = keyword.toLowerCase();
+          items = allItems.filter(item =>
+            (item.title || '').toLowerCase().includes(kw) ||
+            (item.summary || '').toLowerCase().includes(kw)
+          ).slice(0, pageSize);
+        }
+      }
+    } catch { /* ignore */ }
   }
   if (items.length === 0) {
     // 最后 fallback：尝试联网搜索
