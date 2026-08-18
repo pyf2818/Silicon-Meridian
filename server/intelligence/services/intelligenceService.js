@@ -10,6 +10,7 @@ import { applyPersonalScores } from '../processors/personalScore.js';
 import { buildProactiveAlerts } from '../processors/proactiveAlerts.js';
 import { buildWeeklySectorAnalysis } from '../processors/weeklySectorAnalysis.js';
 import { createIntelligenceRepository } from '../repositories/intelligenceRepository.js';
+import { getPersonaSummary } from '../../agent/agentMemoryService.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_INTELLIGENCE_TAKE = 80;
@@ -35,6 +36,11 @@ function cacheKey(options) {
     providers: options.providers || 'all',
     perSource: options.perSource || '',
     sources: options.sources || '',
+    // 画像指纹：不同用户/不同兴趣组合的个性化缓存不能串味（5min TTL 内）
+    interests: options.interests || '',
+    follows: options.follows || '',
+    sourceTiers: options.sourceTiers || '',
+    userId: options.userId || '',
   });
 }
 
@@ -75,7 +81,34 @@ function parseOptions(params = {}) {
     interests: String(params.interests || '').trim(),
     follows: String(params.follows || params.specialFollows || '').trim(),
     sourceTiers: String(params.sourceTiers || '').trim(),
+    userId: String(params.userId || '').trim(),
   };
+}
+
+/**
+ * 画像闭环（B1）：读取用户 learned_preferences（LLM/启发式从历史交互推导的学习偏好）
+ * 把 topics 作为「学习主题」注入个人化打分上下文，让算法画像真正影响推荐排序。
+ * 未登录 / 读取失败时静默降级为 null（不影响主链路）。
+ * @param {Object} options - parseOptions 后的选项（含 userId）
+ * @returns {Promise<{learnedTopics: string[], preferredDepth?: string, preferredFormat?: string}|null>}
+ */
+async function resolveLearnedPreferences(options) {
+  const userId = options.userId;
+  if (!userId) return null;
+  try {
+    const persona = await getPersonaSummary(userId);
+    const lp = persona?.learnedPreferences || {};
+    const topics = Array.isArray(lp.topics) ? lp.topics.map(String).map(t => t.trim()).filter(Boolean) : [];
+    if (!topics.length) return null;
+    return {
+      learnedTopics: topics,
+      preferredDepth: lp.preferredDepth,
+      preferredFormat: lp.preferredFormat,
+    };
+  } catch (error) {
+    console.error('[intelligenceService] load learned preferences failed:', error?.message || error);
+    return null;
+  }
 }
 
 function sortItems(items) {
@@ -164,7 +197,7 @@ export async function getAgentIntelligenceContext(params = {}) {
     source: payload.source,
     mode: payload.mode,
     briefing: {
-      title: 'AI Intelligence Context',
+      title: 'AI 情报上下文',
       oneLine: buildOneLine(topItems),
       topEvents: topItems.slice(0, 15).map(toAgentEvent),
       watchEntities: topEntities(topItems),
@@ -172,10 +205,10 @@ export async function getAgentIntelligenceContext(params = {}) {
       weeklySectors: weeklySectors.sectors.slice(0, 8),
       proactiveAlerts: proactiveAlerts.alerts,
       suggestedQuestions: [
-        'Which AI events have the highest industry impact today?',
-        'Which companies or models should I track next?',
-        'What changed for developers, enterprises, or investors?',
-        'Which opportunities or risks need follow-up this week?',
+        '今天哪些 AI 事件行业影响最大？',
+        '接下来该关注哪些公司或模型？',
+        '对开发者、企业与投资者有什么变化？',
+        '本周哪些机会或风险需要跟进？',
       ],
     },
     citations: topItems.map(item => ({
@@ -191,9 +224,12 @@ export async function getAgentIntelligenceContext(params = {}) {
 
 export async function getIntelligenceEvents(params = {}) {
   const options = parseOptions(params);
+  const learned = await resolveLearnedPreferences(options);
+  const context = learned ? { ...options, learnedTopics: learned.learnedTopics } : options;
+
   if (options.storage === 'stored') {
     const stored = await getStoredIntelligenceEvents(options);
-    return { ...stored, events: applyPersonalScores(stored.events, options) };
+    return { ...stored, events: applyPersonalScores(stored.events, context) };
   }
 
   const take = boundedNumber(params.take, DEFAULT_INTELLIGENCE_TAKE, { min: 12 });
@@ -203,15 +239,15 @@ export async function getIntelligenceEvents(params = {}) {
   } catch (error) {
     if (options.storage !== 'auto') throw error;
     const stored = await getStoredIntelligenceEvents(options);
-    return { ...stored, events: applyPersonalScores(stored.events, options), fallback: { reason: 'live-error', message: error.message || 'Live intelligence unavailable' } };
+    return { ...stored, events: applyPersonalScores(stored.events, context), fallback: { reason: 'live-error', message: error.message || 'Live intelligence unavailable' } };
   }
 
   const events = clusterIntelligenceEvents(payload.items);
-  const personalizedEvents = applyPersonalScores(events, options);
+  const personalizedEvents = applyPersonalScores(events, context);
 
   if (options.storage === 'auto' && personalizedEvents.length === 0) {
     const stored = await getStoredIntelligenceEvents(options);
-    return { ...stored, events: applyPersonalScores(stored.events, options), fallback: { reason: 'live-empty' } };
+    return { ...stored, events: applyPersonalScores(stored.events, context), fallback: { reason: 'live-empty' } };
   }
 
   return {
@@ -252,6 +288,7 @@ export async function getStoredIntelligenceEvents(params = {}) {
   const events = await repository.listEvents({
     limit: params.take || params.limit || 30,
     category: params.category || '',
+    date: params.date || '',
   });
   return {
     ok: true,
@@ -403,9 +440,9 @@ export async function getProactiveIntelligenceAlerts(params = {}) {
 }
 
 function buildOneLine(items) {
-  if (!items.length) return 'No current AI intelligence items are available.';
+  if (!items.length) return '当前暂无可用 AI 情报条目。';
   const lead = items[0];
-  return `${lead.title} leads the current AI intelligence feed with impact ${lead.impactScore}.`;
+  return `${lead.title} 领跑当前 AI 情报流，影响力 ${lead.impactScore}。`;
 }
 
 function toAgentEvent(item) {

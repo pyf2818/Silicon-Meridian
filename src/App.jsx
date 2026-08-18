@@ -1932,8 +1932,8 @@ ${materialLines || '暂无素材'}`;
   }
 
   useEffect(() => {
-    if (nav === 'recommendations') loadExternalIntelligence(selectedInterests);
-  }, [nav, selectedInterests]);
+    if (nav === 'recommendations') loadExternalIntelligence(selectedInterests, { sourceTiers, specialFollows });
+  }, [nav, selectedInterests, sourceTiers, specialFollows]);
   function loadMoreNews() {
     if (!newsHasMore || loadingMore || loading) return;
     setLoadingMore(true);

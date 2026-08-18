@@ -14,6 +14,8 @@ export function scorePersonalFit(event = {}, context = {}) {
   const interests = normalizeList(context.interests);
   const follows = normalizeList(context.follows || context.specialFollows);
   const sourceTiers = normalizeList(context.sourceTiers);
+  // 学习主题（learned_preferences.topics）：LLM/启发式从历史交互推导，权重低于手动兴趣
+  const learnedTopics = normalizeList(context.learnedTopics || context.learned?.topics);
   const text = textFor(event);
 
   const interestMatches = interests.filter(interest => {
@@ -28,11 +30,16 @@ export function scorePersonalFit(event = {}, context = {}) {
     const value = source.toLowerCase();
     return value && (event.sources || []).some(item => String(item).toLowerCase().includes(value));
   });
+  const learnedMatches = learnedTopics.filter(topic => {
+    const value = topic.toLowerCase();
+    return value && text.includes(value);
+  });
 
   const score = Math.min(100,
     interestMatches.length * 22
     + followMatches.length * 28
     + sourceMatches.length * 14
+    + learnedMatches.length * 12
     + ((event.confidence || 0) >= 70 ? 8 : 0)
     + ((event.independentSourceCount || 1) > 1 ? 8 : 0)
   );
@@ -43,6 +50,7 @@ export function scorePersonalFit(event = {}, context = {}) {
       ...interestMatches.map(item => `interest:${item}`),
       ...followMatches.map(item => `follow:${item}`),
       ...sourceMatches.map(item => `source:${item}`),
+      ...learnedMatches.map(item => `learned:${item}`),
     ].slice(0, 6),
   };
 }
@@ -50,7 +58,8 @@ export function scorePersonalFit(event = {}, context = {}) {
 export function applyPersonalScores(events = [], context = {}) {
   const hasContext = normalizeList(context.interests).length
     || normalizeList(context.follows || context.specialFollows).length
-    || normalizeList(context.sourceTiers).length;
+    || normalizeList(context.sourceTiers).length
+    || normalizeList(context.learnedTopics || context.learned?.topics).length;
 
   if (!hasContext) {
     return events.map(event => ({ ...event, personalScore: event.personalScore || 0, personalReasons: event.personalReasons || [] }));

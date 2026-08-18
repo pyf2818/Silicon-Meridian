@@ -11,18 +11,45 @@ export function useExternalIntelligence() {
   const [externalIntelligenceError, setExternalIntelligenceError] = useState('');
   const [externalIntelligenceUpdatedAt, setExternalIntelligenceUpdatedAt] = useState('');
 
-  const loadExternalIntelligence = useCallback(async (selectedInterests = []) => {
+  const loadExternalIntelligence = useCallback(async (selectedInterests = [], profile = {}) => {
     setExternalIntelligenceLoading(true);
     setExternalIntelligenceError('');
     try {
+      // 画像闭环（B3）：把特殊关注（keyword 型→follows 文本匹配）与信息源分级（源名→sourceTiers 源匹配）
+      // 一并传给服务端 personalScore，让 28pt follows / 14pt sourceTiers 加分真正生效
+      const { sourceTiers = {}, specialFollows = [] } = profile || {};
+      const keywordFollows = (specialFollows || [])
+        .filter(f => f && f.type === 'keyword' && f.target)
+        .map(f => String(f.target).trim())
+        .filter(Boolean);
+      const sourceTargets = (specialFollows || [])
+        .filter(f => f && f.type === 'source' && f.target)
+        .map(f => String(f.target).trim())
+        .filter(Boolean);
+      const tierNames = Object.entries(sourceTiers || {})
+        .filter(([, tier]) => tier && tier !== 'none')
+        .map(([name]) => String(name).trim())
+        .filter(Boolean);
+      const follows = [...new Set(keywordFollows)].join(',');
+      const sourceTiersParam = [...new Set([...tierNames, ...sourceTargets])].join(',');
+
+      const applyProfile = (params) => {
+        if (follows) params.set('follows', follows);
+        if (sourceTiersParam) params.set('sourceTiers', sourceTiersParam);
+      };
+
       const intelligenceParams = new URLSearchParams({ take: '140', storage: 'auto' });
       if (selectedInterests.length) intelligenceParams.set('interests', selectedInterests.join(','));
+      applyProfile(intelligenceParams);
       const opportunityParams = new URLSearchParams({ take: '80', storage: 'auto' });
       if (selectedInterests.length) opportunityParams.set('interests', selectedInterests.join(','));
+      applyProfile(opportunityParams);
       const weeklyParams = new URLSearchParams({ take: '160', storage: 'auto', days: '7' });
       if (selectedInterests.length) weeklyParams.set('interests', selectedInterests.join(','));
+      applyProfile(weeklyParams);
       const alertParams = new URLSearchParams({ take: '160', storage: 'auto', days: '7', limit: '10' });
       if (selectedInterests.length) alertParams.set('interests', selectedInterests.join(','));
+      applyProfile(alertParams);
       const [eventsResponse, opportunitiesResponse, weeklyResponse, alertsResponse] = await Promise.all([
         fetch(`/api/intelligence/events?${intelligenceParams}`),
         fetch(`/api/intelligence/opportunities?${opportunityParams}`).catch(() => null),

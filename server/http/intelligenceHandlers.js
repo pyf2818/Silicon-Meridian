@@ -13,6 +13,7 @@ import {
   syncIntelligenceSnapshot,
 } from '../intelligence/services/intelligenceService.js';
 import { sendJsonResponse } from './httpUtils.js';
+import { getUserIdFromRequest } from './agentAuth.js';
 
 function queryValue(req, key) {
   const value = req.query?.[key];
@@ -27,7 +28,8 @@ function queryValue(req, key) {
   }
 }
 
-function buildParams(req) {
+async function buildParams(req) {
+  const userId = await getUserIdFromRequest(req);
   return {
     mode: queryValue(req, 'mode'),
     take: queryValue(req, 'take'),
@@ -46,6 +48,8 @@ function buildParams(req) {
     sourceTiers: queryValue(req, 'sourceTiers'),
     days: queryValue(req, 'days'),
     limit: queryValue(req, 'limit'),
+    date: queryValue(req, 'date'),
+    userId: userId || '',
   };
 }
 
@@ -70,42 +74,42 @@ export async function handleIntelligenceRequest(req, res, { path = [] } = {}) {
 
   try {
     if (action === 'items') {
-      return sendJsonResponse(res, 200, await getIntelligenceItems(buildParams(req)));
+      return sendJsonResponse(res, 200, await getIntelligenceItems(await buildParams(req)));
     }
     if (action === 'agent' || action === 'context') {
-      return sendJsonResponse(res, 200, await getAgentIntelligenceContext(buildParams(req)));
+      return sendJsonResponse(res, 200, await getAgentIntelligenceContext(await buildParams(req)));
     }
     if (action === 'events') {
-      return sendJsonResponse(res, 200, await getIntelligenceEvents(buildParams(req)));
+      return sendJsonResponse(res, 200, await getIntelligenceEvents(await buildParams(req)));
     }
     if (action === 'sync') {
       if (req.method && req.method !== 'POST') {
         return sendJsonResponse(res, 405, { ok: false, error: { code: 'METHOD_NOT_ALLOWED' } });
       }
-      return sendJsonResponse(res, 200, await syncIntelligenceSnapshot(buildParams(req)));
+      return sendJsonResponse(res, 200, await syncIntelligenceSnapshot(await buildParams(req)));
     }
     if (action === 'stored') {
-      return sendJsonResponse(res, 200, await getStoredIntelligenceEvents(buildParams(req)));
+      return sendJsonResponse(res, 200, await getStoredIntelligenceEvents(await buildParams(req)));
     }
     if (action === 'stored-articles') {
-      return sendJsonResponse(res, 200, await getStoredIntelligenceArticles(buildParams(req)));
+      return sendJsonResponse(res, 200, await getStoredIntelligenceArticles(await buildParams(req)));
     }
     if (action === 'daily') {
-      return sendJsonResponse(res, 200, await getDailyIntelligenceBriefing(buildParams(req)));
+      return sendJsonResponse(res, 200, await getDailyIntelligenceBriefing(await buildParams(req)));
     }
     if (action === 'entities') {
       return sendJsonResponse(res, 200, id
-        ? await getIntelligenceEntity(id, buildParams(req))
-        : await getIntelligenceEntities(buildParams(req)));
+        ? await getIntelligenceEntity(id, await buildParams(req))
+        : await getIntelligenceEntities(await buildParams(req)));
     }
     if (action === 'opportunities') {
-      return sendJsonResponse(res, 200, await getIntelligenceOpportunities(buildParams(req)));
+      return sendJsonResponse(res, 200, await getIntelligenceOpportunities(await buildParams(req)));
     }
     if (action === 'weekly-sectors') {
-      return sendJsonResponse(res, 200, await getWeeklySectorAnalysis(buildParams(req)));
+      return sendJsonResponse(res, 200, await getWeeklySectorAnalysis(await buildParams(req)));
     }
     if (action === 'alerts') {
-      return sendJsonResponse(res, 200, await getProactiveIntelligenceAlerts(buildParams(req)));
+      return sendJsonResponse(res, 200, await getProactiveIntelligenceAlerts(await buildParams(req)));
     }
     return sendJsonResponse(res, 404, { ok: false, error: { code: 'UNKNOWN_INTELLIGENCE_ENDPOINT' } });
   } catch (error) {
