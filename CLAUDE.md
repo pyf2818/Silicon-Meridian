@@ -10,8 +10,13 @@ npm run dev                              # Dev server on 0.0.0.0:5175 (with API 
 npm run build                            # Production build -> dist/
 npm start                                # Production Node server (dist + full API, default port 3000)
 npm run preview                          # Preview production build (static only, no API)
-npm test                                 # Run unit tests (vitest) — 410 tests across src/utils, src/store, src/domain, src/hooks/__tests__, src/components/profile/__tests__, server/
+npm run test                             # Run unit tests (vitest) — 410 tests across src/utils, src/store, src/domain, src/hooks/__tests__, src/components/profile/__tests__, server/
 npm run test:watch                       # Watch mode
+npm run test:integration                 # Integration tests (vitest.integration.config.js)
+npm run test:e2e                         # Playwright E2E tests
+npm run verify:platform                  # Verify platform connectivity (DB + services)
+npm run intelligence:sync                # Intelligence data sync script
+npm run preheat:today                    # Trigger today's briefing preheat
 node node_modules/vitest/vitest.mjs run <file>  # Run a single test file (bin symlink not created on Windows)
 npm run db:migrate
 python scrapling_server.py               # Flask API on port 5000 (optional, for Scrapling scraping)
@@ -33,7 +38,7 @@ No lint, typecheck, or formatter commands exist.
 
 ### Frontend (`src/`)
 
-- **`App.jsx`** (~2789 lines) - Main component with routing logic, settings modal, and page composition. State progressively extracted into Zustand stores (`src/store/`) and custom hooks. Topbar JSX extracted to `src/components/Topbar.jsx`. Workflow runner logic in `src/hooks/useAgentWorkflowRunner.js`, workflow actions in `src/hooks/useWorkflowActions.js`.
+- **`App.jsx`** (~2800 lines) - Main component with routing logic, settings modal, and page composition. State progressively extracted into Zustand stores (`src/store/`) and custom hooks. Topbar JSX extracted to `src/components/Topbar.jsx`. Workflow runner logic in `src/hooks/useAgentWorkflowRunner.js`, workflow actions in `src/hooks/useWorkflowActions.js`.
 - **`AiElf.jsx`** (643 lines) - AI assistant with multi-Agent conversation, drag-to-analyze, history management. Uses localStorage per-agent (50 messages, 20 sessions max). Lazy-loaded via `React.lazy`. SendMessage logic extracted to `src/components/aielf/useSendMessage.js`, agent loop in `src/components/aielf/runElfAgentLoop.js`, sub-components in `src/components/aielf/` (Sidebar, ChatHeader, MessageList, InputArea).
 - **`GlobeView.jsx`** (999 lines) - 3D globe via `react-globe.gl`/Three.js. Fullscreen uses `createPortal` to `document.body`. Canvas needs `min-height: 420px`. Lazy-loaded.
 - **`main.jsx`** - Mounts `<App />` inside `<ErrorBoundary>` + `<React.StrictMode>`.
@@ -68,14 +73,19 @@ State progressively extracted from App.jsx `useState` into Zustand stores. Each 
 
 ```
 src/store/
-  index.js              Barrel: exports useUiStore, useLightboxStore, useWorkflowStore, useMaterialsStore, useProfileStore, useBehaviorStore
+  index.js              Barrel: exports 12 stores
+  newsStore.js          资讯列表：items/loading/error/blockedCategories/searchQuery + loadNews
+  recommendStore.js     推荐引擎：items/briefing/todayBriefing/loading + loadRecommendations
   workflowStore.js      智能体工作流：draft/templates/activeId/selectedNodeId/run/result/history/actions (persisted)
-  materialsStore.js     素材库 UI：filter/search/tags/timeRange/sourceFilter/spaceFilter/showSpaceForm/showAddMaterial (non-persisted)
-  profileStore.js       用户画像：domainTiers/sourceTiers/specialFollows/dailyProfileSnapshots/briefingConfig/pendingSuggestions (persisted) + profileForm/specialFollowForm/editingSpecialFollowId (non-persisted)
-                        pendingSuggestions 含去重(cap=20)、冷却(1h)、审计保留(30d) 机制
-  behaviorStore.js      行为信号单一 source of truth：readingHistory/recommendationFeedback/
-                        recommendationFeedbackEvents/followKeywords/trackTargets
-                        (persisted, 从 recommendStore 迁入, 旧 LS key 保留 30 天)
+  materialsStore.js     素材库 UI：filter/search/tags/timeRange/sourceFilter/spaceFilter/showSpaceForm/showAddMaterial
+  profileStore.js       用户画像：domainTiers/sourceTiers/specialFollows/snapshots/briefingConfig/pendingSuggestions/personaSummary (persisted)
+  behaviorStore.js      行为信号单一 source of truth：readingHistory/recommendationFeedback/events/followKeywords/trackTargets (persisted)
+  aiStore.js            AI 对话：messages/loading/selectedAgent/config + sendMessage/reset
+  elfStore.js           AI Elf 会话：sessions/activeSession/messages/agents (persisted, 50 msg/20 session cap)
+  githubStore.js        GitHub 情报：repos/loading/error/lang/period + loadGithubTrending
+  sourceStore.js        信源管理：customSources/disabledSources/health/verify/discovery
+  stockStore.js         股市：realtime/kline/timeline/sectors/watchlist/loading (localStorage watchlist)
+  uiStore.js            全局 UI 开关（在 store/index.js 内联定义）：lightbox/sidebar/rightPanel/settings/shortcuts/profileTab/...
 ```
 
 UI Store (`useUiStore`) and Lightbox Store (`useLightboxStore`) are defined inline in `src/store/index.js`. Usage:
@@ -87,61 +97,106 @@ const setDraft = useWorkflowStore(s => s.setAgentWorkflowDraft);
 
 Setters support both direct value and updater function (React `setState` style): `setAgentWorkflowDraft(prev => ({ ...prev, name }))`.
 
-#### Extracted Modules (Phase 1-3 refactoring)
+#### Extracted Modules (Phase 1-6 refactoring)
 
-State has been progressively moved into hooks. Some logic (e.g. `generateDailyBriefing`, `intelligenceProfile` derivation, `buildWorkbenchContext`) still lives inline in App.jsx as `useMemo`s rather than standalone page modules.
+State progressively moved into hooks + stores. Some logic (`generateDailyBriefing`, `intelligenceProfile` derivation, `buildWorkbenchContext`) still lives inline in App.jsx as `useMemo`s.
 
 **Standalone component files (actual, in `src/components/`):**
 ```
 src/components/
-  Topbar.jsx            顶部栏（从 App.jsx 抽离，~280 行）
-  SettingsModal.jsx     (~234 lines, 拆分为 settings/ 子目录)
-  ArticleEditor.jsx     Markdown article editor
-  StockPage.jsx         股市动向三栏行情终端（967 lines; 分时/K线/五档/AI诊断）
-  AiChatPanel.jsx       AI chat panel（780 lines，已拆出 aichat/ 子目录）
-  SourceOpsPanel.jsx    Source operations panel
-  NewsItem.jsx          资讯卡片（已从 App.jsx 抽离为独立文件）
-  ColorfulBubbles.jsx   Decorative bubble animation
-  WorkflowNodeCard.jsx  画布节点卡片
-  WorkflowEdge.jsx      画布连线
-  AiBriefingHome.jsx    AI 早报首页（基于 briefingEngine 的 lane 渲染）
-  TodayNewspaper.jsx    今日情报报页
-  RecommendationTimeline.jsx  推荐时间轴
-  CommunityPage.jsx     社区广场页（nav='square'，发帖/评论/点赞/收藏/关注）
-  CommunityPostDetail.jsx    社区帖子详情（被 CommunityPage 使用）
-  settings/             SettingsModal 子标签页
-    SourcesTab.jsx      信息源标签页（900 lines）
-    AgentsTab.jsx       Agent 管理标签页
-    LlmTab.jsx          大模型配置标签页
-    CustomToolsPanel.jsx 自定义 HTTP 工具
-    SandboxPanel.jsx    沙箱配置
-  aielf/                AiElf 子组件
+  Topbar.jsx               顶部栏（从 App.jsx 抽离，~280 行）
+  SettingsModal.jsx        设置模态（拆分为 settings/ 子目录）
+  ArticleEditor.jsx        Markdown article editor
+  StockPage.jsx            股市动向三栏行情终端（分时/K线/五档/AI诊断）
+  AiChatPanel.jsx          AI chat panel（780 lines，拆出 aichat/ 子目录）
+  CreativeWorkspace.jsx    智创空间主组件（素材库 + 编辑器 + 工作流）
+  CommunityPage.jsx        社区广场页（发帖/评论/点赞/收藏/关注）
+  CommunityPostDetail.jsx  社区帖子详情
+  NewsItem.jsx             资讯卡片
+  HexRadarChart.jsx        六边形雷达图
+  TrendLineChart.jsx       趋势折线图（支持 onSelect 回调）
+  Lightbox.jsx             多图灯箱（prev/next 导航）
+  AuthModal.jsx / InterestModal.jsx / ProfileModal.jsx
+  LlmQuickConfigModal.jsx  LLM 快速配置
+  ShortcutsModal.jsx       快捷键面板
+  LanguageSwitcher.jsx     中英文切换
+  IntelligenceFeedPanel.jsx 情报动态面板
+  NewspaperOverlay.jsx     今日情报报覆盖层
+  SkeletonCard.jsx         骨架屏卡片
+  ColorfulBubbles.jsx      装饰气泡动画
+  WorkflowNodeCard.jsx     画布节点卡片
+  settings/                设置模态子标签页
+    SourcesTab.jsx         信息源管理
+    AgentsTab.jsx          Agent 管理
+    LlmTab.jsx             大模型配置
+    CustomToolsPanel.jsx   自定义 HTTP 工具
+    SandboxPanel.jsx       沙箱配置
+  aielf/                   AI Elf 子组件
     Sidebar.jsx, ChatHeader.jsx, MessageList.jsx, InputArea.jsx
     ElfToolCard.jsx, prompts.js, markdown.js
-    runElfAgentLoop.js  Agent 工具调用循环
-    useSendMessage.js   发送消息 hook
-  aichat/               AiChatPanel 子组件
+    runElfAgentLoop.js     Agent 工具调用循环
+    useSendMessage.js     发送消息 hook
+  aichat/                  AiChatPanel 子组件
     ToolCards.jsx, buildSystemPrompt.js, buildQuickActions.js
     buildMaterialContext.js, runAgentLoop.js, useInputHistory.js
   stock/
-    KLineChart.jsx      K线图（klinecharts v10）
-    ResearchTools.jsx   研究工具
-  profile/             Phase 2 用户画像 AI 学习闭环组件
-    PendingSuggestionsSection.jsx  AI 建议待确认列表容器（读 useProfileStore.pendingSuggestions）
-    PendingSuggestionCard.jsx     单条建议卡片 + SuggestionAcceptEditor + applySuggestionByType 纯函数
-    AgentMemorySection.jsx        AI 跨会话记忆列表 + 过滤/搜索/分页/删除
-    PersonaSummarySection.jsx     Phase 3 AI 性格画像展示（habits/traits/needs 三栏，读 profileStore.personaSummary）
-    SnapshotHistorySection.jsx    Phase 3 历史快照展示（GET /api/profile/snapshots 列表 + ?date= 详情）
-    ProfileDashboard.jsx         Phase 4 仪表盘主组件（5 区块：KPI / 趋势 / 画像 / 行为观测 / 预热）
-    PersonaSummaryCard.jsx       Phase 4 紧凑画像卡片（habits/traits/needs 三栏并排，仪表盘专用）
-    LearnedPrefsCard.jsx         Phase 4 行为观测卡片（topics/preferredDepth/preferredFormat）
-    PreheatButton.jsx            Phase 4 手动重跑预热按钮（loading/error/success 状态）
+    KLineChart.jsx         K线图（klinecharts v10）
+    ResearchTools.jsx      研究工具
+  profile/                 用户画像组件
+    ProfileDashboard.jsx   仪表盘主组件（Phase 6 双栏布局：时间轴 + 主画像卡）
+    PersonaTimelineRail.jsx 左侧时间轴（日期 + delta chip）
+    PersonaHeroCard.jsx    主画像卡（current/diff 模式 + 置信度环 SVG）
+    PersonaDiffList.jsx    diff 模式三栏列表
+    BehaviorObservedCard.jsx 行为观测卡
+    PreheatCard.jsx        预热按钮卡片
+    KpiStrip.jsx           KPI 细条（4 项均分 + 竖向分隔）
+    PersonaEvolutionMiniChart.jsx 精简 SVG 进化趋势（3 条折线）
+    PendingSuggestionsSection.jsx AI 建议待确认列表
+    PendingSuggestionCard.jsx   单条建议卡片
+    AgentMemorySection.jsx      AI 跨会话记忆 CRUD
+    SnapshotHistorySection.jsx 历史快照展示
 ```
 
 **NOT separate files (inline in App.jsx or located elsewhere):**
 - `SkeletonCard`, `GithubRepoCard` are **inline functions** in App.jsx.
 - `ThemePicker.jsx` lives at `src/ThemePicker.jsx` (NOT `src/components/`); exports default `ThemePicker` + named `PALETTES`.
-- `HexRadarChart`, `TrendLineChart` are not present as files; rendering is inline.
+
+#### Pages (App.jsx routing destinations)
+
+```
+src/components/
+  NewsPage.jsx               资讯聚合页（分类/模式/地区/信源过滤 + 搜索 + 分页）
+  CustomUrlPage.jsx          自定义 URL 抓取页
+  RecommendationFeed.jsx    精准推荐时间线（含日期轨道）
+  RecommendationDateRail.jsx 推荐日期导航
+  RecommendationsPage.jsx    推荐页容器
+  GithubPage.jsx             GitHub 热门页（日/周/月榜 + 语言筛选 + AI 情报）
+  TrendingPage.jsx           热点趋势页
+  StockPage.jsx              股市动向三栏终端（分时/K线/五档/AI诊断）
+  MaterialsPage.jsx          智创素材库页
+  StudioPage.jsx             智创工作室（工作流画布 + 素材 + 编辑器）
+  AgentsPage.jsx             Agent 管理页
+  CalendarPage.jsx           日历管理页
+  CommunityPage.jsx          社区广场
+  ProfilePage.jsx            个人画像（Phase 6 双栏仪表盘 + 设置 tab）
+  ReadingListPage.jsx        阅读列表
+  InsightDashboardPage.jsx   情报仪表盘
+  KnowledgeExportPage.jsx    知识导出页
+  MonitorPage.jsx            竞争情报监测页
+```
+
+#### Shell & Block System (Feishu-inspired three-layer UI)
+
+```
+src/shell/
+  CommandPalette.jsx    Ctrl+K 全局面板：页面导航(9 route) + 新闻搜索 + 快捷操作
+src/blocks/
+  BlockGrid.jsx         网格容器（<BlockGrid columns={3}><BlockGrid.Card .../>）
+  BlockPanel.jsx        带标题的可选操作槽面板
+  BlockList.jsx         列表块
+  BlockToolbar.jsx      工具栏 + Pills 子组件
+  BlockStat.jsx         统计块（value/label/desc/size/variant/trendDir）
+```
 
 **Utility / hook / constant files (actual):**
 ```
@@ -160,30 +215,42 @@ src/constants/
   index.jsx             兼容 shim（92 行）：re-export appConstants.jsx 的 22 个常量，保留死代码 NAV_GROUPS/CATEGORIES/DEFAULT_AGENTS 供历史引用。新代码应直接 import appConstants.jsx
   workflowConstants.js  DEFAULT_AGENT_WORKFLOW, WORKFLOW_NODE_TYPES, WORKFLOW_SKILL_CATALOG, WORKFLOW_CONDITION_METRICS, WORKFLOW_TEMPLATE_LIBRARY (3 templates: daily-briefing / github-evaluator / material-to-article) + template instance/normalize/validate helpers
 src/hooks/
-  useLocalStorage.js    Auto-syncing localStorage hook
-  useAuth.js            认证与用户会话（user/token/auth表单/interests + 持久化 + handler）
-  useLlmConfig.js       LLM配置与模型管理（config/models/test + allLlmModels useMemo）
-  useTrending.js        热门榜单 + GitHub trending（items/loading/filter/page + loadTrending/loadGithub）
-  useSourceManager.js   信息源管理（customSources/disabledSources/health/verify/discovery + 4 handler）
-  useCustomUrl.js       自定义URL抓取（input/result/loading/error/mode + fetchCustomUrl）
-  useCalendar.js        日历管理（calendarDate/events/eventForm + addEvent/removeEvent）
-  useUI.js              纯UI开关（showFollowDropdown/mobileMenuOpen/showBackToTop/moreNavOpen）
-  useStockWatchlist.js  股票自选列表（localStorage 持久化，add/remove/toggle/move）
-  useStockAi.js         股市AI智能模块（诊断/早报/监控，联动LLM）
-  useWorkflowEngine.js  React wrapper over WorkflowEngine: run/result/history/actions state, persists to localStorage `agentWorkflowHistory` (max 12)
-  useCommunity.js       社区广场数据（posts/comments/likes，调用 /api/community/*）
-  useProfileSync.js     画像分层同步：扩展同步 5 块（domainTiers/sourceTiers/specialFollows + dailyProfileSnapshots/briefingConfig）<-> /api/profile/state。
-                        含纯函数 buildSavePayload（构造 PUT 请求体，仅传今日 snapshot）和 mergeSnapshots（远端+本地合并，本地优先，cap 30）
-  useAgentMemories.js          agent_memories CRUD hook（list/search/delete + buildListQuery/parseListResponse 纯函数）
-  useAgentWorkflowRunner.js  智能体工作流运行器（runAgentWorkflow，从 App.jsx 抽离，~578 行）
-  useWorkflowActions.js     工作流行动队列（createWorkflowActions/executeWorkflowAction，从 App.jsx 抽离）
-  useBriefingOps.js          早报操作（从 App.jsx 抽离）
-  useGithubInsight.js        GitHub 情报（从 App.jsx 抽离）
+  useLocalStorage.js        Auto-syncing localStorage hook
+  useAuth.js                认证与用户会话（user/token/auth表单/interests + 持久化 + handler）
+  useLlmConfig.js           LLM配置与模型管理（config/models/test + allLlmModels useMemo）
+  useTrending.js            热门榜单 + GitHub trending（items/loading/filter/page + loadTrending/loadGithub）
+  useSourceManager.js       信息源管理（customSources/disabledSources/health/verify/discovery + 4 handler）
+  useCustomUrl.js           自定义URL抓取（input/result/loading/error/mode + fetchCustomUrl）
+  useCalendar.js            日历管理（calendarDate/events/eventForm + addEvent/removeEvent）
+  useUI.js                  纯UI开关（showFollowDropdown/mobileMenuOpen/showBackToTop/moreNavOpen）
+  useStockWatchlist.js      股票自选列表（localStorage 持久化，add/remove/toggle/move）
+  useStockAi.js             股市AI智能模块（诊断/早报/监控，联动LLM）
+  useWorkflowEngine.js      React wrapper over WorkflowEngine: run/result/history/actions, persists `agentWorkflowHistory` (max 12)
+  useCommunity.js           社区广场数据（posts/comments/likes，调用 /api/community/*）
+  useProfileSync.js         画像分层同步：5 块 <-> /api/profile/state（buildSavePayload + mergeSnapshots 纯函数）
+  useAgentMemories.js       agent_memories CRUD（list/search/delete + buildListQuery/parseListResponse）
+  useAgentWorkflowRunner.js 智能体工作流运行器（runAgentWorkflow，从 App.jsx 抽离）
+  useWorkflowActions.js     工作流行动队列（createWorkflowActions/executeWorkflowAction）
+  useWorkflowMeta.js        工作流元数据（模板列表 + 验证）
+  useWorkflowOps.js         工作流操作（创建/删除/复制工作流）
+  useBriefingOps.js         早报操作（从 App.jsx 抽离）
+  useGithubInsight.js       GitHub 情报（从 App.jsx 抽离）
   useRecommendationFeedback.js 推荐反馈（从 App.jsx 抽离）
-  useCalendarMemos.js        日历备注（从 App.jsx 抽离）
-  useSnapshotPreheat.js      Phase 3 lazy 预热触发 hook（用户登录且今日 snapshot 缺失时触发，30s 超时 + 算法降级）
-  useAiRecommendationEnhance.js Phase 3 实时 AI 重新分析 hook（调 /api/profile/snapshots/analyze，不写库）
-  useProfileDashboard.js    Phase 4 仪表盘聚合 hook（snapshots/learnedPreferences/personaSummary/preheat 触发）
+  useCalendarMemos.js       日历备注（从 App.jsx 抽离）
+  useMaterialsMemos.js      素材备注
+  useReadingStatsMemos.js   阅读统计备注
+  useNewsFilter.js          资讯过滤状态（blockedCategories/searchQuery/sourceFilter）
+  useExternalIntelligence.js 外部情报（行业/竞品/供应链扫描）
+  useIntelligenceMemos.js   情报备忘录
+  useRecommendationMemos.js 推荐备忘录（注入 personaSummary + relevantMemories，暴露 eventClusters）
+  useIntelligenceBriefing.js 情报简报 hook（briefing 生成 + AI 合并）
+  useBookmarkMaterial.js    收藏转素材
+  useArticleEditor.js       文章编辑器状态
+  useAgents.js              Agent 管理（列表/创建/配置/删除）
+  useSnapshotPreheat.js     lazy 预热触发（用户登录 + 今日 snapshot 缺失 → 30s 超时 + 算法降级）
+  useAiRecommendationEnhance.js 实时 AI 重新分析（调 /api/profile/snapshots/analyze，不写库）
+  useProfileDashboard.js    仪表盘聚合（snapshots/learnedPreferences/personaSummary/preheat/personaHistory）
+  useCreativeWorkspace.js   智创空间（素材 + 编辑器 + 工作流统一状态）
 ```
 
 #### Domain Layer (`src/domain/`)
@@ -192,13 +259,53 @@ Pure-logic domain engines (no React, no HTTP), unit-tested in-place. App.jsx imp
 
 ```
 src/domain/intelligence/
-  profileTiers.js          PROFILE_TIERS (focus/normal/explore), SPECIAL_FOLLOW_TYPES, tier migration/score helpers
-  recommendationEngine.js  buildRecommendation, selectBriefingLanes, clusterEvents, freshnessScore, matchSpecialFollow
-  briefingEngine.js        buildAlgorithmBriefing (lane-based), mergeAiBriefing
-  snapshotStore.js         createSnapshotStore (localStorage-backed daily recommendation/briefing snapshots)
+  profileTiers.js           PROFILE_TIERS, SPECIAL_FOLLOW_TYPES, tier migration/score
+  recommendationEngine.js   buildRecommendation, selectBriefingLanes, clusterEvents, freshnessScore, matchSpecialFollow
+  briefingEngine.js         buildAlgorithmBriefing (lane-based), mergeAiBriefing
+  briefingEvolution.js      briefing 版本追踪与演化分析
+  agenticBriefing.js        Agent 驱动简报生成
+  semanticCluster.js       语义聚类（轻量向量增强）
+  snapshotStore.js          localStorage-backed daily recommendation/briefing snapshots
+  graphEngine.js           知识图谱引擎
 src/domain/stock/
-  indicators.js            simpleMovingAverage, annualizedVolatility, supportResistance, volumeTrend, priceMomentum
-  algorithmAnalysis.js     analyzeStock (local technical analysis, no-LLM fallback for stock diagnosis)
+  indicators.js             SMA, annualizedVolatility, supportResistance, volumeTrend, priceMomentum
+  algorithmAnalysis.js      analyzeStock (local technical analysis, no-LLM fallback)
+  intelligenceRadar.js     情报雷达（多维度扫描）
+  investorPolicy.js        投资者策略（风险偏好/仓位规则）
+  positionSizing.js        仓位计算
+src/domain/creative/
+  assetModel.js            创作资产模型（素材/文档/版本抽象）
+  exportEngine.js          导出引擎（Markdown/JSON/HTML）
+  versionStore.js          版本存储（diff + rollback）
+```
+
+#### Utility / Hook / Constant Files
+
+```
+src/utils/
+  localStorage.js       loadLS/saveLS/clearStaleLS
+  format.js             formatTime/formatRelative/formatStars + getGradeColors/hexToRgba
+  toast.js              showToast DOM notification
+  markdown.jsx          renderMarkdown/renderMarkdownWithImages/renderBriefMarkdown/renderInline
+  repoInsight.js        deriveRepoInsight (本地规则派生 GitHub 项目情报)
+  githubMaterial.js     buildGithubMaterial
+  workflowEngine.js     Pure-logic DAG executor (LLM nodes call /api/ai-generate; local nodes synchronous)
+  workflowValidation.js validateWorkflowDraft
+  profileModel.js       computeIntelligenceProfile / computeReadingProfile / computeProfileLearningEngine / computeTodayProfileSnapshot
+  dashboardBuilders.js  buildTrendSeries / buildAiStatusCounts / buildPersonaTrendSeries / diffPersonaSnapshots
+  memoryEvolver.js     extractLearnedPreferences + write learned_preferences
+  graphEngine.js       知识图谱构建（与 domain/intelligence/graphEngine.js 区分）
+
+src/constants/
+  appConstants.jsx     权威常量源：PRODUCT_NAME, NAV_ITEMS, FALLBACK_CATEGORIES, CATEGORY_GROUPS,
+                       VERTICAL_CHANNELS, LLM_PRESETS, SCROLLING_NEWS_ITEMS, AGENT_CATEGORIES, MODES,
+                       VIEW_MODES, TRENDING_TYPES, GITHUB_LANGS/PERIODS, REGION_MAP, MODE_MAP,
+                       MATERIAL_TYPES, ARTICLE_STATUS/TEMPLATES/TEMPLATE_CONTENT, WEEKDAYS, MONTHS,
+                       ICONS, WORKFLOW_SKILL_CATALOG, WORKFLOW_CONDITION_METRICS/OPERATORS,
+                       getWorkflowSkillMeta, isWorkflowSkillId, formatWorkflowNodeConfig
+  index.jsx            兼容 shim（re-export appConstants.jsx，保留死代码供历史引用）
+  workflowConstants.js  DEFAULT_AGENT_WORKFLOW, WORKFLOW_NODE_TYPES, WORKFLOW_TEMPLATE_LIBRARY
+                       (3 templates: daily-briefing / github-evaluator / material-to-article) + helpers
 ```
 
 #### v2 Intelligence Workbench (inline in App.jsx)
@@ -271,6 +378,18 @@ The v2 features described in `docs/wanban-silicon-valley-v2-blueprint.md` are wi
 - 交互：点击时间轴节点 / 趋势图节点 → PersonaHeroCard 切换 diff 模式；再次点击 / 点击 × / 点击"今日" → 回到当前画像视图
 - 测试：425 个测试全部通过（无新增测试，computeDelta 留在组件内部未抽纯函数）
 
+**Phase 7 Agent 自主层（已完成）**：Agent 任务调度 + 执行 + 记忆服务。
+- `server/agent/agentJobsService.js`：cron 驱动的 Agent 任务调度（每日情报扫描/竞品监测）
+- `server/agent/agentContext.js`：Agent 执行上下文（用户画像 + 偏好 + 记忆注入）
+- `server/agent/agentMemoryService.js`：Agent 记忆 CRUD + persona_summary 合并式更新
+- `server/agent/memoryAgentMemoryService.js`：记忆服务扩展（向量检索 + 语义去重）
+- `server/http/agentRunHandlers.js`：Agent 运行端点（启动/停止/状态查询）
+- `server/http/agentJobsHandlers.js`：Agent 任务管理端点
+- `server/http/agentAuth.js`：Agent 认证中间件
+- `server/skills/skillLoader.js`：工具注册/发现/触发匹配系统（SKILL_SOURCES + matchSkillsByTriggers）
+- `src/hooks/useAgents.js`：前端 Agent 管理（列表/创建/配置/删除）
+- Migration 004/005：agent_jobs + agent_memory 相关表
+
 ### Stock Market Module (股市动向)
 
 Three-column quote terminal (`src/components/StockPage.jsx`): left list (watchlist/hot tabs) | center chart (timeline/K-line) | right orderbook + metrics. AI diagnosis panel below the three columns.
@@ -292,24 +411,23 @@ server/news/services/stockService.js  East Money (primary) + Tencent (fallback) 
 
 ### Backend (`server/news/`)
 
-
-The backend has been modularized. `server/newsPlugin.js` is now a **16-line re-export shim** that points to `server/news/plugin.js`. All real logic lives in the `server/news/` tree:
+`server/newsPlugin.js` is a **16-line re-export shim** pointing to `server/news/plugin.js`. All real logic lives in the `server/news/` tree:
 
 ```
-server/newsPlugin.js          Re-export shim (16 lines)
 server/news/
-  plugin.js                   Vite plugin: registers middleware, routes /api/* requests (450 lines)
+  plugin.js                   Vite plugin: registers middleware, routes /api/* requests
   config/
     constants.js              MEDIA_CONFIG, SOURCE_WEIGHTS, SOURCE_GRADES, DEFAULT_SOURCES (~52KB)
     sourceGrades.js           Source grade lookup utilities
   services/
-    newsService.js            News aggregation, feed fetching, caching
+    newsService.js            News aggregation, feed fetching, caching (5min TTL)
     trendingService.js        Trending + GitHub trending (10min/30min caches)
     externalFetchers.js       Source fetching logic
     sourceDiscovery.js        Auto-discover RSS feeds from websites
+    stockService.js           East Money (primary) + Tencent (fallback) data source
   images/
     imageProcessing.js        Image extraction, scoring, validation (~21KB)
-    imageResolver.js          Image resolution pipeline with Scrapling fallback (~21KB). Returns { imageUrl, videoUrl, images[] } - images is top-4 scored article images for grid display
+    imageResolver.js          Image resolution pipeline with Scrapling fallback (~21KB)
   parsing/
     feedParser.js             RSS/Atom feed parsing and normalization
   utils/
@@ -317,33 +435,47 @@ server/news/
     textProcessing.js         Text processing helpers
 ```
 
-> **Note**: Auth no longer lives under `server/news/` - it moved to the platform layer (`server/auth/` + `server/http/authHandlers.js`). The old `server/news/auth/userAuth.js` was deleted.
+> **Note**: Auth no longer lives under `server/news/` — it moved to the platform layer (`server/auth/` + `server/http/authHandlers.js`). The old `server/news/auth/userAuth.js` was deleted.
 
 **Route handling**: `plugin.js` uses `if (pathname === '/api/xxx')` pattern for each endpoint. When adding new API routes, add the handler in `plugin.js` and import services from the appropriate module.
 
 **Production API**: `api/*.js` contains Vercel serverless functions. `api/meta.js` and `api/news.js` reuse `server/news/config/constants.js`. `api/auth/[action].js`, `api/community/[...path].js`, `api/profile/[...path].js` delegate to the **same** `server/http/*Handlers.js` as the dev plugin (no manual copy). `api/stock/[action].js` reuses `server/news/services/stockService.js` directly. When changing API behavior, prefer updating the shared handler/service; only `api/news.js`-style files that hand-copy plugin logic need both-side updates.
 
-### Platform Backend (server/auth, server/community, server/profile, server/db, server/http)
+### Platform Backend (server/auth, server/community, server/profile, server/db, server/http, server/agent, server/skills)
 
-PostgreSQL-backed platform layer (users, sessions, profiles, community, recommendation/briefing snapshots). Separate from the news-only `server/news/` tree. Requires `DATABASE_URL` + `npm run db:migrate`.
+PostgreSQL-backed platform layer. Requires `DATABASE_URL` + `npm run db:migrate`.
 
 ```
 server/db/
   client.js                  pg Pool (reads DATABASE_URL and DATABASE_SSL)
   migrate.js                 Runs migrations (npm run db:migrate)
-  migrations/001_platform.sql  Schema: users, sessions, user_profiles, profile_domains,
-    profile_sources, special_follows, posts, comments, post_likes, post_bookmarks,
-    user_follows, recommendation_snapshots, recommendation_items, briefing_snapshots,
-    creation_assets, creation_documents, creation_versions
-  migrations/002_runtime_indexes.sql  Runtime indexes for feeds, sessions, social counts, and creation assets
+  migrations/001..007.sql    7 migrations: platform schema + indexes + intelligence + agent autonomy + profile extensions + LLM sync + persona history
 server/http/                 Shared HTTP handlers (used by BOTH dev plugin.js and api/ serverless)
   httpUtils.js               sendJsonResponse, readJsonBody, parseCookies, sessionCookie, routeError
   authHandlers.js            handleAuthRequest - register/login/logout/me/profile/interests
   communityHandlers.js       handleCommunityRequest - posts/comments/likes/bookmarks/follows
-  profileHandlers.js         handleProfileRequest - profile state, tiers, special follows
+  profileHandlers.js         handleProfileRequest - profile state, tiers, special follows, snapshots
+  agentMemoryHandlers.js     handleAgentMemoryRequest - agent memories + persona
+  agentRunHandlers.js        handleAgentRunRequest - agent execution
+  agentJobsHandlers.js       handleAgentJobsRequest - scheduled agent tasks
+  creativeHandlers.js        handleCreativeRequest - assets, documents, versions
+  intelligenceHandlers.js    handleIntelligenceRequest - events, items, opportunities, sectors, alerts
+  aiHandlers.js              handleAiGenerateRequest, handleAiInsightsRequest
+  fetchPageHandler.js        handleFetchPageRequest - SSRF-protected page fetch
+  webSearchHandler.js        handleWebSearchRequest - web search gateway
+  lastSeenMiddleware.js      updateLastSeen - track user activity
 server/auth/                 authService + authRepository + passwords (argon2-style hashing)
 server/community/            communityService + communityRepository
-server/profile/              profileService + profileRepository
+server/profile/              profileService + profileRepository + snapshotService + agentMemoryService
+server/agent/                Agent autonomous layer
+  agentJobsService.js        Cron-driven agent task scheduling (daily intelligence scan / competitive monitoring)
+  agentContext.js            Agent execution context (user profile + preferences + memory injection)
+  agentMemoryService.js      Agent memory CRUD + persona_summary merge式更新
+  memoryAgentMemoryService.js Memory service extension (vector retrieval + semantic dedup)
+server/skills/
+  skillLoader.js             Tool registration / discovery / trigger matching (SKILL_SOURCES + matchSkillsByTriggers)
+server/cron/
+  dailyBriefingPreheatJob.js Daily 06:00 Asia/Shanghai preheat (production Node/Docker only)
 ```
 
 ### API Endpoints
@@ -377,6 +509,24 @@ server/profile/              profileService + profileRepository
 | `/api/stock/sectors` | GET | `type` (industry/concept) | Sector gainers/losers (60s cache) |
 | `/api/stock/search` | GET | `keyword` | Stock code/name search |
 | `/api/scrape` | POST | `url`, `mode`, `timeout` | Proxied to Scrapling Flask on :5000 |
+| `/api/intelligence/events` | GET | - | External intelligence events (industry/competitor/supply chain scan) |
+| `/api/intelligence/items` | GET | - | Curated intelligence items |
+| `/api/intelligence/opportunities` | GET | - | Market opportunity detection |
+| `/api/intelligence/sectors` | GET | - | Weekly sector analysis |
+| `/api/intelligence/alerts` | GET | - | Intelligence alerts |
+| `/api/agent-memory/learned-preferences` | PATCH | `topics`, `preferredDepth`, `preferredFormat` | Phase 3 学习偏好合并式更新 |
+| `/api/agent-memory/persona` | GET | - | User persona summary |
+| `/api/agent-memory/persona/history` | GET | `limit` | Persona evolution history |
+| `/api/agent/run` | POST | `agentId`, `input` | Agent execution |
+| `/api/agent/jobs` | GET/POST | varies | Agent scheduled task management |
+| `/api/creative/assets` | GET/POST | varies | Creative assets (materials/documents/versions) |
+| `/api/web-search` | GET | `query` | Web search gateway |
+| `/api/community/{...path}` | GET/POST/PATCH/DELETE | varies | Posts, comments, likes, bookmarks, follows (PG-backed) |
+| `/api/profile/state` | GET/PUT | - | Profile tiers (focus/normal/explore), special follows |
+| `/api/profile/llm-config` | GET/POST | `baseUrl`, `apiKey`, `model`(POST) | Phase 3 LLM 配置跨设备同步（写入 `user_profiles.llm_config`） |
+| `/api/profile/snapshots` | GET | `date`(optional) | Phase 3 推荐快照列表/单条详情 |
+| `/api/profile/snapshots/preheat` | POST | - | Phase 3 触发今日预热（缓存命中直接返回） |
+| `/api/profile/snapshots/analyze` | POST | `items[]` | Phase 3 实时 AI 重新分析（不写库） |
 
 ### Security
 
@@ -425,11 +575,12 @@ Categories, source grades, and tag rules are defined **independently** in both `
 - **Auth requires PostgreSQL** - register/login/me/logout/profile/interests delegate to server/http/authHandlers.js -> server/auth/authService.js (password hashing + session tokens in sessions table). Dev (server/news/plugin.js) and prod (api/auth/[action].js) share the same handler. Without DATABASE_URL, auth endpoints return 503 DATABASE_UNAVAILABLE.
 - **`package.json` type: "module"** — all `.js` files use ESM; CI workflows using `require()` will crash
 - **GitHub API rate limit** — 60 req/hr unauthenticated; 30-min cache mitigates but README data may be empty when rate-limited
+- **Vitest 4.x incompatible** — rolldown native binding failures; pin to vitest 3.x. On Windows, `npx vitest` fails (bin symlink not created); use `node node_modules/vitest/vitest.mjs run`.
 
 ## Gotchas
 
 - Dev server port is **5175** (configured in `vite.config.js`, not the default 5173)
-- `vite.config.js` has `allowedHosts: ['.monkeycode-ai.online']`
+- `vite.config.js` has `allowedHosts: ['.monkeycode-ai.online', 'localhost', '127.0.0.1']`
 - `/api/scrape` proxies to Scrapling Flask on port 5000 (must be started separately)
 - `LLM_PRESETS` must be defined at **file scope** (top level), not inside a function — causes `ReferenceError` otherwise
 - `GlobeView` canvas needs `min-height: 420px`; fullscreen uses `createPortal` to `document.body`; background effects need `pointer-events: none`
@@ -441,5 +592,8 @@ Categories, source grades, and tag rules are defined **independently** in both `
 - `scripts/` contains deployment and test scripts; `docs/reports/` contains historical optimization reports
 - v2 localStorage keys: `agentWorkflowHistory` (workflow run records, max 12), `dailyBriefingReport` (last generated briefing). AI Elf uses per-agent keys. All `setItem` calls must be wrapped in try-catch for `QuotaExceededError`.
 - WorkflowEngine: `condition` node failure halts the entire rest of the chain (subsequent nodes marked `skipped`), it does NOT branch. LLM nodes require `ctx.llmConfig` (baseUrl/apiKey/selectedModel) and an agent with `systemPrompt`; local nodes ignore LLM config entirely.
-- The `App.jsx` (~4367 lines) file imports v2 modules and Zustand stores (`useWorkflowStore`/`useMaterialsStore`/`useProfileStore`). When editing workflow/profile/materials state, prefer reading from the store directly rather than passing as props. Inline workflow constants (`WORKFLOW_SKILL_CATALOG`, `WORKFLOW_CONDITION_METRICS`, `getWorkflowSkillMeta`, `isWorkflowSkillId`, `formatWorkflowNodeConfig`) are still defined in App.jsx for live usage; the larger constants (`DEFAULT_AGENT_WORKFLOW`, `WORKFLOW_TEMPLATE_LIBRARY`, `normalizeWorkflowTemplate`, `createWorkflowTemplateInstance`, `validateWorkflowImportPayload`) live in `src/constants/workflowConstants.js` and are consumed by `workflowStore.js`.
+- `App.jsx` (~2800 lines) imports v2 modules and Zustand stores. When editing workflow/profile/materials state, prefer reading from the store directly rather than passing as props. Inline workflow constants (`WORKFLOW_SKILL_CATALOG`, `WORKFLOW_CONDITION_METRICS`, `getWorkflowSkillMeta`, `isWorkflowSkillId`, `formatWorkflowNodeConfig`) are still defined in App.jsx for live usage; the larger constants (`DEFAULT_AGENT_WORKFLOW`, `WORKFLOW_TEMPLATE_LIBRARY`, `normalizeWorkflowTemplate`, `createWorkflowTemplateInstance`, `validateWorkflowImportPayload`) live in `src/constants/workflowConstants.js` and are consumed by `workflowStore.js`.
 - Runtime `ReferenceError: useMemo is not defined` means a component file uses `useMemo` without importing it from `react` — add `import { useMemo } from 'react'` to that file.
+- Intelligence API: `GET /api/intelligence/events|items|opportunities|sectors|alerts` return external industry/competitor/supply-chain data. In dev mode, `SILICON_E2E=1` enables fixture responses for offline testing.
+- Agent auth: `server/http/agentAuth.js` provides middleware for agent run endpoints; agent context (`agentContext.js`) injects user profile + preferences + relevant memories into each agent execution.
+- Skills system: `server/skills/skillLoader.js` manages tool registration with `SKILL_SOURCES` taxonomy; `matchSkillsByTriggers` auto-discovers tools by keyword triggers.
