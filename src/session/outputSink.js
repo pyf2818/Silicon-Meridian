@@ -10,6 +10,7 @@
  */
 
 import { writeFile } from '../utils/workspace.js';
+import { indexFile } from '../utils/workspaceIndex.js';
 
 /** 默认截断上限：与 aiHandlers 的 cleanText 保持一致 */
 export const DEFAULT_MAX_BYTES = 20_000;
@@ -50,6 +51,8 @@ export async function persistLongResult({ result, rootHandle, maxBytes = DEFAULT
   const relative = safeRelativePath(pathHint || toolOutputPath());
   try {
     const saved = await writeFile(rootHandle, relative.segments, relative.fileName, text);
+    // 落盘即索引：超长工具产物进入知识索引，后续对话可按关键词召回（知识库闭环）
+    try { await indexFile(saved, relative.fileName, text); } catch { /* 索引失败不影响落盘 */ }
     return {
       text: `${head}${tailNote}完整输出已保存到 ${saved}]`,
       truncated,

@@ -10,6 +10,7 @@
  */
 
 import { readFile, writeFile, deleteFile } from './workspace.js';
+import { indexFile, searchFiles, listRecentFiles } from './workspaceIndex.js';
 import {
   registerTool, selectSchemasByName, executeTool, getToolMeta,
   loadCustomTools, getEnabledSchemas,
@@ -72,6 +73,8 @@ async function toolWriteWorkspaceFile(args, ctx) {
   if (!check.ok) return `错误：${check.error}`;
   const segments = check.segments;
   await writeFile(ctx.rootHandle, segments.slice(0, -1), segments[segments.length - 1], content);
+  // 写入即索引：agent 写入工作空间的文件自动进入知识索引，供后续对话召回（知识库闭环）
+  try { await indexFile(path, segments[segments.length - 1], content); } catch { /* 索引失败不影响写入 */ }
   return `已写入文件：${path}（${content.length} 字符）`;
 }
 
@@ -156,6 +159,7 @@ async function toolEditFile(args, ctx) {
       ? original.split(oldStr).join(newStr)
       : original.replace(oldStr, newStr);
     await writeFile(ctx.rootHandle, segments.slice(0, -1), segments[segments.length - 1], updated);
+    try { await indexFile(path, segments[segments.length - 1], updated); } catch { /* 索引失败不影响编辑 */ }
     const changeSummary = oldStr.length === newStr.length
       ? `${occurrences} 处替换`
       : `${oldStr.length} → ${newStr.length} 字符`;
@@ -166,6 +170,7 @@ async function toolEditFile(args, ctx) {
     // 全量重写模式
     const content = String(fullContent);
     await writeFile(ctx.rootHandle, segments.slice(0, -1), segments[segments.length - 1], content);
+    try { await indexFile(path, segments[segments.length - 1], content); } catch { /* 索引失败不影响重写 */ }
     const delta = content.length - original.length;
     return `已重写文件：${path}（原 ${original.length} 字符 → 新 ${content.length} 字符，${delta >= 0 ? '+' : ''}${delta}）`;
   }
@@ -299,6 +304,73 @@ async function toolSearchNews(args, ctx) {
   return `找到 ${items.length} 条相关资讯：\n\n${lines.join('\n\n')}`;
 }
 
+/**
+ * read_intelligence_focus - 按主题拉取聚焦情报证据（事件级，含多源交叉验证与置信度）。
+ * 与 search_news（关键词找单条资讯）互补：这里返回的是聚类后的事件 + 引用 ID，
+ * agent 可直接以 [资讯:ID] 引用（ID 会登记进 ctx.focusCitations 供终答引用校验放行）。
+ */
+async function toolReadIntelligenceFocus(args, ctx) {
+  const topic = String(args?.topic || '').trim();
+  if (!topic) return '错误：topic 参数不能为空（想深入的主题，如某公司/模型/领域）';
+  const take = Math.max(4, Math.min(Number(args?.take) || 10, 24));
+
+  const params = new URLSearchParams({ take: String(take * 2), q: topic, storage: 'auto' });
+  if (args?.date && /^\d{4}-\d{2}-\d{2}$/.test(String(args.date))) params.set('date', String(args.date));
+  if (args?.category) params.set('category', String(args.category).trim().slice(0, 32));
+
+  try {
+    const res = await fetch(`/api/intelligence/events?${params.toString()}`);
+    if (!res.ok) return `错误：情报接口返回 ${res.status}`;
+    const data = await res.json();
+    if (!data?.ok || !Array.isArray(data.events) || data.events.length === 0) {
+      return `未找到与 "${topic}" 相关的情报事件。可尝试换一个关键词，或改用 search_news / web_search 工具补充。`;
+    }
+
+    const events = data.events.slice(0, take);
+    // 登记引用 ID：runAgentLoop 终答引用校验会把这些 ID 加入合法引用集
+    if (Array.isArray(ctx?.focusCitations)) {
+      events.forEach(ev => { if (ev?.id) ctx.focusCitations.push(String(ev.id)); });
+    }
+
+    const lines = events.map(ev => {
+      const src = (ev.sources || []).length ? ev.sources.join('、') : (ev.source || '情报事件');
+      const summary = String(ev.summary || '').replace(/\s+/g, ' ').slice(0, 400);
+      return `[资讯:${ev.id}] ${ev.title}\n  来源：${src}（${ev.independentSourceCount || 1} 个独立源，置信度 ${ev.confidence || 0}%）\n  摘要：${summary || '无'}`;
+    });
+    return `聚焦主题 "${topic}" 的 ${events.length} 条情报事件（可直接以 [资讯:ID] 格式引用）：\n\n${lines.join('\n\n')}`;
+  } catch (err) {
+    return `错误：聚焦情报拉取失败 - ${err?.message || err}`;
+  }
+}
+
+/**
+ * list_knowledge - 检索工作空间知识库（agent 写入/用户导出的文件索引）。
+ * 有 keyword 时按相关性检索；无 keyword 时列出最近沉淀的条目。
+ */
+async function toolListKnowledge(args) {
+  const keyword = String(args?.keyword || '').trim();
+  const limit = Math.max(1, Math.min(Number(args?.limit) || 10, 30));
+  try {
+    let results;
+    if (keyword) {
+      results = await searchFiles(keyword, limit);
+    } else {
+      results = await listRecentFiles(limit);
+    }
+    if (!results.length) {
+      return keyword
+        ? `知识库中没有与 "${keyword}" 相关的沉淀。可先分析并用 save_knowledge 沉淀，或用 read_intelligence_focus 拉取情报。`
+        : '知识库当前为空。可在分析产出结论后用 save_knowledge 沉淀，沉淀会同时写入素材库与工作空间 knowledge/ 目录。';
+    }
+    const lines = results.map((f, i) =>
+      `${i + 1}. ${f.name}\n   路径：${f.path || f.name}`
+    );
+    return `知识库${keyword ? `中与 "${keyword}" 相关` : '最近'}的 ${results.length} 条沉淀：\n\n${lines.join('\n')}\n\n用 read_workspace_file 工具读取具体文件内容。`;
+  } catch (err) {
+    return `错误：知识库检索失败 - ${err?.message || err}`;
+  }
+}
+
 async function toolFetchPage(args, ctx) {
   const url = String(args?.url || '').trim();
   if (!url) return '错误：url 参数不能为空';
@@ -406,6 +478,8 @@ async function toolSaveKnowledge(args, ctx) {
   const content = String(args?.content || '').trim();
   if (!content) return '错误：content 不能为空（请提供知识/结论的正文）';
 
+  const tags = Array.isArray(args?.tags) ? args.tags.map(String).slice(0, 10) : [];
+
   const payload = {
     title: title.slice(0, 80),
     content,
@@ -413,7 +487,7 @@ async function toolSaveKnowledge(args, ctx) {
     source: 'AI 智能体沉淀',
     category: String(args?.category || 'ai-knowledge').slice(0, 32),
     type: String(args?.type || 'knowledge').slice(0, 24),
-    tags: Array.isArray(args?.tags) ? args.tags.map(String).slice(0, 10) : [],
+    tags,
     url: String(args?.url || ''),
     insight: content.slice(0, 300),
     spaceId: args?.spaceId || null,
@@ -425,13 +499,51 @@ async function toolSaveKnowledge(args, ctx) {
     },
   };
 
+  // 双落点之一：工作空间文件（用户定义的本地文件数据库——写入即成为知识库）
+  // knowledge/YYYY-MM-DD-<标题>.md + 自动进知识索引（后续对话可召回）
+  let workspaceSaved = null;
+  if (ctx?.rootHandle) {
+    try {
+      const d = new Date();
+      const ymd = d.toISOString().slice(0, 10);
+      const slug = title.toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'knowledge';
+      const fileName = `${ymd}-${slug}.md`;
+      const markdown = [
+        `# ${title}`,
+        '',
+        `> 沉淀于 ${d.toLocaleString('zh-CN')} · 来源：AI 工作站对话${ctx?.agentName ? ` · ${ctx.agentName}` : ''}`,
+        tags.length ? `> 标签：${tags.join('、')}` : '',
+        args?.url ? `> 来源链接：${args.url}` : '',
+        '',
+        content,
+      ].filter(line => line !== null).join('\n');
+      workspaceSaved = await writeFile(ctx.rootHandle, ['knowledge'], fileName, markdown);
+      try { await indexFile(workspaceSaved, fileName, markdown); } catch { /* 索引失败不影响落盘 */ }
+    } catch {
+      // 工作空间写入失败（未授权/只读）：不影响素材库沉淀
+      workspaceSaved = null;
+    }
+  }
+
+  // 双落点之二：素材库（toggleMaterial，供素材面板/交接使用）
+  let materialSaved = false;
   if (typeof ctx?.onSaveKnowledge === 'function') {
     try {
       ctx.onSaveKnowledge(payload);
-      return `✅ 已沉淀为知识库条目：${title}（${content.length} 字符）`;
+      materialSaved = true;
     } catch (err) {
       return `错误：知识沉淀失败 - ${err?.message || String(err)}`;
     }
+  }
+
+  const parts = [];
+  if (materialSaved) parts.push('素材库条目');
+  if (workspaceSaved) parts.push(`工作空间文件 ${workspaceSaved}（已入知识索引，后续对话可自动召回）`);
+  if (parts.length) {
+    return `已沉淀：${title}（${content.length} 字符）→ ${parts.join('；')}。`;
   }
   return '知识内容已准备好（当前环境无法自动保存）：\n- 标题：' + title + '\n- 正文：' + content.slice(0, 120) + (content.length > 120 ? '…' : '');
 }
@@ -1337,6 +1449,47 @@ const BUILTIN_TOOL_DEFS = [
     },
     meta: { label: '检索资讯', iconKey: 'search', description: '搜索资讯库', category: 'news' },
     executor: toolSearchNews,
+  },
+  {
+    name: 'read_intelligence_focus',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'read_intelligence_focus',
+        description: '【情报聚焦】按主题拉取聚焦的情报事件（多源聚类 + 交叉验证 + 置信度），返回条目可直接以 [资讯:ID] 格式引用。当需要深入分析某个主题（某公司、某模型、某领域）而当前证据不够时调用。与 search_news（关键词找单条资讯）互补',
+        parameters: {
+          type: 'object',
+          properties: {
+            topic: { type: 'string', description: '聚焦主题（如 "OpenAI"、"推理模型"、"AI 芯片出口管制"）' },
+            take: { type: 'number', description: '返回事件数（默认 10，最多 24）' },
+            date: { type: 'string', description: '限定日期 YYYY-MM-DD（可选，默认不限）' },
+            category: { type: 'string', description: '限定类别（可选，如 ai-models/industry/paper）' },
+          },
+          required: ['topic'],
+        },
+      },
+    },
+    meta: { label: '情报聚焦', iconKey: 'target', description: '按主题拉取聚焦情报事件（可引用）', category: 'news' },
+    executor: toolReadIntelligenceFocus,
+  },
+  {
+    name: 'list_knowledge',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'list_knowledge',
+        description: '【知识库检索】检索工作空间知识库（对话沉淀的知识、导出的素材、agent 写入的文件均已自动索引）。有 keyword 按相关性检索，无 keyword 列出最近沉淀。找到后用 read_workspace_file 读取全文',
+        parameters: {
+          type: 'object',
+          properties: {
+            keyword: { type: 'string', description: '检索关键词（可选；为空时列出最近沉淀）' },
+            limit: { type: 'number', description: '返回条数（默认 10，最多 30）' },
+          },
+        },
+      },
+    },
+    meta: { label: '知识库检索', iconKey: 'bookmark', description: '检索工作空间知识库沉淀', category: 'knowledge' },
+    executor: toolListKnowledge,
   },
   {
     name: 'fetch_page',

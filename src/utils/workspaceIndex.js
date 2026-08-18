@@ -84,6 +84,21 @@ export async function clearIndex() {
   });
 }
 
+/* 列出最近索引的文件（按索引时间倒序），供知识库工具浏览最近沉淀 */
+export async function listRecentFiles(limit = 15) {
+  const db = await openDB();
+  const all = await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+  return all
+    .sort((a, b) => (b.indexedAt || 0) - (a.indexedAt || 0))
+    .slice(0, Math.max(1, limit))
+    .map(f => ({ path: f.path, name: f.name, content: f.content, indexedAt: f.indexedAt }));
+}
+
 export async function getIndexCount() {
   const db = await openDB();
   return new Promise((resolve, reject) => {

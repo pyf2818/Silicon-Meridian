@@ -162,6 +162,7 @@ async function selfVerifyRepair({ content, issues, llmConfig, selectedModel, sys
  * @param {(v:any)=>any} opts.setMemoriesVersion 记忆版本 setter
  * @param {'assist'|'autonomous'|'plan'} opts.permissionMode Agent 权限模式
  * @param {(skill:object)=>void} [opts.onSkillCreated] 技能创建成功回调（用于刷新 skillsHook 缓存）
+ * @param {(payload:object)=>void} [opts.onSaveKnowledge] 知识沉淀回调（save_knowledge 落素材库）
  */
 export async function runAgentLoop({
   targetId,
@@ -182,6 +183,7 @@ export async function runAgentLoop({
   setMemoriesVersion,
   permissionMode = 'autonomous',
   onSkillCreated,
+  onSaveKnowledge,
 }) {
   const MAX_ITERATIONS = 12; // 防止无限循环；末轮会注入收敛指令强制收尾
   const CONVERGE_AT = MAX_ITERATIONS - 1; // 倒数第二轮起提示收敛
@@ -201,6 +203,13 @@ export async function runAgentLoop({
     llmConfig,
     // 技能创建回调：toolCreateSkill 成功后通知前端刷新 skillsHook 缓存
     onSkillCreated,
+    // 知识沉淀回调：save_knowledge 双落点之一（素材库 toggleMaterial）
+    // 修复：此前该回调只传到 runAgentLoop 选项层，从未转发进 toolCtx，导致
+    // agent 模式下 save_knowledge 始终走"无法自动保存"兜底
+    onSaveKnowledge,
+    // 情报聚焦引用登记：read_intelligence_focus 返回的事件 ID 收集于此，
+    // 终答引用校验时与 intelligenceContext.items 一并视为合法引用
+    focusCitations: [],
   };
   // 工作中的消息列表（包含 user / assistant / tool 三种角色），逐步累积
   const conversationMessages = baseMessages.map(m => ({ role: m.role, content: m.content }));
@@ -481,7 +490,11 @@ export async function runAgentLoop({
 
   // ── 终答质量自检（P2-9 引用校验 + P2-10 对照工具执行痕迹）──
   // 收集两类问题：① 引用了不在证据集中的资讯 ID；② 断言了失败 / 被拒工具的成功结果。
-  const allowedCitationIds = new Set((intelligenceContext?.items || []).map(item => String(item.id)));
+  // 合法引用集 = 情报上下文条目 + read_intelligence_focus 工具按需拉取的事件（focusCitations）
+  const allowedCitationIds = new Set([
+    ...(intelligenceContext?.items || []).map(item => String(item.id)),
+    ...(toolCtx.focusCitations || []),
+  ]);
   const citedIds = [...finalContent.matchAll(/\[资讯:([^\]]+)\]/g)].map(match => match[1].trim());
   const invalidIds = [...new Set(citedIds.filter(id => !allowedCitationIds.has(id)))];
   const failedCalls = toolCallTrace.filter(t =>
