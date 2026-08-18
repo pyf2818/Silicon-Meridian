@@ -21,6 +21,10 @@ export const personaSummaries = new Map();
 export const personaHistories = new Map();
 // userId -> [ agent memory ]
 export const agentMemories = new Map();
+// id -> intelligence_event 行（形状对齐 intelligence_events 表）
+export const intelligenceEvents = new Map();
+// id -> intelligence_article 行（形状对齐 intelligence_articles 表）
+export const intelligenceArticles = new Map();
 
 /**
  * 开发态内存备用存储开关。
@@ -34,4 +38,5 @@ export function isDevMemoryMode() {
 export { randomUUID };
 export const __devMemoryStore = {
   profiles, snapshots, snapshotLists, personaSummaries, personaHistories, agentMemories,
+  intelligenceEvents, intelligenceArticles,
 };

@@ -1,4 +1,5 @@
 import { getPool, withTransaction } from '../../db/client.js';
+import { isDevMemoryMode, intelligenceEvents, intelligenceArticles } from '../../db/devMemoryStore.js';
 
 function articleValues(article) {
   return [
@@ -98,7 +99,92 @@ function mapEvent(row) {
   };
 }
 
-export function createIntelligenceRepository(db = getPool()) {
+/**
+ * dev 内存兜底实现（DEV_MEMORY_AUTH=true 且非 production）：
+ * 与 PG upsert 语义对齐——article 按 id 覆盖并刷新 last_seen_at；
+ * event 按 id 合并（articleIds/sources 取并集、firstSeenAt 取更早、lastSeenAt 取更晚，
+ * 其余字段以新值为准）。让无 PostgreSQL 的本地环境也能跑通「事件落库 → stored 读取」链路。
+ */
+function createDevMemoryIntelligenceRepository() {
+  const toArticleRow = (article) => ({
+    id: article.id,
+    provider: article.provider || '',
+    upstream_id: article.upstreamId || '',
+    title: article.title || '',
+    title_en: article.titleEn || '',
+    summary: article.summary || '',
+    url: article.url || '',
+    source: article.source || '',
+    source_url: article.sourceUrl || '',
+    source_tier: article.sourceTier || '',
+    category: article.category || 'industry',
+    category_label: article.categoryLabel || '',
+    published_at: article.publishedAt || new Date().toISOString(),
+    entities: article.entities || [],
+    tags: article.tags || [],
+    evidence: article.evidence || {},
+    payload: { ...article },
+  });
+
+  return {
+    async upsertArticlesAndEvents({ articles = [], events = [] } = {}) {
+      for (const article of articles) {
+        const row = toArticleRow(article);
+        const existing = intelligenceArticles.get(row.id);
+        intelligenceArticles.set(row.id, {
+          ...row,
+          last_seen_at: new Date().toISOString(),
+          payload: { ...(existing?.payload || {}), ...row.payload },
+        });
+      }
+      for (const event of events) {
+        const existing = intelligenceEvents.get(event.id);
+        const articleIds = [...new Set([...(existing?.articleIds || []), ...(event.articleIds || [])])];
+        const sources = [...new Set([...(existing?.sources || []), ...(event.sources || [])])];
+        const firstSeenAt = existing?.firstSeenAt && existing.firstSeenAt < (event.firstSeenAt || '')
+          ? existing.firstSeenAt
+          : (event.firstSeenAt || new Date().toISOString());
+        const lastSeenAt = existing?.lastSeenAt && existing.lastSeenAt > (event.lastSeenAt || '')
+          ? existing.lastSeenAt
+          : (event.lastSeenAt || new Date().toISOString());
+        intelligenceEvents.set(event.id, {
+          ...(existing || {}),
+          ...event,
+          articleIds,
+          sources,
+          independentSourceCount: Math.max(existing?.independentSourceCount || 0, event.independentSourceCount || 1),
+          firstSeenAt,
+          lastSeenAt,
+        });
+      }
+      return { articles: articles.length, events: events.length };
+    },
+    async listEvents({ limit = 30, category = '', date = '' } = {}) {
+      const boundedLimit = Math.min(200, Math.max(1, Number.parseInt(limit, 10) || 30));
+      let rows = [...intelligenceEvents.values()];
+      if (category) rows = rows.filter(event => event.category === category);
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+        rows = rows.filter(event => (event.lastSeenAt || '') >= `${date}T00:00:00.000Z` && (event.lastSeenAt || '') <= `${date}T23:59:59.999Z`);
+      }
+      return rows
+        .sort((a, b) => (b.intelligenceScore || 0) - (a.intelligenceScore || 0)
+          || String(b.lastSeenAt || '').localeCompare(String(a.lastSeenAt || '')))
+        .slice(0, boundedLimit);
+    },
+    async listArticles({ limit = 50 } = {}) {
+      const boundedLimit = Math.min(300, Math.max(1, Number.parseInt(limit, 10) || 50));
+      return [...intelligenceArticles.values()]
+        .sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')))
+        .slice(0, boundedLimit)
+        .map(mapArticle);
+    },
+  };
+}
+
+export function createIntelligenceRepository(db) {
+  // dev 无 PostgreSQL：走内存兜底（getPool 未被求值，不会 throw DATABASE_UNAVAILABLE）
+  if (isDevMemoryMode()) return createDevMemoryIntelligenceRepository();
+  const pool = db || getPool();
   return {
     async upsertArticlesAndEvents({ articles = [], events = [] } = {}) {
       return withTransaction(async client => {
@@ -182,7 +268,7 @@ export function createIntelligenceRepository(db = getPool()) {
         params.push(`${date}T00:00:00.000Z`, `${date}T23:59:59.999Z`);
         where = `${where ? where + ' and' : 'where'} last_seen_at between $${paramIdx - 1} and $${paramIdx}`;
       }
-      const result = await db.query(
+      const result = await pool.query(
         `select * from intelligence_events ${where}
          order by intelligence_score desc, last_seen_at desc
          limit $1`,
@@ -193,7 +279,7 @@ export function createIntelligenceRepository(db = getPool()) {
 
     async listArticles({ limit = 50 } = {}) {
       const boundedLimit = Math.min(300, Math.max(1, Number.parseInt(limit, 10) || 50));
-      const result = await db.query('select * from intelligence_articles order by published_at desc limit $1', [boundedLimit]);
+      const result = await pool.query('select * from intelligence_articles order by published_at desc limit $1', [boundedLimit]);
       return result.rows.map(mapArticle);
     },
   };

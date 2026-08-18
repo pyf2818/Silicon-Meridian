@@ -1,19 +1,46 @@
 import { DEFAULT_SOURCES, SOURCE_WEIGHTS, CROSS_VERIFY_THRESHOLD, MAX_NEWS_ITEMS, MAX_ITEMS_PER_SOURCE, PAGE_SIZE, MEDIA_CONFIG } from '../config/constants.js';
-import { sortSourcesByGrade, getSourceGradeInfo } from '../config/sourceGrades.js';
+import { getSourceGradeInfo } from '../config/sourceGrades.js';
 import { applyBlockedWords, normalizeUrl } from '../utils/textProcessing.js';
 import { fetchSource } from './externalFetchers.js';
+import {
+  createSourceState, recordOutcome, pickDueSources, runWithConcurrency,
+} from './sourceScheduler.js';
 import {
   mediaStats, resetMediaStats, logMediaStats,
   resetGlobalImageUsage, resolveImageWithScrapling
 } from '../images/imageResolver.js';
 import { isGoodImageUrl, normalizeImageKey } from '../images/imageProcessing.js';
 
-// 缓存（服务内部拥有）
-// SWR 模式：staleWhileRevalidate=true 时返回过期数据但后台静默刷新
-// staleAt = expiresAt + 5min（stale 窗口），用户过期后仍能秒返旧数据，后台静默刷新
+// ============================================================================
+// 架构（2026-08-18 重构）：
+//   采集层 = sourceScheduler 分级轮询（S=15min/A=30min/B=1h/C=3h/D=6h，失败退避+降档）
+//   存储层 = 进程内持久池 itemPool（Map，重启即失，7 天 TTL / 3000 条上限 / 每源 32 条）
+//   读路径 = getNews 从池构建（永不等网络），newsCache 仅作「池版本」读缓存
+//   冷启动 = 池空时首请求最多等 12s 让首轮抓取填池，之后请求全部秒回
+//   落库   = 每轮抓取后自动触发 intelligence 事件聚类 upsert（PG / dev 内存库）
+// ============================================================================
+
 export const newsCache = { data: null, expiresAt: 0, staleAt: 0, key: '', lastWarmAt: 0 };
-let fetchingPromise = null; // 防止并发抓取循环
-let backgroundRefreshTimer = null; // 后台刷新定时器
+
+// 持久池：key = source|normalizedUrl|title，value = 已富化（等级/涉华标记）的 item
+const itemPool = new Map();
+// 源名 → 调度状态（failCount/degradeSteps/lastFetchedAt）
+const poolStates = new Map();
+// 池版本：每完成一轮抓取 +1，读缓存据此失效
+let poolVersion = 0;
+// 最近一轮抓取统计（供 /api/news 的 failedSources 字段）
+let lastCycleStats = { ok: 0, failed: 0, at: 0 };
+
+// 用户自定义源的独立小缓存（5min TTL，避免每个请求都打外网）
+const customSourceCache = new Map();
+const CUSTOM_SOURCE_TTL_MS = 5 * 60 * 1000;
+
+const POOL_MAX_ITEMS = 3000;
+const POOL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const POOL_PER_SOURCE = 32;
+const FETCH_TOTAL_BUDGET_MS = 12_000;
+const AUTO_SYNC_INTERVAL_MS = 10 * 60 * 1000;
+let lastAutoSyncAt = 0;
 
 // 涉华关键词（中英混合匹配）—— 与前端保持一致，服务端预计算避免前端同步扫描
 const CHINA_FOCUSED_KEYWORDS = ['China', '中国', '中企', '中国企业', '人民币', '华为', '腾讯', '阿里巴巴', '字节跳动', '对华', '涉华', '中美', '中欧', '一带一路', 'RCEP', '东盟'];
@@ -27,7 +54,7 @@ function computeIsChinaFocused(item) {
   });
 }
 
-export function mergeDiverseItems(items, sourceResults, maxItems, perSourceLimit) {
+export function mergeDiverseItems(items, _sourceResults, maxItems, perSourceLimit) {
   const seen = new Set();
   const deduped = [];
   items.forEach(item => {
@@ -83,138 +110,197 @@ export function crossVerifyItems(items) {
   });
 }
 
+/* ============ 持久池 ============ */
+
+function poolKey(item) {
+  return `${item.source}|${normalizeUrl(item.url)}|${(item.title || '').toLowerCase()}`;
+}
+
+/** 入池时富化：等级信息 + 涉华标记（一次性，读路径不再重复计算） */
+function enrichItem(item) {
+  const gradeInfo = getSourceGradeInfo(item.source);
+  item.sourceGrade = gradeInfo.weight;
+  item.sourceGradeLabel = gradeInfo.label;
+  item.sourceGradeColor = gradeInfo.color;
+  item.sourceGradeIcon = gradeInfo.icon;
+  item.isChinaFocused = computeIsChinaFocused(item);
+  return item;
+}
+
+function mergeIntoPool(rawItems) {
+  const perSource = new Map();
+  for (const raw of rawItems) {
+    if (!raw || !raw.url) continue;
+    const key = poolKey(raw);
+    if (itemPool.has(key)) continue;
+    const count = perSource.get(raw.source) || 0;
+    if (count >= POOL_PER_SOURCE) continue;
+    perSource.set(raw.source, count + 1);
+    itemPool.set(key, enrichItem(raw));
+  }
+  evictPool();
+}
+
+function evictPool() {
+  const now = Date.now();
+  for (const [key, item] of itemPool) {
+    const at = Date.parse(item.publishedAt) || 0;
+    if (at && now - at > POOL_TTL_MS) itemPool.delete(key);
+  }
+  if (itemPool.size > POOL_MAX_ITEMS) {
+    const sorted = [...itemPool.entries()]
+      .sort((a, b) => (Date.parse(a[1].publishedAt) || 0) - (Date.parse(b[1].publishedAt) || 0));
+    const excess = itemPool.size - POOL_MAX_ITEMS;
+    for (let i = 0; i < excess; i++) itemPool.delete(sorted[i][0]);
+  }
+}
+
+/* ============ 抓取周期（调度器驱动） ============ */
+
+let cyclePromise = null;
+
+/**
+ * 执行一轮分级抓取：只抓「到期」的源（S 级优先出队），结果并入持久池。
+ * 冷启动时所有源都视为到期，但按等级排序 + 并发池 16 出队，S 级最先完成入池。
+ */
+export async function runFetchCycle() {
+  if (cyclePromise) return cyclePromise;
+  cyclePromise = (async () => {
+    const due = pickDueSources(DEFAULT_SOURCES, poolStates, Date.now());
+    if (!due.length) return { fetched: 0, ok: 0, failed: 0, skipped: true };
+
+    let ok = 0;
+    let failed = 0;
+    const results = await runWithConcurrency(due, async source => {
+      const result = await fetchSource(source);
+      mergeIntoPool(result.items);
+      return result;
+    });
+    results.forEach((result, index) => {
+      const source = due[index];
+      const isOk = result.status === 'fulfilled';
+      poolStates.set(source.name, recordOutcome(poolStates.get(source.name) || createSourceState(), isOk));
+      if (isOk) ok += 1; else failed += 1;
+    });
+    poolVersion += 1;
+    lastCycleStats = { ok, failed, at: Date.now() };
+    scheduleAutoSync();
+    return { fetched: due.length, ok, failed, skipped: false };
+  })().catch(err => {
+    console.error('[runFetchCycle] error:', err?.message || err);
+    return { fetched: 0, ok: 0, failed: 0, error: err?.message || String(err) };
+  }).finally(() => { cyclePromise = null; });
+  return cyclePromise;
+}
+
+/**
+ * 智报事件自动落库：抓取周期完成后，把 intelligence 管线的聚类事件
+ * upsert 到 intelligence_articles / intelligence_events（PG 或 dev 内存库）。
+ * 每 10 分钟最多一次；动态 import 断开模块加载期依赖；失败静默（不阻塞采集）。
+ */
+function scheduleAutoSync() {
+  const now = Date.now();
+  if (now - lastAutoSyncAt < AUTO_SYNC_INTERVAL_MS) return;
+  lastAutoSyncAt = now;
+  import('../../intelligence/services/intelligenceService.js')
+    .then(({ syncIntelligenceSnapshot }) => syncIntelligenceSnapshot({ take: 80 }))
+    .then(result => {
+      if (result?.ok) console.log('[autoSync] intelligence events upserted:', JSON.stringify(result.saved));
+    })
+    .catch(err => console.warn('[autoSync] skipped:', err?.message || err));
+}
+
+/* ============ 用户自定义源（独立小缓存） ============ */
+
+async function fetchCustomSources(customSources) {
+  if (!customSources.length) return { items: [], failed: 0 };
+  const now = Date.now();
+  const due = customSources.filter(s => {
+    const cached = customSourceCache.get(s.url);
+    return !cached || now - cached.fetchedAt > CUSTOM_SOURCE_TTL_MS;
+  });
+  if (due.length) {
+    const results = await runWithConcurrency(due, source => fetchSource(source), 6);
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        customSourceCache.set(due[index].url, {
+          items: result.value.items.map(enrichItem),
+          fetchedAt: now,
+        });
+      }
+    });
+  }
+  const items = [];
+  let failed = 0;
+  for (const source of customSources) {
+    const cached = customSourceCache.get(source.url);
+    if (cached) items.push(...cached.items);
+    else failed += 1;
+  }
+  return { items, failed };
+}
+
+/* ============ 读路径 ============ */
+
 export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_SIZE, search = '', disabledSources = [], interests = [], options = {}) {
   const now = Date.now();
-  console.log('[getNews] Called with:', { blockedCount: blocked.length, customSourcesCount: customSources.length, disabledSourcesCount: disabledSources.length, page, pageSize, interestsCount: interests.length });
 
-  // 按等级排序源（S级优先获取）
-  const filteredDefaultSources = sortSourcesByGrade(DEFAULT_SOURCES.filter(s => !disabledSources.includes(s.name)));
-  console.log('[getNews] Filtered sources:', { total: DEFAULT_SOURCES.length, filtered: filteredDefaultSources.length, disabled: disabledSources.length });
-  const allSources = [...filteredDefaultSources, ...customSources];
   const cacheKey = JSON.stringify({ blocked, customSources: customSources.map(s => s.url), disabledSources, interests });
-
-  // SWR 模式：
-  //   - 新鲜（expiresAt 未到）：直接返回缓存
-  //   - 过期但在 stale 窗口内（staleAt 未到）：立即返回旧数据 + 后台静默刷新
-  //   - 超过 stale 窗口：等抓取完成（避免首屏白屏，但旧数据已太旧不可信）
-  //   - forceRefresh=true：跳过 cacheValid 直接抓取（用户点"刷新"按钮）
   const cacheHit = newsCache.data && newsCache.key === cacheKey;
-  const isFresh = cacheHit && newsCache.expiresAt > now;
-  const isStale = cacheHit && newsCache.expiresAt <= now && newsCache.staleAt > now;
-  const cacheValid = isFresh && !options?.forceRefresh;
+  // 读缓存必须同时满足：未过期 + 池版本一致（池更新后缓存立即重建，重建本身不碰网络）
+  const cacheCurrent = cacheHit
+    && newsCache.expiresAt > now
+    && newsCache.data.poolVersion === poolVersion
+    && !options?.forceRefresh;
+
   let fullItems;
-  let sourceResults;
   let failedSources;
   let blockedCount;
+  let sourceCount;
 
-  if (cacheValid) {
+  if (cacheCurrent) {
     fullItems = newsCache.data.items;
-    sourceResults = newsCache.data.sourceResults;
     failedSources = newsCache.data.failedSources;
     blockedCount = newsCache.data.blockedCount;
-  } else if (isStale && !options?.forceRefresh) {
-    // SWR：返回旧数据 + 后台静默刷新（不阻塞当前请求）
-    fullItems = newsCache.data.items;
-    sourceResults = newsCache.data.sourceResults;
-    failedSources = newsCache.data.failedSources;
-    blockedCount = newsCache.data.blockedCount;
-    // 后台静默刷新：递归调用 forceRefresh=true，但不 await
-    if (!fetchingPromise) {
-      console.log('[getNews] SWR: returning stale data, refreshing in background...');
-      // setImmediate 让当前响应先返回，再触发抓取
-      setImmediate(() => {
-        getNews(blocked, customSources, 1, 40, '', disabledSources, interests, { forceRefresh: true })
-          .catch(err => console.error('[getNews] Background refresh failed:', err.message));
-      });
-    }
+    sourceCount = newsCache.data.sourceCount;
   } else {
-    // 如果已有抓取在进行中，等待其完成
-    if (fetchingPromise) {
-      console.log('[getNews] Waiting for ongoing fetch...');
-      await fetchingPromise;
-      // 从缓存读取结果
-      fullItems = newsCache.data.items;
-      sourceResults = newsCache.data.sourceResults;
-      failedSources = newsCache.data.failedSources;
-      blockedCount = newsCache.data.blockedCount;
-    } else {
-    console.log('[getNews] Cache invalid, fetching from sources...', { total: allSources.length });
-    // 全部源并行抓取：每个 fetchSource 内部已有 10s 超时控制
-    // 之前是分批串行（18 个/批 × 12 批 × 10s = 2 分钟），改为并行后总耗时 ≈ 单源最慢超时（10s）
-    let rawItems; // 在 if/else 两个分支都会被赋值或保持 undefined，超时分支赋空数组
-    const FETCH_TOTAL_BUDGET_MS = 12_000;
-    const doFetch = async () => {
-      console.log(`[getNews] Fetching all ${allSources.length} sources in parallel...`);
-      const fetchPromise = Promise.allSettled(allSources.map(source => fetchSource(source)));
-      // 全局总预算：超过后让 fetch 继续在后台填缓存，caller 拿到 []（空数据 + 失败数标记），
-      // 避免 265 源并发 + 网络卡顿导致整个请求被无限挂起的事件循环饿死。
-      const timer = new Promise(resolve => setTimeout(() => resolve('__timeout__'), FETCH_TOTAL_BUDGET_MS));
-      const result = await Promise.race([fetchPromise, timer]);
-      if (result === '__timeout__') {
-        console.warn(`[getNews] Fetch exceeded ${FETCH_TOTAL_BUDGET_MS}ms budget; returning [] to caller (fetch continues in background)`);
-        return [];
-      }
-      console.log('[getNews] Fetch done', {
-        total: result.length,
-        fulfilled: result.filter(r => r.status === 'fulfilled').length,
-        rejected: result.filter(r => r.status === 'rejected').length,
-      });
-      return result;
-    };
-    fetchingPromise = doFetch().then(r => { fetchingPromise = null; return r; }).catch(e => { fetchingPromise = null; throw e; });
-    const settled = await fetchingPromise;
-    // 超时降级路径：settled 为 [] 时返回空 + 全失败标记，让 caller 快速拿到响应（fill cache 由后台 fetch 继续负责）
-    if (!Array.isArray(settled) || settled.length === 0) {
-      console.warn('[getNews] Settled empty (fetch timed out); returning empty payload');
-      fullItems = [];
-      sourceResults = [];
-      rawItems = [];
-      failedSources = allSources.length;
-      blockedCount = 0;
-    } else {
-      console.log('[getNews] Fetch results:', { total: settled.length, fulfilled: settled.filter(r => r.status === 'fulfilled').length, rejected: settled.filter(r => r.status === 'rejected').length });
-      sourceResults = settled
-        .filter(result => result.status === 'fulfilled')
-        .map(result => result.value);
-      rawItems = sourceResults.flatMap(result => result.items);
-      console.log('[getNews] Raw items:', rawItems.length);
-      failedSources = settled.filter(result => result.status === 'rejected').length;
-      const cleaned = applyBlockedWords(rawItems, blocked)
-        .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-      const deduped = mergeDiverseItems(cleaned, sourceResults, MAX_NEWS_ITEMS, MAX_ITEMS_PER_SOURCE);
-      blockedCount = rawItems.length - cleaned.length;
-
-      // 多源交叉验证 + 质量评分
-      fullItems = crossVerifyItems(deduped);
+    // 冷启动：池空且无任何缓存 → 最多等 12s 让首轮抓取填池（后台继续，不阻塞进程）
+    if (itemPool.size === 0 && !cacheHit) {
+      console.log('[getNews] Cold start: waiting up to 12s for first fetch cycle...');
+      const cycle = runFetchCycle();
+      await Promise.race([
+        cycle,
+        new Promise(resolve => setTimeout(resolve, FETCH_TOTAL_BUDGET_MS)),
+      ]);
+    } else if (!cyclePromise) {
+      // 池/缓存过期：后台静默补一轮（不阻塞当前响应，读路径从现有池构建）
+      runFetchCycle().catch(err => console.error('[getNews] Background cycle failed:', err?.message));
     }
 
-    // 为每个item添加源等级信息 + 预计算涉华标记
-    fullItems.forEach(item => {
-      const gradeInfo = getSourceGradeInfo(item.source);
-      item.sourceGrade = gradeInfo.weight;
-      item.sourceGradeLabel = gradeInfo.label;
-      item.sourceGradeColor = gradeInfo.color;
-      item.sourceGradeIcon = gradeInfo.icon;
-      item.isChinaFocused = computeIsChinaFocused(item);
-    });
+    const { items: customItems, failed: customFailed } = await fetchCustomSources(customSources);
+    const poolItems = [...itemPool.values()].filter(item => !disabledSources.includes(item.source));
 
-    // 排序策略：先按质量分降序（高质量优先），同分时按发布时间倒序（最新优先）
-    // 这样用户打开页面看到的是「最新 + 高质量」的资讯：
-    // - 同等质量下，最新的排最前
-    // - 高质量资讯即使稍旧也会排在中低质量新资讯前面
+    const rawAll = [...poolItems, ...customItems];
+    const cleaned = applyBlockedWords(rawAll, blocked)
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    blockedCount = rawAll.length - cleaned.length;
+
+    // 去重 + 每源上限 + 全局上限（按时间取最新 MAX_NEWS_ITEMS 条），再交叉验证
+    const deduped = mergeDiverseItems(cleaned, [], MAX_NEWS_ITEMS, MAX_ITEMS_PER_SOURCE);
+    fullItems = crossVerifyItems(deduped);
+
+    // 排序策略：质量分降序 → 源等级 → 发布时间倒序（与原版一致）
     fullItems.sort((a, b) => {
       const qualityDiff = (b.qualityScore || 0) - (a.qualityScore || 0);
       if (qualityDiff !== 0) return qualityDiff;
-      // 同质量时按源等级
       const gradeDiff = (b.sourceGrade || 0) - (a.sourceGrade || 0);
       if (gradeDiff !== 0) return gradeDiff;
-      // 同质量同等级时按发布时间倒序（最新优先）
       return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
     });
 
     // 初始化统计
     resetMediaStats();
-    resetGlobalImageUsage(); // 重置全局图片使用跟踪
+    resetGlobalImageUsage();
     mediaStats.totalItems = fullItems.length;
 
     // 去重RSS图片，防止同一图片在多个资讯中重复出现
@@ -228,22 +314,17 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
           }
           const normalized = normalizeImageKey(item.imageUrl);
           const usageCount = rssImageUsage.get(normalized) || 0;
-
           if (usageCount >= 1) {
-            // 如果图片已经被使用过，清除它
-            console.log(`[getNews] Removing duplicate RSS image: ${normalized.substring(0, 60)} (usage: ${usageCount})`);
             item.imageUrl = '';
           } else {
-            // 记录图片使用
             rssImageUsage.set(normalized, usageCount + 1);
           }
-        } catch (e) {
+        } catch {
           // URL解析失败，保留原样
         }
       }
     });
 
-    // 统计 RSS 图片（去重后）
     fullItems.forEach(item => {
       if (item.imageUrl) {
         mediaStats.itemsWithImage++;
@@ -256,10 +337,7 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
 
     const itemsWithoutImage = fullItems.filter(item => !item.imageUrl && item.url);
     if (itemsWithoutImage.length > 0) {
-      console.log(`[getNews] Scheduling background image resolution for ${itemsWithoutImage.length} items (max: ${MEDIA_CONFIG.MAX_RESOLVE_ITEMS}, async — response will not wait)`);
-
-      // 异步解析图片：fire-and-forget，不阻塞当前响应
-      // 解析结果写入同一份 fullItems 引用，下次命中缓存时即可看到图片
+      // 异步解析图片：fire-and-forget，结果写回同一份 fullItems 引用（缓存命中时可见）
       Promise.allSettled(itemsWithoutImage.slice(0, MEDIA_CONFIG.MAX_RESOLVE_ITEMS).map(async (item) => {
         try {
           const resolved = await resolveImageWithScrapling(item.url);
@@ -276,19 +354,17 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
             }
           }
         });
-        // 更新统计（后台完成时）
         mediaStats.lastUpdate = new Date().toISOString();
       }).catch(() => { /* 后台图片解析失败不影响主流程 */ });
     }
 
-    // 更新统计
+    // 最终图片去重 + 统计
     const finalImageUsage = new Map();
     fullItems.forEach(item => {
       if (!item.imageUrl) return;
       try {
         const normalized = normalizeImageKey(item.imageUrl);
         if (finalImageUsage.has(normalized)) {
-          console.log(`[getNews] Removing duplicate resolved image: ${normalized.substring(0, 60)}`);
           item.imageUrl = '';
           mediaStats.duplicateFilteredCount++;
           return;
@@ -305,18 +381,17 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
       if (item.imageUrl) mediaStats.itemsWithImage++;
       if (item.videoUrl) mediaStats.itemsWithVideo++;
     });
-
     mediaStats.lastUpdate = new Date().toISOString();
-
-    // 输出统计日志
     logMediaStats();
 
-    newsCache.data = { items: fullItems, sourceResults, failedSources, blockedCount };
+    failedSources = (lastCycleStats.failed || 0) + customFailed;
+    sourceCount = (DEFAULT_SOURCES.length - disabledSources.length) + customSources.length;
+
+    newsCache.data = { items: fullItems, failedSources, blockedCount, sourceCount, poolVersion };
     newsCache.expiresAt = now + 1000 * 60 * 5;
-    newsCache.staleAt = now + 1000 * 60 * 10; // 过期后 5 分钟内仍可返回旧数据（SWR）
+    newsCache.staleAt = now + 1000 * 60 * 10;
     newsCache.key = cacheKey;
-    } // end else (no fetchingPromise)
-    } // end else (!cacheValid)
+  }
 
   // 兴趣过滤
   let filteredItems = fullItems;
@@ -325,7 +400,6 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
       if (!item.category) return false;
       return interests.includes(item.category);
     });
-    console.log('[getNews] Interest filtering:', { before: fullItems.length, after: filteredItems.length, interests });
   }
 
   if (search) {
@@ -363,16 +437,6 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
   const end = start + pageSize;
   const pagedItems = filteredItems.slice(start, end);
 
-  console.log('[getNews] Pagination:', {
-    page,
-    pageSize,
-    start,
-    end,
-    filteredItemsLength: filteredItems.length,
-    pagedItemsLength: pagedItems.length,
-    hasMore: end < filteredItems.length
-  });
-
   return {
     updatedAt: new Date().toISOString(),
     items: pagedItems,
@@ -380,57 +444,59 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
     page,
     pageSize,
     hasMore: end < filteredItems.length,
-    sourceCount: allSources.length,
+    sourceCount,
     failedSources,
     blockedCount
   };
 }
 
 /**
- * 服务端预热：在用户到来之前主动刷新缓存。
- * 用于启动后定时预热（每 5 分钟一次），让用户进入即看到新鲜数据。
+ * 服务端预热：触发一轮分级抓取（只抓到期源，通常只有一小部分）。
  * fire-and-forget，错误不影响服务运行。
  */
 export async function warmNewsCache(options = {}) {
   const now = Date.now();
-  // 距上次预热不足 4 分钟则跳过（避免并发调用）
-  if (now - newsCache.lastWarmAt < 4 * 60 * 1000) {
+  if (now - newsCache.lastWarmAt < 4 * 60 * 1000 && !options.forceRefresh) {
     return { skipped: true, reason: 'recently warmed' };
   }
   newsCache.lastWarmAt = now;
-  try {
-    await getNews(
-      options.blocked || [],
-      options.customSources || [],
-      1,
-      40,
-      '',
-      options.disabledSources || [],
-      options.interests || [],
-      { forceRefresh: true }
-    );
-    return { skipped: false, ok: true };
-  } catch (err) {
-    console.error('[warmNewsCache] failed:', err.message);
-    return { skipped: false, ok: false, error: err.message };
-  }
+  const result = await runFetchCycle();
+  return { skipped: false, ok: !result.error, ...result };
 }
 
 /**
- * 启动定时预热：服务启动时调用一次，每 5 分钟自动刷新缓存。
- * 返回 stop 函数，可清理定时器。
+ * 启动定时抓取：服务启动立即跑一轮（冷启动全量、按等级优先入池），
+ * 之后每 intervalMs 触发一次 runFetchCycle（内部只抓到期源）。
  */
 export function startNewsWarming(intervalMs = 5 * 60 * 1000) {
-  if (backgroundRefreshTimer) return () => {};
-  // 启动后立即预热一次
-  warmNewsCache().catch(() => {});
-  backgroundRefreshTimer = setInterval(() => {
-    warmNewsCache().catch(err => console.error('[news warming] error:', err.message));
-  }, intervalMs);
+  let stopped = false;
+  let timer = null;
+  const tick = () => {
+    if (stopped) return;
+    runFetchCycle().catch(err => console.error('[news warming] error:', err?.message));
+  };
+  tick();
+  timer = setInterval(tick, intervalMs);
   return () => {
-    if (backgroundRefreshTimer) {
-      clearInterval(backgroundRefreshTimer);
-      backgroundRefreshTimer = null;
+    stopped = true;
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
     }
   };
+}
+
+/* 测试辅助：重置模块级状态（仅单测使用） */
+export function __resetPoolForTests() {
+  itemPool.clear();
+  poolStates.clear();
+  customSourceCache.clear();
+  poolVersion = 0;
+  lastCycleStats = { ok: 0, failed: 0, at: 0 };
+  lastAutoSyncAt = 0;
+  newsCache.data = null;
+  newsCache.key = '';
+  newsCache.expiresAt = 0;
+  newsCache.staleAt = 0;
+  newsCache.lastWarmAt = 0;
 }

@@ -226,28 +226,33 @@ export async function getIntelligenceEvents(params = {}) {
   const options = parseOptions(params);
   const learned = await resolveLearnedPreferences(options);
   const context = learned ? { ...options, learnedTopics: learned.learnedTopics } : options;
+  // 画像先验进候选集：有学习偏好时把候选池扩大一倍（封顶 MAX_INTELLIGENCE_TAKE），
+  // 避免「先截断 take 条再重排」的天花板——学习主题命中的事件可能在截断线之外。
+  const take = boundedNumber(params.take, DEFAULT_INTELLIGENCE_TAKE, { min: 12 });
+  const candidateTake = learned?.learnedTopics?.length
+    ? Math.min(take * 2, MAX_INTELLIGENCE_TAKE)
+    : take;
 
   if (options.storage === 'stored') {
-    const stored = await getStoredIntelligenceEvents(options);
-    return { ...stored, events: applyPersonalScores(stored.events, context) };
+    const stored = await getStoredIntelligenceEvents({ ...options, take: candidateTake });
+    return { ...stored, events: applyPersonalScores(stored.events, context).slice(0, take) };
   }
 
-  const take = boundedNumber(params.take, DEFAULT_INTELLIGENCE_TAKE, { min: 12 });
   let payload;
   try {
-    payload = await getIntelligenceItems({ ...params, take, storage: 'live' });
+    payload = await getIntelligenceItems({ ...params, take: candidateTake, storage: 'live' });
   } catch (error) {
     if (options.storage !== 'auto') throw error;
-    const stored = await getStoredIntelligenceEvents(options);
-    return { ...stored, events: applyPersonalScores(stored.events, context), fallback: { reason: 'live-error', message: error.message || 'Live intelligence unavailable' } };
+    const stored = await getStoredIntelligenceEvents({ ...options, take: candidateTake });
+    return { ...stored, events: applyPersonalScores(stored.events, context).slice(0, take), fallback: { reason: 'live-error', message: error.message || 'Live intelligence unavailable' } };
   }
 
   const events = clusterIntelligenceEvents(payload.items);
-  const personalizedEvents = applyPersonalScores(events, context);
+  const personalizedEvents = applyPersonalScores(events, context).slice(0, take);
 
   if (options.storage === 'auto' && personalizedEvents.length === 0) {
-    const stored = await getStoredIntelligenceEvents(options);
-    return { ...stored, events: applyPersonalScores(stored.events, context), fallback: { reason: 'live-empty' } };
+    const stored = await getStoredIntelligenceEvents({ ...options, take: candidateTake });
+    return { ...stored, events: applyPersonalScores(stored.events, context).slice(0, take), fallback: { reason: 'live-empty' } };
   }
 
   return {
