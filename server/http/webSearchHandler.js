@@ -4,12 +4,14 @@ import { assertSafeExternalUrl } from '../security/urlSafety.js';
 /**
  * Web Search Handler - 联网搜索接口
  *
- * 优先级：豆包搜索（火山引擎） > Tavily > DuckDuckGo > 免费源兜底（HN Algolia + Bing RSS）
+ * 优先级（已配置 Key）：豆包搜索（火山引擎） > Tavily > DuckDuckGo > 免费源兜底（HN + Bing）
+ * 零成本模式（未配置任何 Key）：并行尝试 DuckDuckGo（短超时试探）+ HN Algolia + Bing RSS + Stack Exchange，
+ *   取首个有结果源。无需任何 API Key / 注册，纯免费。
  *
  * - 豆包搜索：国内首选，每月 500 次免费，订阅地址 https://console.volcengine.com/search-infinity/web-search
  * - Tavily：海外 AI 搜索服务，每月 1000 次免费（tavily.com）
- * - DuckDuckGo：免费但国内通常不可达
- * - HN Algolia + Bing RSS：免订阅免费兜底（国内可达），无需任何 API Key
+ * - DuckDuckGo：免费但国内通常不可达（零成本模式下仅短超时试探，不阻塞）
+ * - HN Algolia + Bing RSS + Stack Exchange：免订阅免费兜底（国内可达），无需任何 API Key
  *
  * API Key 来源：
  *   豆包：环境变量 DOUBAO_SEARCH_API_KEY 或请求头 X-Doubao-Search-Key
@@ -24,9 +26,12 @@ const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
 const DUCKDUCKGO_ENDPOINT = 'https://lite.duckduckgo.com/lite/';
 const HN_ALGOLIA_ENDPOINT = 'https://hn.algolia.com/api/v1/search';
 const BING_RSS_ENDPOINT = 'https://www.bing.com/search';
+const STACK_EXCHANGE_ENDPOINT = 'https://api.stackexchange.com/2.3/search/advanced';
 const DEFAULT_MAX_RESULTS = 8;
 const MAX_RESULTS_LIMIT = 20;
 const REQUEST_TIMEOUT_MS = 12_000;
+// 零成本模式下对 DDG 的试探超时：国内通常不可达，短超时避免干等整段 12s
+const DDG_FAST_TIMEOUT_MS = 4_000;
 
 function resolveDoubaoKey(req) {
   const fromHeader = req.headers['x-doubao-search-key'];
@@ -214,10 +219,10 @@ function stripHtml(html) {
     .trim();
 }
 
-async function callDuckDuckGo(query, maxResults) {
+async function callDuckDuckGo(query, maxResults, timeoutMs = REQUEST_TIMEOUT_MS) {
   await assertSafeExternalUrl(DUCKDUCKGO_ENDPOINT);
   const url = `${DUCKDUCKGO_ENDPOINT}?q=${encodeURIComponent(query)}&kl=cn-zh`;
-  const { signal, clear } = withTimeout(REQUEST_TIMEOUT_MS);
+  const { signal, clear } = withTimeout(timeoutMs);
   try {
     const response = await fetch(url, {
       method: 'GET',
@@ -326,8 +331,77 @@ async function callBingRss(query, maxResults) {
 }
 
 /**
+ * Stack Exchange 搜索（免费免订阅，国内可达）
+ * 通过 Stack Exchange API 检索 stackoverflow 等站点的问答，
+ * 填补「开发 / 编程问答」这一 HN（偏新闻）与 Bing（偏通用）都覆盖不到的空白。
+ * 文档：https://api.stackexchange.com/docs/advanced-search
+ */
+async function callStackExchange(query, maxResults) {
+  await assertSafeExternalUrl(STACK_EXCHANGE_ENDPOINT);
+  const url = `${STACK_EXCHANGE_ENDPOINT}?order=desc&sort=relevance&q=${encodeURIComponent(query)}&site=stackoverflow&pagesize=${maxResults}&filter=default`;
+  const { signal, clear } = withTimeout(REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'Accept': 'application/json',
+      },
+      signal,
+    });
+    if (!response.ok) {
+      throw Object.assign(new Error(`Stack Exchange 返回 ${response.status}`), {
+        code: 'SE_UPSTREAM_ERROR', status: 502,
+      });
+    }
+    const data = await response.json();
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const results = items
+      .map((it) => ({
+        title: String(it.title || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(),
+        url: String(it.link || '').trim(),
+        snippet: String(it.excerpt || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 280),
+      }))
+      .filter((r) => r.title && r.url)
+      .slice(0, maxResults);
+    return { provider: 'free-se', results };
+  } finally {
+    clear();
+  }
+}
+
+/**
+ * 零成本（无 Key）搜索：并发尝试 DuckDuckGo（短超时试探）+ HN + Bing + Stack Exchange，
+ * 按优先级（DDG > HN > Bing > SE）返回首个非空结果。
+ * 全程无需任何 API Key / 注册，纯免费；任一源失败不影响其余源。
+ * @returns {Promise<{provider: string, results: Array} | null>} 全部失败返回 null
+ */
+async function callKeyFreeSearch(query, maxResults) {
+  const settled = await Promise.allSettled([
+    callDuckDuckGo(query, maxResults, DDG_FAST_TIMEOUT_MS),
+    callHackerNews(query, maxResults),
+    callBingRss(query, maxResults),
+    callStackExchange(query, maxResults),
+  ]);
+  // 优先级顺序：DuckDuckGo（最通用）> HN（技术新闻）> Bing（通用 Web）> Stack Exchange（开发问答）
+  const order = ['duckduckgo', 'free-hn', 'free-bing', 'free-se'];
+  const byProvider = {};
+  for (const r of settled) {
+    if (r.status === 'fulfilled' && r.value && Array.isArray(r.value.results) && r.value.results.length > 0) {
+      byProvider[r.value.provider] = r.value;
+    }
+  }
+  for (const p of order) {
+    if (byProvider[p]) return byProvider[p];
+  }
+  const reasons = settled.map((r) => r.status === 'rejected' ? (r.reason?.message || String(r.reason)) : '空结果');
+  console.warn('[webSearch] 零成本搜索全部失败：', reasons.join(' | '));
+  return null;
+}
+
+/**
  * 免费源兜底：HN Algolia + Bing RSS 并行查询，任一有结果即返回。
- * 完全免订阅、免配置，作为 DuckDuckGo 之后、503 之前的最后保障。
+ * 完全免订阅、免配置，作为 DuckDuckGo 之后、503 之前的最后保障（用于已配置 Key 用户的末级降级）。
  * @returns {Promise<{provider: string, results: Array} | null>} 全部失败返回 null
  */
 async function callFreeFallback(query, maxResults) {
@@ -419,34 +493,52 @@ export async function handleWebSearchRequest(req, res) {
       }
     }
 
-    // 兜底 1：DuckDuckGo（国内通常无法访问）
-    try {
-      const ddgResult = await callDuckDuckGo(query, maxResults);
-      return sendJsonResponse(res, 200, {
-        ok: true,
-        provider: ddgResult.provider,
-        results: ddgResult.results,
-        meta: { query, count: ddgResult.results.length, latencyMs: Date.now() - started, tavilyConfigured: Boolean(tavilyKey), doubaoConfigured: Boolean(doubaoKey) },
-      });
-    } catch (ddgErr) {
-      // DDG 不可达：继续尝试免费源兜底
-      console.warn('[webSearch] DuckDuckGo 不可达，尝试免费源兜底：', ddgErr.message);
-    }
-
-    // 兜底 2：免费源（HN Algolia + Bing RSS，免订阅免配置，国内可达）
-    try {
-      const freeResult = await callFreeFallback(query, maxResults);
-      if (freeResult && freeResult.results.length > 0) {
+    // 零成本（未配置任何 Key）模式：并发尝试 DDG(短超时) + HN + Bing + Stack Exchange，取首个有结果源
+    // 避免对国内通常不可达的 DDG 等待整段 12s 超时
+    if (!doubaoKey && !tavilyKey) {
+      try {
+        const keyFree = await callKeyFreeSearch(query, maxResults);
+        if (keyFree && keyFree.results.length > 0) {
+          return sendJsonResponse(res, 200, {
+            ok: true,
+            provider: keyFree.provider,
+            results: keyFree.results,
+            meta: { query, count: keyFree.results.length, latencyMs: Date.now() - started, keyFree: true },
+          });
+        }
+      } catch (kfErr) {
+        console.warn('[webSearch] 零成本搜索异常：', kfErr.message);
+      }
+    } else {
+      // 兜底 1：DuckDuckGo（国内通常无法访问）
+      try {
+        const ddgResult = await callDuckDuckGo(query, maxResults);
         return sendJsonResponse(res, 200, {
           ok: true,
-          provider: freeResult.provider,
-          results: freeResult.results,
-          meta: { query, count: freeResult.results.length, latencyMs: Date.now() - started, freeFallback: true, tavilyConfigured: Boolean(tavilyKey), doubaoConfigured: Boolean(doubaoKey) },
+          provider: ddgResult.provider,
+          results: ddgResult.results,
+          meta: { query, count: ddgResult.results.length, latencyMs: Date.now() - started, tavilyConfigured: Boolean(tavilyKey), doubaoConfigured: Boolean(doubaoKey) },
         });
+      } catch (ddgErr) {
+        // DDG 不可达：继续尝试免费源兜底
+        console.warn('[webSearch] DuckDuckGo 不可达，尝试免费源兜底：', ddgErr.message);
       }
-    } catch (freeErr) {
-      // 免费源兜底异常：记录后走最终 503 文案
-      console.warn('[webSearch] 免费源兜底异常：', freeErr.message);
+
+      // 兜底 2：免费源（HN Algolia + Bing RSS，免订阅免配置，国内可达）
+      try {
+        const freeResult = await callFreeFallback(query, maxResults);
+        if (freeResult && freeResult.results.length > 0) {
+          return sendJsonResponse(res, 200, {
+            ok: true,
+            provider: freeResult.provider,
+            results: freeResult.results,
+            meta: { query, count: freeResult.results.length, latencyMs: Date.now() - started, freeFallback: true, tavilyConfigured: Boolean(tavilyKey), doubaoConfigured: Boolean(doubaoKey) },
+          });
+        }
+      } catch (freeErr) {
+        // 免费源兜底异常：记录后走最终 503 文案
+        console.warn('[webSearch] 免费源兜底异常：', freeErr.message);
+      }
     }
 
     // 全部源均不可达：返回友好错误，引导用户配置 Key
@@ -471,4 +563,4 @@ export async function handleWebSearchRequest(req, res) {
 }
 
 // 导出免费兜底函数供单元测试 / 独立测试使用
-export { callFreeFallback, callHackerNews, callBingRss };
+export { callFreeFallback, callHackerNews, callBingRss, callStackExchange, callKeyFreeSearch };

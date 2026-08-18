@@ -576,7 +576,15 @@ async function toolWebSearch(args, ctx) {
   }
   const items = Array.isArray(data.results) ? data.results : [];
   if (items.length === 0) return `未找到与 "${query}" 相关的网页`;
-  const providerLabel = data.provider === 'doubao' ? '豆包搜索' : (data.provider === 'tavily' ? 'Tavily' : 'DuckDuckGo');
+  const providerLabelMap = {
+    doubao: '豆包搜索',
+    tavily: 'Tavily',
+    duckduckgo: 'DuckDuckGo',
+    'free-hn': 'Hacker News',
+    'free-bing': '必应',
+    'free-se': 'Stack Exchange',
+  };
+  const providerLabel = providerLabelMap[data.provider] || '联网搜索';
   const lines = items.map((item, i) => {
     const title = item.title || '(无标题)';
     const url = item.url || '';
@@ -1575,7 +1583,7 @@ const BUILTIN_TOOL_DEFS = [
       type: 'function',
       function: {
         name: 'web_search',
-        description: '联网搜索（实时获取互联网最新信息）。优先用豆包搜索（火山引擎，国内首选），其次 Tavily，最后 DuckDuckGo 兜底。适用于查询超出训练数据时间范围、最新资讯、最新版本信息等场景',
+        description: '联网搜索（实时获取互联网最新信息）。未配置任何 API Key 时自动走零成本通道：DuckDuckGo（短超时试探）+ Hacker News + 必应 + Stack Exchange，无需注册即可用；若已配置豆包搜索（火山引擎，国内首选）或 Tavily，则优先使用。适用于查询超出训练数据时间范围、最新资讯、最新版本信息、编程问答等场景',
         parameters: {
           type: 'object',
           properties: {
