@@ -74,6 +74,7 @@ import Sidebar from './components/Sidebar.jsx';
 import ProfileModal from './components/ProfileModal.jsx';
 import LlmQuickConfigModal from './components/LlmQuickConfigModal.jsx';
 import OnboardingFlow from './components/OnboardingFlow.jsx';
+import EntranceSplash from './components/visual/EntranceSplash.jsx'; // 进场动画「水墨开卷」
 import ShortcutsModal from './components/ShortcutsModal.jsx';
 import NewspaperOverlay from './components/NewspaperOverlay.jsx';
 import EventFormModal from './components/EventFormModal.jsx';
@@ -308,6 +309,10 @@ function App() {
     try { return localStorage.getItem('meridian_onboarded') === '1'; } catch { return false; }
   });
   const finishOnboarding = () => setOnboarded(true);
+
+  // 进场动画（水墨开卷）：控制 splash 显隐，及内容随帷幕升起的 .is-entered 标记
+  const [showSplash, setShowSplash] = useState(true);
+  const [entered, setEntered] = useState(false);
 
   // profilePage 已从 useUiStore 订阅（见上方 UI 状态区）
   // ===== AI 助手与简报状态（迁移自 useState -> Zustand aiStore）=====
@@ -2216,7 +2221,7 @@ ${signals}
   const showStatsBar = showRightPanel && nav !== 'home' && nav !== 'recommendations';
 
   return (
-    <div data-active-nav={nav} className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${panelCollapsed ? 'panel-collapsed' : ''} ${!showRightPanel ? 'no-right-panel' : ''} ${editorFullscreen ? 'editor-fullscreen' : ''}`}>
+    <div data-active-nav={nav} className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${panelCollapsed ? 'panel-collapsed' : ''} ${!showRightPanel ? 'no-right-panel' : ''} ${editorFullscreen ? 'editor-fullscreen' : ''} ${entered ? 'is-entered' : ''}`}>
       <div className="particle-layer" aria-hidden="true">
         {Array.from({ length: 24 }).map((_, i) => <span key={i} className="particle" style={{ '--i': i }} />)}
       </div>
@@ -2895,6 +2900,14 @@ ${signals}
         testLlmConnection={testLlmConnection}
         goNav={goNav}
       />
+
+      {/* 进场动画（水墨开卷）：每次加载播放一次，播完淡出卸载，与首跑引导互不冲突 */}
+      {showSplash && (
+        <EntranceSplash
+          onReveal={() => setEntered(true)}
+          onDone={() => setShowSplash(false)}
+        />
+      )}
 
       {/* Back to Top */}
       <button className={`back-to-top ${showBackToTop ? 'visible' : ''}`} onClick={scrollToTop} title="回到顶部">

@@ -1,0 +1,163 @@
+/* ============================================================
+   entrance.css — 进场动画「水墨开卷」（覆盖层）
+   引入顺序：onboarding.css → entrance.css → motion.css
+   （motion.css 最后、优先级最高；本文件只新增 keyframe/类，
+    复用 motion.css 的 --ease-* / --dur-* 令牌，不与之冲突）
+
+   设计：墨点晕开 → 品牌行楷浮现 → 朱印落款 → 墨线横拉 → 帷幕化开
+   - 背景复用主题 --bg-primary，与 App 底层 visual-bg 无缝衔接
+   - 印章用跨调色板固定 --status-critical（朱红），美学与工程自洽
+   - 约 2.7s 总时长；点击 / Esc 可跳过；尊重 prefers-reduced-motion
+   - 与 OnboardingFlow（首访引导）互不冲突：splash 在更上层，播完淡出卸载
+   ============================================================ */
+
+.entrance {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary, #11151A);
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity var(--dur-slower, 0.5s) var(--ease-in-out, ease-in-out);
+  will-change: opacity;
+}
+:root[data-mode="light"] .entrance {
+  background: var(--bg-primary, #F6F1E8);
+}
+/* 点击 / Esc 跳过：立即进入离场（opacity 过渡由 .entrance 统一处理） */
+.entrance--leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* —— 墨点晕开（主题文字色的极淡墨晕，随调色板/深浅自适应） —— */
+.entrance__bloom {
+  position: absolute;
+  width: 64vmin;
+  height: 64vmin;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%,
+    color-mix(in srgb, var(--ink-glow-1, var(--text-primary)) 16%, transparent) 0%,
+    color-mix(in srgb, var(--text-primary) 9%, transparent) 36%,
+    transparent 70%);
+  animation: entranceBloom 0.9s var(--ease-out, ease-out) both;
+  will-change: transform, opacity;
+}
+
+.entrance__center {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+/* —— 品牌行楷浮现 —— */
+.entrance__brand {
+  font-family: 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
+  font-weight: 600;
+  font-size: clamp(42px, 9.5vmin, 92px);
+  line-height: 1.1;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em; /* 补偿字距，保持视觉居中 */
+  color: var(--text-primary, #F5F7FA);
+  opacity: 0;
+  text-shadow: 0 2px 34px color-mix(in srgb, var(--text-primary) 12%, transparent);
+  animation: entranceBrand 0.72s var(--ease-out, ease-out) 0.35s both;
+}
+
+/* —— 墨线 + 朱印 一行 —— */
+.entrance__rule {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(440px, 72vw);
+}
+
+.entrance__line {
+  flex: 1;
+  height: 1px;
+  transform-origin: left center;
+  transform: scaleX(0);
+  background: color-mix(in srgb, var(--text-primary) 42%, transparent);
+  animation: entranceLine 0.52s var(--ease-out, ease-out) 1.6s both;
+}
+
+.entrance__seal {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Noto Serif SC', 'Songti SC', serif;
+  font-weight: 900;
+  font-size: 23px;
+  color: #fff;
+  background: var(--status-critical, #F85149);
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
+  opacity: 0;
+  transform: scale(0.6) rotate(-9deg);
+  animation: entranceSeal 0.44s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) 1.5s both;
+}
+
+/* —— 英文副题（极淡、宽字距） —— */
+.entrance__sub {
+  font-family: 'Rajdhani', 'Orbitron', system-ui, sans-serif;
+  font-weight: 500;
+  font-size: clamp(11px, 2.4vmin, 15px);
+  letter-spacing: 0.52em;
+  text-indent: 0.52em;
+  color: color-mix(in srgb, var(--text-muted, #C5CCD4) 92%, transparent);
+  opacity: 0;
+  animation: entranceSub 0.6s var(--ease-out, ease-out) 0.98s both;
+}
+
+/* —— keyframes —— */
+@keyframes entranceBloom {
+  from { opacity: 0; transform: scale(0.2); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes entranceBrand {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes entranceLine {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+@keyframes entranceSeal {
+  from { opacity: 0; transform: scale(0.6) rotate(-9deg); }
+  to   { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes entranceSub {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* —— 内容随帷幕升起：splash 开始离场时（App 加 .is-entered），
+       .sidebar / .main 错落淡入上浮，与 curtain 化开同步 —— */
+.app.is-entered .sidebar,
+.app.is-entered .main {
+  animation: fadeUp var(--dur-slower, 0.5s) var(--ease-out, ease-out) both;
+}
+.app.is-entered .main {
+  animation-delay: 0.04s;
+}
+
+/* —— 减少动态：组件直接 return null（无 splash），内容静态呈现 —— */
+@media (prefers-reduced-motion: reduce) {
+  .app.is-entered .sidebar,
+  .app.is-entered .main {
+    animation: none;
+  }
+  .entrance, .entrance * {
+    animation: none !important;
+  }
+}
