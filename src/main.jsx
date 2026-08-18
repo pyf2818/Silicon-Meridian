@@ -9,6 +9,7 @@ import './polish.css';
 import './studio-theme.css';
 import './states.css'; // B1 统一空/错/加载态设计系统（在 studio-theme 之后，可被其覆盖）
 import './intelligence-briefing.css';
+import './onboarding.css'; // B2 首跑引导向导样式
 import BackgroundLayer from './components/visual/BackgroundLayer.jsx';
 import NoiseLayer from './components/visual/NoiseLayer.jsx';
 // ParticleField 懒加载：首屏先显示背景与噪点，粒子稍后出现，不阻塞首屏

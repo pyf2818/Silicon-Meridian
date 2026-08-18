@@ -73,6 +73,7 @@ import RightPanel from './components/RightPanel.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import ProfileModal from './components/ProfileModal.jsx';
 import LlmQuickConfigModal from './components/LlmQuickConfigModal.jsx';
+import OnboardingFlow from './components/OnboardingFlow.jsx';
 import ShortcutsModal from './components/ShortcutsModal.jsx';
 import NewspaperOverlay from './components/NewspaperOverlay.jsx';
 import EventFormModal from './components/EventFormModal.jsx';
@@ -299,6 +300,13 @@ function App() {
     fetchLlmModels, addManualModel, removeManualModel, testLlmConnection,
     applyBuiltinTemplate, saveAsPreset,
   } = useLlmConfig({ LLM_PRESETS, user, onPresetAction: (_action, _payload) => { /* hook 已自动保存到 LS，此处不做任何事；保留参数位置以便未来埋点 */ } });
+
+  // ========== 首跑引导（B2 首跑引导）==========
+  // 用 localStorage 标记而非登录态：纯前端判定首次访问，dev（DEV_MEMORY_AUTH）与生产均可触发一次。
+  const [onboarded, setOnboarded] = useState(() => {
+    try { return localStorage.getItem('meridian_onboarded') === '1'; } catch { return false; }
+  });
+  const finishOnboarding = () => setOnboarded(true);
 
   // profilePage 已从 useUiStore 订阅（见上方 UI 状态区）
   // ===== AI 助手与简报状态（迁移自 useState -> Zustand aiStore）=====
@@ -2846,6 +2854,28 @@ ${signals}
         deletePreset={deletePreset}
         savePresetName={savePresetName}
         setSavePresetName={setSavePresetName}
+      />
+
+      {/* 首跑引导（B2 首跑引导）：首次访问展示，完成后写入 localStorage 标记不再出现 */}
+      <OnboardingFlow
+        show={!onboarded}
+        onFinish={finishOnboarding}
+        categories={categories}
+        CATEGORY_GROUPS={CATEGORY_GROUPS}
+        selectedInterests={selectedInterests}
+        setSelectedInterests={setSelectedInterests}
+        llmConfig={llmConfig}
+        setLlmConfig={setLlmConfig}
+        applyBuiltinTemplate={applyBuiltinTemplate}
+        LLM_PRESETS={LLM_PRESETS}
+        fetchLlmModels={fetchLlmModels}
+        allLlmModels={allLlmModels}
+        llmFetching={llmFetching}
+        llmFetchError={llmFetchError}
+        llmTestResult={llmTestResult}
+        llmTesting={llmTesting}
+        testLlmConnection={testLlmConnection}
+        goNav={goNav}
       />
 
       {/* Back to Top */}
