@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getKline, parseListItem, parseMarketPoolItem, resolveSecid } from '../stockService.js';
+import { getKline, parseListItem, parseMarketPoolItem, resolveSecid, searchStock } from '../stockService.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -68,5 +68,44 @@ describe('stockService quote normalization', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][0]).toContain('fqt=0');
     expect(fetchMock.mock.calls[1][0]).toContain('fqt=1');
+  });
+});
+
+describe('stockService.searchStock', () => {
+  // 回归：腾讯 smartbox 把中文名以 \uXXXX 字面转义形式塞进 v_hint，
+  // searchStock 必须解码成真中文，否则前端显示"\u8d35\u5dde\u8305\u53f0"。
+  it('decodes \\uXXXX-escaped Chinese names from Tencent smartbox', async () => {
+    const fetchMock = vi.fn().mockImplementation((url) => {
+      // 腾讯 smartbox：返回带转义中文名的 v_hint
+      if (String(url).includes('smartbox.gtimg.cn')) {
+        return Promise.resolve({ text: async () => 'v_hint="sh~600519~\\u8d35\\u5dde\\u8305\\u53f0~gzmt~GP-A"' });
+      }
+      // 东方财富：返回空结果集，避免干扰
+      return Promise.resolve({ text: async () => 'callback({"QuotationCodeTable":{"Data":[]}})' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const results = await searchStock('600519');
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ secid: '1.600519', code: '600519', market: 'sh' });
+    expect(results[0].name).toBe('贵州茅台');
+    // 关键：不能是字面转义字符串
+    expect(results[0].name).not.toContain('\\u');
+  });
+
+  it('passes through real Chinese names unchanged (EastMoney path)', async () => {
+    const fetchMock = vi.fn().mockImplementation((url) => {
+      if (String(url).includes('smartbox.gtimg.cn')) {
+        // 腾讯返回空（无匹配），让 EastMoney 兜底
+        return Promise.resolve({ text: async () => 'v_hint=""' });
+      }
+      return Promise.resolve({
+        text: async () => 'callback({"QuotationCodeTable":{"Data":[{"Code":"600519","Name":"贵州茅台","MktNum":"1"}]}})',
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const results = await searchStock('600519');
+    expect(results[0].name).toBe('贵州茅台');
   });
 });

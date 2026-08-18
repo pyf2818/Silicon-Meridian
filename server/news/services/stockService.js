@@ -474,7 +474,9 @@ export async function searchStock(keyword) {
       if (fields.length >= 4 && fields[3]) {
         const market = fields[0]; // sh/sz/hk/us
         const code = fields[1];
-        const name = fields[2];
+        // 腾讯 smartbox 中文名有时以 \uXXXX 字面转义形式返回（v_hint 里的字符串本身就是转义文本），
+        // 若不解码会得到 18 字符 "\u8d35\u5dde\u8305\u53f0"，前端显示成转义序列而非"贵州茅台"。
+        const name = fields[2].replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
         const py = fields[3];
         const secid = market === 'sh' ? `1.${code}` : market === 'sz' ? `0.${code}` : `${market}.${code}`;
         if (!seen.has(secid) && code && name) {
