@@ -608,6 +608,59 @@ function App() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // ===== 全局键盘效率（B2.1）：Ctrl/K 命令面板 + g 系页面导航 + ? 快捷键面板 + Esc 关闭 =====
+  // 上提自 NewsPage，使命令面板/快捷键在所有页面（含首页）均可达；g 和弦用 ref 实现两键序列。
+  const gotoArmedRef = useRef(false);
+  const gotoTimerRef = useRef(null);
+  // 用 ref 持有最新 API，避免每次渲染都重注册 window 监听
+  // 注意：goNav 在下方定义，此处先建空 ref，渲染末（goNav 定义后）再填充，规避 TDZ
+  const kbApiRef = useRef(null);
+  useEffect(() => {
+    const isTyping = (el) =>
+      el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT' || el.isContentEditable);
+    // g 后接的页面键 → nav id（覆盖 9 个主导航，字符取自页面含义）
+    const GOTO_MAP = {
+      h: 'home', d: 'recommendations', a: 'all',
+      g: 'github', s: 'stock', u: 'studio',
+      c: 'square', p: 'profile-center', m: 'monitor',
+    };
+    function onKey(e) {
+      const api = kbApiRef.current;
+      // Ctrl/Cmd+K 全局唤出命令面板（任意上下文，含首页）
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        api.setShowCommandPalette(v => !v);
+        return;
+      }
+      if (isTyping(e.target)) return;
+      // g 和弦第二键：消费事件并 stopImmediatePropagation，避免与 feed 页 j/k/o/s 冲突
+      if (gotoArmedRef.current) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const target = GOTO_MAP[e.key.toLowerCase()];
+        if (target) api.goNav(target);
+        gotoArmedRef.current = false;
+        clearTimeout(gotoTimerRef.current);
+        return;
+      }
+      if ((e.key === 'g' || e.key === 'G') && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        gotoArmedRef.current = true;
+        clearTimeout(gotoTimerRef.current);
+        gotoTimerRef.current = setTimeout(() => { gotoArmedRef.current = false; }, 1200);
+        return;
+      }
+      if (e.key === '?') { e.preventDefault(); api.setShowShortcuts(s => !s); return; }
+      if (e.key === 'Escape') {
+        if (api.showShortcuts) { api.setShowShortcuts(false); return; }
+        if (api.showCommandPalette) { api.setShowCommandPalette(false); return; }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); clearTimeout(gotoTimerRef.current); };
+  }, []);
   useEffect(() => {
     if (!showTemplateMenu) return;
     const handler = (e) => { if (!e.target.closest('.editor-template-dropdown')) setShowTemplateMenu(false); };
@@ -1745,12 +1798,6 @@ ${materialLines || '暂无素材'}`;
   // Keyboard shortcuts
   useEffect(() => {
     function handleKey(e) {
-      // Ctrl+K / Cmd+K 全局唤出命令面板（任何上下文都可触发）
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault();
-        setShowCommandPalette(v => !v);
-        return;
-      }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
       const currentItems = nav === 'all' ? filtered : nav === 'trending' ? trendingItems : [];
       if (e.key === 'j' || e.key === 'J') {
@@ -1768,8 +1815,7 @@ ${materialLines || '暂无素材'}`;
       } else if (e.key === '1') { e.preventDefault(); setViewMode('compact'); }
       else if (e.key === '2') { e.preventDefault(); setViewMode('standard'); }
       else if (e.key === '3') { e.preventDefault(); setViewMode('card'); }
-      else if (e.key === '?') { e.preventDefault(); setShowShortcuts(s => !s); }
-      else if (e.key === 'Escape') { setShowShortcuts(false); setSearchOpen(false); setCategoryOpen(false); }
+      else if (e.key === 'Escape') { setSearchOpen(false); setCategoryOpen(false); }
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
@@ -2094,6 +2140,8 @@ ${signals}
     setFocusedIndex(-1);
     setMobileMenuOpen(false);
   };
+  // 填充全局键盘 handler 的 API ref（goNav 已在本行之前初始化，规避 TDZ）
+  kbApiRef.current = { goNav, setShowCommandPalette, setShowShortcuts, showShortcuts, showCommandPalette };
 
   // 路由 hover prefetch：鼠标悬停导航按钮时预取该路由的数据/lazy chunk
   // fire-and-forget，去重保证同一路由会话内只预取一次
@@ -2760,6 +2808,12 @@ ${signals}
           { id: 'refresh', label: '刷新资讯', icon: 'refresh', hint: '动作', run: () => loadNews(blocked, false, debouncedQuery, { forceRefresh: true }) },
           { id: 'theme', label: '切换主题', icon: 'palette', hint: '动作', run: () => setShowThemePicker(true) },
           { id: 'settings', label: '打开设置', icon: 'settings', hint: '动作', run: () => setShowSettings(true) },
+          { id: 'repreheat', label: '重新预热今日简报', icon: 'refresh', hint: '动作', run: () => {
+            fetch('/api/profile/snapshots/preheat', { method: 'POST', credentials: 'same-origin' })
+              .then(r => r.json())
+              .then(d => showToast(d?.ok ? '已触发今日简报重新预热' : (d?.error?.message || d?.message || '预热失败')))
+              .catch(() => showToast('预热请求失败'));
+          } },
         ]}
       />
 

@@ -225,3 +225,20 @@
   outline: 2px solid var(--accent-cyan-border);
   outline-offset: 2px;
 }
+
+/* ---------- 8. 快捷键面板：分组标题（B2.1） ---------- */
+.shortcut-group {
+  margin: 12px 0 2px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-color);
+  padding-top: 10px;
+  opacity: 0.85;
+}
+.shortcut-group:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
