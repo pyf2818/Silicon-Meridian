@@ -95,6 +95,12 @@ export function ApprovalCard({ approval, onRespond }) {
             <code className="approval-card-code">{argsPreview}</code>
           </div>
         )}
+        {request.reason && (
+          <div className="approval-card-row">
+            <span className="approval-card-label">原因：</span>
+            <span className="approval-card-text approval-card-reason">{request.reason}</span>
+          </div>
+        )}
         {request.agentName && (
           <div className="approval-card-row">
             <span className="approval-card-label">智能体：</span>

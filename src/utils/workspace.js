@@ -138,6 +138,18 @@ export async function readFile(root, pathSegments) {
   return await file.text();
 }
 
+/* 删除文件（基于 FileSystemDirectoryHandle.removeEntry，破坏性操作，调用方须走审批） */
+export async function deleteFile(root, pathSegments) {
+  const fileName = pathSegments[pathSegments.length - 1];
+  const parentSegments = pathSegments.slice(0, -1);
+  let dir = root;
+  for (const seg of parentSegments) {
+    dir = await dir.getDirectoryHandle(safeName(seg));
+  }
+  await dir.removeEntry(safeName(fileName));
+  return [...pathSegments].join('/');
+}
+
 /* 遍历目录树，返回扁平文件列表 { path, name, handle, depth } */
 export async function listFiles(root, maxDepth = 4) {
   const result = [];

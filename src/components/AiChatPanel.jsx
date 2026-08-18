@@ -450,13 +450,13 @@ export default function AiChatPanel({
   }, []);
 
   // Agent loop：tool_calls 循环执行（已抽离至 aichat/runAgentLoop.js）
-  const runAgentLoop = useCallback(async ({ targetId, userMessage, controller, toolSchemas, baseMessages }) => {
+  const runAgentLoop = useCallback(async ({ targetId, userMessage, controller, toolSchemas, baseMessages, permissionMode, systemPromptOverride }) => {
     return runAgentLoopImpl({
       targetId, userMessage, controller, toolSchemas, baseMessages,
-      systemPrompt, llmConfig, selectedModel,
+      systemPrompt: systemPromptOverride || systemPrompt, llmConfig, selectedModel,
       intelligenceContext, agent, sessions, messages,
       setSessions, setLearnedVersion, setAutoTodos, setMemoriesVersion,
-      permissionMode: agentPermissionMode,
+      permissionMode: permissionMode || agentPermissionMode,
       // 技能创建成功回调：toolCreateSkill 写盘后立即刷新 skillsHook，与右侧边栏面板同步
       onSkillCreated: () => skillsHook.refresh(),
       // 知识沉淀回调：save_knowledge 工具把分析结论沉淀为素材，走 toggleMaterial 落库
@@ -693,10 +693,12 @@ export default function AiChatPanel({
         ? `${rawContent}\n\n> 引用校验失败：以下资讯 ID 不在当前证据集中：${invalidIds.join('、')}`
         : rawContent;
 
+      // plan 模式生成的消息打 isPlan 标记，前端据此渲染"批准执行/修改/放弃"操作条（P0-2 闭环）
+      const planFlag = (planMode && rawContent) ? { isPlan: true } : {};
       setSessions(prev => prev.map(s => {
         if (s.id !== targetId) return s;
         const msgs = [...s.messages];
-        msgs[msgs.length - 1] = { role: 'assistant', content: finalContent, loading: false };
+        msgs[msgs.length - 1] = { role: 'assistant', content: finalContent, loading: false, ...planFlag };
         return { ...s, messages: msgs, updatedAt: Date.now() };
       }));
 
@@ -763,6 +765,85 @@ export default function AiChatPanel({
     abortControllerRef.current?.abort() || activeAbortController?.abort();
     cancelAllPending('用户停止生成');
   }, []);
+
+  // ── P0-2 计划 → 执行闭环 ──
+  // plan 模式下 Agent 只产出方案不执行；用户点"批准执行"后，这里以 autonomous 模式真正跑一遍，
+  // 并把已批准计划注入用户消息，让 Agent 直接照做、不再反复征求计划。
+  const executeApprovedPlan = useCallback(async (planText) => {
+    if (isStreaming) return;
+    if (!llmConfig?.baseUrl || !selectedModel) { onOpenLlmConfig?.(); return; }
+    const targetId = activeSessionId;
+    if (!targetId || !planText) return;
+    const userMessage = {
+      role: 'user',
+      content: `（已批准执行计划，请严格按以下方案执行，不要重新征求计划或再次询问确认）\n${planText}`,
+    };
+    const assistantPlaceholder = { role: 'assistant', content: '', loading: true };
+    setSessions(prev => prev.map(s => s.id === targetId
+      ? { ...s, messages: [...s.messages, userMessage, assistantPlaceholder], updatedAt: Date.now() }
+      : s));
+    setIsStreaming(true);
+    try {
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      activeAbortController = controller;
+      let toolSchemas = agent?.tools?.length ? selectToolSchemas(agent.tools) : [];
+      if (llmConfig?.webSearchEnabled === false) {
+        toolSchemas = toolSchemas.filter(s => s?.function?.name !== 'web_search');
+      }
+      await runAgentLoop({
+        targetId, userMessage, controller, toolSchemas,
+        baseMessages: [...messages, userMessage],
+        permissionMode: 'autonomous',
+      });
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        setSessions(prev => prev.map(s => {
+          if (s.id !== targetId) return s;
+          const msgs = [...s.messages];
+          const last = msgs[msgs.length - 1];
+          if (last?.role === 'assistant') msgs[msgs.length - 1] = { ...last, content: `执行失败：${err?.message || err}`, loading: false, error: true };
+          return { ...s, messages: msgs };
+        }));
+      }
+    } finally {
+      const wasAborted = abortControllerRef.current?.signal?.aborted || activeAbortController?.signal?.aborted || false;
+      abortControllerRef.current = null;
+      activeAbortController = null;
+      setIsStreaming(false);
+      if (wasAborted) { messageQueueRef.current = []; setQueueCount(0); }
+    }
+  }, [isStreaming, llmConfig, selectedModel, onOpenLlmConfig, activeSessionId, agent, messages, setSessions, runAgentLoop]);
+
+  // 计划卡交互：批准 / 修改 / 放弃
+  const executePlan = useCallback((i) => {
+    const session = sessions.find(s => s.id === activeSessionId);
+    const plan = session?.messages?.[i]?.content;
+    if (!plan) return;
+    // 标记该计划消息已执行：隐藏按钮、显示"已提交"状态
+    setSessions(prev => prev.map(s => {
+      if (s.id !== activeSessionId) return s;
+      const msgs = [...s.messages];
+      if (msgs[i]?.role === 'assistant') msgs[i] = { ...msgs[i], planExecuted: true };
+      return { ...s, messages: msgs };
+    }));
+    executeApprovedPlan(plan);
+  }, [sessions, activeSessionId, setSessions, executeApprovedPlan]);
+
+  const modifyPlan = useCallback((i) => {
+    // 聚焦输入框并预填修改提示，让用户在原 plan 基础上补指令（不自动重发）
+    setInput(prev => (prev ? prev + '\n' : '') + '请调整上面的执行计划：');
+    inputRef?.current?.focus?.();
+  }, [setInput, inputRef]);
+
+  const dismissPlan = useCallback((i) => {
+    setSessions(prev => prev.map(s => {
+      if (s.id !== activeSessionId) return s;
+      const msgs = [...s.messages];
+      if (msgs[i]?.role === 'assistant') msgs[i] = { ...msgs[i], planDismissed: true };
+      return { ...s, messages: msgs };
+    }));
+  }, [activeSessionId, setSessions]);
 
   // 从这里分支（对标 pi /tree + fork）：在消息 i 处把当前会话 fork 出新会话并切换过去
   const forkFromMessage = useCallback((msgIndex) => {
@@ -1026,6 +1107,26 @@ export default function AiChatPanel({
                 <div className="chat-stopped-mark">已停止生成</div>
               )}
             </div>
+            {/* P0-2 计划卡操作条：批准执行 / 修改 / 放弃 */}
+            {msg.isPlan && !msg.loading && !msg.error && !msg.planDismissed && (
+              <div className="chat-plan-actions">
+                {msg.planExecuted ? (
+                  <span className="chat-plan-executed">✓ 已提交执行，智能体正在按此计划工作…</span>
+                ) : (
+                  <>
+                    <button type="button" className="chat-plan-btn chat-plan-btn-approve" onClick={() => executePlan(i)}>
+                      批准执行
+                    </button>
+                    <button type="button" className="chat-plan-btn chat-plan-btn-modify" onClick={() => modifyPlan(i)}>
+                      修改
+                    </button>
+                    <button type="button" className="chat-plan-btn chat-plan-btn-discard" onClick={() => dismissPlan(i)}>
+                      放弃
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             {msg.role === 'assistant' && !msg.loading && !msg.error && (
               <div className="chat-msg-actions">
                 <button type="button" className="chat-action-btn" title="复制" onClick={e => copyMessage(msg.content, e)}>

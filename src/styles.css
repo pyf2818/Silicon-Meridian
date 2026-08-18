@@ -13385,6 +13385,47 @@ body {
 }
 .chat-action-btn:disabled { opacity: .4; cursor: not-allowed; }
 
+/* P0-2 计划卡操作条 */
+.chat-plan-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.chat-plan-btn {
+  padding: 5px 14px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.chat-plan-btn-approve {
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  color: #fff;
+}
+.chat-plan-btn-approve:hover { filter: brightness(1.08); }
+.chat-plan-btn-modify:hover {
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan-border);
+}
+.chat-plan-btn-discard:hover {
+  color: var(--status-critical);
+  border-color: var(--status-critical);
+}
+.chat-plan-executed {
+  font-size: 12px;
+  color: var(--status-ok, #2ea043);
+  font-weight: 500;
+}
+/* 审批卡"原因"行高亮 */
+.approval-card-reason { color: var(--status-warn, #d29922); font-weight: 500; }
+
 /* 空状态建议卡 */
 .chat-welcome-cards {
   display: grid;

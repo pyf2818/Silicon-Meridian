@@ -9,7 +9,7 @@
  * 自定义工具的注册、编辑、删除请直接使用 toolRegistry 的 API。
  */
 
-import { readFile, writeFile } from './workspace.js';
+import { readFile, writeFile, deleteFile } from './workspace.js';
 import {
   registerTool, selectSchemasByName, executeTool, getToolMeta,
   loadCustomTools, getEnabledSchemas,
@@ -73,6 +73,43 @@ async function toolWriteWorkspaceFile(args, ctx) {
   const segments = check.segments;
   await writeFile(ctx.rootHandle, segments.slice(0, -1), segments[segments.length - 1], content);
   return `已写入文件：${path}（${content.length} 字符）`;
+}
+
+/* 复制工作空间内文件：读取源 → 写入目标（目标已存在则覆盖） */
+async function toolCopyWorkspaceFile(args, ctx) {
+  if (!ctx?.rootHandle) {
+    return '错误：用户未连接工作空间。请提示用户在左侧"工作空间"tab 选择文件夹后再试。';
+  }
+  const src = String(args?.source || '').trim();
+  const dst = String(args?.destination || '').trim();
+  if (!src || !dst) return '错误：source 与 destination 参数均不能为空';
+  const srcCheck = validateWorkspacePath(src);
+  if (!srcCheck.ok) return `错误：源路径 ${srcCheck.error}`;
+  const dstCheck = validateWorkspacePath(dst);
+  if (!dstCheck.ok) return `错误：目标路径 ${dstCheck?.error || dstCheck.error}`;
+  const text = await readFile(ctx.rootHandle, srcCheck.segments);
+  const dstSegments = dstCheck.segments;
+  await writeFile(ctx.rootHandle, dstSegments.slice(0, -1), dstSegments[dstSegments.length - 1], text);
+  return `已复制文件：${src} → ${dst}（${text.length} 字符）`;
+}
+
+/* 移动工作空间内文件：复制源到目标后删除源（等价于 mv） */
+async function toolMoveWorkspaceFile(args, ctx) {
+  if (!ctx?.rootHandle) {
+    return '错误：用户未连接工作空间。请提示用户在左侧"工作空间" tab 选择文件夹后再试。';
+  }
+  const src = String(args?.source || '').trim();
+  const dst = String(args?.destination || '').trim();
+  if (!src || !dst) return '错误：source 与 destination 参数均不能为空';
+  const srcCheck = validateWorkspacePath(src);
+  if (!srcCheck.ok) return `错误：源路径 ${srcCheck.error}`;
+  const dstCheck = validateWorkspacePath(dst);
+  if (!dstCheck.ok) return `错误：目标路径 ${dstCheck.error}`;
+  const text = await readFile(ctx.rootHandle, srcCheck.segments);
+  const dstSegments = dstCheck.segments;
+  await writeFile(ctx.rootHandle, dstSegments.slice(0, -1), dstSegments[dstSegments.length - 1], text);
+  await deleteFile(ctx.rootHandle, srcCheck.segments);
+  return `已移动文件：${src} → ${dst}（${text.length} 字符）`;
 }
 
 /**
@@ -709,6 +746,47 @@ async function toolExecuteCommand(args, ctx) {
   }
 }
 
+/* ============ execute_command 风险分级（P0-3） ============ */
+
+/**
+ * 只读 / 幂等子命令：不产生副作用，也不打开任意网络出口 → 免审批。
+ * 注意 news/search 虽然走网络，但目标是本站自己的检索 API，URL 不由模型控制。
+ */
+const EXEC_READONLY_SUBS = new Set([
+  'news', 'search', 'web', 'stock', 'kline', 'read',
+  'ls', 'dir', 'tree', 'glob', 'grep', 'pwd',
+  'tools', 'sandbox', 'sb', 'help', '?',
+]);
+
+/**
+ * 写 / 高危子命令：改动工作空间，或由模型完全控制目标 URL（fetch 是任意出口）→ 必须审批。
+ * 关键点：execute_command 内部是直接调 toolWriteWorkspaceFile / toolFetchPage 这些函数，
+ * 绕过了 toolRegistry 的审批闸门；若不在这里补上分级，等于开了一个审批旁路。
+ */
+const EXEC_WRITE_SUBS = new Set([
+  'write', 'touch', 'mkdir', 'rm', 'del', 'fetch',
+  'plan.add', 'plan.set',
+]);
+
+/**
+ * 判定一条 execute_command 命令的风险等级。
+ * @param {string} command 原始命令串
+ * @returns {'read'|'write'}
+ */
+export function gradeCommandRisk(command) {
+  const tokens = tokenizeCommand(String(command || '').trim());
+  const sub = (tokens[0] || '').toLowerCase();
+  const rest = tokens.slice(1);
+  if (!sub) return 'read'; // 空命令只会回用法提示
+  if (EXEC_WRITE_SUBS.has(sub)) return 'write';
+  // plan / var / bb 是读写同名，靠参数形态区分
+  if (sub === 'plan') return (rest[0] === 'add' || rest[0] === 'set') ? 'write' : 'read';
+  if (sub === 'var' || sub === 'bb') return rest.length > 1 ? 'write' : 'read';
+  if (EXEC_READONLY_SUBS.has(sub)) return 'read';
+  // 未知子命令只会返回 help 文本，无副作用
+  return 'read';
+}
+
 /** 极简 tokenizer：支持单/双引号包裹参数 */
 function tokenizeCommand(input) {
   const tokens = [];
@@ -1098,6 +1176,46 @@ const BUILTIN_TOOL_DEFS = [
     executor: toolEditFile,
   },
   {
+    name: 'copy_workspace_file',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'copy_workspace_file',
+        description: '复制工作空间内的文件（源 → 目标，目标已存在则覆盖）。不删除源文件。',
+        parameters: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', description: '源文件相对于工作空间根目录的路径' },
+            destination: { type: 'string', description: '目标文件相对于工作空间根目录的路径' }
+          },
+          required: ['source', 'destination']
+        }
+      }
+    },
+    meta: { label: '复制文件', iconKey: 'copy', description: '复制工作空间内的文件', category: 'workspace', requiresApproval: true },
+    executor: toolCopyWorkspaceFile,
+  },
+  {
+    name: 'move_workspace_file',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'move_workspace_file',
+        description: '移动/重命名工作空间内的文件（源 → 目标，完成后删除源文件）。等价于 mv。',
+        parameters: {
+          type: 'object',
+          properties: {
+            source: { type: 'string', description: '源文件相对于工作空间根目录的路径' },
+            destination: { type: 'string', description: '目标文件相对于工作空间根目录的路径' }
+          },
+          required: ['source', 'destination']
+        }
+      }
+    },
+    meta: { label: '移动文件', iconKey: 'folder', description: '移动/重命名工作空间内的文件', category: 'workspace', requiresApproval: true },
+    executor: toolMoveWorkspaceFile,
+  },
+  {
     name: 'search_news',
     schema: {
       type: 'function',
@@ -1133,7 +1251,8 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: '抓取网页', iconKey: 'globe', description: '抓取指定 URL 的网页正文', category: 'web', requiresApproval: true },
+    // 抓取任意站点：慢站/大页很常见，15s 全局超时会误杀，单独放宽到 30s
+    meta: { label: '抓取网页', iconKey: 'globe', description: '抓取指定 URL 的网页正文', category: 'web', requiresApproval: true, timeoutMs: 30_000 },
     executor: toolFetchPage,
   },
   {
@@ -1211,7 +1330,8 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: '联网搜索', iconKey: 'megaphone', description: '联网搜索互联网最新信息（豆包搜索 / Tavily / DuckDuckGo）', category: 'web' },
+    // 三级 fallback（豆包 → Tavily → DuckDuckGo）串行重试，需要比默认 15s 更宽的窗口
+    meta: { label: '联网搜索', iconKey: 'megaphone', description: '联网搜索互联网最新信息（豆包搜索 / Tavily / DuckDuckGo）', category: 'web', timeoutMs: 25_000 },
     executor: toolWebSearch,
   },
   {
@@ -1251,7 +1371,7 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    meta: { label: 'K 线数据', iconKey: 'chart', description: '获取股票 K 线数据', category: 'stock' },
+    meta: { label: 'K 线数据', iconKey: 'chart', description: '获取股票 K 线数据', category: 'stock', timeoutMs: 20_000 },
     executor: toolGetStockKline,
   },
   /* ====== 会话状态管理工具（Phase 3） ====== */
@@ -1392,7 +1512,16 @@ const BUILTIN_TOOL_DEFS = [
         },
       },
     },
-    meta: { label: '执行命令', iconKey: 'terminal', description: '统一命令入口（shell 风格）', category: 'shell', requiresApproval: true },
+    meta: {
+      label: '执行命令',
+      iconKey: 'terminal',
+      description: '统一命令入口（shell 风格）',
+      category: 'shell',
+      requiresApproval: true,
+      // 子命令级风险分级：ls/grep/tree 等只读命令自动放行，write/rm/fetch 等必须审批
+      riskLevel: (args) => gradeCommandRisk(args?.command),
+      timeoutMs: 30_000, // 内部可能串接 fetch + 文件遍历，给足预算
+    },
     executor: toolExecuteCommand,
   },
 ];

@@ -155,9 +155,25 @@ async function handleAiStreamRequest(req, res, body) {
   let upstream;
   try {
     // 流式路径仅重试连接阶段（已开 SSE 不能重试整段对话）
+    const streamBody = { model, messages: buildMessages(body), max_tokens: maxTokens, temperature: 0.7, stream: true };
+    // agent 模式：透传 tools（与非流式路径对齐，限制 20 个 / schema 8KB），让流式也能触发工具调用
+    if (Array.isArray(body.tools) && body.tools.length) {
+      streamBody.tools = body.tools.slice(0, 20).map(t => {
+        const fn = t?.function || {};
+        return {
+          type: 'function',
+          function: {
+            name: String(fn.name || '').slice(0, 100),
+            description: String(fn.description || '').slice(0, 2000),
+            parameters: fn.parameters && typeof fn.parameters === 'object' ? fn.parameters : { type: 'object', properties: {} },
+          },
+        };
+      });
+      streamBody.tool_choice = (body.tool_choice === 'none' || body.tool_choice === 'auto') ? body.tool_choice : 'auto';
+    }
     upstream = await fetchWithRetry(apiUrl, {
       allowPrivate: allowPrivateAiNetwork(), method: 'POST', headers, signal: controller.signal,
-      body: JSON.stringify({ model, messages: buildMessages(body), max_tokens: maxTokens, temperature: 0.7, stream: true }),
+      body: JSON.stringify(streamBody),
     }, { retries: 1, baseDelay: 1200 });
     if (!upstream.ok) {
       const errText = await upstream.text().catch(() => '');
@@ -199,8 +215,20 @@ async function handleAiStreamRequest(req, res, body) {
         if (payload === '[DONE]') { res.write('data: [DONE]\n\n'); return res.end(); }
         try {
           const json = JSON.parse(payload);
-          const delta = json.choices?.[0]?.delta?.content;
-          if (delta) res.write(`data: ${JSON.stringify({ ok: true, delta })}\n\n`);
+          const choice = json.choices?.[0] || {};
+          const delta = choice.delta || {};
+          // 普通文本增量（既有行为，聊天路径依赖它）
+          if (delta.content) {
+            res.write(`data: ${JSON.stringify({ ok: true, delta: delta.content })}\n\n`);
+          }
+          // agent 模式：把 tool_calls 分片原样转发，前端按 index 合并还原（P1-6）
+          if (Array.isArray(delta.tool_calls) && delta.tool_calls.length) {
+            res.write(`data: ${JSON.stringify({ ok: true, toolCallDelta: delta.tool_calls })}\n\n`);
+          }
+          // 转发结束原因（tool_calls / stop），前端据此判定是否进入工具执行分支
+          if (choice.finish_reason) {
+            res.write(`data: ${JSON.stringify({ ok: true, finish_reason: choice.finish_reason })}\n\n`);
+          }
         } catch { /* 跳过不完整的 JSON 行 */ }
       }
     }

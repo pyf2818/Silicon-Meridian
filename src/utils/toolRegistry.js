@@ -22,9 +22,21 @@
  * - 用户也可在 Settings 中对任意工具的 requiresApproval 进行覆写（持久化到 localStorage）
  */
 
-import { requestApproval, hasSessionGrant } from './sandbox.js';
+import { requestApproval, hasSessionGrant, isEgressAllowed } from './sandbox.js';
 
 const TOOL_TIMEOUT_MS = 15_000;
+
+// 只读结果缓存（P2-11）：相同 name+args 的只读调用在会话内复用结果，避免重复网络/IO。
+// 仅缓存明确只读的工具；写类 / 命令类 / 自定义 HTTP 不入缓存（有副作用）。
+const CACHEABLE_READS = new Set([
+  'read_workspace_file', 'web_search', 'fetch_page',
+  'get_stock_quote', 'get_stock_kline', 'search_news',
+]);
+const resultCache = new Map(); // key -> result string
+const RESULT_CACHE_MAX = 300;
+function makeCacheKey(name, args) {
+  try { return `${name}::${JSON.stringify(args || {})}`; } catch { return `${name}::${String(args)}`; }
+}
 
 /* ============ 工具审批覆写（用户在 Settings 中配置） ============ */
 
@@ -159,14 +171,54 @@ export function getToolMeta(name) {
 }
 
 /**
+ * 判定本次调用是否需要用户审批 —— 全系统唯一审批判定处（P0-1）。
+ *
+ * 两条来源在此合流，避免「循环层 + 注册表层」重复弹卡：
+ *  1. 工具自身敏感：meta.requiresApproval（可被 Settings 覆写）
+ *  2. 会话处于协助模式：ctx.approvalMode === 'assist' → 任何工具都要问
+ *
+ * 注意：assist 模式下依然复用 sandbox 的 allow-always grant，
+ * 所以用户点过"本会话始终允许"后不会被重复打扰。
+ *
+ * @param {ToolEntry} entry
+ * @param {Object} ctx
+ * @param {Object} args
+ * @returns {{ required: boolean, reason: string }}
+ */
+export function resolveApprovalDecision(entry, ctx, args) {
+  const name = entry?.schema?.function?.name || '';
+  const label = entry?.meta?.label || name;
+  const sensitive = Boolean(entry?.meta?.requiresApproval);
+
+  // 细粒度风险分级（P0-3）：像 execute_command 这种"一个工具名下藏着几十个子命令"的入口，
+  // 整体标 requiresApproval 会让 `ls` / `grep` 这类纯读操作也弹卡，用户很快就会点到麻木、
+  // 于是对真正危险的 `rm` 也无脑放行——这是安全设计上的经典失败。
+  // 因此允许工具提供 riskLevel(args) 判定"本次调用"的风险，只读调用降级免审批。
+  let grade = 'write';
+  if (sensitive && typeof entry?.meta?.riskLevel === 'function') {
+    try { grade = entry.meta.riskLevel(args || {}) || 'write'; } catch { grade = 'write'; }
+  }
+
+  // 敏感工具的写操作：无论什么模式都必须问
+  if (sensitive && grade !== 'read') {
+    return { required: true, reason: `敏感操作：${label}` };
+  }
+  // 协助模式：全部工具逐次确认（含上面被降级的只读敏感调用，因为 assist 的语义就是"每步都让我看一眼"）
+  if (ctx?.approvalMode === 'assist') {
+    return { required: true, reason: `协助模式：智能体请求调用工具 "${name}"` };
+  }
+  return { required: false, reason: sensitive ? `只读调用，自动放行：${name}` : '' };
+}
+
+/**
  * 执行单个工具调用（带超时保护 + 沙箱审批闸门）
  * @param {string} name 工具名
  * @param {Object} args 工具参数
- * @param {Object} ctx 运行时上下文（rootHandle / llmConfig / sessionId 等）
+ * @param {Object} ctx 运行时上下文（rootHandle / llmConfig / sessionId / approvalMode / signal 等）
  * @returns {Promise<string>} 工具执行结果
  *
  * 沙箱流程：
- *   1. 工具 meta.requiresApproval=true 且 ctx.sessionId 非空时进入审批闸门
+ *   1. resolveApprovalDecision 判定需要审批且 ctx.sessionId 非空时进入闸门
  *   2. 若该会话已对该工具 allow-always，直接放行（不再阻塞）
  *   3. 否则调用 sandbox.requestApproval 暂停 Agent Loop，UI 弹出审批卡片
  *   4. 用户决策：
@@ -179,8 +231,9 @@ export async function executeTool(name, args, ctx) {
   if (!entry) return `错误：未知工具 "${name}"`;
   if (!entry.enabled) return `错误：工具 "${name}" 已被禁用`;
 
-  // 沙箱审批闸门
-  if (entry.meta?.requiresApproval && ctx?.sessionId) {
+  // 沙箱审批闸门（唯一入口）
+  const approval = resolveApprovalDecision(entry, ctx, args);
+  if (approval.required && ctx?.sessionId) {
     const sessionId = ctx.sessionId;
     // 已 allow-always 授权过：sandbox.requestApproval 内部会立即 resolve('allow-always')，无需再走 UI
     try {
@@ -191,6 +244,8 @@ export async function executeTool(name, args, ctx) {
         summary: summarizeToolCall(name, args),
         agentName: ctx.agentName || '',
         agentId: ctx.agentId || '',
+        reason: approval.reason,
+        mode: ctx.approvalMode || 'autonomous',
       });
       // 此处 decision ∈ {'allow-once', 'allow-always'}，继续执行
       void decision;
@@ -206,17 +261,43 @@ export async function executeTool(name, args, ctx) {
     }
   }
 
+  // 只读结果缓存命中：跳过重复执行（P2-11）。放在审批闸门之后，
+  // 因此首次仍要走审批/allow-always，仅对"完全相同的后续只读调用"复用结果（assist 模式也不会重复弹卡）。
+  if (CACHEABLE_READS.has(name)) {
+    const hit = resultCache.get(makeCacheKey(name, args));
+    if (hit !== undefined) return hit;
+  }
+
+  // per-tool 超时：meta.timeoutMs 优先，缺省用全局 TOOL_TIMEOUT_MS
+  const timeoutMs = Number(entry.meta?.timeoutMs) > 0
+    ? Number(entry.meta.timeoutMs)
+    : TOOL_TIMEOUT_MS;
+  let timer = null;
   try {
     const result = await Promise.race([
       entry.executor(args || {}, ctx || {}),
-      new Promise((_, reject) => setTimeout(() => {
-        reject(new Error(`工具执行超时（${TOOL_TIMEOUT_MS / 1000}s）`));
-      }, TOOL_TIMEOUT_MS)),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`工具执行超时（${Math.round(timeoutMs / 1000)}s）`));
+        }, timeoutMs);
+      }),
     ]);
+    // 只读成功结果写入缓存（错误结果不缓存，便于下次重试真正执行）
+    if (CACHEABLE_READS.has(name) && !String(result).startsWith('错误：')) {
+      const key = makeCacheKey(name, args);
+      if (resultCache.size >= RESULT_CACHE_MAX) {
+        const oldest = resultCache.keys().next().value;
+        if (oldest !== undefined) resultCache.delete(oldest);
+      }
+      resultCache.set(key, result);
+    }
     return result;
   } catch (err) {
     if (err?.name === 'AbortError') throw err;
     return `工具执行失败：${err?.message || String(err)}`;
+  } finally {
+    // 不清理会导致每次工具调用泄漏一个 timer，长会话下累积成内存与唤醒噪声
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -303,7 +384,11 @@ export function registerCustomHttpTool(name, config, meta, enabled = true) {
       iconKey: meta?.iconKey || 'wrench',
       description: meta?.description || '',
       category: 'custom',
-      requiresApproval: false,
+      // 默认必须审批（P1-8 安全收紧）。自定义 HTTP 工具 = 任意 URL + 任意 header（常含 API Key）
+      // + 参数由模型填写，是 SSRF 与凭据外泄的最短路径；不该比内置的 fetch_page 更宽松。
+      // 用户若确认某个工具安全，可在 Settings 的审批覆写里单独放行（走 approvalOverride）。
+      requiresApproval: true,
+      timeoutMs: Number(config?.timeoutMs) > 0 ? Number(config.timeoutMs) : 20_000,
     },
     enabled,
     config,
@@ -339,7 +424,9 @@ export function updateCustomHttpTool(name, config, meta) {
       iconKey: meta?.iconKey || existing.meta?.iconKey || 'wrench',
       description: meta?.description || existing.meta?.description || '',
       category: 'custom',
-      requiresApproval: false,
+      // 与 registerCustomHttpTool 保持一致：默认必须审批，例外走 Settings 覆写
+      requiresApproval: resolveRequiresApproval(name, true),
+      timeoutMs: Number(config?.timeoutMs) > 0 ? Number(config.timeoutMs) : 20_000,
     },
     config,
     executor: createHttpExecutor(config),
@@ -376,31 +463,64 @@ function buildHttpToolParameters(config) {
   return { type: 'object', properties, required };
 }
 
+/** 占位符名转安全正则（避免用户参数名里的正则元字符破坏匹配） */
+function placeholderRegex(key) {
+  const escaped = String(key).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\{\\{${escaped}\\}\\}`, 'g');
+}
+
 /** 构造 HTTP 执行器 */
 function createHttpExecutor(config) {
   return async (args, ctx) => {
     // 替换 URL 占位符
     let url = config.url || '';
     Object.entries(args).forEach(([k, v]) => {
-      url = url.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), encodeURIComponent(String(v)));
+      url = url.replace(placeholderRegex(k), encodeURIComponent(String(v)));
     });
+
+    // 出口白名单校验（P1-8）：自定义工具的 URL 模板由用户写、参数由模型填，
+    // 不校验等于给模型开了一个任意出口。白名单为空时 isEgressAllowed 放行全部合法 http(s)。
+    if (!isEgressAllowed(url)) {
+      return `错误：目标地址被沙箱出口白名单拒绝或不是合法的 http(s) URL：${url.slice(0, 200)}`;
+    }
 
     // 替换 body 占位符
     let bodyStr = config.bodyTemplate || '';
     if (bodyStr) {
+      // JSON 模板要做转义：模板通常长这样 {"q":"{{query}}"}，
+      // 若参数里含引号/换行/反斜杠，直接字符串拼接会把 JSON 撕坏（甚至被构造成注入额外字段）。
+      // JSON.stringify 后去掉首尾引号 = 标准 JSON 字符串转义。
+      const looksJson = /^\s*[{[]/.test(bodyStr);
       Object.entries(args).forEach(([k, v]) => {
-        bodyStr = bodyStr.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v));
+        const raw = String(v);
+        const safe = looksJson ? JSON.stringify(raw).slice(1, -1) : raw;
+        bodyStr = bodyStr.replace(placeholderRegex(k), () => safe);
       });
+      // 兜底自检：转义后仍不是合法 JSON 就直接报错，别把坏 body 发出去
+      if (looksJson) {
+        try { JSON.parse(bodyStr); } catch {
+          return '错误：请求体模板在填入参数后不是合法 JSON，请检查 bodyTemplate 的占位符位置。';
+        }
+      }
     }
 
     const headers = { ...(config.headers || {}) };
     if (bodyStr && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
 
+    // 中断信号：优先跟随 Agent Loop 的 controller（用户点"停止"能真掐断），
+    // 同时叠加自身超时；两者任一触发即取消。
+    const timeoutMs = Number(config?.timeoutMs) > 0 ? Number(config.timeoutMs) : 20_000;
+    const signals = [AbortSignal.timeout(timeoutMs)];
+    if (ctx?.signal) signals.push(ctx.signal);
+    const signal = typeof AbortSignal.any === 'function' && signals.length > 1
+      ? AbortSignal.any(signals)
+      : signals[0];
+
     const res = await fetch(url, {
       method: config.method || 'GET',
       headers,
       body: bodyStr || undefined,
-      signal: AbortSignal.timeout(15_000),
+      signal,
     });
 
     if (!res.ok) return `HTTP ${res.status}: ${res.statusText}`;
