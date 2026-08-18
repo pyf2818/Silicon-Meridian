@@ -14462,7 +14462,10 @@ body {
 .stock-page-v3 > * { position: relative; z-index: 1; }
 
 /* 顶栏 */
-.stock3-header { display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap; }
+/* z-index 拉高于同层 body 面板：搜索下拉（z-index:70）从顶栏溢出到下方内容区，
+ * 而 .stock-page-v3 > * 把每个直接子节点都设为 z-index:1，导致下拉被后续 DOM 的
+ * body 面板盖住、无法点击。提升顶栏层级使其溢出内容渲染在 body 之上（仍低于 200 的研究弹窗）。 */
+.stock3-header { position: relative; z-index: 5; display: flex; align-items: center; gap: var(--space-md); flex-wrap: wrap; }
 .stock3-search { position: relative; display: flex; align-items: center; gap: var(--space-sm); flex: 1; min-width: 280px; padding: 8px 14px; border: var(--panel-border); border-radius: 10px; background: var(--bg-card); }
 .stock3-search > svg { width: 16px; height: 16px; color: var(--text-muted); flex-shrink: 0; }
 .stock3-search input { border: none; background: transparent; color: var(--text-primary); font-size: 14px; width: 100%; outline: none; }
