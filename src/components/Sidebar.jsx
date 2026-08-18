@@ -1,6 +1,6 @@
 import { ICONS } from '../constants/index.jsx';
 
-export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileMenuOpen, nav, goNav, addRecentVisit, onPrefetchNav, activePrimaryNav, activeContextItems, contextGroupOpen, setContextGroupOpen, agents, currentAgent, setCurrentAgent, setElfQuotedContext, buildWorkbenchContext, showFollowDropdown, setShowFollowDropdown, followKeywords, sortedFollowKeywords, pinnedKeywords, pinFollowKeyword, unpinFollowKeyword, removeFollowKeyword, executeSearch, newKeyword, setNewKeyword, addFollowKeyword, bookmarks, filtered, isLoggedIn, user, setShowProfileModal, setAuthMode, setShowAuthModal, setShowThemePicker, setShowSettings, setSettingsTab, setShowShortcuts, PRODUCT_NAME, PRODUCT_TAGLINE, PRIMARY_NAV_ITEMS }) {
+export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileMenuOpen, nav, goNav, addRecentVisit, onPrefetchNav, activePrimaryNav, activeContextItems, contextGroupOpen, setContextGroupOpen, agents, currentAgent, setCurrentAgent, setElfQuotedContext, buildWorkbenchContext, showFollowDropdown, setShowFollowDropdown, followKeywords, sortedFollowKeywords, pinnedKeywords, pinFollowKeyword, unpinFollowKeyword, removeFollowKeyword, executeSearch, newKeyword, setNewKeyword, addFollowKeyword, bookmarks, filtered, isLoggedIn, user, setShowProfileModal, setAuthMode, setShowAuthModal, setShowSettings, PRODUCT_NAME, PRODUCT_TAGLINE, PRIMARY_NAV_ITEMS }) {
   return (
     <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-header">
@@ -229,17 +229,9 @@ export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileM
               {!sidebarCollapsed && <span>登录</span>}
             </button>
           )}
-          <button className="sidebar-action" onClick={() => { setSettingsTab('appearance'); setShowSettings(true); }}>
-            {ICONS.palette}
-            {!sidebarCollapsed && <span>主题</span>}
-          </button>
           <button className="sidebar-action" onClick={() => setShowSettings(true)}>
             {ICONS.settings}
             {!sidebarCollapsed && <span>设置</span>}
-          </button>
-          <button className="sidebar-action" onClick={() => setShowShortcuts(s => !s)}>
-            {ICONS.keyboard}
-            {!sidebarCollapsed && <span>快捷键</span>}
           </button>
         </div>
       </aside>
