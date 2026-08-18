@@ -1110,6 +1110,51 @@ async function sandboxRm(ctx, rawPath) {
   return `已删除文件：${rawPath}`;
 }
 
+/* ============ MCP 能力（审计 B6）：列出已配置的 MCP 服务器 ============ */
+async function toolListMcpTools(args, ctx) {
+  let res;
+  try {
+    res = await fetch('/api/agent/mcp/servers');
+  } catch {
+    return '错误：MCP 服务器列表获取失败（网络异常）';
+  }
+  if (!res.ok) return `错误：MCP 服务器列表获取失败 (${res.status})`;
+  let data;
+  try { data = await res.json(); } catch { data = null; }
+  if (!data?.ok) return `错误：${data?.error?.message || 'MCP 服务器列表获取失败'}`;
+  if (!Array.isArray(data.servers) || data.servers.length === 0) {
+    return '当前未配置任何 MCP 服务器。配置方式：在项目根目录创建 mcp.config.json，或在 ~/.workbuddy/mcp.json 中按 {"mcpServers": {"<名称>": {"command": "...", "args": [...]}}} 格式填写；远程服务器用 {"url": "https://..."}。配置完成后刷新页面即可生效。';
+  }
+  const lines = data.servers.map(s => {
+    const transport = s.transport === 'stdio' ? '本地进程' : '远程 HTTP';
+    return `- ${s.name}（${transport}${s.description ? '：' + s.description : ''}）`;
+  });
+  return `已配置的 MCP 服务器：\n${lines.join('\n')}\n\n用 mcp_call 调用具体工具。`;
+}
+
+/* ============ MCP 能力（审计 B6）：调用 MCP 服务器上的工具 ============ */
+async function toolMcpCall(args, ctx) {
+  const server = String(args?.server || '').trim();
+  const tool = String(args?.tool || '').trim();
+  if (!server) return '错误：server 参数不能为空（MCP 服务器名）';
+  if (!tool) return '错误：tool 参数不能为空（MCP 工具名）';
+  let res;
+  try {
+    res = await fetch('/api/agent/mcp/call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ server, tool, args: args?.args || {} }),
+    });
+  } catch {
+    return '错误：MCP 调用失败（网络异常）';
+  }
+  if (!res.ok) return `错误：MCP 调用失败 (${res.status})`;
+  let data;
+  try { data = await res.json(); } catch { data = null; }
+  if (!data?.ok) return `错误：${data?.error?.message || data?.error || 'MCP 工具执行失败'}`;
+  return data.result || '(MCP 工具无返回内容)';
+}
+
 /* ============ 内置工具 schema + 注册 ============ */
 
 const BUILTIN_TOOL_DEFS = [
@@ -1523,6 +1568,56 @@ const BUILTIN_TOOL_DEFS = [
       timeoutMs: 30_000, // 内部可能串接 fetch + 文件遍历，给足预算
     },
     executor: toolExecuteCommand,
+  },
+  /* ====== MCP 能力（审计 B6） ====== */
+  {
+    name: 'list_mcp_tools',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'list_mcp_tools',
+        description: '列出当前已配置的 MCP（Model Context Protocol）服务器。调用外部 MCP 工具前先执行本工具确认有哪些服务器可用',
+        parameters: {
+          type: 'object',
+          properties: {},
+        },
+      },
+    },
+    meta: {
+      label: 'MCP 服务器列表',
+      iconKey: 'plug',
+      description: '列出已配置的 MCP 服务器',
+      category: 'mcp',
+    },
+    executor: toolListMcpTools,
+  },
+  {
+    name: 'mcp_call',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'mcp_call',
+        description: '调用已配置 MCP 服务器上的外部工具（Model Context Protocol）。先执行 list_mcp_tools 查看可用服务器，再按需调用。示例：{"server": "github", "tool": "search_repositories", "args": {"query": "ai"}}',
+        parameters: {
+          type: 'object',
+          properties: {
+            server: { type: 'string', description: 'MCP 服务器名称（来自 list_mcp_tools）' },
+            tool: { type: 'string', description: 'MCP 工具名称（服务器对外暴露的工具）' },
+            args: { type: 'object', description: '传给 MCP 工具的参数对象' },
+          },
+          required: ['server', 'tool'],
+        },
+      },
+    },
+    meta: {
+      label: 'MCP 工具调用',
+      iconKey: 'plug',
+      description: '调用 MCP 服务器上的工具',
+      category: 'mcp',
+      requiresApproval: true,
+      timeoutMs: 30_000, // 外部 MCP 工具可能较慢（网络 / 本地进程）
+    },
+    executor: toolMcpCall,
   },
 ];
 

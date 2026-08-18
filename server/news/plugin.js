@@ -6,6 +6,7 @@ import { handleCommunityRequest } from '../http/communityHandlers.js';
 import { handleCreativeRequest } from '../http/creativeHandlers.js';
 import { handleProfileRequest } from '../http/profileHandlers.js';
 import { handleAgentMemoryRequest } from '../http/agentMemoryHandlers.js';
+import { handleAgentMcpRequest } from '../http/agentMcpHandlers.js';
 import { handleAgentRunRequest } from '../http/agentRunHandlers.js';
 import { handleAgentJobsRequest } from '../http/agentJobsHandlers.js';
 import { startCronDaemon } from '../agent/agentJobsService.js';
@@ -188,6 +189,9 @@ export function newsPlugin() {
         }
         if (requestUrl.pathname.startsWith('/api/agent-memory/')) {
           return handleAgentMemoryRequest(req, res, requestUrl.pathname, req.method);
+        }
+        if (requestUrl.pathname.startsWith('/api/agent/mcp/')) {
+          return handleAgentMcpRequest(req, res, requestUrl.pathname, req.method);
         }
         if (requestUrl.pathname === '/api/agent/run' && req.method === 'POST') {
           return handleAgentRunRequest(req, res);
