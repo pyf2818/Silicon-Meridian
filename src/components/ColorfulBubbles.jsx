@@ -7,15 +7,11 @@
  */
 import React, { useRef, useEffect, useState } from 'react';
 
-const BUBBLE_COLORS = [
-  { bg: 'rgba(201,169,97,0.22)',   border: 'rgba(201,169,97,0.5)',   text: '#D4B576', glow: 'rgba(201,169,97,0.35)' },
-  { bg: 'rgba(249,168,184,0.22)',  border: 'rgba(249,168,184,0.5)',  text: '#FBC8D4', glow: 'rgba(249,168,184,0.35)' },
-  { bg: 'rgba(52,211,153,0.2)',    border: 'rgba(52,211,153,0.45)',  text: '#4ADE80', glow: 'rgba(52,211,153,0.35)' },
-  { bg: 'rgba(34,211,238,0.2)',    border: 'rgba(34,211,238,0.45)',  text: '#22D3EE', glow: 'rgba(34,211,238,0.35)' },
-  { bg: 'rgba(192,132,252,0.2)',   border: 'rgba(192,132,252,0.45)', text: '#C084FC', glow: 'rgba(192,132,252,0.35)' },
-  { bg: 'rgba(232,133,108,0.2)',   border: 'rgba(232,133,108,0.45)', text: '#E8856C', glow: 'rgba(232,133,108,0.35)' },
-  { bg: 'rgba(96,165,250,0.2)',    border: 'rgba(96,165,250,0.45)',  text: '#60A5FA', glow: 'rgba(96,165,250,0.35)' },
-  { bg: 'rgba(123,200,164,0.2)',   border: 'rgba(123,200,164,0.45)', text: '#7BC8A4', glow: 'rgba(123,200,164,0.35)' },
+// 兴趣彩泡主题色：映射 accent 变量（随 12 套调色板实时暖化/冷化），
+// 不再硬编码冷青/蓝，避免暖色调氛围下出现冷色块出戏。
+const BUBBLE_VARS = [
+  '--accent-cyan', '--accent-rose', '--accent-emerald', '--accent-blue',
+  '--accent-violet', '--accent-amber', '--accent-cyan', '--accent-emerald',
 ];
 
 export default function ColorfulBubbles({ interests, onBubbleClick, onEmptyClick, categories }) {
@@ -57,7 +53,7 @@ export default function ColorfulBubbles({ interests, onBubbleClick, onEmptyClick
       {interests.map((catId, i) => {
         const cat = categories.find(c => c.id === catId);
         const label = cat?.label || catId;
-        const color = BUBBLE_COLORS[i % BUBBLE_COLORS.length];
+        const v = BUBBLE_VARS[i % BUBBLE_VARS.length];
         const isPopping = popping.has(i);
         const isEntering = entering.has(catId);
 
@@ -66,10 +62,10 @@ export default function ColorfulBubbles({ interests, onBubbleClick, onEmptyClick
             key={catId}
             className={`interest-bubble${isPopping ? ' popping' : ''}${isEntering ? ' bubble-entering' : ''}`}
             style={{
-              background: color.bg,
-              border: `1.5px solid ${color.border}`,
-              color: color.text,
-              boxShadow: `0 2px 8px ${color.glow}`,
+              background: `color-mix(in srgb, var(${v}) 22%, transparent)`,
+              border: `1.5px solid color-mix(in srgb, var(${v}) 50%, transparent)`,
+              color: `var(${v})`,
+              boxShadow: `0 2px 8px color-mix(in srgb, var(${v}) 35%, transparent)`,
             }}
             onClick={() => onBubbleClick && onBubbleClick(catId)}
             onDoubleClick={() => handleDoubleClick(i)}

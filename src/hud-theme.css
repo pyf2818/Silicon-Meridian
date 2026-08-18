@@ -1735,8 +1735,8 @@
    ============================================================ */
 :root[data-mode="light"] .profile-center-page {
   /* 面板底：浅色毛玻璃，粒子/主背景仍透出 */
-  --hud-bg0: #f6f1e8;
-  --hud-bg1: #ede5d6;
+  --hud-bg0: var(--bg-secondary);
+  --hud-bg1: var(--bg-secondary);
   --hud-panel: rgba(252, 249, 243, 0.6);
   --hud-panel-deep: rgba(252, 249, 243, 0.86);
   --hud-tele: rgba(252, 249, 243, 0.72);

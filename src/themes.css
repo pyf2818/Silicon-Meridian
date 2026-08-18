@@ -804,12 +804,12 @@ html, html *, html *::before, html *::after {
    色彩语义：viewpoint=蓝 / case=绿 / quote=琥珀 / data=紫 / chart=青 / project=玫瑰
    ============================================================ */
 :root[data-mode="light"][data-palette="champagne"] {
-  --graph-node-viewpoint: #2563A8;
-  --graph-node-case: #0F8A6A;
-  --graph-node-quote: #C2620A;
-  --graph-node-data: #7C3AED;
-  --graph-node-chart: #0369A1;
-  --graph-node-project: #BE123C;
+  --graph-node-viewpoint: #9A4E0E;   /* 暖棕橙（替冷蓝） */
+  --graph-node-case: #5E7A3A;        /* 橄榄绿 */
+  --graph-node-quote: #B45309;       /* 金（琥珀语义保留） */
+  --graph-node-data: #8E3B6B;        /* 暖紫红（替冷紫） */
+  --graph-node-chart: #0F6E63;       /* 暖青绿（替冷青） */
+  --graph-node-project: #A91D3A;     /* 玫红 */
 }
 :root[data-mode="light"][data-palette="sakura"] {
   --graph-node-viewpoint: #C2185B;
@@ -844,12 +844,12 @@ html, html *, html *::before, html *::after {
   --graph-node-project: #E11D48;
 }
 :root[data-mode="light"][data-palette="terracotta"] {
-  --graph-node-viewpoint: #C2410C;
-  --graph-node-case: #0F766E;
-  --graph-node-quote: #B45309;
-  --graph-node-data: #7C3AED;
-  --graph-node-chart: #0F766E;
-  --graph-node-project: #BE123C;
+  --graph-node-viewpoint: #9E3B1E;   /* 深赤（替冷蓝） */
+  --graph-node-case: #4F7A3A;        /* 苔绿 */
+  --graph-node-quote: #B45309;       /* 焦橙（琥珀语义） */
+  --graph-node-data: #87366B;        /* 暖紫红（替冷紫） */
+  --graph-node-chart: #0E6E62;       /* 暖青绿（替冷青） */
+  --graph-node-project: #9E1B38;     /* 深玫 */
 }
 :root[data-mode="light"][data-palette="arctic"] {
   --graph-node-viewpoint: #334155;
@@ -876,12 +876,12 @@ html, html *, html *::before, html *::after {
   --graph-node-project: #BE123C;
 }
 :root[data-mode="light"][data-palette="amber"] {
-  --graph-node-viewpoint: #B45309;
-  --graph-node-case: #15803D;
-  --graph-node-quote: #92400E;
-  --graph-node-data: #7C3AED;
-  --graph-node-chart: #0F766E;
-  --graph-node-project: #BE123C;
+  --graph-node-viewpoint: #8A4B12;   /* 棕橙（替冷蓝） */
+  --graph-node-case: #5C7A38;        /* 橄榄绿 */
+  --graph-node-quote: #92400E;       /* 琥珀语义 */
+  --graph-node-data: #7E3A66;        /* 暖紫红（替冷紫） */
+  --graph-node-chart: #0D6B5E;       /* 暖青绿（替冷青） */
+  --graph-node-project: #971A35;     /* 玫红 */
 }
 :root[data-mode="light"][data-palette="twilight"] {
   --graph-node-viewpoint: #1E40AF;
@@ -892,10 +892,10 @@ html, html *, html *::before, html *::after {
   --graph-node-project: #BE123C;
 }
 :root[data-mode="light"][data-palette="coral"] {
-  --graph-node-viewpoint: #C2410C;
-  --graph-node-case: #0F766E;
-  --graph-node-quote: #BE123C;
-  --graph-node-data: #7C3AED;
-  --graph-node-chart: #0E7490;
-  --graph-node-project: #E11D48;
+  --graph-node-viewpoint: #B23A22;   /* 深珊瑚（替冷蓝） */
+  --graph-node-case: #3F8A4E;        /* 暖绿 */
+  --graph-node-quote: #C2620A;       /* 橙金（琥珀语义） */
+  --graph-node-data: #8A2F6B;        /* 暖紫红（替冷紫） */
+  --graph-node-chart: #0E7A6A;       /* 暖青绿（替冷青） */
+  --graph-node-project: #A81B3C;     /* 深玫 */
 }
