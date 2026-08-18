@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-mode="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>万般硅川 · 首屏无 LLM 行动型空态（B1 预览）</title>
+  <!-- 直接引用真实生产构建的 CSS 打包，保证预览与线上样式 100% 一致 -->
+  <link rel="stylesheet" href="../dist/assets/index-CKVvw72O.css" />
+  <style>
+    body { margin: 0; background: var(--bg-primary); }
+    .preview-frame {
+      max-width: 980px; margin: 0 auto; min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+    .preview-bar {
+      font: 12px/1.6 ui-monospace, Menlo, monospace;
+      color: var(--text-secondary); padding: 10px 16px;
+      border-bottom: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+    }
+    .chat-main-col { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .chat-messages { flex: 1; padding: 0 24px 40px; }
+  </style>
+</head>
+<body>
+  <div class="preview-frame">
+    <div class="preview-bar">预览 · AiChatPanel 首屏（variant=main）· 未配置大模型时的行动型空态 · 使用真实生产 CSS</div>
+
+    <div class="chat-main-col">
+      <!-- 模拟 ChatHeader 的轻量占位，仅用于提供上下文，不参与 B1 改动 -->
+      <div style="height:54px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;padding:0 20px;color:var(--text-secondary);font:13px ui-monospace,monospace">智能体工作台</div>
+
+      <div class="chat-messages custom-scrollbar">
+        <div class="chat-welcome">
+          <div class="chat-welcome-greeting">
+            <span class="chat-welcome-typed">宝宝，今天想深挖点什么？</span>
+          </div>
+          <p class="chat-welcome-meta">
+            已加载 24 条资讯 · 12 条素材（AI 精灵 3） · 5 个关注领域 · 78% 置信度
+          </p>
+          <p class="chat-welcome-tip">万般硅川汇集于此，亦可取一瓢独饮</p>
+
+          <!-- ===== B1.2 新增：无 LLM 行动型空态（与 AiChatPanel.jsx 中 JSX 完全一致）===== -->
+          <div class="chat-empty-llm app-state">
+            <div class="app-state__glyph" aria-hidden="true">
+              <svg viewBox="0 0 48 48" fill="none">
+                <rect x="10" y="14" width="28" height="20" rx="5" stroke="currentColor" stroke-width="2" opacity="0.9" />
+                <path d="M17 24h.01M24 24h.01M31 24h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+                <path d="M24 14v-4M19 10h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.6" />
+              </svg>
+            </div>
+            <h3 class="app-state__title">先给智能体接上大脑</h3>
+            <p class="app-state__desc">
+              配置一个大模型 API 后，AI 就能基于今日 <strong>24</strong> 条资讯、<strong>12</strong> 条素材与你的关注领域，实时生成解读、机会与创作选题。也可以先体验无需大模型的<strong>算法简报</strong>。
+            </p>
+            <div class="app-state__actions">
+              <button class="app-btn app-btn--primary">去配置大模型</button>
+              <button class="app-btn app-btn--ghost">先用算法简报试试</button>
+            </div>
+            <button class="app-btn app-btn--link">为什么需要配置大模型？</button>
+            <!-- 内联说明（点击三级链接展开后的状态，此处为静态展示） -->
+            <p class="app-state__why">
+              大模型（LLM）是 AI 智能体"思考与表达"的引擎：它负责把资讯、素材与你的偏好综合成可读的分析与文章。未配置时，对话、多智能体协作、自动洞察等功能暂不可用。<br />
+              而<strong>算法简报</strong>由平台的推荐引擎离线生成，不依赖大模型——配置前你也能先看今日要闻与机会雷达。配置入口在「设置 → 大模型」，支持 OpenAI / Anthropic / 兼容 OpenAI 的任意服务。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

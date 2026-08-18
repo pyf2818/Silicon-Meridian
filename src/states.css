@@ -1,0 +1,211 @@
+/* ============================================================
+   states.css — 统一空 / 错 / 加载态设计系统（B1，2026-08-18）
+   加载顺序：styles.css → themes.css → hud-theme.css → polish.css
+            → studio-theme.css → states.css → intelligence-briefing.css
+
+   第一性原理（与 polish.css 同源）：
+   1. 行动型空态（Friendly Empty）—— 不是"虚线框告示"，而是
+      给用户一个能立刻前进的落脚点（主 CTA + 次 CTA + 三级链接）。
+   2. 可操作错误（Actionable Error）—— 错误必须带"怎么办"，
+      不是红色 stack trace 的 UI 版。
+   3. 骨架屏（Skeleton）—— 用 shimmer 暗示"内容正在赶来"，
+      而非转圈焦虑。
+   4. 颜色 = 语义权重 —— 一切强调色走 accent 变量，
+      随 12 套调色板统一迁移；结构线中性化。
+   本文件为纯 CSS 覆盖层，不改动任何组件结构与业务逻辑。
+   ============================================================ */
+
+:root,
+:root[data-mode],
+:root[data-palette],
+:root[data-mode][data-palette] {
+  /* 状态语义变量（统一映射 accent，随主题迁移） */
+  --state-empty-fg: var(--text-secondary);
+  --state-title-fg: var(--text-primary);
+  --state-skeleton-base: color-mix(in srgb, var(--bg-card-solid) 62%, var(--bg-secondary));
+  --state-skeleton-shine: color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+  --state-radius: 18px;
+  --state-glyph-size: 64px;
+}
+
+/* 基础容器：居中的呼吸感留白（不强迫占满整屏） */
+.app-state {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 36px 28px;
+  max-width: 520px;
+  margin: 0 auto;
+  animation: appStateIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+@keyframes appStateIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 语义化 glyph：柔和发光圆 + 中心图标（accent 描边，深浅模式自适应） */
+.app-state__glyph {
+  display: grid;
+  place-items: center;
+  width: var(--state-glyph-size);
+  height: var(--state-glyph-size);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, var(--accent-cyan-soft) 0%, transparent 70%);
+  border: 1px solid var(--accent-cyan-border);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 0 6px var(--accent-cyan-softer);
+}
+.app-state__glyph svg { width: 30px; height: 30px; }
+
+/* 标题 / 描述 */
+.app-state__title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--state-title-fg);
+  margin: 0;
+}
+.app-state__desc {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--state-empty-fg);
+  max-width: 420px;
+  margin: 0;
+}
+.app-state__desc strong { color: var(--text-primary); font-weight: 600; }
+
+/* 行动区：主 / 次 / 三级 */
+.app-state__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 6px;
+}
+.app-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.18s ease,
+              background 0.18s ease,
+              border-color 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.app-btn:hover { transform: translateY(-2px); }
+.app-btn:active { transform: translateY(0); }
+.app-btn:focus-visible { outline: 2px solid var(--accent-cyan-border); outline-offset: 2px; }
+
+/* 主 CTA：渐变填充，最高的行动权重 */
+.app-btn--primary {
+  color: var(--bg-primary);
+  background: var(--gradient-primary);
+  box-shadow: 0 6px 22px var(--border-glow);
+}
+.app-btn--primary:hover { box-shadow: 0 10px 30px var(--border-glow); }
+
+/* 次 CTA：描边幽灵按钮，可回退路径 */
+.app-btn--ghost {
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 8%, transparent);
+  border-color: var(--accent-cyan-border);
+}
+.app-btn--ghost:hover { background: var(--accent-cyan-soft); }
+
+/* 三级：纯文字链接，最低权重，无边框 */
+.app-btn--link {
+  padding: 6px 8px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border-color);
+}
+.app-btn--link:hover { color: var(--accent-cyan); text-decoration-color: var(--accent-cyan-border); transform: none; }
+
+/* 错误态修饰：glyph 转琥珀 / 红，提示"需要人介入"而非"系统崩了" */
+.app-state--error .app-state__glyph {
+  color: var(--accent-amber);
+  border-color: color-mix(in srgb, var(--accent-amber) 46%, transparent);
+  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--accent-amber) 16%, transparent) 0%, transparent 70%);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent-amber) 9%, transparent);
+}
+.app-state--error .app-state__desc code {
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  background: color-mix(in srgb, var(--accent-amber) 12%, transparent);
+  padding: 1px 6px;
+  border-radius: 5px;
+  color: var(--text-primary);
+}
+
+/* 内联说明（三级链接展开后的补充文字） */
+.app-state__why {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-width: 440px;
+  text-align: left;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  margin: 2px auto 0;
+  animation: appStateIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* ---------- 骨架屏（Skeleton）：暗示内容正在赶来 ---------- */
+.app-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 8px 0;
+}
+.app-skeleton__row {
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(
+    90deg,
+    var(--state-skeleton-base) 0%,
+    var(--state-skeleton-shine) 50%,
+    var(--state-skeleton-base) 100%
+  );
+  background-size: 220% 100%;
+  animation: appSkeletonShine 1.3s ease-in-out infinite;
+}
+.app-skeleton__row--lg { height: 22px; width: 62%; }
+.app-skeleton__row--sm { height: 12px; width: 80%; }
+.app-skeleton__row--xs { height: 12px; width: 46%; }
+@keyframes appSkeletonShine {
+  0%   { background-position: 180% 0; }
+  100% { background-position: -80% 0; }
+}
+
+/* ---------- 首屏无 LLM 行动型空态（B1.2 专用，复用上面 token）---------- */
+.chat-empty-llm {
+  margin-top: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-state, .app-state__why, .app-btn { animation: none; transition: none; }
+  .app-skeleton__row { animation: none; }
+}
+@media (max-width: 640px) {
+  .app-state { padding: 28px 18px; }
+  .app-state__actions { flex-direction: column; width: 100%; }
+  .app-state__actions .app-btn { width: 100%; justify-content: center; }
+}

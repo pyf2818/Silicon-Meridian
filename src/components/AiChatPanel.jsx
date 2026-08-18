@@ -98,6 +98,8 @@ export default function AiChatPanel({
   const [selectedModel, setSelectedModel] = useState(llmConfig?.selectedModel || '');
   const [attachments, setAttachments] = useState([]);
   const [sessionCollapsed, setSessionCollapsed] = useState(false);
+  // 无 LLM 首屏：三级链接"为什么需要配置大模型"的内联说明展开态
+  const [showWhyLlm, setShowWhyLlm] = useState(false);
 
   // 输入历史：上下键浏览之前发送的消息（Claude Code / shell 风格）
   // 已抽离至 aichat/useInputHistory.js，下方通过 hook 注入
@@ -902,21 +904,56 @@ export default function AiChatPanel({
               已加载 {workbenchItems?.length || 0} 条资讯 · {materialContext.total} 条素材{materialContext.hasElf ? `（AI 精灵 ${materialContext.elfCount}）` : ''} · {selectedInterests?.length || 0} 个关注领域 · {intelligenceProfile?.confidence || 0}% 置信度
             </p>
             <p className="chat-welcome-tip">万般硅川汇集于此，亦可取一瓢独饮</p>
-            <div className="chat-welcome-cards">
-              {quickActions.map(action => (
-                <button
-                  key={action.label}
-                  className="chat-suggest-card"
-                  onClick={() => (action.orchestrate ? handleOrchestrate(action.prompt) : sendMessage(action.prompt))}
-                >
-                  <span className="chat-suggest-icon">{SUGGEST_ICONS[action.icon] || SUGGEST_ICONS.sparkle}</span>
-                  <span className="chat-suggest-text">
-                    <strong>{action.label}</strong>
-                    <small>{action.desc}</small>
-                  </span>
+
+            {/* 无 LLM 配置：行动型空态（主 CTA 配置 / 次 CTA 算法简报 / 三级说明），取代"请先配置大模型"死胡同 */}
+            {!hasConfig ? (
+              <div className="chat-empty-llm app-state">
+                <div className="app-state__glyph" aria-hidden="true">
+                  <svg viewBox="0 0 48 48" fill="none">
+                    <rect x="10" y="14" width="28" height="20" rx="5" stroke="currentColor" strokeWidth="2" opacity="0.9" />
+                    <path d="M17 24h.01M24 24h.01M31 24h.01" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                    <path d="M24 14v-4M19 10h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.6" />
+                  </svg>
+                </div>
+                <h3 className="app-state__title">先给智能体接上大脑</h3>
+                <p className="app-state__desc">
+                  配置一个大模型 API 后，AI 就能基于今日 <strong>{workbenchItems?.length || 0}</strong> 条资讯、<strong>{materialContext.total}</strong> 条素材与你的关注领域，实时生成解读、机会与创作选题。也可以先体验无需大模型的<strong>算法简报</strong>。
+                </p>
+                <div className="app-state__actions">
+                  <button className="app-btn app-btn--primary" onClick={() => onOpenLlmConfig?.()}>
+                    去配置大模型
+                  </button>
+                  <button className="app-btn app-btn--ghost" onClick={() => onOpenNewspaper?.()}>
+                    先用算法简报试试
+                  </button>
+                </div>
+                <button className="app-btn app-btn--link" onClick={() => setShowWhyLlm(w => !w)}>
+                  {showWhyLlm ? '收起说明' : '为什么需要配置大模型？'}
                 </button>
-              ))}
-            </div>
+                {showWhyLlm && (
+                  <p className="app-state__why">
+                    大模型（LLM）是 AI 智能体"思考与表达"的引擎：它负责把资讯、素材与你的偏好综合成可读的分析与文章。未配置时，对话、多智能体协作、自动洞察等功能暂不可用。<br />
+                    而<strong>算法简报</strong>由平台的推荐引擎离线生成，不依赖大模型——配置前你也能先看今日要闻与机会雷达。配置入口在「设置 → 大模型」，支持 OpenAI / Anthropic / 兼容 OpenAI 的任意服务。
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="chat-welcome-cards">
+                {quickActions.map(action => (
+                  <button
+                    key={action.label}
+                    className="chat-suggest-card"
+                    onClick={() => (action.orchestrate ? handleOrchestrate(action.prompt) : sendMessage(action.prompt))}
+                  >
+                    <span className="chat-suggest-icon">{SUGGEST_ICONS[action.icon] || SUGGEST_ICONS.sparkle}</span>
+                    <span className="chat-suggest-text">
+                      <strong>{action.label}</strong>
+                      <small>{action.desc}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

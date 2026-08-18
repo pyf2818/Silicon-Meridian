@@ -7,6 +7,7 @@ import './themes.css';
 import './hud-theme.css';
 import './polish.css';
 import './studio-theme.css';
+import './states.css'; // B1 统一空/错/加载态设计系统（在 studio-theme 之后，可被其覆盖）
 import './intelligence-briefing.css';
 import BackgroundLayer from './components/visual/BackgroundLayer.jsx';
 import NoiseLayer from './components/visual/NoiseLayer.jsx';
