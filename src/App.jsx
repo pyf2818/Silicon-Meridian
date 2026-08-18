@@ -2015,6 +2015,27 @@ ${signals}
     requestGithubInsight,
   } = useGithubInsight({ llmConfig });
 
+  // GitHub 一键 AI 情报：状态从 GithubPage 提升至此（按钮位于顶栏原中英文切换位置）
+  const [githubExpandedAll, setGithubExpandedAll] = useState(false);
+  const githubRunTokenRef = useRef(0);
+  const handleToggleGithubInsights = useCallback(async () => {
+    if (githubExpandedAll) {
+      setGithubExpandedAll(false);
+      githubRunTokenRef.current += 1; // 取消仍在排队的请求
+      return;
+    }
+    setGithubExpandedAll(true);
+    const token = ++githubRunTokenRef.current;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (const repo of githubRepos) {
+      if (token !== githubRunTokenRef.current) break; // 已收起 / 已重开，停止排队
+      if (githubInsights[repo.id] || githubInsightLoading[repo.id]) continue; // 已有或生成中则跳过
+      await requestGithubInsight(repo);
+      if (token !== githubRunTokenRef.current) break;
+      await sleep(400); // 卡间间隔，给上游限流留出余量
+    }
+  }, [githubExpandedAll, githubRepos, githubInsights, githubInsightLoading, requestGithubInsight]);
+
   function executeSearch(q) {
     setNav('all');
     setCategory('all');
@@ -2194,6 +2215,9 @@ ${signals}
             { label: 'MARKS', value: bookmarks?.length ?? 0 },
             { label: 'SNAPSHOTS', value: dailyProfileSnapshots?.length ?? 0 },
           ] : null}
+          githubExpandedAll={githubExpandedAll}
+          onToggleGithubInsights={handleToggleGithubInsights}
+          githubAnyInsightLoading={githubRepos.some((r) => githubInsightLoading[r.id])}
         />
 
         {showStatsBar && <div className="stats-bar">
@@ -2422,6 +2446,7 @@ ${signals}
               requestGithubInsight={requestGithubInsight}
               githubInsightLoading={githubInsightLoading}
               setLightbox={setLightbox}
+              expandedAll={githubExpandedAll}
             />
           )}
 

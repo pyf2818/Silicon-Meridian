@@ -24,7 +24,7 @@
 }
 :root[data-mode="light"],
 :root[data-mode="light"][data-palette] {
-  --border-color: rgba(15, 23, 42, 0.1);
+  --border-color: rgba(120, 90, 40, 0.14);
 }
 
 /* 硬编码深色文字修复：active tab 文字跟随底色，深浅模式均保证对比度 */

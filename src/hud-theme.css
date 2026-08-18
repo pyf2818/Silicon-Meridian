@@ -1735,13 +1735,13 @@
    ============================================================ */
 :root[data-mode="light"] .profile-center-page {
   /* 面板底：浅色毛玻璃，粒子/主背景仍透出 */
-  --hud-bg0: #f4f7fa;
-  --hud-bg1: #e8eef4;
-  --hud-panel: rgba(255, 255, 255, 0.6);
-  --hud-panel-deep: rgba(255, 255, 255, 0.86);
-  --hud-tele: rgba(255, 255, 255, 0.72);
-  --hud-console: rgba(255, 255, 255, 0.82);
-  --hud-console-deep: rgba(255, 255, 255, 0.97);
+  --hud-bg0: #f6f1e8;
+  --hud-bg1: #ede5d6;
+  --hud-panel: rgba(252, 249, 243, 0.6);
+  --hud-panel-deep: rgba(252, 249, 243, 0.86);
+  --hud-tele: rgba(252, 249, 243, 0.72);
+  --hud-console: rgba(252, 249, 243, 0.82);
+  --hud-console-deep: rgba(252, 249, 243, 0.97);
   /* 浅色下发光减弱（亮度分层仍保留，但用柔和阴影代替霓虹光晕） */
   --hud-line: color-mix(in srgb, var(--accent-cyan) 32%, transparent);
   --hud-line-soft: color-mix(in srgb, var(--accent-cyan) 16%, transparent);
@@ -1804,7 +1804,7 @@
 
 /* 图表 tooltip：浅色下浅底深字 */
 :root[data-mode="light"] .profile-center-page .hud-linechart-tip {
-  background: rgba(255, 255, 255, 0.97);
+  background: rgba(252, 249, 243, 0.97);
   border-color: var(--hud-line);
   color: var(--hud-text);
   box-shadow: 0 4px 16px rgba(30, 45, 60, 0.12);

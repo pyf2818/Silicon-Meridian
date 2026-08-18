@@ -56,6 +56,10 @@ export default function Topbar({
   githubSince,
   setGithubSince,
   loadGithub,
+  // GitHub 一键 AI 情报（顶栏按钮，替代原中英文切换位置）
+  githubExpandedAll,
+  onToggleGithubInsights,
+  githubAnyInsightLoading,
   // 模式 / 区域
   mode,
   setMode,
@@ -335,8 +339,18 @@ export default function Topbar({
               )}
             </>
           )}
-          {/* 语言切换器：仅在非「全部动态」页显示（全部动态页移除中英文切换）；用户画像页由系统遥测栏替代 */}
-          {nav !== 'all' && nav !== 'profile-center' && <LanguageSwitcher variant="compact" />}
+          {/* 语言切换器：仅在非「全部动态」页显示（全部动态页移除中英文切换）；用户画像页由系统遥测栏替代；GitHub 页该位置替换为一键启动 AI 情报 */}
+          {nav === 'github' ? (
+            <button
+              type="button"
+              className="gh-launch-ai-btn"
+              onClick={onToggleGithubInsights}
+              title={githubExpandedAll ? '收起全部 AI 情报' : '一键展开全部 AI 情报（也可逐卡自选）'}
+            >
+              {ICONS.sparkle} {githubExpandedAll ? '收起 AI 情报' : '一键启动 AI 情报'}
+              {!githubExpandedAll && githubAnyInsightLoading ? '（生成中…）' : ''}
+            </button>
+          ) : (nav !== 'all' && nav !== 'profile-center' && <LanguageSwitcher variant="compact" />)}
         </div>
       </div>
     </header>

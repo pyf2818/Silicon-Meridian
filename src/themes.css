@@ -31,23 +31,29 @@
   --workbench-page-wash: linear-gradient(180deg, rgba(201,169,97,0.055), transparent 250px);
 }
 :root[data-mode="light"][data-palette="champagne"] {
-  --bg-primary: #F4F7FA;
-  --bg-secondary: #FFFFFF;
-  --border-color: rgba(80,100,120,.10);
-  --border-active: rgba(74,123,167,.22);
-  --border-glow: rgba(74,123,167,.05);
-  --gradient-primary: linear-gradient(135deg, #4A7BA7, #3A6B9C);
-  --accent-cyan-soft: rgba(74,123,167,.08);
-  --accent-cyan-softer: rgba(74,123,167,.04);
-  --accent-cyan-border: rgba(74,123,167,.18);
-  --accent-amber-soft: rgba(125,139,153,.08);
-  --bg-glow-1: rgba(74,123,167,.05);
-  --bg-glow-2: rgba(107,122,143,.035);
-  --particle-c1: rgba(100,145,185,.40);
-  --particle-c2: rgba(74,123,167,.30);
-  --shadow-card: 0 4px 20px rgba(40,60,80,.05), 0 1px 3px rgba(40,60,80,.03);
-  --surface-workbench-ai: linear-gradient(135deg, rgba(74,123,167,.05), rgba(100,145,185,.03)), rgba(255,255,255,.98);
-  --workbench-page-wash: linear-gradient(180deg, rgba(74,123,167,.03), rgba(244,247,250,.2) 210px, transparent 310px);
+  --bg-primary: #F6F1E8;
+  --bg-secondary: #FCF9F3;
+  --accent-cyan: #85652F;
+  --accent-blue: #9A7436;
+  --accent-violet: #7C6A50;
+  --accent-emerald: #6E7A45;
+  --accent-amber: #B08A3E;
+  --accent-rose: #A05C3E;
+  --border-color: rgba(120,90,40,.16);
+  --border-active: rgba(138,106,53,.38);
+  --border-glow: rgba(138,106,53,.08);
+  --gradient-primary: linear-gradient(135deg, #A87E34, #7E5F28);
+  --accent-cyan-soft: rgba(138,106,53,.10);
+  --accent-cyan-softer: rgba(138,106,53,.055);
+  --accent-cyan-border: rgba(138,106,53,.22);
+  --accent-amber-soft: rgba(176,138,62,.12);
+  --bg-glow-1: rgba(176,138,62,.07);
+  --bg-glow-2: rgba(122,106,82,.05);
+  --particle-c1: rgba(176,138,62,.35);
+  --particle-c2: rgba(138,106,53,.28);
+  --shadow-card: 0 4px 20px rgba(90,60,20,.06), 0 1px 3px rgba(90,60,20,.04);
+  --surface-workbench-ai: linear-gradient(135deg, rgba(176,138,62,.06), rgba(138,106,53,.035)), rgba(252,249,243,.98);
+  --workbench-page-wash: linear-gradient(180deg, rgba(176,138,62,.045), rgba(246,241,232,.25) 210px, transparent 310px);
 }
 
 /* ---------- 2. Sakura 樱花和纸 ---------- */
