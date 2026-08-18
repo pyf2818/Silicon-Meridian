@@ -24,8 +24,8 @@ import { useEffect, useRef, useState } from 'react';
 const FONT_HREF =
   'https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;900&display=swap';
 
-const REVEAL_AT = 2550;    // 起跑后：开始离场、内容升起
-const DONE_AT = 3250;      // 起跑后：完全离场、卸载
+const REVEAL_AT = 3300;    // 起跑后：开始离场、内容升起（品牌逐字写完后再化开帷幕）
+const DONE_AT = 4000;      // 起跑后：完全离场、卸载
 const SKIP_FADE = 560;     // 跳过时离场过渡时长
 const FONT_WAIT_MAX = 600; // 书法字最多等这么久，超时直接起跑（回退系统衬线）
 
@@ -152,7 +152,11 @@ export default function EntranceSplash({ onReveal, onDone }) {
       {/* 品牌由中心化开（清晰锐利）+ 朱印落款 + 英文副题 */}
       <div className="entrance__center">
         <div className="entrance__halo" />
-        <div className="entrance__brand">万般硅川</div>
+        <div className="entrance__brand" aria-label="万般硅川">
+          {['万', '般', '硅', '川'].map((ch, i) => (
+            <span key={i} className="entrance__brand-char" style={{ '--idx': i }}>{ch}</span>
+          ))}
+        </div>
         <div className="entrance__rule">
           <span className="entrance__line" />
           <span className="entrance__seal">印</span>
