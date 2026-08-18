@@ -92,6 +92,7 @@ import { exportDocument } from './domain/creative/exportEngine.js';
 import { saveDocumentVersion } from './domain/creative/versionStore.js';
 
 // 代码分割：三个重组件按需加载，避免首屏全量打包 Three.js / klinecharts
+import SafeBoundary from './components/SafeBoundary.jsx';
 const GlobeView = lazy(() => import('./GlobeView.jsx'));
 const AiElf = lazy(() => import('./AiElf.jsx'));
 const StockPage = lazy(() => import('./components/StockPage.jsx'));
@@ -2507,9 +2508,11 @@ ${signals}
           )}
 
           {nav === 'stock' && (
-            <Suspense fallback={<div className="empty-state"><p>加载股市终端...</p></div>}>
-              <StockPage llmConfig={llmConfig} onOpenLlmConfig={() => setShowLlmQuickConfig(true)} />
-            </Suspense>
+            <SafeBoundary name="股市终端" icon={ICONS.cpu}>
+              <Suspense fallback={<div className="empty-state"><p>加载股市终端...</p></div>}>
+                <StockPage llmConfig={llmConfig} onOpenLlmConfig={() => setShowLlmQuickConfig(true)} />
+              </Suspense>
+            </SafeBoundary>
           )}
 
           {nav === 'square' && <CommunityPage user={user} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} />}
@@ -2884,6 +2887,7 @@ ${signals}
       </button>
 
       {/* AI精灵助手（去 agent 化：全站轻量助理，只接收画像/上下文，不再接智能体生态） */}
+      <SafeBoundary name="AI 精灵" icon={ICONS.bot}>
       <Suspense fallback={null}>
       <AiElf
         llmConfig={llmConfig}
@@ -2939,6 +2943,7 @@ ${signals}
         });
       }} />
       </Suspense>
+      </SafeBoundary>
 
       {/* 登录/注册弹窗 */}
 <AuthModal showAuthModal={showAuthModal} setShowAuthModal={setShowAuthModal} authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} handleLogin={handleLogin} handleRegister={handleRegister} authLoading={authLoading} authError={authError} setAuthError={setAuthError} />
@@ -2951,9 +2956,11 @@ ${signals}
 
       {/* 全球科技大屏全屏 */}
       {globeFullscreenOpen && (
-        <Suspense fallback={<div className="page-loading-skeleton" />}>
-          <GlobeView items={items} externalFullscreen={globeFullscreenOpen} onFullscreenChange={setGlobeFullscreenOpen} />
-        </Suspense>
+        <SafeBoundary name="全球科技大屏" icon={ICONS.globe}>
+          <Suspense fallback={<div className="page-loading-skeleton" />}>
+            <GlobeView items={items} externalFullscreen={globeFullscreenOpen} onFullscreenChange={setGlobeFullscreenOpen} />
+          </Suspense>
+        </SafeBoundary>
       )}
     </div>
   );
