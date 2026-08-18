@@ -114,6 +114,29 @@ export function useIntelligenceBriefing({ items = [], date, llmConfig }) {
   const [agentic, setAgentic] = useState(null);
   const [llmStatus, setLlmStatus] = useState('idle');
 
+  // 快照对账（读方向）：服务端 briefing_snapshots 为权威，localStorage 只是缓存。
+  // 登录态下服务端若有当日前端分析（aiPayload.frontend=true），且本地缺失 → 回灌本地缓存。
+  // 换浏览器/清缓存后分析不再丢失。
+  useEffect(() => {
+    if (!store || !date) return undefined;
+    let cancelled = false;
+    fetch(`/api/profile/snapshots?date=${encodeURIComponent(date)}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (cancelled || !data?.ok) return;
+        const ai = data?.snapshot?.aiPayload;
+        if (!ai?.frontend || !ai?.analysis) return;
+        const local = store.get(date);
+        if (local?.ai) return; // 本地已有（首份权威），不覆盖
+        try {
+          if (!local) store.create({ date });
+          store.setValidatedAi(date, { generatedAt: ai.generatedAt, model: ai.model, analysis: ai.analysis });
+        } catch { /* 静默：对账失败不影响主流程 */ }
+      })
+      .catch(() => { /* 未登录/接口不可用：localStorage 兜底 */ });
+    return () => { cancelled = true; };
+  }, [store, date]);
+
   const runAgentic = useCallback(async () => {
     if (!llmConfig?.baseUrl || !llmConfig?.selectedModel) {
       setLlmStatus('no-config');
@@ -175,7 +198,7 @@ export function useIntelligenceBriefing({ items = [], date, llmConfig }) {
         opts: { maxClusters: 3 },
       });
       setAgentic(result);
-      // B5：大模型多智能体分析沉淀进当日快照（localStorage 本地数据库），跨日回溯可读
+      // B5：大模型多智能体分析沉淀进当日快照（localStorage 本地缓存），跨日回溯可读
       // setValidatedAi 语义：当日快照已存在 ai 时不覆盖（当天首份分析即权威沉淀）
       if (store && date) {
         try {
@@ -185,6 +208,18 @@ export function useIntelligenceBriefing({ items = [], date, llmConfig }) {
             analysis: result,
           });
         } catch { /* 快照缺失或已锁存：静默 */ }
+        // 快照对账（写方向）：best-effort 写透传到服务端 briefing_snapshots（权威存储），
+        // 服务端当日已有 AI 产物时保持首份权威不覆盖；未登录/失败静默降级为纯本地
+        fetch('/api/profile/snapshots/ai-analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date,
+            model: llmConfig.selectedModel,
+            generatedAt: new Date().toISOString(),
+            analysis: result,
+          }),
+        }).catch(() => { /* 未登录或服务不可用：localStorage 兜底 */ });
       }
       setLlmStatus('done');
     } catch {

@@ -30,10 +30,11 @@ export function buildInsertItemsParams(snapshotId, lanes) {
 }
 
 /**
- * Phase 3 Task B2: 三表事务写入
+ * Phase 3 Task B4: 三表事务写入
  * 1. upsert recommendation_snapshots (返回 snapshot_id)
  * 2. 删除旧 recommendation_items，批量插入新的
  * 3. upsert briefing_snapshots (algorithm_payload + ai_payload + ai_citation_ids + ai_status)
+ *    ai_payload 用 COALESCE：preheat 无 AI 产物（not_requested/ai_failed）时保留已存在的前端分析
  *
  * 使用 withTransaction 保证原子性。
  */
@@ -61,15 +62,16 @@ export async function insertSnapshot({ userId, date, algorithmVersion, lanes, al
       );
     }
 
-    // 3. upsert briefing_snapshots
+    // 3. upsert briefing_snapshots（ai_payload 空时保留既有值与状态，防止覆盖前端已沉淀的分析）
     await client.query(
       `INSERT INTO briefing_snapshots (snapshot_id, algorithm_payload, ai_payload, ai_citation_ids, ai_status, updated_at)
        VALUES ($1, $2, $3, $4, $5, now())
        ON CONFLICT (snapshot_id) DO UPDATE SET
          algorithm_payload = EXCLUDED.algorithm_payload,
-         ai_payload = EXCLUDED.ai_payload,
+         ai_payload = COALESCE(EXCLUDED.ai_payload, briefing_snapshots.ai_payload),
          ai_citation_ids = EXCLUDED.ai_citation_ids,
-         ai_status = EXCLUDED.ai_status,
+         ai_status = CASE WHEN EXCLUDED.ai_payload IS NULL AND briefing_snapshots.ai_payload IS NOT NULL
+                          THEN briefing_snapshots.ai_status ELSE EXCLUDED.ai_status END,
          updated_at = now()`,
       [
         snapshotId,
@@ -82,6 +84,42 @@ export async function insertSnapshot({ userId, date, algorithmVersion, lanes, al
 
     return { snapshotId };
   });
+}
+
+/**
+ * 快照对账（前端 agentic 分析写透传）：把 AI 工作站当日分析保存到服务端 briefing_snapshots。
+ * - 当日无快照：创建最小占位行（algorithm_version=0，preheat 会识别并补全三表）
+ * - 当日已有快照且已有 ai_payload：保持「首份权威」不覆盖
+ * - ai_status 标记 'frontend-saved'，与 preheat 的产物区分
+ */
+export async function saveFrontendAiAnalysis({ userId, date, aiPayload }) {
+  if (isDevMemoryMode()) return memorySnapshotRepository.saveFrontendAiAnalysis({ userId, date, aiPayload });
+  const pool = getPool();
+  const snapRes = await pool.query(
+    `INSERT INTO recommendation_snapshots (user_id, snapshot_date, profile_version, algorithm_version, updates)
+     VALUES ($1, $2, 1, 0, '["frontend-only"]'::jsonb)
+     ON CONFLICT (user_id, snapshot_date) DO NOTHING
+     RETURNING id`,
+    [userId, date]
+  );
+  let snapshotId = snapRes.rows[0]?.id;
+  if (!snapshotId) {
+    const sel = await pool.query(
+      'SELECT id FROM recommendation_snapshots WHERE user_id = $1 AND snapshot_date = $2',
+      [userId, date]
+    );
+    snapshotId = sel.rows[0]?.id;
+  }
+  await pool.query(
+    `INSERT INTO briefing_snapshots (snapshot_id, algorithm_payload, ai_payload, ai_citation_ids, ai_status, updated_at)
+     VALUES ($1, '{}'::jsonb, $2, '[]'::jsonb, 'frontend-saved', now())
+     ON CONFLICT (snapshot_id) DO UPDATE SET
+       ai_payload = COALESCE(briefing_snapshots.ai_payload, EXCLUDED.ai_payload),
+       ai_status = CASE WHEN briefing_snapshots.ai_payload IS NULL THEN EXCLUDED.ai_status ELSE briefing_snapshots.ai_status END,
+       updated_at = now()`,
+    [snapshotId, JSON.stringify(aiPayload || {})]
+  );
+  return { snapshotId };
 }
 
 /**

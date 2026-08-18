@@ -101,8 +101,11 @@ export async function preheatForUser({ userId, personaSummary = null, today, opt
   const date = today || new Date().toISOString().slice(0, 10);
 
   // 1. 缓存命中检查
+  // 快照对账：algorithmVersion=0 是前端分析写透传创建的占位行（无 lanes/算法简报），
+  // 不算缓存命中——继续走完整预热补全三表（PG 返回 algorithm_version，内存版 algorithmVersion）。
   const existing = await getSnapshotByDate(userId, date);
-  if (existing) return { cached: true, snapshot: existing };
+  const existingVersion = existing?.algorithmVersion ?? existing?.algorithm_version;
+  if (existing && existingVersion !== 0) return { cached: true, snapshot: existing };
 
   // 2. 拉取 profile + LLM config
   const repo = createProfileRepository();

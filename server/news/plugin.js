@@ -184,6 +184,10 @@ export function newsPlugin() {
         if (requestUrl.pathname === '/api/profile/snapshots/analyze') {
           return handleProfileRequest(req, res, { action: 'snapshots-analyze' });
         }
+        // 快照对账：前端 agentic 分析写透传到服务端 briefing_snapshots
+        if (requestUrl.pathname === '/api/profile/snapshots/ai-analysis') {
+          return handleProfileRequest(req, res, { action: 'snapshots-ai-analysis' });
+        }
         if (requestUrl.pathname === '/api/profile/snapshots') {
           return handleProfileRequest(req, res, { action: 'snapshots' });
         }

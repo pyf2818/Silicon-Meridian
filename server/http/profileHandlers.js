@@ -24,12 +24,35 @@ export async function handleProfileRequest(req, res, { action = 'state', service
 
     // Phase 3 Task B4: 推荐快照路由
     // POST /api/profile/snapshots/preheat — 触发今日预热（缓存命中则直接返回）
+    // algorithmVersion=0 是前端写透传创建的占位行，不算缓存命中（继续走完整预热）
     if (action === 'snapshots-preheat' && req.method === 'POST') {
       const today = new Date().toISOString().slice(0, 10);
       const existing = await snapshotRepository.getSnapshotByDate(user.id, today);
-      if (existing) return sendJsonResponse(res, 200, { ok: true, snapshot: existing, cached: true });
+      const existingVersion = existing?.algorithmVersion ?? existing?.algorithm_version;
+      if (existing && existingVersion !== 0) return sendJsonResponse(res, 200, { ok: true, snapshot: existing, cached: true });
       const result = await snapshotService.preheatForUser({ userId: user.id });
       return sendJsonResponse(res, 200, { ok: true, snapshot: result, cached: false });
+    }
+
+    // POST /api/profile/snapshots/ai-analysis — 快照对账：前端 agentic 分析写透传到服务端
+    // 当日已有 AI 产物时保持「首份权威」不覆盖；返回保存结果供前端对账
+    if (action === 'snapshots-ai-analysis' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      const date = String(body?.date || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return sendJsonResponse(res, 400, { ok: false, error: { code: 'INVALID_DATE', message: 'date 必须是 YYYY-MM-DD' } });
+      }
+      if (!body?.analysis || typeof body.analysis !== 'object') {
+        return sendJsonResponse(res, 400, { ok: false, error: { code: 'INVALID_ANALYSIS', message: 'analysis 不能为空' } });
+      }
+      const aiPayload = {
+        frontend: true,
+        model: String(body.model || '').slice(0, 120),
+        generatedAt: String(body.generatedAt || new Date().toISOString()),
+        analysis: body.analysis,
+      };
+      const saved = await snapshotRepository.saveFrontendAiAnalysis({ userId: user.id, date, aiPayload });
+      return sendJsonResponse(res, 200, { ok: true, saved });
     }
 
     // POST /api/profile/snapshots/analyze — 实时对传入 items 做 LLM 重新分析（不写三表）
