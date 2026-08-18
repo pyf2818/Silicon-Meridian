@@ -112,3 +112,80 @@
   animation-duration: var(--dur-slower);
   animation-timing-function: var(--ease-out);
 }
+
+/* ============================================================
+   C3 列表与滚动节奏统一（覆盖层）
+   修复：当前生效 CSS 中大量入场动画引用了**未定义**的
+   @keyframes fadeUp（仅 styles.css.bak 备份里存在），导致
+   主信息流 / GitHub 卡片 / AI 摘要 / 推荐理由 / GitHub 洞察等
+   入场静默失效、直接闪现。在此补回 fadeUp，并把全部列表/卡片/
+   行内揭示的「时长 + 缓动」收敛到 C1 统一 token（保留各自
+   animation-name），让"列表进出场呼吸感"与模态(C2)同一套语言。
+   规则特异性与原声明相同，因 motion.css 最后引入而生效。
+   ============================================================ */
+/* 补回缺失关键帧：与 .news-item-hidden(translateY 12px) 衔接，
+   保证 hidden→visible 过渡无缝 */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 主信息流卡片：视口淡入（NewsItem IntersectionObserver 驱动） */
+.news-item.news-item-visible {
+  animation-duration: var(--dur-slow);
+  animation-timing-function: var(--ease-out);
+  animation-fill-mode: both; /* 持 hidden 态，避免首屏错落时闪现 */
+}
+/* GitHub 卡片网格 */
+.github-card {
+  animation-duration: var(--dur-slow);
+  animation-timing-function: var(--ease-out);
+}
+/* 聊天消息流 */
+.chat-msg {
+  animation-duration: var(--dur-base);
+  animation-timing-function: var(--ease-out);
+}
+/* 智能体审批卡 */
+.approval-card {
+  animation-duration: var(--dur-fast);
+  animation-timing-function: var(--ease-out);
+}
+/* 行内揭示：AI 摘要 / 推荐理由 / GitHub 洞察 / 教程，保持轻快 */
+.ai-summary,
+.recommendation-reason,
+.gh-insight-body,
+.gh-tutorial-text {
+  animation-duration: var(--dur-fast);
+  animation-timing-function: var(--ease-out);
+}
+/* 智创「熔炉」流水线节点：保留错落，收敛时长 */
+.st-pipe-node {
+  animation-duration: var(--dur-slower);
+  animation-timing-function: var(--ease-out);
+}
+
+/* 主信息流首屏错落：首屏批次如同一支团队调过（滚动揭示不受影响） */
+.feed-list .news-item.news-item-visible:nth-child(1) { animation-delay: 0s; }
+.feed-list .news-item.news-item-visible:nth-child(2) { animation-delay: .05s; }
+.feed-list .news-item.news-item-visible:nth-child(3) { animation-delay: .10s; }
+.feed-list .news-item.news-item-visible:nth-child(4) { animation-delay: .15s; }
+.feed-list .news-item.news-item-visible:nth-child(5) { animation-delay: .20s; }
+.feed-list .news-item.news-item-visible:nth-child(6) { animation-delay: .25s; }
+.feed-list .news-item.news-item-visible:nth-child(7) { animation-delay: .30s; }
+.feed-list .news-item.news-item-visible:nth-child(8) { animation-delay: .35s; }
+
+/* 尊重用户偏好：关动效时全部静态呈现 */
+@media (prefers-reduced-motion: reduce) {
+  .news-item.news-item-visible,
+  .github-card,
+  .chat-msg,
+  .approval-card,
+  .ai-summary,
+  .recommendation-reason,
+  .gh-insight-body,
+  .gh-tutorial-text,
+  .st-pipe-node {
+    animation: none !important;
+  }
+}
