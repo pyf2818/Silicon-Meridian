@@ -26577,3 +26577,333 @@ body {
 
 @keyframes aboutQrFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes aboutQrPopIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+/* ============================================================
+   素材仓库（智创中心定位重设计）：storage-only
+   参考 Eagle / Notion 数据库 / Google Drive 的仓库形态
+   ============================================================ */
+.repo-page {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 14px;
+  width: 100%;
+  min-height: 0;
+  align-items: start;
+}
+
+/* ---- 左栏 ---- */
+.repo-rail {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 10px;
+  border: var(--panel-border);
+  border-radius: 12px;
+  background: var(--surface-card, var(--bg-card));
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+}
+.repo-rail-group { display: flex; flex-direction: column; gap: 2px; }
+.repo-rail-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 8px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.repo-rail-add {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+.repo-rail-add:hover { color: var(--accent-cyan); background: var(--bg-secondary); }
+.repo-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+  transition: background .12s;
+}
+.repo-rail-item:hover { background: var(--bg-secondary, rgba(127,127,127,.1)); }
+.repo-rail-item.active { background: var(--accent-cyan-softer); color: var(--accent-cyan); }
+.repo-rail-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.repo-rail-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo-rail-item-count { font-style: normal; font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.repo-rail-item.active .repo-rail-item-count { color: var(--accent-cyan); }
+.repo-rail-item-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+.repo-rail-item:hover .repo-rail-item-actions { display: inline-flex; }
+.repo-rail-item-actions button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 3px;
+  border-radius: 4px;
+}
+.repo-rail-item-actions button:hover { color: var(--text-primary); background: var(--bg-card); }
+.repo-space-rename {
+  width: 100%;
+  font-size: 12px;
+  padding: 3px 6px;
+  border: 1px solid var(--accent-cyan);
+  border-radius: 5px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+.repo-rail-tags { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 6px; }
+.repo-tag-chip {
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all .12s;
+}
+.repo-tag-chip:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.repo-tag-chip.active {
+  background: color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-cyan) 40%, transparent);
+  color: var(--accent-cyan);
+}
+.repo-rail-bottom {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle, rgba(128,128,128,.15));
+}
+
+/* ---- 主区 ---- */
+.repo-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.repo-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.repo-toolbar .material-search { flex: 1; min-width: 200px; }
+.repo-toolbar-spacer { flex: 0 0 8px; }
+.repo-view-toggle {
+  display: inline-flex;
+  border: var(--panel-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.repo-view-toggle button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all .12s;
+}
+.repo-view-toggle button.active { background: var(--accent-cyan-softer); color: var(--accent-cyan); }
+
+.repo-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 8px 12px;
+  border: var(--panel-border);
+  border-radius: 10px;
+  background: var(--surface-workbench-control, var(--surface-card));
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.repo-stat b { color: var(--text-primary); font-variant-numeric: tabular-nums; margin-right: 2px; }
+.repo-stat-types { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.repo-stat-type { white-space: nowrap; }
+.repo-stat-type::before { content: '·'; margin-right: 6px; color: var(--border-color); }
+.repo-stat-size { margin-left: auto; font-variant-numeric: tabular-nums; opacity: .8; }
+
+/* 列表视图 */
+.repo-list {
+  display: flex;
+  flex-direction: column;
+  border: var(--panel-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-card, var(--bg-card));
+}
+.repo-list-row {
+  display: grid;
+  grid-template-columns: auto 52px minmax(0, 1fr) 110px minmax(0, 160px) 76px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(128,128,128,.12));
+  cursor: pointer;
+  transition: background .12s;
+  font-size: 12.5px;
+}
+.repo-list-row:last-child { border-bottom: none; }
+.repo-list-row:hover { background: var(--bg-secondary, rgba(127,127,127,.07)); }
+.repo-list-row.selected { background: var(--accent-cyan-softer); }
+.repo-list-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.repo-list-source, .repo-list-tags, .repo-list-date {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-muted); font-size: 11px;
+}
+.repo-list-actions { display: inline-flex; gap: 4px; }
+.repo-list-actions button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.repo-list-actions button:hover { background: var(--bg-card); color: var(--text-primary); }
+
+/* 回收站 */
+.repo-trash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.repo-trash-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: var(--panel-border);
+  border-radius: 9px;
+  background: var(--surface-card, var(--bg-card));
+  font-size: 12.5px;
+}
+.repo-trash-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.repo-trash-date { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.repo-trash-actions { display: inline-flex; gap: 6px; }
+
+/* 详情抽屉 */
+.repo-drawer-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.35); }
+.repo-drawer {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(480px, 92vw);
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card, #1a1a1a);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: var(--panel-border);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0,0,0,.4);
+  animation: repo-drawer-in .18s ease-out;
+}
+@keyframes repo-drawer-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.repo-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle, rgba(128,128,128,.15));
+}
+.repo-drawer-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-drawer-close {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+.repo-drawer-close:hover { color: var(--text-primary); background: var(--bg-secondary); }
+.repo-drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.repo-drawer-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg-secondary, rgba(127,127,127,.08));
+}
+.repo-drawer-section { display: flex; flex-direction: column; gap: 4px; }
+.repo-drawer-section label { font-size: 10.5px; font-weight: 700; color: var(--text-muted); letter-spacing: .05em; }
+.repo-drawer-section textarea,
+.repo-drawer-section input,
+.repo-drawer-section select {
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-secondary, rgba(127,127,127,.06));
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+.repo-drawer-section textarea:focus,
+.repo-drawer-section input:focus,
+.repo-drawer-section select:focus { outline: none; border-color: var(--accent-cyan); }
+.repo-drawer-meta { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-muted); }
+.repo-drawer-meta a { color: var(--accent-cyan); text-decoration: none; }
+.repo-drawer-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-subtle, rgba(128,128,128,.15));
+}
+
+/* 窄屏适配：左栏折叠为顶部横条 */
+@media (max-width: 900px) {
+  .repo-page { grid-template-columns: 1fr; }
+  .repo-rail { position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
+  .repo-rail-group { flex: 1 1 160px; }
+  .repo-list-row { grid-template-columns: auto 52px minmax(0, 1fr) auto; }
+  .repo-list-source, .repo-list-tags, .repo-list-date { display: none; }
+}

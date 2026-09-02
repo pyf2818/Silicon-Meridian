@@ -111,7 +111,7 @@ src/components/
   ArticleEditor.jsx        Markdown article editor
   StockPage.jsx            股市动向三栏行情终端（分时/K线/五档/AI诊断）
   AiChatPanel.jsx          AI 工作站主面板（首页核心功能，非简单聊天：多专业 agent + 工具编排 + set_plan 计划执行；780 lines，拆出 aichat/ 子目录）
-  CreativeWorkspace.jsx    智创空间主组件（素材库 + 编辑器 + 工作流）
+  CreativeWorkspace.jsx    智创空间主组件（素材库 + 编辑器 + 工作流；注意：智创中心落地页已改为素材仓库，本组件不再被 studio 导航渲染）
   CommunityPage.jsx        社区广场页（发帖/评论/点赞/收藏/关注）
   CommunityPostDetail.jsx  社区帖子详情
   NewsItem.jsx             资讯卡片

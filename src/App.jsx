@@ -36,8 +36,7 @@ import { useExternalIntelligence } from './hooks/useExternalIntelligence.js';
 import { useIntelligenceMemos } from './hooks/useIntelligenceMemos.js';
 import { useRecommendationMemos } from './hooks/useRecommendationMemos.js';
 import { selectBriefingLanes } from './domain/intelligence/recommendationEngine.js';
-import { buildDiscoverFeed } from './domain/intelligence/discoverFeed.js';
-import { useIntelligenceBriefing } from './hooks/useIntelligenceBriefing.js';
+import { buildDiscoverFeed } from './domain/intelligence/discoverFeed.js';import { useIntelligenceBriefing } from './hooks/useIntelligenceBriefing.js';
 import { useBookmarkMaterial } from './hooks/useBookmarkMaterial.js';
 import { useArticleEditor } from './hooks/useArticleEditor.js';
 import { useBriefingOps } from './hooks/useBriefingOps.js';
@@ -52,7 +51,6 @@ import TodayNewspaper from './components/TodayNewspaper.jsx';
 import CommunityPage from './components/CommunityPage.jsx';
 import RecommendationsPage from './components/RecommendationsPage.jsx';
 import ProfilePage from './components/ProfilePage.jsx';
-import StudioPage from './components/StudioPage.jsx';
 import Topbar from './components/Topbar.jsx';
 import NewsPage from './components/NewsPage.jsx';
 import CustomUrlPage from './components/CustomUrlPage.jsx';
@@ -520,6 +518,15 @@ function App() {
   const setShowSpaceForm = useMaterialsStore(s => s.setShowSpaceForm);
   const showAddMaterial = useMaterialsStore(s => s.showAddMaterial);
   const setShowAddMaterial = useMaterialsStore(s => s.setShowAddMaterial);
+  // ===== 素材仓库（智创中心）视图状态 =====
+  const materialSection = useMaterialsStore(s => s.materialSection);
+  const setMaterialSection = useMaterialsStore(s => s.setMaterialSection);
+  const materialSort = useMaterialsStore(s => s.materialSort);
+  const setMaterialSort = useMaterialsStore(s => s.setMaterialSort);
+  const materialView = useMaterialsStore(s => s.materialView);
+  const setMaterialView = useMaterialsStore(s => s.setMaterialView);
+  const materialDetailId = useMaterialsStore(s => s.materialDetailId);
+  const setMaterialDetailId = useMaterialsStore(s => s.setMaterialDetailId);
   // ===== AI 简报状态（迁移自 useState -> Zustand aiStore，content 自动持久化）=====
   const aiBrief = useAiStore(s => s.aiBrief);
   const setAiBrief = useAiStore(s => s.setAiBrief);
@@ -549,7 +556,9 @@ function App() {
     continueMaterialInWorkbench, removeMaterial, batchRemoveMaterials,
     updateMaterialTags, toggleMaterialSelection,
     clearMaterialSelection, updateMaterialNote, assignMaterialsToSpace,
-    createMaterialSpace, deleteMaterialSpace, toggleMaterialStar,
+    createMaterialSpace, deleteMaterialSpace, renameMaterialSpace,
+    recentlyDeleted, restoreMaterial, purgeMaterial, emptyTrash,
+    toggleMaterialStar,
     exportMaterials, importMaterials,
   } = useBookmarkMaterial({
     creativeWorkspace,
@@ -2207,8 +2216,7 @@ ${signals}
           if (trendingItems.length === 0) loadTrending();
           break;
         case 'studio':
-          // 智创中心 lazy chunk
-          import('./components/StudioPage.jsx').catch(() => {});
+          // 智创中心 = 素材仓库（静态引入的 MaterialsPage，无需预取 chunk）
           break;
         case 'square':
           // 社区广场 lazy chunk + 帖子列表
@@ -2230,6 +2238,69 @@ ${signals}
   // 右侧面板：「全部动态」显示关注关键词；「AI 情报首页」显示情报时间线；「精准推荐」显示日期竖向时间线
   const showRightPanel = nav === 'recommendations';
   const showStatsBar = showRightPanel && nav !== 'home' && nav !== 'recommendations';
+
+  // 智创中心 = 素材仓库（storage-only）。studio 与 materials 两个入口渲染同一仓库页：
+  // 创作与智能体工作流已由 AI 工作站承接，本模块只负责素材的收集、整理、检索与复用。
+  function renderMaterialsRepo() {
+    return (
+      <MaterialsPage
+        materials={materials}
+        materialSpaces={materialSpaces}
+        materialSearch={materialSearch}
+        setMaterialSearch={setMaterialSearch}
+        materialFilter={materialFilter}
+        setMaterialFilter={setMaterialFilter}
+        materialSpaceFilter={materialSpaceFilter}
+        setMaterialSpaceFilter={setMaterialSpaceFilter}
+        materialTimeRange={materialTimeRange}
+        setMaterialTimeRange={setMaterialTimeRange}
+        materialSourceFilter={materialSourceFilter}
+        setMaterialSourceFilter={setMaterialSourceFilter}
+        allMaterialSources={allMaterialSources}
+        materialTags={materialTags}
+        setMaterialTags={setMaterialTags}
+        allMaterialTags={allMaterialTags}
+        filteredMaterials={filteredMaterials}
+        selectedMaterials={selectedMaterials}
+        exportMaterials={exportMaterials}
+        importMaterials={importMaterials}
+        toggleMaterialStar={toggleMaterialStar}
+        removeMaterial={removeMaterial}
+        batchRemoveMaterials={batchRemoveMaterials}
+        assignMaterialsToSpace={assignMaterialsToSpace}
+        clearMaterialSelection={clearMaterialSelection}
+        selectAllMaterials={selectAllMaterials}
+        toggleMaterialSelection={toggleMaterialSelection}
+        continueMaterialInWorkbench={continueMaterialInWorkbench}
+        materialRefCounts={materialRefCounts}
+        showSpaceForm={showSpaceForm}
+        setShowSpaceForm={setShowSpaceForm}
+        newSpaceName={newSpaceName}
+        setNewSpaceName={setNewSpaceName}
+        createMaterialSpace={createMaterialSpace}
+        showAddMaterial={showAddMaterial}
+        setShowAddMaterial={setShowAddMaterial}
+        addManualMaterial={addManualMaterial}
+        setLightbox={setLightbox}
+        materialSection={materialSection}
+        setMaterialSection={setMaterialSection}
+        materialSort={materialSort}
+        setMaterialSort={setMaterialSort}
+        materialView={materialView}
+        setMaterialView={setMaterialView}
+        materialDetailId={materialDetailId}
+        setMaterialDetailId={setMaterialDetailId}
+        recentlyDeleted={recentlyDeleted}
+        restoreMaterial={restoreMaterial}
+        purgeMaterial={purgeMaterial}
+        emptyTrash={emptyTrash}
+        renameMaterialSpace={renameMaterialSpace}
+        deleteMaterialSpace={deleteMaterialSpace}
+        updateMaterialNote={updateMaterialNote}
+        updateMaterialTags={updateMaterialTags}
+      />
+    );
+  }
 
   return (
     <div data-active-nav={nav} className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${panelCollapsed ? 'panel-collapsed' : ''} ${!showRightPanel ? 'no-right-panel' : ''} ${editorFullscreen ? 'editor-fullscreen' : ''} ${entered ? 'is-entered' : ''}`}>
@@ -2346,21 +2417,7 @@ ${signals}
             />
           )}
 
-          {nav === 'studio' && (
-            <StudioPage
-              goNav={goNav}
-              creativeWorkspace={creativeWorkspace}
-              materials={materials}
-              articles={articles}
-              agents={agents}
-              createArticle={createArticle}
-              setCurrentArticleId={setCurrentArticleId}
-              setEditorTab={setEditorTab}
-              setEditingAgent={setEditingAgent}
-              setNewAgent={setNewAgent}
-              setShowAgentForm={setShowAgentForm}
-            />
-          )}
+          {nav === 'studio' && renderMaterialsRepo()}
 
           {nav === 'agents' && (
             <AgentsPage
@@ -2642,48 +2699,7 @@ ${signals}
             />
           )}
 
-          {nav === 'materials' && (
-            <MaterialsPage
-              materials={materials}
-              materialSpaces={materialSpaces}
-              materialSearch={materialSearch}
-              setMaterialSearch={setMaterialSearch}
-              materialFilter={materialFilter}
-              setMaterialFilter={setMaterialFilter}
-              materialSpaceFilter={materialSpaceFilter}
-              setMaterialSpaceFilter={setMaterialSpaceFilter}
-              materialTimeRange={materialTimeRange}
-              setMaterialTimeRange={setMaterialTimeRange}
-              materialSourceFilter={materialSourceFilter}
-              setMaterialSourceFilter={setMaterialSourceFilter}
-              allMaterialSources={allMaterialSources}
-              materialTags={materialTags}
-              setMaterialTags={setMaterialTags}
-              allMaterialTags={allMaterialTags}
-              filteredMaterials={filteredMaterials}
-              selectedMaterials={selectedMaterials}
-              exportMaterials={exportMaterials}
-              importMaterials={importMaterials}
-              toggleMaterialStar={toggleMaterialStar}
-              removeMaterial={removeMaterial}
-              batchRemoveMaterials={batchRemoveMaterials}
-              assignMaterialsToSpace={assignMaterialsToSpace}
-              clearMaterialSelection={clearMaterialSelection}
-              selectAllMaterials={selectAllMaterials}
-              toggleMaterialSelection={toggleMaterialSelection}
-              continueMaterialInWorkbench={continueMaterialInWorkbench}
-              materialRefCounts={materialRefCounts}
-              showSpaceForm={showSpaceForm}
-              setShowSpaceForm={setShowSpaceForm}
-              newSpaceName={newSpaceName}
-              setNewSpaceName={setNewSpaceName}
-              createMaterialSpace={createMaterialSpace}
-              showAddMaterial={showAddMaterial}
-              setShowAddMaterial={setShowAddMaterial}
-              addManualMaterial={addManualMaterial}
-              setLightbox={setLightbox}
-            />
-          )}
+          {nav === 'materials' && renderMaterialsRepo()}
           <AddMaterialModal showAddMaterial={showAddMaterial} setShowAddMaterial={setShowAddMaterial} addManualMaterial={addManualMaterial} materialSpaces={materialSpaces} />
 
 {nav === 'editor' && <ArticleEditor editorFullscreen={editorFullscreen} setEditorFullscreen={setEditorFullscreen} editorTextareaRef={editorTextareaRef} imageInputRef={imageInputRef} articles={articles} setArticles={setArticles} currentArticleId={currentArticleId} setCurrentArticleId={setCurrentArticleId} editorTab={editorTab} setEditorTab={setEditorTab} editorCursorPos={editorCursorPos} setEditorCursorPos={setEditorCursorPos} showTemplateMenu={showTemplateMenu} setShowTemplateMenu={setShowTemplateMenu} showAiPanel={showAiPanel} setShowAiPanel={setShowAiPanel} showImagePanel={showImagePanel} setShowImagePanel={setShowImagePanel} aiResult={aiResult} setAiResult={setAiResult} aiCustomPrompt={aiCustomPrompt} setAiCustomPrompt={setAiCustomPrompt} autoSaveTimer={autoSaveTimer} setAutoSaveTimer={setAutoSaveTimer} lastSavedAt={lastSavedAt} setLastSavedAt={setLastSavedAt} articleTagInput={articleTagInput} setArticleTagInput={setArticleTagInput} editingArticleTag={editingArticleTag} setEditingArticleTag={setEditingArticleTag} articleSpaces={articleSpaces} setArticleSpaces={setArticleSpaces} materialSpaces={materialSpaces} setMaterialSpaces={setMaterialSpaces} articleSpaceFilter={articleSpaceFilter} setArticleSpaceFilter={setArticleSpaceFilter} articleMaterialSpaceFilter={articleMaterialSpaceFilter} setArticleMaterialSpaceFilter={setArticleMaterialSpaceFilter} articleSpaceFormOpen={articleSpaceFormOpen} setArticleSpaceFormOpen={setArticleSpaceFormOpen} newArticleSpaceName={newArticleSpaceName} setNewArticleSpaceName={setNewArticleSpaceName} articleSpaceForNewArticle={articleSpaceForNewArticle} setArticleSpaceForNewArticle={setArticleSpaceForNewArticle} articleSearch={articleSearch} setArticleSearch={setArticleSearch} articleStatusFilter={articleStatusFilter} setArticleStatusFilter={setArticleStatusFilter} articleTemplateFilter={articleTemplateFilter} setArticleTemplateFilter={setArticleTemplateFilter} articleSort={articleSort} setArticleSort={setArticleSort} filteredArticles={filteredArticles} articleExportFilter={articleExportFilter} setArticleExportFilter={setArticleExportFilter} createArticle={createArticle} updateArticle={updateArticle} deleteArticle={deleteArticle} duplicateArticle={duplicateArticle} addArticleTag={addArticleTag} removeArticleTag={removeArticleTag} triggerAutoSave={triggerAutoSave} handleContentChange={handleContentChange} handleTitleChange={handleTitleChange} insertAtCursor={insertAtCursor} insertMaterialAtCursor={insertMaterialAtCursor} removeLinkedMaterial={removeLinkedMaterial} handleImageUpload={handleImageUpload} handlePaste={handlePaste} createArticleSpace={createArticleSpace} deleteArticleSpace={deleteArticleSpace} assignArticleToSpace={assignArticleToSpace} batchAssignArticlesToSpace={batchAssignArticlesToSpace} insertAiResult={insertAiResult} clearAiResult={clearAiResult} exportArticleToFile={exportArticleToFile} copyArticleAsRichText={copyArticleAsRichText} workspace={creativeWorkspace} materials={materials} llmConfig={llmConfig} />}

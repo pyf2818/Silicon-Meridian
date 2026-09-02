@@ -39,6 +39,23 @@ export const useMaterialsStore = create((set) => ({
   materialSpaceFilter: 'all',
   setMaterialSpaceFilter: (v) => set({ materialSpaceFilter: v }),
 
+  // ===== 素材仓库（智创中心）视图状态 =====
+  // 左栏分区：all | starred | recent | trash
+  materialSection: 'all',
+  setMaterialSection: (v) => set({ materialSection: v }),
+
+  // 排序：newest | oldest | title | source
+  materialSort: 'newest',
+  setMaterialSort: (v) => set({ materialSort: v }),
+
+  // 视图：grid | list
+  materialView: 'grid',
+  setMaterialView: (v) => set({ materialView: v }),
+
+  // 详情抽屉打开的素材 id（null = 关闭）
+  materialDetailId: null,
+  setMaterialDetailId: (v) => set({ materialDetailId: v }),
+
   // ===== 弹窗开关 =====
   showSpaceForm: false,
   setShowSpaceForm: (v) => set({ showSpaceForm: v }),

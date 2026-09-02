@@ -188,14 +188,53 @@ export function useBookmarkMaterial({
     showToast('已发送到 AI 工作站继续研究');
   }, [setNav, setCopilotPendingMessage]);
 
-  const removeMaterial = useCallback((id) => {
-    setMaterials(prev => prev.filter(m => m.id !== id));
+  // ===== 回收站：删除进回收站（软删除，可恢复/彻底清除），上限 30 条 =====
+  const [recentlyDeleted, setRecentlyDeleted] = useState(() => loadLS('recentlyDeletedMaterials', []));
+  useEffect(() => {
+    saveLS('recentlyDeletedMaterials', recentlyDeleted);
+  }, [recentlyDeleted]);
+
+  const moveToTrash = useCallback((materialsToTrash) => {
+    if (!materialsToTrash.length) return;
+    setRecentlyDeleted(prev => [
+      ...materialsToTrash.map(m => ({ ...m, deletedAt: new Date().toISOString() })),
+      ...prev,
+    ].slice(0, 30));
   }, []);
 
-  const batchRemoveMaterials = useCallback((ids) => {
-    setMaterials(prev => prev.filter(m => !ids.includes(m.id)));
-    setSelectedMaterials([]);
+  const restoreMaterial = useCallback((id) => {
+    setRecentlyDeleted(prev => {
+      const target = prev.find(m => m.id === id);
+      if (!target) return prev;
+      const { deletedAt, ...rest } = target;
+      setMaterials(cur => [rest, ...cur]);
+      return prev.filter(m => m.id !== id);
+    });
   }, []);
+
+  const purgeMaterial = useCallback((id) => {
+    setRecentlyDeleted(prev => prev.filter(m => m.id !== id));
+  }, []);
+
+  const emptyTrash = useCallback(() => setRecentlyDeleted([]), []);
+
+  // 删除 = 进回收站（软删除），可恢复；彻底删除走 purgeMaterial
+  const removeMaterial = useCallback((id) => {
+    setMaterials(prev => {
+      const target = prev.find(m => m.id === id);
+      if (target) moveToTrash([target]);
+      return prev.filter(m => m.id !== id);
+    });
+  }, [moveToTrash]);
+
+  const batchRemoveMaterials = useCallback((ids) => {
+    setMaterials(prev => {
+      const trashed = prev.filter(m => ids.includes(m.id));
+      moveToTrash(trashed);
+      return prev.filter(m => !ids.includes(m.id));
+    });
+    setSelectedMaterials([]);
+  }, [moveToTrash]);
 
   const updateMaterialTags = useCallback((id, tags) => {
     setMaterials(prev => prev.map(m => m.id === id ? { ...m, tags } : m));
@@ -228,6 +267,12 @@ export function useBookmarkMaterial({
     setNewSpaceName('');
     setShowSpaceForm?.(false);
   }, [newSpaceName, setShowSpaceForm]);
+
+  const renameMaterialSpace = useCallback((id, name) => {
+    const next = String(name || '').trim();
+    if (!next) return;
+    setMaterialSpaces(prev => prev.map(s => s.id === id ? { ...s, name: next } : s));
+  }, []);
 
   const deleteMaterialSpace = useCallback((id) => {
     setMaterialSpaces(prev => prev.filter(s => s.id !== id));
@@ -301,6 +346,12 @@ export function useBookmarkMaterial({
     assignMaterialsToSpace,
     createMaterialSpace,
     deleteMaterialSpace,
+    renameMaterialSpace,
+    // 回收站
+    recentlyDeleted,
+    restoreMaterial,
+    purgeMaterial,
+    emptyTrash,
     toggleMaterialStar,
     exportMaterials,
     importMaterials,
