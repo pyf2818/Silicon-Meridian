@@ -25,7 +25,8 @@ export default function RecommendationFeed({
   onPickInterests,
   onLogin,
 }) {
-  // 精准推荐：优先展示当天全部画像资讯（allItems，不限条数），按发布时间倒序（最近→最久）
+  // 精准推荐（抖音式）：当日全部画像资讯（allItems 由 buildPrecisionFeed 产出——
+  // 仅今天发布、不限条数、含探索池、多样性打散），按推荐分与新鲜度混排。
   // 仅在 allItems 为空时才回退到 lanes（历史快照的 10 条精选）
   const feedItems = useMemo(() => {
     const seen = new Set();
@@ -38,10 +39,12 @@ export default function RecommendationFeed({
       seen.add(item.id);
       result.push(item);
     }
-    // 按发布时间倒序（最近→最久），最新资讯排最前
-    result.sort((a, b) => {
-      return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
-    });
+    // 引擎已按 feedScore + 多样性排好序；这里仅兜底保证"探索注入的次序"不被破坏：
+    // 有 feedScore 的条目保持引擎序，无 feedScore 的回退（lanes）按发布时间倒序
+    const hasEngineOrder = result.some(item => typeof item.feedScore === 'number');
+    if (!hasEngineOrder) {
+      result.sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime());
+    }
     return result;
   }, [lanes, allItems]);
 
@@ -89,11 +92,22 @@ export default function RecommendationFeed({
     </div>
   ) : null;
 
+  // 当日精准推荐说明条：让用户理解这份流"是什么、为什么是这些"
+  const precisionBar = (
+    <div className="precision-meta-bar">
+      <span className="precision-meta-title">当日精准推荐</span>
+      <span className="precision-meta-chip">仅今天发布</span>
+      <span className="precision-meta-chip">不限条数</span>
+      <span className="precision-meta-desc">按 画像契合 · 行为信号 · 多源发酵 综合排序，并注入探索内容拓宽视野（标记「探索」的条目来自你关注领域之外）</span>
+    </div>
+  );
+
   if (loading) {
     return (
       <>
         {snapshotBanner}
         {interestBar}
+        {precisionBar}
         <div className={`feed-list view-${viewMode} ${viewMode === 'card' ? 'card-grid' : ''}`}>
           {Array.from({ length: 6 }).map((_, i) => (
             <article key={i} className="news-item skeleton view-standard">
@@ -112,6 +126,7 @@ export default function RecommendationFeed({
       <>
         {snapshotBanner}
         {interestBar}
+        {precisionBar}
         <div className="error-state">
           <p>加载失败: {error}</p>
           <button type="button" onClick={onRefresh}>重试</button>
@@ -125,8 +140,9 @@ export default function RecommendationFeed({
       <>
         {snapshotBanner}
         {interestBar}
+        {precisionBar}
         <div className="empty-state">
-          <p>当日暂无满足你关注领域的推荐资讯</p>
+          <p>今天还没有满足你关注领域的新资讯——引擎只推荐今天发布的内容，稍后刷新再看看</p>
           <button type="button" onClick={onRefresh}>刷新重试</button>
         </div>
       </>
@@ -137,6 +153,7 @@ export default function RecommendationFeed({
     <>
       {snapshotBanner}
       {interestBar}
+      {precisionBar}
       <div className={`feed-list view-${viewMode} ${viewMode === 'card' ? 'card-grid' : ''}`}>
         {visible.map((item, i) => renderCard(item, i))}
       </div>
@@ -146,7 +163,7 @@ export default function RecommendationFeed({
           {!loadingMore && <span className="load-more-hint">滚动加载更多（已显示 {visible.length} / {total}）</span>}
         </div>
       ) : (
-        <div className="load-more-area load-more-done">已全部加载（共 {total} 条）</div>
+        <div className="load-more-area load-more-done">已全部加载（今日共 {total} 条）</div>
       )}
     </>
   );

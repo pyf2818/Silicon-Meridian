@@ -9,6 +9,7 @@ const ICONS = {
 
 function NewsPage({
   eventClusters,
+  discoverMeta,
   category,
   mode,
   query,
@@ -46,6 +47,15 @@ function NewsPage({
 }) {
   return (
     <>
+      {/* 全部动态说明条：多领域大杂烩定位，与精准推荐（画像驱动）刻意区分 */}
+      {discoverMeta && (
+        <div className="discover-meta-bar">
+          <span className="discover-meta-title">全部动态</span>
+          <span className="discover-meta-chip">{discoverMeta.total} 条热点</span>
+          <span className="discover-meta-chip">{discoverMeta.domainCount} 个领域交错</span>
+          <span className="discover-meta-desc">按 多源发酵 · 互动信号 · 今日热词 · 新鲜度 综合排序，实时递进更新，不围绕个人画像</span>
+        </div>
+      )}
       {/* Active Filters Chip Bar */}
       {allActiveFilters.length > 0 && (
         <div className="active-filters-bar">

@@ -8,6 +8,7 @@ import {
   clusterEvents,
   selectBriefingLanes,
 } from '../domain/intelligence/recommendationEngine.js';
+import { buildPrecisionFeed } from '../domain/intelligence/precisionFeed.js';
 import { buildAlgorithmBriefing } from '../domain/intelligence/briefingEngine.js';
 import { useProfileStore } from '../store';
 import { fetchRelevantMemories } from '../utils/memoryEvolver.js';
@@ -45,7 +46,9 @@ const CATEGORY_GROUPS = [
  * @param {Object} deps.domainTiers              - Profile domain tier map.
  * @param {Object} deps.sourceTiers              - Profile source tier map.
  * @param {Array}  deps.specialFollows           - Special follow entries (source/author/url/keyword).
- * @param {string} deps.selectedNewsDate         - Currently selected news date (YYYY-MM-DD).
+ * @param {string} deps.selectedNewsDate         - Currently selected news date (YYYY-MM-DD). Note: candidates no longer depend on this (they are now strictly the current day's feed).
+ * @param {Object} deps.recommendationFeedback   - Feedback aggregate {hiddenIds, boostedCategories, mutedSources, trackedTerms} (negative feedback loop).
+ * @param {Array}  deps.recommendationFeedbackEvents - Feedback event stream [{type, category, source, ts}].
  */
 export function useRecommendationMemos({
   items,
@@ -57,6 +60,8 @@ export function useRecommendationMemos({
   sourceTiers,
   specialFollows,
   selectedNewsDate,
+  recommendationFeedback = {},
+  recommendationFeedbackEvents = [],
 }) {
   // Phase 3 Task B12: 异步加载 relevantMemories（基于 top items 的 title+summary 做 query）
   // 失败静默，不阻塞主推荐流程
@@ -99,7 +104,29 @@ export function useRecommendationMemos({
     }).filter(g => g.count > 0);
   }, [followKeywords, items]);
 
-  // 统一推荐引擎：系统A(用户权重)+系统B(AI算法)+系统C(动态行为)
+  // Phase 3 Task B17: eventClusters 提前计算——todayMustRead 与精准推荐流共用同一份聚类，
+  // 消除此前 todayMustRead 内部重复执行一次 clusterEvents 的开销
+  const eventClusters = useMemo(() => clusterEvents(items), [items]);
+  const clusterByItemId = useMemo(() => {
+    const map = new Map();
+    eventClusters.forEach(cluster => cluster.itemIds.forEach(id => map.set(id, cluster)));
+    return map;
+  }, [eventClusters]);
+
+  // 用户选择的兴趣领域视为 normal 分层参与打分；特别关注并入关注词
+  const effectiveDomainTiers = useMemo(
+    () => selectedInterests.reduce(
+      (tiers, id) => ({ ...tiers, [id]: tiers[id] || 'normal' }),
+      { ...domainTiers }
+    ),
+    [selectedInterests, domainTiers],
+  );
+  const effectiveSpecialFollows = useMemo(
+    () => [...specialFollows, ...followKeywords.map(target => ({ type: 'keyword', target }))],
+    [specialFollows, followKeywords],
+  );
+
+  // 统一推荐引擎：系统A(用户权重)+系统B(AI算法)+系统C(动态行为) —— 候选池（供简报/仪表盘）
   const todayMustRead = useMemo(() => {
     const readIds = new Set(readingHistory.map(h => h.id));
     const bookmarkIds = new Set(bookmarks.map(b => b.itemId || b.id));
@@ -113,37 +140,9 @@ export function useRecommendationMemos({
     });
     const maxCategoryPop = Math.max(...categoryPopularity.values(), 1);
 
-    // 热门关键词统计
-    const keywordFrequency = new Map();
-    items.forEach(item => {
-      const text = `${item.title} ${item.summary || ''}`.toLowerCase();
-      const words = text.match(/\b[a-z一-龥]{2,}\b/g) || [];
-      words.forEach(word => {
-        if (!/^[a-z]{2}$/.test(word)) { // 过滤过短的英文单词
-          keywordFrequency.set(word, (keywordFrequency.get(word) || 0) + 1);
-        }
-      });
-    });
-    const topKeywords = [...keywordFrequency.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 50)
-      .map(([word]) => word);
-    const eventClusters = clusterEvents(items);
-    const clusterByItemId = new Map();
-    eventClusters.forEach(cluster => cluster.itemIds.forEach(id => clusterByItemId.set(id, cluster)));
-    const effectiveDomainTiers = selectedInterests.reduce(
-      (tiers, id) => ({ ...tiers, [id]: tiers[id] || 'normal' }),
-      { ...domainTiers }
-    );
-    const effectiveSpecialFollows = [
-      ...specialFollows,
-      ...followKeywords.map(target => ({ type: 'keyword', target })),
-    ];
-
     return items
       .filter(item => !readIds.has(item.id))  // 已读过滤：避免重复推荐
       .map(item => {
-        // 领域匹配（用于 trendVelocity 上下文）
         const categoryScore = categoryPopularity.get(item.category) || 0;
         const categoryReadCount = readingHistory.filter(h => h.category === item.category).length;
         const sourceReadCount = readingHistory.filter(h => h.source === item.source).length;
@@ -172,11 +171,29 @@ export function useRecommendationMemos({
       })
       .sort((a, b) => b.mustReadScore - a.mustReadScore)
       .slice(0, 500);
-  }, [items, followKeywords, readingHistory, bookmarks, selectedInterests, domainTiers, sourceTiers, specialFollows, personaSummary, relevantMemories]);
+  }, [items, readingHistory, bookmarks, effectiveDomainTiers, sourceTiers, effectiveSpecialFollows, clusterByItemId, personaSummary, relevantMemories]);
 
-  const recommendationCandidates = useMemo(() => todayMustRead.filter(item =>
-    item.publishedAt?.slice(0, 10) === selectedNewsDate
-  ), [todayMustRead, selectedNewsDate]);
+  // 当日精准推荐流（抖音式）：多信号预估互动概率 + 时间衰减行为 + 探索流量池 + 多样性打散。
+  // 硬约束：仅保留本地时区"今天 00:00 → 现在"发布的资讯，绝不显示其他日期；不限条数。
+  // 与 selectedNewsDate（快照日期轨）解耦——精准推荐永远聚焦"今天"。
+  const recommendationCandidates = useMemo(() => buildPrecisionFeed({
+    items: todayMustRead,
+    now: Date.now(),
+    profile: {
+      domainTiers: effectiveDomainTiers,
+      sourceTiers,
+      specialFollows: effectiveSpecialFollows,
+      selectedInterests,
+      followKeywords,
+    },
+    behavior: {
+      readingHistory,
+      bookmarks,
+      feedback: recommendationFeedback,
+      feedbackEvents: recommendationFeedbackEvents,
+    },
+    clusters: eventClusters,
+  }).feed, [todayMustRead, effectiveDomainTiers, sourceTiers, effectiveSpecialFollows, selectedInterests, followKeywords, readingHistory, bookmarks, recommendationFeedback, recommendationFeedbackEvents, eventClusters]);
 
   const recommendationLanes = useMemo(() => selectBriefingLanes(recommendationCandidates, {
     perLane: 5,
@@ -188,10 +205,6 @@ export function useRecommendationMemos({
     date: selectedNewsDate,
     lanes: recommendationLanes,
   }), [selectedNewsDate, recommendationLanes]);
-
-  // Phase 3 Task B17: 暴露 eventClusters 给 App.jsx，避免 L1112 重复调用 clusterEvents
-  // 注意：基于全量 items 聚类（与 todayMustRead 内部一致），App.jsx 用作 eventClusters prop
-  const eventClusters = useMemo(() => clusterEvents(items), [items]);
 
   return {
     followKeywordUpdates,

@@ -36,6 +36,7 @@ import { useExternalIntelligence } from './hooks/useExternalIntelligence.js';
 import { useIntelligenceMemos } from './hooks/useIntelligenceMemos.js';
 import { useRecommendationMemos } from './hooks/useRecommendationMemos.js';
 import { selectBriefingLanes } from './domain/intelligence/recommendationEngine.js';
+import { buildDiscoverFeed } from './domain/intelligence/discoverFeed.js';
 import { useIntelligenceBriefing } from './hooks/useIntelligenceBriefing.js';
 import { useBookmarkMaterial } from './hooks/useBookmarkMaterial.js';
 import { useArticleEditor } from './hooks/useArticleEditor.js';
@@ -1247,6 +1248,8 @@ function App() {
     sourceTiers,
     specialFollows,
     selectedNewsDate,
+    recommendationFeedback,
+    recommendationFeedbackEvents,
   });
 
   // 复刻 Meridian G1/G2/G3：语义聚类 + 多智能体分析 + 跨日演化（接入每日简报，最小侵入）
@@ -1263,13 +1266,25 @@ function App() {
       .map(cluster => ({ ...cluster, keyword: cluster.primaryItem.title }));
   }, [rawEventClusters, filteredIds, nav]);
 
+  // 全部动态 = 多领域大杂烩（buildDiscoverFeed）：多源发酵 + 互动信号(点赞/评论/浏览量)
+  // + 今日热词 + 新鲜度综合排序，跨领域打散，与用户画像完全解耦（与「精准推荐」刻意区分）。
+  // 实时更新递进：newsStore 轮询刷新后 items 流式进入，feed 纯派生即随之更新；
+  // 决胜键含 id，刷新时既有条目次序稳定不抖动。
+  const discoverFeed = useMemo(() => (
+    nav === 'all'
+      ? buildDiscoverFeed({ items: filtered, now: Date.now(), clusters: rawEventClusters })
+      : null
+  ), [nav, filtered, rawEventClusters]);
+
   const allFeedItems = useMemo(() => {
-    if (nav !== 'all' || eventClusters.length === 0) return filtered;
+    if (nav !== 'all') return filtered;
+    const feed = discoverFeed?.feed || filtered;
+    if (eventClusters.length === 0) return feed;
     const secondaryIds = new Set(eventClusters.flatMap(cluster =>
       cluster.items.filter(item => item.id !== cluster.primaryItem.id).map(item => item.id)
     ));
-    return filtered.filter(item => !secondaryIds.has(item.id));
-  }, [filtered, eventClusters, nav]);
+    return feed.filter(item => !secondaryIds.has(item.id));
+  }, [filtered, eventClusters, nav, discoverFeed]);
 
   const smartRecommendations = useMemo(() => {
     if (readingHistory.length === 0) return [];
@@ -2411,6 +2426,7 @@ ${signals}
             <NewsPage
               key="all"
               eventClusters={eventClusters}
+              discoverMeta={discoverFeed?.meta || null}
               category={category}
               mode={mode}
               query={query}
