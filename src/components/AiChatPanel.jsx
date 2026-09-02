@@ -97,6 +97,18 @@ export default function AiChatPanel({
   const [autoTodos, setAutoTodos] = useState([]); // 对话自动提取的行动项
   const [excludeAllEvidence, setExcludeAllEvidence] = useState(false); // 一键排除全部情报上下文
   const [excludeAllMaterials, setExcludeAllMaterials] = useState(false); // 一键排除全部素材库上下文
+  // 底部上下文胶囊的"查看内容"弹层：null | 'intel' | 'material'（数字胶囊点开看具体条目）
+  const [contextPeek, setContextPeek] = useState(null);
+  const contextPeekRef = useRef(null);
+  // 点外部关闭弹层（胶囊自身 stopPropagation，保证点胶囊本体仍是 toggle）
+  useEffect(() => {
+    if (!contextPeek) return undefined;
+    const onDocMouseDown = (e) => {
+      if (contextPeekRef.current && !contextPeekRef.current.contains(e.target)) setContextPeek(null);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [contextPeek]);
 
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState(llmConfig?.selectedModel || '');
@@ -182,6 +194,19 @@ export default function AiChatPanel({
     const query = (input || lastUser || '').slice(0, 120);
     return buildMaterialContext(materials, { query, limit: 6 });
   }, [materials, input, messages]);
+
+  // 上下文胶囊弹层数据：情报证据条目（与 system prompt 注入同源，≤12 条）
+  const intelPeekItems = useMemo(() => (intelligenceContext?.items || []).slice(0, 12), [intelligenceContext]);
+  // 弹层条目点击：把 [资讯:ID] / [素材:ID] 引用插入输入框（引用格式与 buildSystemPrompt 的证据/素材锚点一致）
+  const insertContextReference = useCallback((ref) => {
+    setInput(prev => {
+      const base = prev || '';
+      const needSpace = base.length > 0 && !/\s$/.test(base);
+      return `${base}${needSpace ? ' ' : ''}${ref}`;
+    });
+    setContextPeek(null);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
 
   // 工作空间召回：异步检索相关文件（IndexedDB），debounce 避免频繁查询
   const [recalledFiles, setRecalledFiles] = useState([]);
@@ -1039,18 +1064,18 @@ export default function AiChatPanel({
                 )}
               </div>
             ) : (
-              <div className="chat-welcome-cards">
+              // 快捷指令：横向轻 chip 行（WorkBuddy 风格）——描述收进 title 悬停，
+              // 首屏不再被 2 列大卡片占据
+              <div className="chat-welcome-chips">
                 {quickActions.map(action => (
                   <button
                     key={action.label}
-                    className="chat-suggest-card"
+                    className="chat-quick-pill"
                     onClick={() => (action.orchestrate ? handleOrchestrate(action.prompt) : sendMessage(action.prompt))}
+                    title={action.desc}
                   >
-                    <span className="chat-suggest-icon">{SUGGEST_ICONS[action.icon] || SUGGEST_ICONS.sparkle}</span>
-                    <span className="chat-suggest-text">
-                      <strong>{action.label}</strong>
-                      <small>{action.desc}</small>
-                    </span>
+                    <span className="chat-quick-pill-icon">{SUGGEST_ICONS[action.icon] || SUGGEST_ICONS.sparkle}</span>
+                    {action.label}
                   </button>
                 ))}
               </div>
@@ -1277,13 +1302,20 @@ export default function AiChatPanel({
             {ICONS.send}
           </button>
         </div>
-        {/* 底部一行：上下文胶囊 + 联网搜索 + 权限模式（单行并排，溢出滚动） */}
+        {/* 底部一行：上下文胶囊（可点开查看条目）+ 联网搜索 + 权限模式（单行并排，溢出滚动） */}
         <div className="chat-composer-bottom">
           <div className="chat-context-group">
             {intelligenceContext?.items?.length > 0 && (
-              <button type="button" className={`chat-context-pill chat-context-pill-toggle ${excludeAllEvidence ? 'excluded' : ''}`} onClick={() => setExcludeAllEvidence(v => !v)} title={excludeAllEvidence ? '已排除情报上下文，点击恢复' : '已附加情报上下文，点击排除'}>
+              <button
+                type="button"
+                className={`chat-context-pill chat-context-pill-peek ${excludeAllEvidence ? 'excluded' : ''} ${contextPeek === 'intel' ? 'open' : ''}`}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={() => setContextPeek(p => (p === 'intel' ? null : 'intel'))}
+                title="查看注入的情报证据条目"
+              >
                 <span className="icon-sm">{ICONS.messageSquare}</span>
                 {excludeAllEvidence ? '已排除情报' : `情报 ${intelligenceContext.items.length}`}
+                <span className="chat-context-pill-caret">▴</span>
               </button>
             )}
             {workspaceFiles.length > 0 && (
@@ -1294,9 +1326,16 @@ export default function AiChatPanel({
               </div>
             )}
             {materialContext.total > 0 && (
-              <button type="button" className={`chat-context-pill chat-context-pill-toggle chat-context-pill-material ${excludeAllMaterials ? 'excluded' : ''} ${materialContext.hasElf ? 'has-elf' : ''}`} onClick={() => setExcludeAllMaterials(v => !v)} title={excludeAllMaterials ? '已排除素材库上下文，点击恢复' : '已附加素材库上下文，点击排除'}>
+              <button
+                type="button"
+                className={`chat-context-pill chat-context-pill-peek chat-context-pill-material ${excludeAllMaterials ? 'excluded' : ''} ${materialContext.hasElf ? 'has-elf' : ''} ${contextPeek === 'material' ? 'open' : ''}`}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={() => setContextPeek(p => (p === 'material' ? null : 'material'))}
+                title="查看注入的素材条目"
+              >
                 <span className="icon-sm">{ICONS.layers}</span>
                 {excludeAllMaterials ? '已排除素材' : (materialContext.hasElf ? `精灵素材 ${materialContext.elfCount}` : `素材 ${materialContext.total}`)}
+                <span className="chat-context-pill-caret">▴</span>
               </button>
             )}
             <button
@@ -1308,6 +1347,70 @@ export default function AiChatPanel({
               <span className="icon-sm">{ICONS.globe || ICONS.compass}</span>
               {webSearchEnabled ? '联网' : '离线'}
             </button>
+
+            {/* 上下文条目弹层：数字胶囊 → 看得见的条目列表，点击插入引用 */}
+            {contextPeek && (
+              <div className="chat-context-peek" ref={contextPeekRef}>
+                <div className="chat-context-peek-head">
+                  <span className="chat-context-peek-title">
+                    {contextPeek === 'intel'
+                      ? `注入的情报证据 · ${intelPeekItems.length} 条`
+                      : `注入的素材上下文 · ${materialContext.selected.length}/${materialContext.total} 条`}
+                  </span>
+                  {contextPeek === 'intel' && (
+                    <button
+                      type="button"
+                      className={`chat-context-peek-toggle ${excludeAllEvidence ? 'is-excluded' : ''}`}
+                      onClick={() => setExcludeAllEvidence(v => !v)}
+                    >
+                      {excludeAllEvidence ? '已排除 · 恢复' : '排除注入'}
+                    </button>
+                  )}
+                  {contextPeek === 'material' && (
+                    <button
+                      type="button"
+                      className={`chat-context-peek-toggle ${excludeAllMaterials ? 'is-excluded' : ''}`}
+                      onClick={() => setExcludeAllMaterials(v => !v)}
+                    >
+                      {excludeAllMaterials ? '已排除 · 恢复' : '排除注入'}
+                    </button>
+                  )}
+                  <button type="button" className="chat-context-peek-close" onClick={() => setContextPeek(null)} title="关闭">{ICONS.x}</button>
+                </div>
+                <div className="chat-context-peek-list custom-scrollbar">
+                  {contextPeek === 'intel' && intelPeekItems.map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="chat-context-peek-item"
+                      onClick={() => insertContextReference(`[资讯:${item.id}]`)}
+                      title={item.summary || item.title}
+                    >
+                      <span className="chat-context-peek-item-title">{item.title}</span>
+                      <span className="chat-context-peek-item-meta">{item.source || '未知来源'}</span>
+                    </button>
+                  ))}
+                  {contextPeek === 'material' && materialContext.selected.map(mat => (
+                    <button
+                      key={mat.id}
+                      type="button"
+                      className="chat-context-peek-item"
+                      onClick={() => insertContextReference(`[素材:${mat.id}]`)}
+                      title={String(mat.fullContent || mat.content || '').slice(0, 200)}
+                    >
+                      <span className="chat-context-peek-item-title">{mat.title || '未命名素材'}</span>
+                      <span className="chat-context-peek-item-meta">{mat.type || 'material'}{mat.source ? ` · ${mat.source}` : ''}</span>
+                    </button>
+                  ))}
+                  {contextPeek === 'material' && materialContext.total > materialContext.selected.length && (
+                    <div className="chat-context-peek-more">
+                      仅相关性最高的 {materialContext.selected.length} 条注入上下文，素材库共 {materialContext.total} 条
+                    </div>
+                  )}
+                </div>
+                <div className="chat-context-peek-hint">点击条目将 [资讯:ID] / [素材:ID] 引用插入输入框</div>
+              </div>
+            )}
           </div>
           <div className="chat-permission-mode" role="group" aria-label="Agent 权限模式">
             {[

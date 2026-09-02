@@ -162,23 +162,20 @@ export default function AgentPanel({
             </span>
           </div>
         </div>
+        {/* 会话统计：单行迷你胶囊条（原 2×2 大格子太占空间，且多数时候是 0） */}
         <div className="agent-topcard-metrics">
-          <div className="agent-topcard-metric" title="对话轮次">
-            <span className="agent-topcard-metric-value">{stats.rounds}</span>
-            <span className="agent-topcard-metric-label">轮次</span>
-          </div>
-          <div className="agent-topcard-metric" title="AI 回复数">
-            <span className="agent-topcard-metric-value">{stats.aiReplies}</span>
-            <span className="agent-topcard-metric-label">回复</span>
-          </div>
-          <div className="agent-topcard-metric" title="工具调用次数">
-            <span className="agent-topcard-metric-value">{stats.toolCallTotal}</span>
-            <span className="agent-topcard-metric-label">工具</span>
-          </div>
-          <div className="agent-topcard-metric" title="估算 token 用量">
-            <span className="agent-topcard-metric-value">~{stats.estTokens}</span>
-            <span className="agent-topcard-metric-label">tokens</span>
-          </div>
+          <span className="agent-metric-pill" title="对话轮次">
+            <b>{stats.rounds}</b>轮次
+          </span>
+          <span className="agent-metric-pill" title="AI 回复数">
+            <b>{stats.aiReplies}</b>回复
+          </span>
+          <span className="agent-metric-pill" title="工具调用次数">
+            <b>{stats.toolCallTotal}</b>工具
+          </span>
+          <span className="agent-metric-pill" title="估算 token 用量">
+            <b>~{stats.estTokens}</b>tok
+          </span>
         </div>
         {memoryHealth && memoryHealth.total > 0 && (
           <div className="agent-topcard-evolution" title="自进化记忆健康度：总记忆数 / 平均置信度 / 高置信记忆数">

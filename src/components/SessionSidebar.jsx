@@ -67,13 +67,28 @@ function SessionItem({ session, isActive, onSwitch, onRename, onDelete }) {
     else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
   };
 
+  // hover 预览（原生 title，轻量零依赖）：完整标题 + 消息数 + 首条提问摘要 + 更新时间。
+  // 替代"点小点弹窗预览再跳转"的两跳交互：hover 即预览，点击即跳转，一次点击完成切换。
+  const preview = useMemo(() => {
+    const msgs = session.messages || [];
+    const firstUser = msgs.find(m => m.role === 'user')?.content || '';
+    const lines = [
+      String(session.title || '新对话'),
+      `${msgs.length} 条消息 · 更新于 ${formatTime(session.updatedAt)}`,
+    ];
+    if (firstUser) lines.push('', `首条：${firstUser.replace(/\s+/g, ' ').slice(0, 120)}`);
+    return lines.join('\n');
+  }, [session]);
+
   return (
     <div
       className={`session-item ${isActive ? 'active' : ''} ${editing ? 'is-editing' : ''}`}
       onClick={() => !editing && onSwitch(session.id)}
       onDoubleClick={startEdit}
-      title={editing ? '回车保存 · Esc 取消' : '双击或点编辑按钮重命名'}
+      title={editing ? '回车保存 · Esc 取消' : preview}
     >
+      {/* 轨道小点：当前会话点亮 */}
+      <span className="session-dot" aria-hidden="true" />
       {editing ? (
         <input
           ref={inputRef}

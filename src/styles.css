@@ -13448,6 +13448,16 @@ body {
   max-width: 620px;
   margin-top: 18px;
 }
+/* 欢迎页快捷指令：横向轻 chip 行（WorkBuddy 风格），复用 chat-quick-pill 视觉 */
+.chat-welcome-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 680px;
+  margin-top: 20px;
+}
 .chat-suggest-card {
   display: flex;
   align-items: flex-start;
@@ -14112,13 +14122,16 @@ body {
   align-items: center;
   gap: 8px;
   flex-wrap: nowrap;
-  overflow: hidden;
+  /* 改为 visible：上下文条目弹层要从胶囊向上浮出，hidden 会把弹层整体裁掉 */
+  overflow: visible;
   padding: 0 4px;
 }
 .chat-composer-bottom .chat-context-group {
   flex: 1 1 auto;
   min-width: 0;
-  overflow-x: auto;
+  /* 上下文条目弹层（chat-context-peek）挂在本组内向上浮出，overflow 必须放行；
+     水平溢出改由 pill 自身 flex 收缩承担 */
+  overflow: visible;
   scrollbar-width: thin;
 }
 .chat-composer-bottom .chat-permission-mode {
@@ -14224,6 +14237,8 @@ body {
 /* ChatGPT 风格输入容器：大圆角整体框，上下文胶囊在上方 */
 .chat-composer {
   flex-shrink: 0;
+  position: relative;
+  z-index: 30; /* 弹层（chat-context-peek）需要盖过上方消息区 */
   padding: 8px 16px 14px;
   display: flex;
   flex-direction: column;
@@ -14259,6 +14274,136 @@ body {
   background: color-mix(in srgb, var(--accent-cyan) 14%, transparent);
   border-color: color-mix(in srgb, var(--accent-cyan) 38%, var(--border-color));
   color: var(--accent-cyan);
+}
+/* 可点开的胶囊（情报/素材）：小箭头暗示可展开 */
+.chat-context-pill-peek { cursor: pointer; transition: background .15s, border-color .15s; }
+.chat-context-pill-peek:hover { filter: brightness(1.1); }
+.chat-context-pill-peek.open { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-cyan) 22%, transparent); }
+.chat-context-pill-caret {
+  font-size: 8px;
+  line-height: 1;
+  opacity: .7;
+  transform: rotate(180deg);
+  transition: transform .15s;
+}
+.chat-context-pill-peek.open .chat-context-pill-caret { transform: rotate(0deg); }
+
+/* 上下文条目弹层：从胶囊上方浮出，列出注入的情报/素材条目，点击插入引用 */
+.chat-context-group { position: relative; }
+.chat-context-peek {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: min(420px, 72vw);
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card, #1a1a1a);
+  /* bg-card 是半透明色，弹层悬浮在输入区上方会透出下层文字——毛玻璃补足不透明感 */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: var(--panel-border, 1px solid var(--border-color));
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+  z-index: 60;
+  animation: context-peek-in .14s ease-out;
+  overflow: hidden;
+}
+@keyframes context-peek-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.chat-context-peek-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(128, 128, 128, .15));
+}
+.chat-context-peek-title {
+  flex: 1;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-context-peek-toggle {
+  flex: none;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.chat-context-peek-toggle:hover { color: var(--accent-rose, #f87171); border-color: var(--accent-rose, #f87171); }
+.chat-context-peek-toggle.is-excluded { color: var(--accent-rose, #f87171); border-color: color-mix(in srgb, var(--accent-rose, #f87171) 40%, transparent); }
+.chat-context-peek-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.chat-context-peek-close:hover { background: var(--bg-secondary, rgba(127, 127, 127, .12)); color: var(--text-primary); }
+.chat-context-peek-list {
+  overflow-y: auto;
+  padding: 4px;
+  flex: 1;
+  min-height: 0;
+}
+.chat-context-peek-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background .12s;
+}
+.chat-context-peek-item:hover { background: color-mix(in srgb, var(--accent-cyan, #22d3ee) 10%, transparent); }
+.chat-context-peek-item-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-context-peek-item-meta {
+  flex: none;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.chat-context-peek-more {
+  padding: 8px 10px 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.chat-context-peek-hint {
+  padding: 7px 12px;
+  border-top: 1px solid var(--border-subtle, rgba(128, 128, 128, .15));
+  font-size: 10px;
+  color: var(--text-muted);
 }
 .chat-input-area {
   display: flex;
@@ -18142,21 +18287,39 @@ body {
   color: var(--text-muted);
   font-size: 12px;
 }
-.session-group { margin-bottom: 8px; }
+.session-group {
+  position: relative;
+  margin-bottom: 8px;
+  /* 时间轨道：组内竖向细轨，会话小点挂在轨上（时间轴语义） */
+  padding-left: 2px;
+}
+.session-group::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 26px;
+  bottom: 6px;
+  width: 1.5px;
+  background: var(--border-subtle, rgba(128, 128, 128, .18));
+  border-radius: 1px;
+}
 .session-group-label {
-  padding: 6px 8px 4px;
+  padding: 6px 8px 4px 10px;
   font-size: 10px;
   font-weight: 600;
   color: var(--text-muted);
   letter-spacing: .04em;
 }
+/* 会话项：单行紧凑（原两行标题+时间行高减半）；左侧轨道小点 + 标题 + 淡色时间 */
 .session-item {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 44px 8px 10px;
-  border-radius: 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 36px 6px 18px;
+  margin-left: 8px;
+  border-radius: 7px;
   cursor: pointer;
   transition: background .12s;
 }
@@ -18169,17 +18332,45 @@ body {
   background: var(--bg-card);
 }
 .session-item.is-editing.active { background: var(--accent-cyan-softer); }
+/* 轨道小点：默认暗点，当前会话点亮并发光 */
+.session-dot {
+  position: absolute;
+  left: -8.5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-color, #666);
+  border: 1.5px solid var(--bg-primary, transparent);
+  transition: background .15s, box-shadow .15s, transform .15s;
+  flex: none;
+}
+.session-item:hover .session-dot { background: var(--text-muted); }
+.session-item.active .session-dot {
+  background: var(--accent-cyan, #22d3ee);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent-cyan, #22d3ee) 70%, transparent);
+  transform: translateY(-50%) scale(1.15);
+}
 .session-item-title {
-  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .session-item-meta {
+  flex: none;
   font-size: 10px;
   color: var(--text-muted);
+  opacity: .75;
+  font-variant-numeric: tabular-nums;
 }
+/* hover 时右侧浮出操作按钮，时间淡出避让 */
+.session-item:hover .session-item-meta,
+.session-item.active .session-item-meta { opacity: 0; }
 /* 操作按钮容器：重命名 + 删除，hover 时浮现 */
 .session-item-actions {
   position: absolute;
@@ -18497,28 +18688,39 @@ body {
   50% { box-shadow: 0 0 0 4px rgba(96, 165, 250, 0); }
 }
 
-/* 指标网格：2x2，每个 chip 独立带淡背景，hover 升起 */
+/* 指标条：单行迷你胶囊（原 2×2 大格子占 ~90px 且多为 0，胶囊化省出技能区空间） */
 .agent-topcard-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   margin-bottom: 8px;
 }
-.agent-topcard-metric {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  padding: 6px 8px;
-  border-radius: 6px;
+.agent-metric-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--text-muted);
   background: color-mix(in srgb, var(--accent-cyan, #06b6d4) 5%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent-cyan, #06b6d4) 12%, transparent);
-  transition: background .15s, border-color .15s, transform .15s;
+  transition: background .15s, border-color .15s;
 }
-.agent-topcard-metric:hover {
+.agent-metric-pill:hover {
   background: color-mix(in srgb, var(--accent-cyan, #06b6d4) 10%, transparent);
   border-color: color-mix(in srgb, var(--accent-cyan, #06b6d4) 30%, transparent);
-  transform: translateY(-1px);
+}
+.agent-metric-pill b {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  transition: color .25s;
+}
+/* 运行中给指标值加青色，强化"活跃"感 */
+.agent-topcard.is-streaming .agent-metric-pill b {
+  color: var(--accent-cyan, #06b6d4);
 }
 .agent-topcard-metric-value {
   font-size: 14px;
@@ -18532,10 +18734,6 @@ body {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: .3px;
-}
-/* 运行中给指标值加金色，强化"活跃"感 */
-.agent-topcard.is-streaming .agent-topcard-metric-value {
-  color: var(--accent-cyan, #06b6d4);
 }
 /* P4 自进化记忆健康度条：紧凑横向指标，与 stats 行同卡但独立分组 */
 .agent-topcard-evolution {
