@@ -36,10 +36,12 @@ No lint, typecheck, or formatter commands exist.
 
 **v2 Direction**: See `docs/wanban-silicon-valley-v2-blueprint.md`. The product is migrating from "news aggregator" to a "personal intelligence & creation OS" centered on daily briefing, user profile, materials library, agent workflows, and content creation. Current branch `codex/intelligence-workbench-redesign` implements this.
 
+**Core positioning**: 首页即 AI 工作站（`home` nav → `nav.aiWorkstation` → `AiChatPanel.jsx`，App.jsx:2305）——项目核心功能是 agent 式深度工作台（多专业 agent + 工具编排 + `set_plan` 计划执行），不是简单聊天。AI 精灵（`src/AiElf.jsx`）是全站轻量助理：快速问答、拖拽卡片即席分析、功能讲解，单例 agent（「方案 A 去 agent 化」），两者分工定义在 `src/constants/aielfDefaults.js`。
+
 ### Frontend (`src/`)
 
 - **`App.jsx`** (~2800 lines) - Main component with routing logic, settings modal, and page composition. State progressively extracted into Zustand stores (`src/store/`) and custom hooks. Topbar JSX extracted to `src/components/Topbar.jsx`. Workflow runner logic in `src/hooks/useAgentWorkflowRunner.js`, workflow actions in `src/hooks/useWorkflowActions.js`.
-- **`AiElf.jsx`** (643 lines) - AI assistant with multi-Agent conversation, drag-to-analyze, history management. Uses localStorage per-agent (50 messages, 20 sessions max). Lazy-loaded via `React.lazy`. SendMessage logic extracted to `src/components/aielf/useSendMessage.js`, agent loop in `src/components/aielf/runElfAgentLoop.js`, sub-components in `src/components/aielf/` (Sidebar, ChatHeader, MessageList, InputArea).
+- **`AiElf.jsx`** (643 lines) - 全站轻量智能助手（AI 精灵，单例 agent，「方案 A 去 agent 化」）：快速问答、拖拽资讯/股票/代码/GitHub 卡片即席分析、帮用户理解产品与操作；分析产出可「存入 AI 工作站」深做。工具白名单只含分析/查证类（`aielfDefaults.js`），不含 set_plan 等多步编排。Lazy-loaded via `React.lazy`. SendMessage logic extracted to `src/components/aielf/useSendMessage.js`, agent loop in `src/components/aielf/runElfAgentLoop.js`, sub-components in `src/components/aielf/` (Sidebar, ChatHeader, MessageList, InputArea). `elfStore` 现仅存头像/名字等外观人格（多 agent 会话模型已移除）。
 - **`GlobeView.jsx`** (999 lines) - 3D globe via `react-globe.gl`/Three.js. Fullscreen uses `createPortal` to `document.body`. Canvas needs `min-height: 420px`. Lazy-loaded.
 - **`main.jsx`** - Mounts `<App />` inside `<ErrorBoundary>` + `<React.StrictMode>`.
 - **`styles.css`** (16052 lines) - CSS custom properties for dark/light themes. Tailwind config only sets content paths - no Tailwind utilities used in practice.
@@ -108,7 +110,7 @@ src/components/
   SettingsModal.jsx        设置模态（拆分为 settings/ 子目录）
   ArticleEditor.jsx        Markdown article editor
   StockPage.jsx            股市动向三栏行情终端（分时/K线/五档/AI诊断）
-  AiChatPanel.jsx          AI chat panel（780 lines，拆出 aichat/ 子目录）
+  AiChatPanel.jsx          AI 工作站主面板（首页核心功能，非简单聊天：多专业 agent + 工具编排 + set_plan 计划执行；780 lines，拆出 aichat/ 子目录）
   CreativeWorkspace.jsx    智创空间主组件（素材库 + 编辑器 + 工作流）
   CommunityPage.jsx        社区广场页（发帖/评论/点赞/收藏/关注）
   CommunityPostDetail.jsx  社区帖子详情
@@ -389,6 +391,28 @@ The v2 features described in `docs/wanban-silicon-valley-v2-blueprint.md` are wi
 - `server/skills/skillLoader.js`：工具注册/发现/触发匹配系统（SKILL_SOURCES + matchSkillsByTriggers）
 - `src/hooks/useAgents.js`：前端 Agent 管理（列表/创建/配置/删除）
 - Migration 004/005：agent_jobs + agent_memory 相关表
+
+**Phase 8 单 agent 内核补齐 + 多代理编排（已完成）**：对标 Claude Code / Codex / pi 的 agent 架构升级。
+
+*循环内核统一*：
+- `src/components/aichat/agentLoopCore.js`：工作站与 AI 精灵共用的 runToolLoop 内核（流式/重试/取消/审批/压缩/收敛指令/末轮撤工具）。此前 elf 有一份语义漂移的复制版（无重试/无取消/绕审批），已消除。
+- `src/utils/toolArgsValidator.js`：工具参数运行时校验（JSON Schema 子集 + 温和矫正 string→number 等），接入 `toolRegistry.executeTool`（校验失败回灌 LLM 自修）与循环层（trace 标记）。工具 meta 可定义 `normalizeArgs` 做历史别名兼容（web_search keyword→query）。
+- `src/session/contextManager.js` 新增 `buildCompactionPrompt`；`src/session/llmSummarizer.js` 的 `createLlmSummarizer` 接通 buildContext 的 generateSummary（LLM 真压缩 + LRU 缓存 + 失败降级 localSummary）。两循环超 48k 预算时不再只用本地截断清单。
+- `src/session/untrusted.js`：所有 tool 消息回灌 LLM 前包 `<untrusted_data source="…">` 定界 + 伪造标签转义（prompt 注入第一道防线）；buildSystemPrompt 注入配对的硬性规则段（untrustedDataPolicyText）。
+- Token 用量：服务端 `includeUsage:true` 时加 `stream_options.include_usage` 并透传 SSE usage；循环内核累计 usage，终答消息带 `usage` 字段，AiChatPanel 气泡尾部展示。
+- 安全修复：systemPrompt 网关上限 10k→60k（超限下发 gatewayWarning，此前会静默截掉末尾的工具能力段）；elf 注入 sessionId `elf:<agentId>` + `approvalPolicy:'deny'`（敏感写直接拒绝并引导去工作站，消灭审批旁路）；create_skill 加 requiresApproval（服务器 FS 写 + 持久化注入通道）；fetch_page 标 riskLevel=read（自主模式免弹卡）。
+
+*Subagent 编排（orchestrator-worker）*：
+- `src/domain/agent/subagentCore.js`：纯逻辑核——4 个预置子代理（explorer/researcher/writer/critic，工具白名单继承收缩且不含 spawn_subagent → 深度物理限制 1 层）、spawn 契约校验（objective/context/constraints/output_format）、createBudget、aggregateSpawnReports（只回传最终报告 + 转写落盘路径，抗传话游戏）。
+- `src/components/aichat/subagentRunner.js`：并发池执行（默认 3、上限 5、失败隔离），每任务独立 runToolLoop + 独立审批会话 + 转写落盘 outputs/subagents/；支持 extraTools/buildSystemSuffix/extraCtxFn 注入（团队模式复用）。
+- `src/utils/agentSubagentTool.js`：spawn_subagent 工具（import 即注册，由 AiChatPanel 引入）；进度经 emitProgress → traceItem.progress → ToolCards SubagentProgress 实时渲染。
+- orchestrator（情报总控）白名单已加 spawn_subagent；toolCapabilities 有配对使用指引。
+
+*Agent Team（共享任务列表 + 邮箱）*：
+- `src/domain/agent/teamCore.js`：组队契约校验、任务状态机（pending→in_progress→done/failed，owner 鉴权）、看板/邮箱文本渲染、formatTeamDigest。
+- `src/store/teamStore.js`：团队共享状态（模块级单例 + localStorage 'agentTeamState'，最近 10 团队）。
+- `src/utils/agentTeamTools.js`：spawn_agent_team（lead 组队）+ update_team_task / post_team_message（队友协作工具，按任务注入队友白名单）。队友每轮的 buildSystemSuffix 注入实时任务板 + 个人邮箱快照——共享状态是真实的，非静态拷贝。进度经 TeamProgress 卡片渲染任务板。
+
 
 ### Stock Market Module (股市动向)
 

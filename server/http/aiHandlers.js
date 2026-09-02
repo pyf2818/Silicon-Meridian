@@ -32,6 +32,20 @@ function enforceRateLimit(req, isAgentLoop = false) {
 
 function cleanText(value, max) { return String(value || '').slice(0, max); }
 
+// 系统提示词上限：工作站的 system prompt 组装了证据/素材/工具能力/会话状态等多个段，
+// 此前 10_000 上限会静默截掉末尾的工具能力段（buildSystemPrompt 注入在末尾）——上下文越丰富
+// 模型越容易先丢工具使用指引。提高到 60_000 并在真截断时向客户端下发告警。
+export const SYSTEM_PROMPT_MAX = 60_000;
+
+/** 计算网关层告警（systemPrompt 截断等），随响应/流式事件下发 */
+function collectGatewayWarnings(body) {
+  const warnings = [];
+  if (String(body?.systemPrompt || '').length > SYSTEM_PROMPT_MAX) {
+    warnings.push(`systemPrompt 超过 ${SYSTEM_PROMPT_MAX} 字符上限，已被网关截断（工具能力段可能丢失）`);
+  }
+  return warnings;
+}
+
 // 上游 429/5xx 自动重试：仅对幂等的非流式 generate 路径生效（流式已开 SSE 不能重试）
 async function fetchWithRetry(url, options, { retries = 1, baseDelay = 1200 } = {}) {
   let lastErr;
@@ -79,7 +93,7 @@ function sendAiError(res, error) {
 function buildMessages(body) {
   const action = cleanText(body.action, 40);
   const content = cleanText(body.content, 50_000);
-  const systemPrompt = cleanText(body.systemPrompt, 10_000);
+  const systemPrompt = cleanText(body.systemPrompt, SYSTEM_PROMPT_MAX);
   const result = systemPrompt ? [{ role: 'system', content: systemPrompt }] : [];
   if (action === 'chat' && Array.isArray(body.messages)) {
     body.messages.slice(-30).forEach(message => {
@@ -152,10 +166,20 @@ async function handleAiStreamRequest(req, res, body) {
     'X-Accel-Buffering': 'no',
   });
 
+  // 网关层告警（如 systemPrompt 截断）：先行下发，客户端 console.warn 提示
+  for (const warning of collectGatewayWarnings(body)) {
+    res.write(`data: ${JSON.stringify({ ok: true, gatewayWarning: warning })}\n\n`);
+  }
+
   let upstream;
   try {
     // 流式路径仅重试连接阶段（已开 SSE 不能重试整段对话）
     const streamBody = { model, messages: buildMessages(body), max_tokens: maxTokens, temperature: 0.7, stream: true };
+    // 客户端要求 token 用量统计时，向上游请求 usage（OpenAI 兼容协议的 stream_options）；
+    // 默认关闭：部分非 OpenAI 严格的兼容实现可能不认这个字段
+    if (body.includeUsage === true) {
+      streamBody.stream_options = { include_usage: true };
+    }
     // agent 模式：透传 tools（与非流式路径对齐，限制 20 个 / schema 8KB），让流式也能触发工具调用
     if (Array.isArray(body.tools) && body.tools.length) {
       streamBody.tools = body.tools.slice(0, 20).map(t => {
@@ -228,6 +252,10 @@ async function handleAiStreamRequest(req, res, body) {
           // 转发结束原因（tool_calls / stop），前端据此判定是否进入工具执行分支
           if (choice.finish_reason) {
             res.write(`data: ${JSON.stringify({ ok: true, finish_reason: choice.finish_reason })}\n\n`);
+          }
+          // token 用量（include_usage 时上游在最后一个 chunk 报告），透传给前端累计
+          if (json.usage && typeof json.usage === 'object') {
+            res.write(`data: ${JSON.stringify({ ok: true, usage: json.usage })}\n\n`);
           }
         } catch { /* 跳过不完整的 JSON 行 */ }
       }
@@ -314,6 +342,11 @@ export async function handleAiGenerateRequest(req, res) {
     const message = choice.message || {};
     // agent 模式下返回 tool_calls 字段，供前端 agent loop 继续执行
     const result = { ok: true, content: message.content || '' };
+    // token 用量透传（上游报告时），供前端成本核算
+    if (data.usage && typeof data.usage === 'object') result.usage = data.usage;
+    // 网关层告警（如 systemPrompt 截断）
+    const warnings = collectGatewayWarnings(body);
+    if (warnings.length) result.gatewayWarnings = warnings;
     if (isAgentLoop && Array.isArray(message.tool_calls) && message.tool_calls.length) {
       result.tool_calls = message.tool_calls.map(tc => ({
         id: String(tc.id || '').slice(0, 100),

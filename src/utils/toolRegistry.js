@@ -23,6 +23,7 @@
  */
 
 import { requestApproval, hasSessionGrant, isEgressAllowed } from './sandbox.js';
+import { validateToolArgs } from './toolArgsValidator.js';
 
 const TOOL_TIMEOUT_MS = 15_000;
 
@@ -231,40 +232,65 @@ export async function executeTool(name, args, ctx) {
   if (!entry) return `错误：未知工具 "${name}"`;
   if (!entry.enabled) return `错误：工具 "${name}" 已被禁用`;
 
+  // ── 运行时参数校验（schema 从此不是装饰品）──
+  // 先跑工具自定义的参数归一化（历史别名兼容，如 web_search 的 keyword→query），再按
+  // JSON Schema 子集校验 + 温和矫正（string→number 等）。校验失败直接返回结构化错误，
+  // 让调用方（agent loop）把它作为工具结果回灌给 LLM 自修，不进入审批/执行。
+  let effectiveArgs = args;
+  if (typeof entry.meta?.normalizeArgs === 'function') {
+    try { effectiveArgs = entry.meta.normalizeArgs(effectiveArgs); } catch { /* 归一化失败用原参数 */ }
+  }
+  const parameters = entry?.schema?.function?.parameters;
+  if (parameters && typeof parameters === 'object') {
+    const verdict = validateToolArgs(parameters, effectiveArgs);
+    if (!verdict.ok) {
+      return `错误：工具 "${name}" 参数校验失败：${verdict.error}。请修正参数后重新调用。`;
+    }
+    effectiveArgs = verdict.args;
+  }
+
   // 沙箱审批闸门（唯一入口）
-  const approval = resolveApprovalDecision(entry, ctx, args);
-  if (approval.required && ctx?.sessionId) {
-    const sessionId = ctx.sessionId;
-    // 已 allow-always 授权过：sandbox.requestApproval 内部会立即 resolve('allow-always')，无需再走 UI
-    try {
-      const decision = await requestApproval({
-        sessionId,
-        toolName: name,
-        args,
-        summary: summarizeToolCall(name, args),
-        agentName: ctx.agentName || '',
-        agentId: ctx.agentId || '',
-        reason: approval.reason,
-        mode: ctx.approvalMode || 'autonomous',
-      });
-      // 此处 decision ∈ {'allow-once', 'allow-always'}，继续执行
-      void decision;
-    } catch (err) {
-      // 用户拒绝 / 取消：返回友好错误信息（不抛异常，让 Agent Loop 把它当作工具结果回灌给 LLM）
-      if (err?.code === 'USER_DENIED') {
-        return `错误：用户拒绝授权工具 "${name}"，本次调用未执行。`;
+  const approval = resolveApprovalDecision(entry, ctx, effectiveArgs);
+  if (approval.required) {
+    // 精灵侧策略（approvalPolicy='deny'）：精灵是浮动助理，没有审批卡片 UI，
+    // 悬挂的审批 Promise 会永远等待。写类敏感操作直接拒绝并引导去工作站；
+    // 只读敏感操作（riskLevel='read'，如 fetch_page）不受影响。
+    if (ctx?.approvalPolicy === 'deny') {
+      return `错误：精灵未授权此操作：工具 "${name}" 涉及写入或敏感动作。请到 AI 工作站执行该操作，或由用户在工作站中调整审批策略。`;
+    }
+    if (ctx?.sessionId) {
+      const sessionId = ctx.sessionId;
+      // 已 allow-always 授权过：sandbox.requestApproval 内部会立即 resolve('allow-always')，无需再走 UI
+      try {
+        const decision = await requestApproval({
+          sessionId,
+          toolName: name,
+          args: effectiveArgs,
+          summary: summarizeToolCall(name, effectiveArgs),
+          agentName: ctx.agentName || '',
+          agentId: ctx.agentId || '',
+          reason: approval.reason,
+          mode: ctx.approvalMode || 'autonomous',
+        });
+        // 此处 decision ∈ {'allow-once', 'allow-always'}，继续执行
+        void decision;
+      } catch (err) {
+        // 用户拒绝 / 取消：返回友好错误信息（不抛异常，让 Agent Loop 把它当作工具结果回灌给 LLM）
+        if (err?.code === 'USER_DENIED') {
+          return `错误：用户拒绝授权工具 "${name}"，本次调用未执行。`;
+        }
+        if (err?.code === 'CANCELLED') {
+          return `错误：审批被取消（会话切换或停止生成）："${name}" 未执行。`;
+        }
+        return `错误：审批失败 - ${err?.message || String(err)}`;
       }
-      if (err?.code === 'CANCELLED') {
-        return `错误：审批被取消（会话切换或停止生成）："${name}" 未执行。`;
-      }
-      return `错误：审批失败 - ${err?.message || String(err)}`;
     }
   }
 
   // 只读结果缓存命中：跳过重复执行（P2-11）。放在审批闸门之后，
   // 因此首次仍要走审批/allow-always，仅对"完全相同的后续只读调用"复用结果（assist 模式也不会重复弹卡）。
   if (CACHEABLE_READS.has(name)) {
-    const hit = resultCache.get(makeCacheKey(name, args));
+    const hit = resultCache.get(makeCacheKey(name, effectiveArgs));
     if (hit !== undefined) return hit;
   }
 
@@ -275,7 +301,7 @@ export async function executeTool(name, args, ctx) {
   let timer = null;
   try {
     const result = await Promise.race([
-      entry.executor(args || {}, ctx || {}),
+      entry.executor(effectiveArgs || {}, ctx || {}),
       new Promise((_, reject) => {
         timer = setTimeout(() => {
           reject(new Error(`工具执行超时（${Math.round(timeoutMs / 1000)}s）`));
@@ -284,7 +310,7 @@ export async function executeTool(name, args, ctx) {
     ]);
     // 只读成功结果写入缓存（错误结果不缓存，便于下次重试真正执行）
     if (CACHEABLE_READS.has(name) && !String(result).startsWith('错误：')) {
-      const key = makeCacheKey(name, args);
+      const key = makeCacheKey(name, effectiveArgs);
       if (resultCache.size >= RESULT_CACHE_MAX) {
         const oldest = resultCache.keys().next().value;
         if (oldest !== undefined) resultCache.delete(oldest);

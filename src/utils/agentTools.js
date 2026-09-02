@@ -1515,8 +1515,10 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    // 抓取任意站点：慢站/大页很常见，15s 全局超时会误杀，单独放宽到 30s
-    meta: { label: '抓取网页', iconKey: 'globe', description: '抓取指定 URL 的网页正文', category: 'web', requiresApproval: true, timeoutMs: 30_000 },
+    // 抓取任意站点：慢站/大页很常见，15s 全局超时会误杀，单独放宽到 30s。
+    // riskLevel='read'：fetch_page 本质是只读操作（SSRF 保护的网关抓取，且已入 CACHEABLE_READS 缓存），
+    // 自主模式下不再每次弹审批卡；协助模式仍逐次确认。
+    meta: { label: '抓取网页', iconKey: 'globe', description: '抓取指定 URL 的网页正文', category: 'web', requiresApproval: true, riskLevel: () => 'read', timeoutMs: 30_000 },
     executor: toolFetchPage,
   },
   {
@@ -1549,7 +1551,12 @@ const BUILTIN_TOOL_DEFS = [
         },
       },
     },
-    meta: { label: '沉淀技能', iconKey: 'bookmark', description: '将工作方法论沉淀为可复用技能', category: 'skills' },
+    meta: {
+      label: '沉淀技能', iconKey: 'bookmark', description: '将工作方法论沉淀为可复用技能', category: 'skills',
+      // 安全收紧：create_skill 把 LLM 生成的提示词内容写到服务器文件系统（skills/ 目录），
+      // 之后还会经 applySkill 重新注入 prompt——这是持久化的注入通道，必须过用户审批。
+      requiresApproval: true,
+    },
     executor: toolCreateSkill,
   },
   {
@@ -1594,8 +1601,17 @@ const BUILTIN_TOOL_DEFS = [
         }
       }
     },
-    // 三级 fallback（豆包 → Tavily → DuckDuckGo）串行重试，需要比默认 15s 更宽的窗口
-    meta: { label: '联网搜索', iconKey: 'megaphone', description: '联网搜索互联网最新信息（豆包搜索 / Tavily / DuckDuckGo）', category: 'web', timeoutMs: 25_000 },
+    // 三级 fallback（豆包 → Tavily → DuckDuckGo）串行重试，需要比默认 15s 更宽的窗口。
+    // normalizeArgs：历史调用习惯兼容（search_news 用 keyword），在运行时参数校验前归一化，
+    // 否则 schema 的 required:['query'] 会把 keyword 别名拦在校验层。
+    meta: {
+      label: '联网搜索', iconKey: 'megaphone', description: '联网搜索互联网最新信息（豆包搜索 / Tavily / DuckDuckGo）', category: 'web', timeoutMs: 25_000,
+      normalizeArgs: (args) => {
+        const a = { ...(args || {}) };
+        if (a.query === undefined && a.keyword !== undefined) a.query = a.keyword;
+        return a;
+      },
+    },
     executor: toolWebSearch,
   },
   {

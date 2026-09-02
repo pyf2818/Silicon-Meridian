@@ -13347,6 +13347,19 @@ body {
   font-style: italic;
 }
 
+/* token 用量标记（agent loop 终答后展示，成本可见化） */
+.chat-usage-mark {
+  margin-top: 6px;
+  padding: 2px 8px;
+  display: inline-block;
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-secondary, rgba(127, 127, 127, .08));
+  border-radius: 4px;
+  opacity: .85;
+  font-variant-numeric: tabular-nums;
+}
+
 /* AI 回复消息操作栏：始终显示但克制 */
 .chat-msg-actions {
   display: flex;
@@ -13877,6 +13890,123 @@ body {
   flex-direction: column;
   gap: 8px;
   background: var(--bg-secondary, rgba(0, 0, 0, .04));
+}
+
+/* 子代理执行进度区（spawn_subagent 卡片内） */
+.tool-call-subagents {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 2px;
+}
+
+.tool-call-subagent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  min-width: 0;
+}
+
+.tool-call-subagent-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted, #888);
+}
+
+.tool-call-subagent-dot-running {
+  background: var(--accent-cyan, #22d3ee);
+  animation: subagent-pulse 1.2s ease-in-out infinite;
+}
+
+.tool-call-subagent-dot-done {
+  background: #16a34a;
+}
+
+.tool-call-subagent-dot-error {
+  background: #dc2626;
+}
+
+@keyframes subagent-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .3; }
+}
+
+.tool-call-subagent-name {
+  flex: none;
+  font-weight: 600;
+  color: var(--text-primary, inherit);
+}
+
+.tool-call-subagent-objective {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.tool-call-subagent-status {
+  flex: none;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 团队任务板（spawn_agent_team 卡片内） */
+.tool-call-team {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+
+.tool-call-team-goal {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary, inherit);
+}
+
+.tool-call-team-board {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  background: var(--bg-secondary, rgba(0, 0, 0, .04));
+  border-radius: 4px;
+}
+
+.tool-call-team-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  min-width: 0;
+}
+
+.tool-call-team-task-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-call-team-task-owner {
+  flex: none;
+  color: var(--accent-cyan, #22d3ee);
+  font-weight: 600;
+}
+
+.tool-call-team-task-status {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.tool-call-subagent-dot-idle {
+  background: var(--border-color, #aaa);
 }
 
 .tool-call-section {

@@ -38,6 +38,10 @@ import { buildContext, shouldCompact, estimateMessages, localSummary } from '../
 import { forkLinearSession } from '../session/trailStore.js';
 import { useMultiAgentOrchestrator } from '../hooks/useMultiAgentOrchestrator.js';
 import MaterialGraph from './MaterialGraph.jsx';
+// spawn_subagent 工具注册（import 即注册进 toolRegistry，供 orchestrator 等白名单使用）
+import '../utils/agentSubagentTool.js';
+// Agent Team 工具注册（spawn_agent_team + 队友协作工具）
+import '../utils/agentTeamTools.js';
 
 // 流式回复的上下文预算（token）。超预算时对中段做本地摘要压缩，替代 slice(-20) 硬截断
 const STREAM_CONTEXT_BUDGET = 40_000;
@@ -1121,6 +1125,12 @@ export default function AiChatPanel({
               )}
               {msg.stopped && (
                 <div className="chat-stopped-mark">已停止生成</div>
+              )}
+              {/* token 用量（上游报告时展示，成本可见化） */}
+              {!msg.loading && !msg.error && msg.usage?.total_tokens > 0 && (
+                <div className="chat-usage-mark">
+                  本轮 {Number(msg.usage.total_tokens).toLocaleString()} tokens（输入 {Number(msg.usage.prompt_tokens || 0).toLocaleString()} / 输出 {Number(msg.usage.completion_tokens || 0).toLocaleString()}）
+                </div>
               )}
             </div>
             {/* P0-2 计划卡操作条：批准执行 / 修改 / 放弃 */}

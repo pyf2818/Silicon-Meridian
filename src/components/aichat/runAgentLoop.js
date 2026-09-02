@@ -1,105 +1,26 @@
-// Agent Loop：tool_calls 循环执行
-// 流程：发请求 → 若返回 tool_calls 则执行工具并把结果回灌 → 重新请求，直到无 tool_calls 或达到最大轮数
-// 用户点"停止"时通过 controller.abort() 中断当前 fetch；已完成的 toolCalls 痕迹保留展示
-// 从 src/components/AiChatPanel.jsx 抽离，纯函数（无 React 依赖）
+// Agent Loop（AI 工作站）：tool_calls 循环执行
+// 内核循环（LLM 流式调用 / 校验 / 审批 / 并行执行 / 压缩 / 中断）抽离至 agentLoopCore.js，
+// 与 AI 精灵（runElfAgentLoop.js）共用同一内核，消除两份循环的语义漂移。
+// 本文件只保留工作站差异化部分：
+//   - 会话状态注入（buildSessionContextText）
+//   - 压缩摘要沉淀为跨会话记忆（rememberCompaction）
+//   - 工具调用历史落账（appendHistory）
+//   - 终答质量自检（引用校验 + 失败工具对照）与一次性修复
+//   - 自动技能沉淀 / 会话摘要 / 记忆进化（fire-and-forget）
+// 用户点"停止"时通过 controller.abort() 中断；已完成的 toolCalls 痕迹保留展示。
 
 import { generateSessionSummary, retrieveRelevantMemories } from '../../utils/sessionMemory.js';
 import { observeReply, observeToolUsage } from '../../utils/profileLearning.js';
 import { evolveMemory } from '../../utils/memoryEvolver.js';
 import { extractTodos } from '../../utils/todoExtractor.js';
 import { executeAgentTool } from '../../utils/agentTools.js';
-import { getTool, resolveApprovalDecision } from '../../utils/toolRegistry.js';
-import { mergeToolCallDeltas } from '../../utils/toolCallMerge.js';
 import { getRootHandle } from '../../utils/workspaceHandleStore.js';
 import { buildSessionContextText, appendHistory } from '../../utils/sessionStore.js';
-import { buildContext, estimateMessages, shouldCompact, localSummary } from '../../session/contextManager.js';
-import { persistLongResult } from '../../session/outputSink.js';
 import { rememberCompaction } from '../../utils/sessionMemory.js';
+import { runToolLoop } from './agentLoopCore.js';
+import { createLlmSummarizer } from '../../session/llmSummarizer.js';
 
-// 上下文预算：发送给 LLM 的消息总token上限。超过则触发「中段本地摘要压缩」而非硬截断。
-const CONTEXT_BUDGET = 48_000;
-const KEEP_RECENT = 25; // 压缩时保留的最近消息数
-
-/**
- * 把流式 SSE 里的 tool_calls 分片按 index 合并还原为完整 tool_calls 数组。
- * 实现见 src/utils/toolCallMerge.js（独立导出，便于单测）。
- * @param {Array<Array>} batches
- * @returns {Array|undefined}
- */
-export { mergeToolCallDeltas };
-
-/**
- * 流式调用 /api/ai-generate（P1-6 流式化）。
- * 后端 SSE 会同时转发文本增量（delta）与 tool_calls 分片（toolCallDelta）。
- * 这里把两者合并，返回与旧非流式路径同构的 { content, tool_calls }：
- *   - content：完整文本（同时经 onChunk 实时回灌 UI，实现逐字渲染）
- *   - tool_calls：undefined 表示本次是最终回答；数组表示需要执行工具
- * 任一异常都带上 retriable 标记，供上层重试循环判断。
- */
-async function streamAgentResponse({ controller, baseUrl, apiKey, model, systemPrompt, messages, maxTokens, tools, toolChoice, onChunk }) {
-  const response = await fetch('/api/ai-generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: controller.signal,
-    body: JSON.stringify({
-      baseUrl, apiKey, model, action: 'chat',
-      systemPrompt, messages, max_tokens: maxTokens,
-      stream: true,
-      tools,
-      tool_choice: toolChoice,
-    }),
-  });
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    const errMsg = typeof errData.error === 'string' ? errData.error : errData.error?.message || `AI 请求失败 (${response.status})`;
-    const e = new Error(errMsg);
-    e.status = response.status;
-    e.retriable = response.status === 429 || response.status >= 500;
-    throw e;
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-  let content = '';
-  const toolCallDeltas = []; // 收集每批 delta.tool_calls，结束统一合并
-
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data:')) continue;
-        const payload = trimmed.slice(5).trim();
-        if (payload === '[DONE]') continue;
-        let json;
-        try { json = JSON.parse(payload); } catch { continue; }
-        if (json.ok === false) {
-          const e = new Error(json.error || 'AI 请求失败');
-          e.retriable = /繁忙|频繁|rate\.limit|429/i.test(json.error || '');
-          throw e;
-        }
-        if (typeof json.delta === 'string') {
-          content += json.delta;
-          if (onChunk) onChunk(content); // 实时逐字渲染
-        }
-        if (Array.isArray(json.toolCallDelta)) {
-          toolCallDeltas.push(json.toolCallDelta);
-        }
-      }
-    }
-  } finally {
-    reader.cancel().catch(() => {});
-  }
-
-  const toolCalls = mergeToolCallDeltas(toolCallDeltas);
-  // 返回蛇形键名，与旧非流式路径（后端 { content, tool_calls }）保持完全一致，下游代码零改动
-  return { content, tool_calls: toolCalls };
-}
+export { mergeToolCallDeltas } from './agentLoopCore.js';
 
 /**
  * 终答前的质量自检修复（P2-9 引用重试 + P2-10 对照 toolCallTrace 自检）。
@@ -186,7 +107,6 @@ export async function runAgentLoop({
   onSaveKnowledge,
 }) {
   const MAX_ITERATIONS = 12; // 防止无限循环；末轮会注入收敛指令强制收尾
-  const CONVERGE_AT = MAX_ITERATIONS - 1; // 倒数第二轮起提示收敛
   const toolCtx = {
     rootHandle: getRootHandle(),
     sessionId: targetId,
@@ -210,14 +130,15 @@ export async function runAgentLoop({
     // 情报聚焦引用登记：read_intelligence_focus 返回的事件 ID 收集于此，
     // 终答引用校验时与 intelligenceContext.items 一并视为合法引用
     focusCitations: [],
+    // 压缩摘要沉淀为跨会话记忆（内核在压缩发生时回调，同 sessionId 去重）
+    onCompacted: (summaryText) => {
+      if (summaryText && typeof rememberCompaction === 'function') {
+        try { rememberCompaction(targetId, summaryText); } catch { /* silent */ }
+      }
+    },
   };
-  // 工作中的消息列表（包含 user / assistant / tool 三种角色），逐步累积
-  const conversationMessages = baseMessages.map(m => ({ role: m.role, content: m.content }));
-  // 给 UI 用的工具调用记录（不带原始 messages 结构，便于渲染卡片）
-  const toolCallTrace = [];
-  let finalContent = '';
-  let aborted = false;
 
+  // 给 UI 用的工具调用记录（不带原始 messages 结构，便于渲染卡片）
   const updateAssistantMsg = (patch) => {
     setSessions(prev => prev.map(s => {
       if (s.id !== targetId) return s;
@@ -227,245 +148,40 @@ export async function runAgentLoop({
     }));
   };
 
-  try {
-    for (let iter = 0; iter < MAX_ITERATIONS; iter += 1) {
-      // 更新 UI：当前轮次的"思考中"状态
-      updateAssistantMsg({
-        content: finalContent,
-        toolCalls: toolCallTrace.slice(),
-        thinking: iter === 0 ? '正在思考...' : '继续推理...',
-        toolCallCount: toolCallTrace.length,
-      });
+  // LLM 真压缩摘要器：超预算时由内核调用生成结构化摘要（带缓存，失败自动降级本地摘要）
+  const generateSummary = createLlmSummarizer({
+    llmConfig,
+    selectedModel,
+    parentSignal: controller?.signal,
+  });
 
-      // 注入会话级状态（执行计划 / 变量 / 黑板 / 最近工具调用），让 LLM 看到上下文
+  const result = await runToolLoop({
+    controller,
+    toolSchemas,
+    baseMessages,
+    systemPrompt,
+    llmConfig,
+    selectedModel,
+    toolCtx,
+    maxIterations: MAX_ITERATIONS,
+    onProgress: updateAssistantMsg,
+    // 会话状态注入：执行计划 / 变量 / 黑板 / 最近工具调用，让 LLM 看到接力上下文
+    buildSystemSuffix: () => {
       const sessionContextText = buildSessionContextText(targetId);
-      let fullSystemPrompt = sessionContextText
-        ? `${systemPrompt}\n\n【会话状态】你正在执行一个多步任务，以下是当前会话的状态快照，可作为接力推理的依据：\n${sessionContextText}`
-        : systemPrompt;
+      return sessionContextText
+        ? `【会话状态】你正在执行一个多步任务，以下是当前会话的状态快照，可作为接力推理的依据：\n${sessionContextText}`
+        : '';
+    },
+    onToolComplete: ({ toolName, args, result: toolResult, status }) => {
+      try {
+        appendHistory(targetId, { toolName, args, result: String(toolResult).slice(0, 2000), status });
+      } catch { /* ignore */ }
+    },
+    generateSummary,
+  });
 
-      // 收敛指令（P1-5）：轮数上限从 6 提到 12，但必须防止"轮数用尽却没给答案"。
-      // 倒数第二轮开始软提醒，最后一轮硬要求禁止再调工具，直接基于已有证据成文。
-      if (iter >= CONVERGE_AT) {
-        fullSystemPrompt += `\n\n【收敛指令】你已用完全部 ${MAX_ITERATIONS} 轮推理预算中的第 ${iter + 1} 轮，这是最后一轮。**禁止再调用任何工具**，请立即基于已经获得的工具结果给出完整的最终回答；若信息仍不足，请明确说明缺口与建议的下一步，而不是留下空回复。`;
-      } else if (iter === CONVERGE_AT - 1) {
-        fullSystemPrompt += `\n\n【收敛提醒】你已进入第 ${iter + 1} / ${MAX_ITERATIONS} 轮，剩余预算有限。请优先收敛：只在信息确有缺口时再调用工具，否则直接产出最终答案。`;
-      }
-
-      // 上下文压缩（对标 pi/compaction）：超过预算时，把中段消息折叠为一条本地摘要再发送，
-      // 而非只保留最近 KEEP_RECENT 条硬截断。summaryText 缺省用本地摘要降级，不额外增加 LLM 调用。
-      let sendMessages;
-      if (shouldCompact(conversationMessages, CONTEXT_BUDGET)) {
-        const packed = await buildContext(conversationMessages, CONTEXT_BUDGET, {
-          keepRecent: KEEP_RECENT,
-          cutMin: 2,
-          summaryText: localSummary(conversationMessages.slice(1, Math.max(1, conversationMessages.length - KEEP_RECENT))),
-        });
-        sendMessages = packed.compressed ? packed.messages : conversationMessages.slice(-30);
-        // 压缩是 lossy 的：把摘要沉淀为跨会话记忆，避免被压段"蒸发"（同 sessionId 去重）
-        if (packed.compressed && typeof rememberCompaction === 'function') {
-          try { rememberCompaction(targetId, packed.summaryText || ''); } catch { /* silent */ }
-        }
-      } else {
-        sendMessages = conversationMessages.slice(-30);
-      }
-      // 终极兜底：即使压缩后仍超长，也保留最近 30 条（与旧行为对齐，绝不越界）
-      if (estimateMessages(sendMessages) > CONTEXT_BUDGET) sendMessages = sendMessages.slice(-30);
-
-      // 最后一轮硬断工具：只靠 prompt 约束不可靠，直接不下发 tools，模型物理上无法再调
-      const isFinalIteration = iter >= CONVERGE_AT;
-      const iterTools = isFinalIteration ? undefined : toolSchemas;
-
-      // ── 带重试的 LLM 调用（P1-6 流式：文本逐字回灌 + tool_calls 分片合并）──
-      // 仅对 429/5xx/上游限流瞬错重试，最多 2 次
-      const MAX_AGENT_RETRIES = 2;
-      let data;
-      for (let attempt = 0; attempt <= MAX_AGENT_RETRIES; attempt++) {
-        try {
-          data = await streamAgentResponse({
-            controller,
-            baseUrl: llmConfig.baseUrl,
-            apiKey: llmConfig.apiKey,
-            model: selectedModel,
-            systemPrompt: fullSystemPrompt,
-            messages: sendMessages,
-            maxTokens: 4000,
-            tools: iterTools,
-            toolChoice: isFinalIteration ? undefined : 'auto',
-            // 实时逐字渲染：把已累积的 content 推给 UI（工具卡片在工具执行阶段才出现）
-            onChunk: (c) => updateAssistantMsg({
-              content: c,
-              toolCalls: toolCallTrace.slice(),
-              thinking: '正在生成...',
-              toolCallCount: toolCallTrace.length,
-            }),
-          });
-          // 成功，跳出重试循环
-          finalContent = data.content || '';
-          break;
-        } catch (err) {
-          if (err?.name === 'AbortError') throw err; // 用户取消
-          const retriable = err?.retriable || err?.status === 429 || (typeof err?.status === 'number' && err.status >= 500);
-          if (retriable && attempt < MAX_AGENT_RETRIES) {
-            await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
-            continue;
-          }
-          throw err;
-        }
-      }
-
-      // 若无 tool_calls，本次即为最终答案
-      if (!Array.isArray(data.tool_calls) || data.tool_calls.length === 0) {
-        finalContent = data.content || '（无内容返回）';
-        break;
-      }
-
-      // 有 tool_calls：先把 assistant 的 tool_calls 消息追加到 conversation
-      conversationMessages.push({
-        role: 'assistant',
-        content: data.content || '',
-        tool_calls: data.tool_calls,
-      });
-      // 若 LLM 同时返回了文本，更新到 UI
-      if (data.content) finalContent = data.content;
-
-      // ── 工具调用执行（P1-4 并行化）──
-      // 同批次的 tool_calls 默认相互独立：把"免审批"的调用用 Promise.allSettled 并发执行提速；
-      // 把"需要用户审批"的调用串行排队（审批是单模态卡片，并发会互相打架）。
-      // 不论并行还是串行，最终都按原始 tool_calls 顺序回灌 tool message，
-      // 保证 tool_call_id 与结果一一对应，LLM 不会错位。
-      const calls = (data.tool_calls || []).map(tc => {
-        let args = {};
-        try { args = JSON.parse(tc?.function?.arguments || '{}'); } catch { args = {}; }
-        return { tc, toolName: tc?.function?.name || 'unknown', args };
-      });
-
-      // 先把所有调用都标记为 running（UI 立即展示全部卡片）
-      for (const c of calls) {
-        toolCallTrace.push({
-          id: c.tc.id,
-          name: c.toolName,
-          args: c.args,
-          status: 'running',
-          startedAt: Date.now(),
-        });
-      }
-      observeToolUsage(calls.map(c => c.toolName));
-      updateAssistantMsg({
-        content: finalContent,
-        toolCalls: toolCallTrace.slice(),
-        thinking: `正在调用 ${calls.length} 个工具...`,
-        toolCallCount: toolCallTrace.length,
-      });
-
-      // 分流：需要审批的串行，免审批的并行
-      const needsApproval = [];
-      const auto = [];
-      for (const c of calls) {
-        const entry = getTool(c.toolName);
-        const decision = entry
-          ? resolveApprovalDecision(entry, toolCtx, c.args)
-          : { required: false };
-        (decision.required ? needsApproval : auto).push(c);
-      }
-
-      /** 单个工具执行 + 统一错误兜底（abort 向上抛） */
-      const runOne = async (c) => {
-        let r;
-        try {
-          r = await executeAgentTool(c.toolName, c.args, toolCtx);
-        } catch (err) {
-          if (err?.name === 'AbortError') throw err; // 用户取消：穿透到外层
-          r = `工具执行失败：${err?.message || String(err)}`;
-        }
-        return r;
-      };
-
-      // 免审批调用：并发执行（提速主路径）
-      const autoResults = auto.length
-        ? await Promise.allSettled(auto.map(c => runOne(c)))
-        : [];
-
-      // 回执收集：tc.id -> resultText
-      const resultMap = new Map();
-      auto.forEach((c, i) => {
-        const settled = autoResults[i];
-        if (settled.status === 'fulfilled') {
-          resultMap.set(c.tc.id, String(settled.value));
-        } else {
-          // runOne 已兜底普通异常；仅 AbortError 会穿透为 rejected，这里重新抛出以中断整轮
-          const err = settled.reason;
-          if (err?.name === 'AbortError') throw err;
-          resultMap.set(c.tc.id, `工具执行失败：${err?.message || String(err)}`);
-        }
-      });
-
-      // 需审批调用：串行逐个（每个等待自己的审批卡片）
-      for (const c of needsApproval) {
-        const r = await runOne(c);
-        resultMap.set(c.tc.id, String(r));
-        if (controller.signal.aborted) { aborted = true; break; }
-      }
-
-      // 按原始顺序统一回灌：更新 trace / 历史 / 长结果落盘 / tool message
-      for (const c of calls) {
-        const resultText = resultMap.get(c.tc.id) ?? '（无返回）';
-        // 审批被拒 / 被取消 = "未执行"，标 skipped；其余"错误："前缀 = 执行失败
-        const wasSkipped = /^错误：(用户拒绝授权|审批被取消|审批失败)/.test(resultText);
-        const wasFailed = !wasSkipped && resultText.startsWith('错误：');
-
-        const traceItem = toolCallTrace.find(t => t.id === c.tc.id);
-        if (traceItem) {
-          traceItem.status = wasSkipped ? 'skipped' : 'done';
-          traceItem.result = resultText.slice(0, 8000);
-          traceItem.completedAt = Date.now();
-        }
-        updateAssistantMsg({
-          content: finalContent,
-          toolCalls: toolCallTrace.slice(),
-          thinking: wasSkipped
-            ? `工具 ${c.toolName} 审批未通过，继续推理...`
-            : `工具 ${c.toolName} 已返回，继续推理...`,
-          toolCallCount: toolCallTrace.length,
-        });
-
-        try {
-          appendHistory(targetId, {
-            toolName: c.toolName,
-            args: c.args,
-            result: resultText.slice(0, 2000),
-            status: wasSkipped ? 'skipped' : (wasFailed ? 'failed' : 'done'),
-          });
-        } catch { /* ignore */ }
-
-        // 超长结果落盘工作空间（对标 pi/bash 输出截断进 temp 文件），只回灌截断+路径提示
-        const toolResult = await persistLongResult({
-          result: String(resultText),
-          rootHandle: toolCtx.rootHandle,
-          toolName: c.toolName,
-          sessionId: targetId,
-        });
-        conversationMessages.push({
-          role: 'tool',
-          tool_call_id: c.tc.id,
-          content: toolResult.text,
-        });
-      }
-      // 用户已 abort：跳出 LLM 循环
-      if (controller.signal.aborted) {
-        aborted = true;
-        break;
-      }
-      // 进入下一轮：LLM 看到 tool 结果后继续推理
-    }
-  } catch (err) {
-    // abort：标记并保留已有内容与 toolCalls
-    if (err?.name === 'AbortError' || controller.signal.aborted) {
-      aborted = true;
-    } else {
-      // 其他错误：向上传播，由 sendMessage 的 catch 统一处理
-      throw err;
-    }
-  }
+  let { finalContent } = result;
+  const { toolCallTrace, aborted, usage } = result;
 
   if (aborted) {
     if (!finalContent) finalContent = '（已停止）';
@@ -531,7 +247,7 @@ export async function runAgentLoop({
     }
   }
 
-  // 写入最终 assistant 消息（保留 toolCalls 痕迹供 UI 展示）
+  // 写入最终 assistant 消息（保留 toolCalls 痕迹供 UI 展示 + 本轮 token 用量）
   setSessions(prev => prev.map(s => {
     if (s.id !== targetId) return s;
     const msgs = [...s.messages];
@@ -539,6 +255,7 @@ export async function runAgentLoop({
       role: 'assistant',
       content: finalFinalContent,
       toolCalls: toolCallTrace.slice(),
+      usage,
       loading: false,
     };
     return { ...s, messages: msgs, updatedAt: Date.now() };

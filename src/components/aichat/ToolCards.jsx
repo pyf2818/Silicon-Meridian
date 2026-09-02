@@ -10,7 +10,92 @@ const TOOL_META = {
   fetch_page: { label: '抓取网页', iconKey: 'globe' },
   get_stock_quote: { label: '股票行情', iconKey: 'trendingUp' },
   get_stock_kline: { label: 'K 线数据', iconKey: 'chart' },
+  spawn_subagent: { label: '派出子代理', iconKey: 'bot' },
+  spawn_agent_team: { label: '组建团队', iconKey: 'bot' },
+  update_team_task: { label: '更新团队任务', iconKey: 'pencil' },
+  post_team_message: { label: '团队留言', iconKey: 'megaphone' },
 };
+
+/* 子代理任务状态（progress patch 由 subagentRunner 经 emitProgress 推送） */
+const SUB_STATUS_META = {
+  running: { label: '执行中', cls: 'running' },
+  done: { label: '已完成', cls: 'done' },
+  failed: { label: '失败', cls: 'error' },
+  aborted: { label: '已中止', cls: 'error' },
+};
+
+/* 子代理进度区：spawn_subagent 执行期间/结束后的每任务状态行 */
+function SubagentProgress({ progress }) {
+  if (!progress || progress.type !== 'subagent' || !Array.isArray(progress.tasks)) return null;
+  return (
+    <div className="tool-call-subagents">
+      {progress.tasks.map((t, i) => {
+        const st = SUB_STATUS_META[t.status] || SUB_STATUS_META.running;
+        return (
+          <div key={t.id || i} className={`tool-call-subagent tool-call-subagent-${st.cls}`}>
+            <span className={`tool-call-subagent-dot tool-call-subagent-dot-${st.cls}`} />
+            <span className="tool-call-subagent-name">{t.agentName || t.agent || `任务 ${i + 1}`}</span>
+            <span className="tool-call-subagent-objective" title={t.objective}>{t.objective}</span>
+            <span className="tool-call-subagent-status">
+              {st.label}{t.tokens ? ` · ${Number(t.tokens).toLocaleString()} tokens` : ''}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* 团队任务板：spawn_agent_team 执行期间/结束后的共享任务列表 + 成员状态 */
+const TEAM_TASK_MARK = {
+  pending: { label: '待认领', cls: 'pending' },
+  in_progress: { label: '进行中', cls: 'running' },
+  done: { label: '已完成', cls: 'done' },
+  failed: { label: '失败', cls: 'error' },
+};
+
+function TeamProgress({ progress }) {
+  if (!progress || progress.type !== 'team') return null;
+  const tasks = Array.isArray(progress.tasks) ? progress.tasks : [];
+  const members = Array.isArray(progress.members) ? progress.members : [];
+  return (
+    <div className="tool-call-team">
+      {progress.goal && <div className="tool-call-team-goal">团队目标：{progress.goal}</div>}
+      {tasks.length > 0 && (
+        <div className="tool-call-team-board">
+          {tasks.map((t) => {
+            const st = TEAM_TASK_MARK[t.status] || TEAM_TASK_MARK.pending;
+            return (
+              <div key={t.id} className={`tool-call-team-task tool-call-team-task-${st.cls}`}>
+                <span className={`tool-call-subagent-dot tool-call-subagent-dot-${st.cls === 'pending' ? 'idle' : st.cls}`} />
+                <span className="tool-call-team-task-title" title={t.title}>{t.title}</span>
+                <span className="tool-call-team-task-owner">@{t.owner}</span>
+                <span className="tool-call-team-task-status">{st.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {members.length > 0 && (
+        <div className="tool-call-subagents">
+          {members.map((m, i) => {
+            const st = SUB_STATUS_META[m.status] || SUB_STATUS_META.running;
+            return (
+              <div key={m.id || i} className={`tool-call-subagent tool-call-subagent-${st.cls}`}>
+                <span className={`tool-call-subagent-dot tool-call-subagent-dot-${st.cls}`} />
+                <span className="tool-call-subagent-name">@{m.memberName || m.agentName}</span>
+                <span className="tool-call-subagent-objective" title={m.objective}>{m.objective}</span>
+                <span className="tool-call-subagent-status">
+                  {st.label}{m.tokens ? ` · ${Number(m.tokens).toLocaleString()} tokens` : ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function summarizeArgs(name, args) {
   try {
@@ -46,6 +131,8 @@ export function ToolCallCard({ tc }) {
         </span>
         <span className={`tool-call-chevron${expanded ? ' is-open' : ''}`}>▾</span>
       </div>
+      {tc.progress?.type === 'subagent' && <SubagentProgress progress={tc.progress} />}
+      {tc.progress?.type === 'team' && <TeamProgress progress={tc.progress} />}
       {expanded && (
         <div className="tool-call-body">
           <div className="tool-call-section">

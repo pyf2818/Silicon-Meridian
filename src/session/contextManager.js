@@ -149,3 +149,29 @@ export function localSummary(region) {
     .slice(0, 12);
   return lines.join('\n');
 }
+
+/**
+ * 构造 LLM 压缩摘要的提示词（纯函数，供 llmSummarizer 消费，便于单测）。
+ * 与 localSummary 的"截断清单"不同，这里要求 LLM 输出**有信息密度的结构化摘要**：
+ * 保留任务目标、已确认的关键事实/数据、已做过的动作与结论、未完成的缺口。
+ */
+export function buildCompactionPrompt(region) {
+  const dialogue = (region || [])
+    .map((m, i) => {
+      const plain = String(m.content ?? '').trim();
+      if (!plain) return '';
+      const roleTag = m.role === 'user' ? '[用户]' : m.role === 'tool' ? '[工具输出]' : '[助手]';
+      return `${i + 1} ${roleTag}\n${plain.slice(0, 1200)}${plain.length > 1200 ? '\n…(截断)' : ''}`;
+    })
+    .filter(Boolean)
+    .join('\n\n');
+
+  return {
+    system: [
+      '你是对话上下文压缩器。你的任务是把一段早前的 agent 工作对话压缩成高密度摘要，供后续对话接力使用。',
+      '摘要必须保留：① 用户的任务目标与约束；② 已确认的关键事实、数据、ID（含 [资讯:ID]/[素材:ID] 引用锚点）；③ 已执行的动作及其结论；④ 重要的中间判断；⑤ 尚未完成的缺口。',
+      '用中文输出，使用紧凑的分点列表（不超过 15 点，每点不超过 60 字）。只输出摘要本身，不要任何开场白或解释。',
+    ].join('\n'),
+    user: `请压缩以下早前对话（共 ${region?.length || 0} 条消息）：\n\n${dialogue}\n\n摘要：`,
+  };
+}

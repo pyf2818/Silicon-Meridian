@@ -6,6 +6,7 @@ import {
   findCutRegion,
   buildContext,
   localSummary,
+  buildCompactionPrompt,
 } from '../contextManager.js';
 
 // ---------------------------------------------------------------------------
@@ -154,5 +155,35 @@ describe('localSummary', () => {
 
   it('空区域返回空串', () => {
     expect(localSummary([])).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCompactionPrompt（LLM 真压缩提示词）
+// ---------------------------------------------------------------------------
+describe('buildCompactionPrompt', () => {
+  it('生成 system + user 两段提示词', () => {
+    const region = [
+      { role: 'user', content: '帮我调研 klinecharts v10 的 API 变化' },
+      { role: 'tool', content: '搜索结果：v10 移除了 applyNewData…' },
+      { role: 'assistant', content: '结论：v10 用 setDataLoader 替代' },
+    ];
+    const { system, user } = buildCompactionPrompt(region);
+    expect(system).toContain('压缩');
+    expect(system).toContain('[资讯:ID]'); // 要求保留引用锚点
+    expect(user).toContain('帮我调研');
+    expect(user).toContain('[工具输出]');
+  });
+
+  it('超长内容被截断到 1200 字符', () => {
+    const region = [{ role: 'user', content: 'x'.repeat(5000) }];
+    const { user } = buildCompactionPrompt(region);
+    expect(user.length).toBeLessThan(2000);
+    expect(user).toContain('(截断)');
+  });
+
+  it('空区域安全', () => {
+    const { user } = buildCompactionPrompt([]);
+    expect(user).toContain('0 条消息');
   });
 });
