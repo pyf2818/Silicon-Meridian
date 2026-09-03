@@ -17,6 +17,13 @@ import ProfileInsightsSection from './profile/ProfileInsightsSection.jsx';
 import ProfileSocialSection from './profile/ProfileSocialSection.jsx';
 
 // 偏好设置内的模块导航（每个模块独立一页，只显示一个组件）
+const PROFILE_VIEWS = [
+  { id: 'overview', label: '\u56fe\u50cf\u603b\u89c8', icon: 'sparkles' },
+  { id: 'insights', label: '\u884c\u4e3a\u6d1e\u5bdf', icon: 'trend' },
+  { id: 'preferences', label: '\u504f\u597d\u8bbe\u7f6e', icon: 'target' },
+  { id: 'social', label: '\u6211\u7684\u793e\u4ea4', icon: 'user' },
+];
+
 const PROFILE_MODULES = [
   { id: 'learning', label: '学习引擎', icon: 'sparkles' },
   { id: 'domains', label: '领域优先级', icon: 'target' },

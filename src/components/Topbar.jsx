@@ -134,13 +134,13 @@ export default function Topbar({
 
       {/* 用户画像页：系统遥测栏置顶（替代顶部语言切换，随 sticky 顶栏固定在屏幕最顶端） */}
       {/* 用户画像页：系统遥测栏置顶 + 分区菜单按钮 */}
-      {nav === 'profile-center' && telemetryStats && telemetryStats.length > 0 && (
+      {nav === 'profile-center' && (
         <div className="profile-center-page topbar-hud-host">
           <HudTelemetryBar
-            stats={telemetryStats}
+            stats={telemetryStats || []}
             actions={
               <div className="hud-section-menu">
-                <button className="hud-section-menu-btn" title="切换画像分区" onClick={() => setSectionMenuOpen(v => !v)}>
+                <button type="button" className="hud-section-menu-btn" title={'\u5207\u6362\u753b\u50cf\u5206\u533a'} aria-label={'\u5207\u6362\u753b\u50cf\u5206\u533a'} aria-expanded={sectionMenuOpen} onClick={() => setSectionMenuOpen(v => !v)}>
                   {ICONS.grid}
                 </button>
                 {sectionMenuOpen && (
