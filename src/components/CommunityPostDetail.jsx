@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { renderMarkdown } from '../utils/markdown.jsx';
 
 function formatDate(value) {
   if (!value) return '';
   return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 }
 
-export default function CommunityPostDetail({ post, comments, loading, user, onClose, onComment, onLike, onBookmark, onFollow, onRequireAuth }) {
+export default function CommunityPostDetail({ post, comments, loading, user, onClose, onComment, onLike, onBookmark, onFollow, onRequireAuth, onShare }) {
   const [draft, setDraft] = useState('');
   if (loading) return <aside className="community-detail"><div className="community-state">正在读取完整内容...</div></aside>;
   if (!post) return null;
@@ -33,13 +34,18 @@ export default function CommunityPostDetail({ post, comments, loading, user, onC
         {user?.id !== post.authorId && <button type="button" data-testid="community-detail-follow" className={post.following ? 'active' : ''} onClick={() => runProtected(() => onFollow(!post.following))}>{post.following ? '已关注' : '关注'}</button>}
       </div>
       <h2>{post.title}</h2>
-      <div className="community-post-body">{post.body}</div>
+      {/* 文章类型走 Markdown 阅读视图（标题/列表/代码块/引用），其余保持纯文本 */}
+      <div
+        className={`community-post-body${post.type === 'article' ? ' md-body' : ''}`}
+        {...(post.type === 'article' ? { dangerouslySetInnerHTML: { __html: renderMarkdown(post.body) } } : { children: post.body })}
+      />
       {Array.isArray(post.sourceRefs) && post.sourceRefs.length > 0 && (
         <div className="community-sources"><strong>引用来源</strong>{post.sourceRefs.map((source, index) => <a key={`${source.url || source.title}-${index}`} href={source.url} target="_blank" rel="noreferrer">{source.title || source.url}</a>)}</div>
       )}
       <div className="community-detail-actions">
         <button data-testid="community-detail-like" className={post.liked ? 'active liked' : ''} onClick={() => runProtected(() => onLike(!post.liked))}>赞同 {post.likeCount || 0}</button>
         <button data-testid="community-detail-bookmark" className={post.bookmarked ? 'active' : ''} onClick={() => runProtected(() => onBookmark(!post.bookmarked))}>收藏 {post.bookmarkCount || 0}</button>
+        {onShare && <button onClick={() => Promise.resolve(onShare()).catch(() => {})}>分享</button>}
         <span>评论 {post.commentCount || 0}</span>
       </div>
       <section className="community-comments">

@@ -14,13 +14,35 @@ const POST_VIEW = `
 
 export function createCommunityRepository(db = getPool()) {
   return {
-    async listPosts({ viewerId = null, cursor = null, limit = 20 }) {
+    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null } = {}) {
+      const parts = [];
+      const params = [viewerId];
+      // 自己的作品：包含草稿（排除已删除）；否则按可见范围 + 可选作者过滤
+      if (authorId && authorId === viewerId) {
+        parts.push('p.author_id = $1', "p.status <> 'deleted'");
+      } else {
+        parts.push("p.status = 'published'");
+        if (authorId) {
+          params.push(authorId);
+          parts.push(`p.author_id = $${params.length}`);
+        } else {
+          parts.push("(p.visibility = 'public' or p.author_id = $1 or (p.visibility = 'followers' and exists(select 1 from user_follows f where f.follower_id = $1 and f.followed_id = p.author_id)))");
+        }
+      }
+      params.push(cursor);
+      parts.push(`($${params.length}::timestamptz is null or p.created_at < $${params.length}::timestamptz)`);
+      params.push(limit);
       const { rows } = await db.query(
-        `${POST_VIEW}
+        `${POST_VIEW} where ${parts.join(' and ')} order by p.created_at desc, p.id desc limit $${params.length}`,
+        params,
+      );
+      return rows;
+    },
+    async listBookmarkedPosts({ viewerId = null, cursor = null, limit = 20 } = {}) {
+      const { rows } = await db.query(
+        `${POST_VIEW} join post_bookmarks bm on bm.post_id = p.id and bm.user_id = $1
          where p.status = 'published'
-           and ($2::timestamptz is null or p.created_at < $2)
-           and (p.visibility = 'public' or p.author_id = $1 or
-             (p.visibility = 'followers' and exists(select 1 from user_follows f where f.follower_id = $1 and f.followed_id = p.author_id)))
+           and ($2::timestamptz is null or p.created_at < $2::timestamptz)
          order by p.created_at desc, p.id desc limit $3`,
         [viewerId, cursor, limit],
       );

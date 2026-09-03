@@ -43,9 +43,17 @@ export function createCommunityService(repository = createCommunityRepository())
     return post;
   }
   return {
-    async listPosts({ viewerId = null, cursor = null, limit = 20 } = {}) {
+    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null } = {}) {
       const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
-      const posts = await repository.listPosts({ viewerId, cursor, limit: safeLimit + 1 });
+      const posts = await repository.listPosts({ viewerId, cursor, limit: safeLimit + 1, authorId });
+      const hasMore = posts.length > safeLimit;
+      const items = posts.slice(0, safeLimit);
+      return { items, nextCursor: hasMore ? items.at(-1)?.createdAt : null };
+    },
+    async listBookmarks({ viewerId = null, cursor = null, limit = 20 } = {}) {
+      requiredUser(viewerId);
+      const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+      const posts = await repository.listBookmarkedPosts({ viewerId, cursor, limit: safeLimit + 1 });
       const hasMore = posts.length > safeLimit;
       const items = posts.slice(0, safeLimit);
       return { items, nextCursor: hasMore ? items.at(-1)?.createdAt : null };

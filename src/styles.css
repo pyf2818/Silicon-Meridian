@@ -26907,3 +26907,82 @@ body {
   .repo-list-row { grid-template-columns: auto 52px minmax(0, 1fr) auto; }
   .repo-list-source, .repo-list-tags, .repo-list-date { display: none; }
 }
+
+/* ============================================================
+   社区生态（微博式）：tabs / 分享 / markdown 阅读视图
+   ============================================================ */
+.community-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(128,128,128,.15));
+}
+.community-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all .12s;
+}
+.community-tab:hover { color: var(--text-primary); }
+.community-tab.active { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); font-weight: 600; }
+.community-post-draft {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent-amber, #f59e0b) 18%, transparent);
+  color: var(--accent-amber, #f59e0b);
+  font-size: 10px;
+  font-weight: 600;
+}
+.community-post-excerpt {
+  max-height: 180px;
+  overflow: hidden;
+  position: relative;
+  margin: 6px 0 0;
+}
+.community-post-excerpt::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 48px;
+  background: linear-gradient(transparent, var(--bg-card, var(--bg-primary)));
+  pointer-events: none;
+}
+.community-post-body.md-body h1, .community-post-body.md-body h2, .community-post-body.md-body h3 {
+  margin: .8em 0 .4em;
+  line-height: 1.4;
+}
+.community-post-body.md-body p { margin: .5em 0; line-height: 1.75; }
+.community-post-body.md-body pre {
+  background: var(--bg-secondary, rgba(127,127,127,.1));
+  padding: 10px 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.community-post-body.md-body blockquote {
+  margin: .6em 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--accent-cyan);
+  color: var(--text-muted);
+}
+.community-post-body.md-body img { max-width: 100%; border-radius: 8px; }
+.community-load-more { display: flex; justify-content: center; padding: 14px 0; }
+.community-load-more button {
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  padding: 8px 24px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.community-load-more button:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+.btn-publish-square {
+  color: var(--accent-cyan) !important;
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 40%, transparent) !important;
+}
+.btn-publish-square:disabled { opacity: .5; cursor: wait; }

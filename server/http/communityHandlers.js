@@ -28,16 +28,30 @@ export async function handleCommunityRequest(req, res, { path = [], service, aut
     const community = service || createCommunityService();
     const auth = authService || createAuthService();
     if (parts[0] === 'posts' && parts.length === 1) {
-      const user = await viewer(req, auth);
+      let user = await viewer(req, auth);
       if (method === 'GET') {
         const url = new URL(req.url, 'http://localhost');
-        const data = await community.listPosts({ viewerId: user?.id, cursor: url.searchParams.get('cursor'), limit: url.searchParams.get('limit') });
+        // author=me → 我的作品（含草稿）；需要登录态
+        let authorId = null;
+        if (url.searchParams.get('author') === 'me') {
+          if (!user) throw Object.assign(new Error('请先登录'), { code: 'UNAUTHORIZED', status: 401 });
+          authorId = user.id;
+        }
+        const data = await community.listPosts({
+          viewerId: user?.id, cursor: url.searchParams.get('cursor'), limit: url.searchParams.get('limit'), authorId,
+        });
         return sendJsonResponse(res, 200, { ok: true, data });
       }
       if (method === 'POST') {
-        const user = await viewer(req, auth, true); rateLimit(`post:${user.id}`, 10, 60 * 60 * 1000);
+        user = await viewer(req, auth, true); rateLimit(`post:${user.id}`, 10, 60 * 60 * 1000);
         return sendJsonResponse(res, 201, { ok: true, data: { post: await community.createPost({ userId: user.id, input: await readJsonBody(req) }) } });
       }
+    }
+    if (parts[0] === 'bookmarks' && parts.length === 1 && method === 'GET') {
+      const user = await viewer(req, auth, true);
+      const url = new URL(req.url, 'http://localhost');
+      const data = await community.listBookmarks({ viewerId: user.id, cursor: url.searchParams.get('cursor'), limit: url.searchParams.get('limit') });
+      return sendJsonResponse(res, 200, { ok: true, data });
     }
     if (parts[0] === 'posts' && parts[1]) {
       const postId = requireUuid(parts[1]);

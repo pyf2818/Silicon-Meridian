@@ -45,6 +45,7 @@ export default function ArticleEditor({
   batchAssignArticlesToSpace,
   insertAiResult, clearAiResult,
   exportArticleToFile, copyArticleAsRichText,
+  onPublishToSquare, publishingToSquare,
   workspace,
   materials, llmConfig,
 }) {
@@ -115,6 +116,14 @@ export default function ArticleEditor({
                             </select>
                             <button className="btn-copy-article" onClick={() => exportArticleToFile(article)} title="导出为文件">{ICONS.download}</button>
                             <button className="btn-copy-article" onClick={() => copyArticleAsRichText(article)} title="复制全文">{ICONS.copy}</button>
+                            <button
+                              className="btn-copy-article btn-publish-square"
+                              onClick={() => onPublishToSquare?.(article)}
+                              title="发布到用户广场，与社区分享这篇内容"
+                              disabled={publishingToSquare}
+                            >
+                              {publishingToSquare ? '发布中…' : '发布到广场'}
+                            </button>
                           </div>
                         </div>
 

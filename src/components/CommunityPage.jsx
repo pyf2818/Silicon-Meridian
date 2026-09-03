@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useCommunity } from '../hooks/useCommunity.js';
+import { useCommunity, copyPostShareLink } from '../hooks/useCommunity.js';
 import CommunityPostDetail from './CommunityPostDetail.jsx';
+import { renderMarkdown } from '../utils/markdown.jsx';
+import { showToast } from '../utils/toast.js';
 
 const TYPE_LABELS = { article: '文章', briefing: '每日速报', work: '创作作品', workflow: '智能体工作流' };
+const TABS = [
+  { id: 'square', label: '广场' },
+  { id: 'mine', label: '我的作品' },
+  { id: 'bookmarks', label: '我的收藏' },
+];
 
 function relativeDate(value) {
   const delta = Math.max(0, Date.now() - new Date(value).getTime());
@@ -18,7 +25,18 @@ export default function CommunityPage({ user, onRequireAuth }) {
   const [publishing, setPublishing] = useState(false);
   const [form, setForm] = useState({ type: 'article', title: '', body: '', visibility: 'public' });
 
-  useEffect(() => { community.loadPosts(); }, [community.loadPosts]);
+  useEffect(() => { community.loadPosts({ tab: 'square', reset: true }).catch(() => {});
+    // 深链：/?post=<id> 分享链接直达详情
+    const params = new URLSearchParams(window.location.search);
+    const deepPostId = params.get('post');
+    if (deepPostId) {
+      community.openPost(deepPostId);
+      params.delete('post');
+      const next = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openComposer = () => {
     if (!user) { onRequireAuth(); return; }
@@ -35,13 +53,33 @@ export default function CommunityPage({ user, onRequireAuth }) {
     if (!user) { onRequireAuth(); return; }
     try { await action(); } catch (error) { community.setError(error.message); }
   };
+  const sharePost = async (post) => {
+    await copyPostShareLink(post.id);
+    showToast('分享链接已复制，粘贴给好友或群聊即可');
+  };
 
   return (
     <div className="product-page community-page">
       <section className="community-header">
-        <div><span className="workbench-kicker">Community Intelligence</span><h1>用户广场</h1><p>分享可验证的资讯判断、创作作品和工作流。互动数据由账户和数据库持久化。</p></div>
+        <div><span className="workbench-kicker">Community Intelligence</span><h1>用户广场</h1><p>发布个人文章、分享可验证的资讯判断与创作作品；支持点赞、评论、收藏与分享。数据由账户持久化。</p></div>
         <button className="ai-primary-action" type="button" data-testid="community-open-composer" onClick={openComposer}>发布内容</button>
       </section>
+
+      {/* Tab 切换：广场 / 我的作品 / 我的收藏 */}
+      <nav className="community-tabs" role="tablist">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={community.tab === t.id}
+            className={`community-tab ${community.tab === t.id ? 'active' : ''}`}
+            onClick={() => { if (t.id !== 'square' && !user) { onRequireAuth(); return; } community.switchTabSafe(t.id); }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
 
       {composerOpen && (
         <section className="community-composer" data-testid="community-composer">
@@ -49,6 +87,7 @@ export default function CommunityPage({ user, onRequireAuth }) {
           <div className="community-compose-options">
             <select value={form.type} onChange={event => setForm(previous => ({ ...previous, type: event.target.value }))}>{Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
             <select value={form.visibility} onChange={event => setForm(previous => ({ ...previous, visibility: event.target.value }))}><option value="public">公开</option><option value="followers">仅关注者</option><option value="private">仅自己</option></select>
+            <span className="community-compose-hint">正文支持 Markdown 语法（标题、列表、代码块、引用）</span>
           </div>
           <input data-testid="community-title-input" value={form.title} maxLength={180} onChange={event => setForm(previous => ({ ...previous, title: event.target.value }))} placeholder="标题" />
           <textarea data-testid="community-body-input" value={form.body} maxLength={100000} onChange={event => setForm(previous => ({ ...previous, body: event.target.value }))} placeholder="正文。清楚说明事实、判断依据和结论。" />
@@ -56,25 +95,46 @@ export default function CommunityPage({ user, onRequireAuth }) {
         </section>
       )}
 
-      {community.error && <div className="community-error" data-testid="community-error"><strong>社区服务不可用</strong><span>{community.error}</span><button type="button" onClick={community.loadPosts}>重试</button></div>}
+      {community.error && <div className="community-error" data-testid="community-error"><strong>社区服务不可用</strong><span>{community.error}</span><button type="button" onClick={() => community.loadPosts({ tab: community.tab, reset: true })}>重试</button></div>}
 
       <section className={`community-layout ${community.selectedPost || community.detailLoading ? 'has-detail' : ''}`}>
         <div className="community-feed">
           {community.loading && <div className="community-state">正在加载社区动态...</div>}
-          {!community.loading && !community.error && community.posts.length === 0 && <div className="community-state"><strong>广场尚无公开内容</strong><span>登录后发布第一条经过验证的分享。</span></div>}
+          {!community.loading && !community.error && community.posts.length === 0 && (
+            <div className="community-state">
+              <strong>{community.tab === 'square' ? '广场尚无公开内容' : community.tab === 'mine' ? '你还没有发布过作品' : '还没有收藏任何内容'}</strong>
+              <span>{community.tab === 'square' ? '登录后发布第一条经过验证的分享。' : community.tab === 'mine' ? '在 AI 工作站编辑器里点击「发布到广场」，或直接发布内容。' : '在广场内容上点击「收藏」，即可在这里找到。'}</span>
+            </div>
+          )}
           {community.posts.map(post => (
             <article key={post.id} className="community-post" data-testid="community-post" data-post-id={post.id} onClick={() => community.openPost(post.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') community.openPost(post.id); }}>
-              <div className="community-post-meta"><span>{TYPE_LABELS[post.type] || post.type}</span><span>{post.displayName || post.username} · {relativeDate(post.createdAt)}</span></div>
+              <div className="community-post-meta">
+                <span>{TYPE_LABELS[post.type] || post.type}</span>
+                {post.status === 'draft' && <span className="community-post-draft">草稿</span>}
+                <span>{post.displayName || post.username} · {relativeDate(post.createdAt)}</span>
+              </div>
               <h2>{post.title}</h2>
-              <p>{post.body}</p>
+              {post.type === 'article' ? (
+                <div className="community-post-body md-body community-post-excerpt" dangerouslySetInnerHTML={{ __html: renderMarkdown(post.body) }} />
+              ) : (
+                <p>{post.body}</p>
+              )}
               <div className="community-post-actions" onClick={event => event.stopPropagation()}>
                 <button data-testid="community-like" className={post.liked ? 'active liked' : ''} onClick={() => protectedAction(() => community.setLike(post.id, !post.liked))}>赞同 {post.likeCount || 0}</button>
                 <button data-testid="community-bookmark" className={post.bookmarked ? 'active' : ''} onClick={() => protectedAction(() => community.setBookmark(post.id, !post.bookmarked))}>收藏 {post.bookmarkCount || 0}</button>
                 <button onClick={() => community.openPost(post.id)}>评论 {post.commentCount || 0}</button>
+                <button onClick={() => sharePost(post)}>分享</button>
                 {user?.id !== post.authorId && <button data-testid="community-follow" className={post.following ? 'active' : ''} onClick={() => protectedAction(() => community.setFollow(post.authorId, !post.following))}>{post.following ? '已关注' : '关注作者'}</button>}
               </div>
             </article>
           ))}
+          {!community.loading && community.hasMore && (
+            <div className="community-load-more">
+              <button type="button" onClick={community.loadMore} disabled={community.loadingMore}>
+                {community.loadingMore ? '加载中...' : '加载更多'}
+              </button>
+            </div>
+          )}
         </div>
         <CommunityPostDetail
           post={community.selectedPost} comments={community.comments} loading={community.detailLoading}
@@ -83,6 +143,7 @@ export default function CommunityPage({ user, onRequireAuth }) {
           onLike={enabled => protectedAction(() => community.setLike(community.selectedPost.id, enabled))}
           onBookmark={enabled => protectedAction(() => community.setBookmark(community.selectedPost.id, enabled))}
           onFollow={enabled => protectedAction(() => community.setFollow(community.selectedPost.authorId, enabled))}
+          onShare={() => sharePost(community.selectedPost)}
         />
       </section>
     </div>
