@@ -1,44 +1,41 @@
 /**
  * AgentTeamChat - 团队群聊页（「一个人的公司」协作空间）
  *
- * - 多群聊：可创建多个团队群聊、切换、重命名、删除（groupChatStore v2）
- * - 成员栏：从 4 个预置子代理中邀请进群（roster 持久化），可移除
- * - 群聊流：用户消息 + 各 agent 回复气泡（带执行 meta：轮次/tokens）
- * - @ 强调：@ 仅指定优先接收顺序，不再过滤收件人
- * - 两阶段广播流水线（v7）：每条消息全员收到 → Phase 1 各成员按角色认领
- *   （【认领】/【关注】/【旁观】轻量声明）→ Phase 2 认领者 + 被 @ 者执行
- *   完整产出，共享转写含彼此认领与前序产出，互相讨论接力推进
+ * - 紧凑顶栏（v8）：群名下拉（切换/重命名/解散/新建）+ 成员 chips（点击开角色卡）
+ *   + ＋邀请 + 导出/清空/执行记录；移除旧大标题与群聊切换条，为对话区让空间
+ * - 成员灵魂（v8）：每个成员有职责 + 性格风格（内置成员本群覆盖，自定义角色全局），
+ *   注入 systemPrompt，认领与产出都带独特口吻；角色卡可查看/编辑/保存
+ * - 自定义角色（v8）：角色库持久化，创建即入群；工具白名单给默认读集
+ * - 气泡常用操作（v8）：hover 复制 / 保存到素材库；顶栏导出整群记录
+ * - 两阶段广播流水线（v7）：每条消息全员收到 → Phase 1 角色认领 → Phase 2 协作产出
  * - 执行核：复用 subagentRunner.runOneSubagent（独立工具白名单/预算/审批会话）
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { SUBAGENT_PRESETS } from '../../domain/agent/subagentCore.js';
 import { runOneSubagent } from './subagentRunner.js';
+import AgentRoleCard from './AgentRoleCard.jsx';
 import { renderMarkdown } from '../../utils/markdown.jsx';
+import { downloadMarkdown } from '../../utils/workspace.js';
 import {
   getGroupState, getActiveChat, subscribeGroup, inviteMember, removeMember,
   addGroupMessage, updateGroupMessage, setGroupRunning, clearGroupChat,
   createChat, switchChat, renameChat, deleteChat,
+  resolveMemberPreset, getAllRolePresets, subscribeCustomRoles,
 } from './groupChatStore.js';
 import { showToast } from '../../utils/toast.js';
 
-const PRESET_INDEX = new Map(SUBAGENT_PRESETS.map(p => [p.id, p]));
 const MEMBER_HUES = [190, 150, 40, 280, 20, 330]; // 成员头像色相（按入群顺序）
 
-function formatTime(ts) {
-  return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-}
-
-/** 解析消息中的 @提及 → 按出现顺序返回去重后的 preset 列表 */
-function parseMentions(text, roster) {
+/** 解析消息中的 @提及 → 按出现顺序返回去重后的成员 preset 列表（含自定义角色） */
+function parseMentions(text, memberPresets) {
   const mentioned = [];
   const seen = new Set();
   const re = /@([^\s@，。,:;；！!？?]+)/g;
   let m;
   while ((m = re.exec(text)) !== null) {
     const token = m[1].toLowerCase();
-    const preset = roster
-      .map(id => PRESET_INDEX.get(id))
-      .find(p => p && (p.id.toLowerCase() === token || p.name === m[1] || p.name.toLowerCase() === token));
+    const preset = memberPresets.find(p => (
+      p.id.toLowerCase() === token || p.name === m[1] || p.name.toLowerCase() === token
+    ));
     if (preset && !seen.has(preset.id)) {
       seen.add(preset.id);
       mentioned.push(preset);
@@ -47,7 +44,7 @@ function parseMentions(text, roster) {
   return mentioned;
 }
 
-/** 群聊消息 → 共享上下文转写（每个被召唤成员都能看到的同一份"会议室白板"） */
+/** 群聊消息 → 共享上下文转写（全员可见的同一份"会议室白板"） */
 function buildSharedTranscript(messages, limit = 14) {
   const recent = messages.filter(m => m.status !== 'running' && m.content).slice(-limit);
   if (!recent.length) return '（群聊刚建立，还没有历史消息）';
@@ -72,76 +69,16 @@ function MemberAvatar({ preset, hue, size = 26 }) {
   );
 }
 
-/* ---------- 单个群聊标签（切换 + 行内重命名 + 删除确认） ---------- */
-function ChatChip({ chat, active, running, canDelete, onSwitch, onRename, onDelete }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(chat.name);
-  const [confirmDel, setConfirmDel] = useState(false);
-  const inputRef = useRef(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) inputRef.current.focus();
-  }, [editing]);
-
-  const commitRename = () => {
-    const next = draft.trim();
-    if (next && next !== chat.name) onRename(chat.id, next);
-    setEditing(false);
-  };
-
-  return (
-    <span
-      className={`gtc-chat-chip ${active ? 'active' : ''} ${editing ? 'is-editing' : ''}`}
-      onClick={() => !editing && onSwitch(chat.id)}
-      title={active ? '当前群聊' : `切换到「${chat.name}」`}
-    >
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onClick={e => e.stopPropagation()}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-            else if (e.key === 'Escape') setEditing(false);
-          }}
-          onBlur={commitRename}
-        />
-      ) : (
-        <>
-          <span className="gtc-chat-chip-name">{chat.name}</span>
-          <small>{chat.messages.length}</small>
-          {active && !running && (
-            <button
-              type="button" className="gtc-chat-chip-act" title="重命名"
-              onClick={e => { e.stopPropagation(); setDraft(chat.name); setEditing(true); }}
-            >✎</button>
-          )}
-          {active && canDelete && !running && (
-            <button
-              type="button"
-              className={`gtc-chat-chip-act is-danger ${confirmDel ? 'confirm' : ''}`}
-              title={confirmDel ? '再次点击确认删除（群聊记录不可恢复）' : '删除该群聊'}
-              onClick={e => {
-                e.stopPropagation();
-                if (confirmDel) { onDelete(chat.id); setConfirmDel(false); }
-                else { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); }
-              }}
-            >{confirmDel ? '确认?' : '✕'}</button>
-          )}
-        </>
-      )}
-    </span>
-  );
-}
-
 export default function AgentTeamChat({
   runtime = {},
+  onSaveMaterial,
   onViewRecords,
   onNeedConfig,
 }) {
   const [snap, setSnap] = useState(() => getGroupState());
+  const [roleVersion, setRoleVersion] = useState(0); // 自定义角色库版本（触发 allPresets 重算）
   useEffect(() => subscribeGroup(() => setSnap({ ...getGroupState() })), []);
+  useEffect(() => subscribeCustomRoles(() => setRoleVersion(v => v + 1)), []);
   const chats = snap.chats || [];
   const activeId = snap.activeId;
   const active = useMemo(
@@ -155,15 +92,27 @@ export default function AgentTeamChat({
   const [input, setInput] = useState('');
   const [inviting, setInviting] = useState(false);
   const [mentionQuery, setMentionQuery] = useState(null); // null | string（@后的过滤词）
+  // 顶栏状态：群名下拉 / 行内重命名 / 角色卡（null | {id, create}）
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [roleCard, setRoleCard] = useState(null);
   const abortRef = useRef(null);
   const inputRef = useRef(null);
   const streamRef = useRef(null);
+  const topbarMenuRef = useRef(null);
 
   useEffect(() => {
     streamRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, running]);
 
-  const rosterPresets = useMemo(() => roster.map(id => PRESET_INDEX.get(id)).filter(Boolean), [roster]);
+  // 角色解析：内置 preset + 自定义角色 + 本群性格档案覆盖（灵魂注入后的生效版）
+  const rosterPresets = useMemo(
+    () => roster.map(id => resolveMemberPreset(id)).filter(Boolean),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [roster, roleVersion, snap],
+  );
+  const allPresets = useMemo(() => getAllRolePresets(), [roleVersion]);
   const mentionCandidates = useMemo(() => {
     if (mentionQuery == null) return [];
     const q = mentionQuery.toLowerCase();
@@ -190,18 +139,94 @@ export default function AgentTeamChat({
     setTimeout(() => { el?.focus(); }, 30);
   };
 
-  /* ---------- 两阶段广播流水线（v7） ----------
-   * Phase 1 认领：每条消息广播给全员（@ 成员优先接收），各成员按角色设定
-   *   发出轻量认领声明（【认领】/【关注】/【旁观】）。
-   * Phase 2 协作：认领者 + 被 @ 者依次执行完整产出；共享转写含彼此的认领
-   *   与前序产出，形成"看到对方消息 → 讨论接力 → 推进任务"的协作闭环。 */
+  /* ---------- 群聊管理：重命名 / 解散 / 切换（顶栏下拉） ---------- */
+  const startRename = () => {
+    setRenameDraft(active.name || '');
+    setShowChatMenu(false);
+    setRenaming(true);
+  };
+  const commitRename = () => {
+    const next = renameDraft.trim();
+    if (next && next !== active.name) {
+      if (renameChat(active.id, next)) showToast('群聊已重命名');
+    }
+    setRenaming(false);
+  };
+  const dissolveChat = () => {
+    if (chats.length <= 1) { showToast('至少保留一个群聊'); return; }
+    if (window.confirm(`解散群聊「${active.name}」？聊天记录将不可恢复。`)) {
+      if (deleteChat(active.id)) showToast('群聊已解散');
+    }
+    setShowChatMenu(false);
+  };
+  const newChat = () => {
+    const c = createChat();
+    if (c) showToast(`已创建「${c.name}」，邀请成员开始协作`);
+    setShowChatMenu(false);
+  };
+
+  /* ---------- 气泡/整群 导出与沉淀 ---------- */
+  const saveMaterial = useCallback((payload) => {
+    if (onSaveMaterial) {
+      onSaveMaterial(payload);
+      showToast('已保存到素材库');
+    } else {
+      downloadMarkdown(payload.title || 'team-chat', payload.fullContent || payload.content || '');
+      showToast('已下载 Markdown');
+    }
+  }, [onSaveMaterial]);
+
+  const handleCopyMessage = useCallback((m) => {
+    const text = String(m.content || '');
+    if (!text) return;
+    navigator.clipboard?.writeText(text)
+      .then(() => showToast('已复制到剪贴板'))
+      .catch(() => showToast('复制失败，请手动选择文本'));
+  }, []);
+
+  const handleSaveMessage = useCallback((m) => {
+    saveMaterial({
+      title: `群聊·${m.agentName || m.agentId}·${new Date(m.at || Date.now()).toLocaleDateString('zh-CN')}`,
+      content: String(m.content || '').slice(0, 2000),
+      fullContent: String(m.content || ''),
+      type: 'note',
+      source: '团队群聊',
+      tags: ['团队群聊'],
+    });
+  }, [saveMaterial]);
+
+  const handleExportChat = useCallback(() => {
+    if (!messages.length) { showToast('群聊还没有消息可导出'); return; }
+    const md = [
+      `# ${active.name} · 团队群聊记录`,
+      `- 导出时间：${new Date().toLocaleString('zh-CN')}`,
+      `- 成员：${rosterPresets.map(p => p.name).join('、') || '（无）'}`,
+      `- 消息数：${messages.length}`,
+      '',
+      '---',
+      '',
+      ...messages.map(m => (m.role === 'user'
+        ? `## 🧑 创始人 · ${formatTime(m.at)}\n\n${m.content}`
+        : `## 🤖 ${m.agentName || m.agentId}${m.meta?.phase === 'claim' ? '（认领）' : ''} · ${formatTime(m.at)}\n\n${m.content}`)),
+    ].join('\n');
+    saveMaterial({
+      title: `群聊记录·${active.name}·${new Date().toLocaleDateString('zh-CN')}`,
+      content: md.slice(0, 2000),
+      fullContent: md,
+      type: 'note',
+      source: '团队群聊',
+      tags: ['团队群聊', '导出'],
+    });
+  }, [messages, active, rosterPresets, saveMaterial]);
+
+  /* ---------- 两阶段广播流水线（v7） ---------- */
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || running) return;
     if (roster.length === 0) { showToast('先邀请成员进群，再发消息协作'); return; }
     if (!runtime.llmConfig?.baseUrl || !runtime.selectedModel) { onNeedConfig?.(); return; }
 
-    const mentioned = parseMentions(text, roster);
+    const mentioned = parseMentions(text, rosterPresets);
     const mentionedIds = new Set(mentioned.map(p => p.id));
     // 广播顺序：被 @ 的成员优先接收，其余按入群顺序
     const ordered = [
@@ -237,7 +262,7 @@ export default function AgentTeamChat({
     );
 
     try {
-      /* ---- Phase 1：全员广播 · 角色认领 ---- */
+      /* ---- Phase 1：全员广播 · 角色认领（systemPrompt 已带性格灵魂） ---- */
       const claims = new Map(); // presetId → { preset, claimText, kind }
       for (const preset of ordered) {
         if (controller.signal.aborted) break;
@@ -254,10 +279,10 @@ export default function AgentTeamChat({
           `【本轮用户消息】${text}`,
           '',
           '【你的任务：认领阶段】',
-          `你是群成员「${preset.name}」。请基于你的角色设定判断如何回应这条消息，只输出认领声明本身（不要执行任务、不要展开工作）：`,
+          `你是群成员「${preset.name}」。请基于你的角色职责判断如何回应这条消息，只输出认领声明本身（不要执行任务、不要展开工作）。用你自己的性格和说话风格表达，一句话也要有你的味道：`,
           '- 消息与你的职责相关且你愿承担 → 第一行输出「【认领】」，随后 ≤60 字说明你打算做什么；',
           '- 值得补充观点但无需深度参与 → 第一行输出「【关注】」，随后一句简短看法（≤40 字）；',
-          '- 与你职责无关 → 输出「【旁观】」即可。',
+          '- 与你职责无关 → 输出「【旁观】」即可（可带一句符合性格的短评）。',
         ].join('\n');
         const result = await runMember(preset, objective, placeholder);
         const claimText = result.status === 'done' && result.report
@@ -300,10 +325,10 @@ export default function AgentTeamChat({
           myClaim ? `【你已认领】${myClaim}` : '【你的认领】（被创始人点名参与，直接承担）',
           '',
           priorRound
-            ? `【前序成员产出】（请引用/校对/深化，不要重复劳动）\n${priorRound}`
+            ? `【前序成员产出】（请引用/校对/深化，不要重复劳动；有不同意见可以直接在产出里回应队友）\n${priorRound}`
             : '【前序成员产出】（你是本轮第一个执行者，负责打好第一棒）',
           '',
-          '请执行你认领的部分，直接给出结构化产出（这是发到群里的回复，不要寒暄）。',
+          `请执行你认领的部分，直接给出结构化产出（这是发到群里的回复，不要寒暄）。保持你的性格与说话风格${priorRound ? '，并与前序成员的产出形成呼应或讨论' : ''}。`,
         ].join('\n');
         const result = await runMember(preset, objective, placeholder);
         const ok = result.status === 'done' && result.report;
@@ -338,78 +363,132 @@ export default function AgentTeamChat({
     }
   };
 
+  // 点击顶栏外部关闭下拉
+  useEffect(() => {
+    if (!showChatMenu && !inviting) return undefined;
+    const onDown = (e) => {
+      if (!topbarMenuRef.current?.contains(e.target)) {
+        setShowChatMenu(false);
+        setInviting(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showChatMenu, inviting]);
+
   const hueOf = (idx) => MEMBER_HUES[idx % MEMBER_HUES.length];
 
   return (
     <div className="gtc">
-      {/* ============ 成员栏 ============ */}
-      <header className="gtc-head">
-        <div className="gtc-head-main">
-          <span className="team-center-kicker">TEAM</span>
-          <h2>团队群聊</h2>
-          <p>每条消息全员可见 · @ 指定优先响应 · 成员按角色主动认领协作</p>
-        </div>
-        <div className="gtc-head-actions">
-          {onViewRecords && (
-            <button type="button" className="gtc-records-btn" onClick={onViewRecords} title="spawn_agent_team 的任务板与邮箱记录">
-              执行记录
+      {/* ============ 紧凑顶栏：群名下拉 | 成员 chips + 邀请 | 导出/清空/记录 ============ */}
+      <div className="gtc-topbar">
+        <div className="gtc-topbar-left" ref={topbarMenuRef}>
+          {renaming ? (
+            <input
+              className="gtc-rename-input"
+              autoFocus
+              value={renameDraft}
+              onChange={e => setRenameDraft(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                else if (e.key === 'Escape') setRenaming(false);
+              }}
+              onBlur={commitRename}
+              maxLength={24}
+            />
+          ) : (
+            <button
+              type="button"
+              className={`gtc-chatmenu-btn ${showChatMenu ? 'open' : ''}`}
+              onClick={() => setShowChatMenu(v => !v)}
+              title="切换 / 重命名 / 解散 / 新建群聊"
+            >
+              <i className="gtc-chatmenu-dot" aria-hidden="true" />
+              <span className="gtc-chatmenu-name">{active.name || '团队群聊'}</span>
+              <small>{messages.length}</small>
+              <span className="gtc-chatmenu-caret">▾</span>
             </button>
           )}
-          <button type="button" className="gtc-clear-btn" onClick={() => { if (messages.length && window.confirm('清空当前群聊记录？')) clearGroupChat(); }}>清空</button>
-        </div>
-      </header>
-
-      {/* ============ 群聊切换条（多群聊管理） ============ */}
-      <div className="gtc-chats-bar">
-        <div className="gtc-chats-scroll">
-          {chats.map(c => (
-            <ChatChip
-              key={c.id}
-              chat={c}
-              active={c.id === activeId}
-              running={running}
-              canDelete={chats.length > 1}
-              onSwitch={switchChat}
-              onRename={renameChat}
-              onDelete={(id) => { if (deleteChat(id)) showToast('群聊已删除'); }}
-            />
-          ))}
-        </div>
-        <button
-          type="button"
-          className="gtc-chat-new"
-          onClick={() => { const c = createChat(); if (c) showToast(`已创建「${c.name}」，邀请成员开始协作`); }}
-          disabled={running || chats.length >= 20}
-          title="新建团队群聊"
-        >＋ 新建群聊</button>
-      </div>
-
-      <div className="gtc-roster">
-        {rosterPresets.map((p, i) => (
-          <span key={p.id} className="gtc-member">
-            <MemberAvatar preset={p} hue={hueOf(i)} />
-            <span className="gtc-member-name">{p.name}</span>
-            <small>{p.id}</small>
-            {!running && (
-              <button type="button" className="gtc-member-remove" title="请出群聊" onClick={() => removeMember(p.id)}>×</button>
-            )}
-          </span>
-        ))}
-        <div className="gtc-invite-wrap">
-          <button type="button" className="gtc-invite-btn" onClick={() => setInviting(v => !v)} disabled={running || rosterPresets.length >= 6}>
-            ＋ 邀请成员
-          </button>
-          {inviting && (
-            <div className="gtc-invite-menu">
-              {SUBAGENT_PRESETS.filter(p => !roster.includes(p.id)).map(p => (
-                <button key={p.id} type="button" onClick={() => { inviteMember(p.id); setInviting(false); }}>
-                  <b>{p.name}</b>
-                  <small>{p.description.slice(0, 18)}…</small>
+          {showChatMenu && (
+            <div className="gtc-chatmenu-pop" role="menu">
+              <div className="gtc-chatmenu-label">群聊列表</div>
+              {chats.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`gtc-chatmenu-item ${c.id === activeId ? 'selected' : ''}`}
+                  onClick={() => { if (switchChat(c.id)) setShowChatMenu(false); }}
+                  disabled={running && c.id !== activeId}
+                  title={running && c.id !== activeId ? '协作执行中，暂不能切换' : `切换到「${c.name}」`}
+                >
+                  <span className="gtc-chatmenu-item-name">{c.name}</span>
+                  <small>{c.messages.length}</small>
+                  {c.id === activeId && <span className="gtc-chatmenu-check">✓</span>}
                 </button>
               ))}
-              {SUBAGENT_PRESETS.every(p => roster.includes(p.id)) && <div className="gtc-invite-empty">全部成员已在群里</div>}
+              <div className="gtc-chatmenu-actions">
+                <button type="button" onClick={startRename} disabled={running}>✎ 重命名</button>
+                <button type="button" className="is-danger" onClick={dissolveChat} disabled={running || chats.length <= 1}>✕ 解散</button>
+                <button type="button" onClick={newChat} disabled={running}>＋ 新建</button>
+              </div>
             </div>
           )}
+        </div>
+
+        <div className="gtc-topbar-members">
+          {rosterPresets.map((p, i) => (
+            <span key={p.id} className="gtc-member">
+              <button
+                type="button"
+                className="gtc-member-chip"
+                onClick={() => setRoleCard({ id: p.id, create: false })}
+                title={`查看/编辑「${p.name}」的角色卡`}
+              >
+                <MemberAvatar preset={p} hue={hueOf(i)} size={20} />
+                <span className="gtc-member-name">{p.name}</span>
+              </button>
+              {!running && (
+                <button type="button" className="gtc-member-remove" title="请出群聊" onClick={() => removeMember(p.id)}>×</button>
+              )}
+            </span>
+          ))}
+          <div className="gtc-invite-wrap">
+            <button
+              type="button"
+              className="gtc-invite-btn"
+              onClick={() => setInviting(v => !v)}
+              disabled={running || rosterPresets.length >= 6}
+              title="邀请成员进群"
+            >＋ 邀请</button>
+            {inviting && (
+              <div className="gtc-invite-menu">
+                {allPresets.filter(p => !roster.includes(p.id)).map(p => (
+                  <button key={p.id} type="button" onClick={() => { inviteMember(p.id); setInviting(false); }}>
+                    <b>{p.name}{String(p.id).startsWith('cr_') ? ' ·自建' : ''}</b>
+                    <small>{(p.description || '').slice(0, 20)}…</small>
+                  </button>
+                ))}
+                {allPresets.every(p => roster.includes(p.id)) && <div className="gtc-invite-empty">现有成员都已在群里</div>}
+                <div className="gtc-invite-divider" />
+                <button type="button" className="gtc-invite-create" onClick={() => { setInviting(false); setRoleCard({ create: true }); }}>
+                  ＋ 创建自定义角色
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="gtc-topbar-actions">
+          {onViewRecords && (
+            <button type="button" className="gtc-topbar-btn" onClick={onViewRecords} title="spawn_agent_team 的任务板与邮箱记录">记录</button>
+          )}
+          <button type="button" className="gtc-topbar-btn" onClick={handleExportChat} title="导出群聊记录到素材库">导出</button>
+          <button
+            type="button"
+            className="gtc-topbar-btn"
+            onClick={() => { if (messages.length && window.confirm('清空当前群聊记录？')) clearGroupChat(); }}
+            title="清空聊天记录"
+          >清空</button>
         </div>
       </div>
 
@@ -419,10 +498,10 @@ export default function AgentTeamChat({
           <div className="gtc-empty">
             <p className="gtc-empty-title">建立你的第一个团队</p>
             <p className="gtc-empty-desc">
-              ① 点「＋ 邀请成员」把专家拉进群<br />
-              ② 直接发消息给团队；@ 某位成员可指定 TA 优先响应<br />
-              ③ 全员都会收到消息并按角色认领：认领者深度产出，其余成员简短表态<br />
-              ④ 认领后成员互相看到彼此的产出，接力讨论推进任务
+              ① 点「＋ 邀请」拉成员进群，点成员名可查看并编辑 TA 的角色卡（性格/职责）<br />
+              ② 也可以「创建自定义角色」——设定职责与灵魂，保存即入群<br />
+              ③ 直接发消息；@ 某位成员可指定 TA 优先响应，全员认领协作<br />
+              ④ 气泡上可复制 / 保存到素材库，顶栏「导出」沉淀整群记录
             </p>
             <p className="gtc-empty-example">例：@探索者 检索今天端侧模型的资讯，@研究员 交叉验证，@撰写者 写成简报</p>
           </div>
@@ -433,13 +512,14 @@ export default function AgentTeamChat({
               <div key={m.id} className="gtc-msg is-user">
                 <div className="gtc-bubble">
                   <div className="gtc-bubble-text">{m.content}</div>
-                  <time>{formatTime(m.at)}</time>
+                  <time>{new Date(m.at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</time>
                 </div>
               </div>
             );
           }
           const idx = roster.indexOf(m.agentId);
-          const preset = PRESET_INDEX.get(m.agentId) || { name: m.agentName || m.agentId || '系统' };
+          const preset = rosterPresets.find(p => p.id === m.agentId) || { name: m.agentName || m.agentId || '系统' };
+          const done = m.status === 'done' && m.content;
           return (
             <div key={m.id} className={`gtc-msg is-agent ${m.status === 'running' ? 'is-running' : ''} ${m.status === 'failed' || m.status === 'aborted' ? 'is-error' : ''}`}>
               <MemberAvatar preset={preset} hue={hueOf(idx < 0 ? 4 : idx)} />
@@ -459,7 +539,15 @@ export default function AgentTeamChat({
                       dangerouslySetInnerHTML={{ __html: renderMarkdown(String(m.content || '')) }}
                     />
                   )}
-                <time>{formatTime(m.at)}</time>
+                <div className="gtc-bubble-foot">
+                  <time>{new Date(m.at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}</time>
+                  {done && (
+                    <span className="gtc-msg-actions">
+                      <button type="button" onClick={() => handleCopyMessage(m)} title="复制内容">复制</button>
+                      <button type="button" onClick={() => handleSaveMessage(m)} title="保存到素材库">存素材</button>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -476,7 +564,7 @@ export default function AgentTeamChat({
             {mentionCandidates.map(p => (
               <button key={p.id} type="button" onClick={() => pickMention(p)}>
                 <b>@{p.name}</b>
-                <small>{p.description.slice(0, 24)}…</small>
+                <small>{(p.description || '').slice(0, 24)}…</small>
               </button>
             ))}
           </div>
@@ -495,6 +583,24 @@ export default function AgentTeamChat({
           ? <button type="button" className="gtc-send is-stop" onClick={handleStop}>停止</button>
           : <button type="button" className="gtc-send" onClick={handleSend} disabled={!input.trim()}>发送</button>}
       </div>
+
+      {/* ============ 成员角色卡（查看/编辑/创建） ============ */}
+      {roleCard && (
+        <AgentRoleCard
+          role={roleCard.create
+            ? null
+            : (() => {
+              const all = getAllRolePresets();
+              const base = all.find(p => p.id === roleCard.id) || {};
+              const eff = rosterPresets.find(p => p.id === roleCard.id) || base;
+              return { ...base, ...eff, styleOverride: eff.styleOverride || '' };
+            })()}
+          isCustom={String(roleCard.id || '').startsWith('cr_')}
+          isBuiltIn={Boolean(roleCard.id) && !String(roleCard.id).startsWith('cr_')}
+          onCreateInvite={(saved) => { if (saved) inviteMember(saved.id); }}
+          onClose={() => setRoleCard(null)}
+        />
+      )}
     </div>
   );
 }

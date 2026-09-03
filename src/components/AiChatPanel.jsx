@@ -74,6 +74,7 @@ export default function AiChatPanel({
   todayLanes,
   materials,
   toggleMaterial,
+  addManualMaterial,
   agent,
   agents,
   onUpdateAgent,
@@ -1366,6 +1367,7 @@ export default function AiChatPanel({
                 selectedModel,
                 approvalMode: agentPermissionMode,
               }}
+              onSaveMaterial={addManualMaterial}
               onViewRecords={() => setCenterView('teamRecords')}
               onNeedConfig={onOpenLlmConfig}
             />

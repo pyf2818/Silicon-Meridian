@@ -13,7 +13,7 @@ import WorkspacePanel from './WorkspacePanel.jsx';
 import { ICONS } from '../constants/appConstants.jsx';
 import { SUBAGENT_PRESETS } from '../domain/agent/subagentCore.js';
 import { listTeams, subscribeTeams } from '../store/teamStore.js';
-import { getGroupState, getActiveChat, subscribeGroup, switchChat, createChat } from './aichat/groupChatStore.js';
+import { getGroupState, getActiveChat, subscribeGroup, switchChat, createChat, getAllRolePresets } from './aichat/groupChatStore.js';
 import {
   isFileSystemSupported, pickDirectoryHandle, saveHandleToSlot,
 } from '../utils/workspace.js';
@@ -263,7 +263,10 @@ function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
     setGroupSnap({ chats: [...(s.chats || [])], activeId: s.activeId, roster: [...(getActiveChat()?.roster || [])] });
   }), []);
   const { chats, activeId } = groupSnap;
-  const members = groupSnap.roster.map(id => PRESET_INDEX.get(id)).filter(Boolean);
+  const allPresets = getAllRolePresets();
+  const members = groupSnap.roster
+    .map(id => allPresets.find(p => p.id === id))
+    .filter(Boolean);
 
   return (
     <div className="agents-tab custom-scrollbar">

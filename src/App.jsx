@@ -2446,6 +2446,7 @@ ${signals}
               todayLanes={todayLanes}
               materials={materials}
               toggleMaterial={toggleMaterial}
+              addManualMaterial={addManualMaterial}
               agent={agents.find(a => a.id === currentAgent) || agents[0]}
               agents={agents}
               onUpdateAgent={updateAgent}

@@ -27710,7 +27710,8 @@ body {
 }
 
 /* ---------- 智能体 Tab ---------- */
-.agents-tab { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+/* v8：占满剩余高度，把「今日速报」固定压在侧栏底部（此前内容撑开把底栏顶出视口） */
+.agents-tab { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1 1 0; min-height: 0; }
 /* 群聊列表（v6：侧栏自由切换） */
 .agents-chats { display: flex; flex-direction: column; gap: 4px; }
 .agents-chat-item {
@@ -27804,7 +27805,7 @@ body {
 /* ---------- 团队中心页 ---------- */
 .team-center-col { display: flex; flex-direction: column; min-width: 0; }
 .team-center-topbar {
-  display: flex; align-items: center; gap: 12px; padding: 10px 18px;
+  display: flex; align-items: center; gap: 12px; padding: 5px 12px; /* v8 压缩：为对话区让空间 */
   border-bottom: 1px solid var(--border-color);
 }
 .team-center-back {
@@ -28102,6 +28103,213 @@ body {
   border: 1px solid color-mix(in srgb, var(--accent-cyan) 40%, transparent);
   background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
   flex: none;
+}
+
+/* ===== v8 紧凑顶栏：群名下拉 | 成员 chips + 邀请 | 导出/清空/记录 ===== */
+.gtc-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-color);
+  flex: none;
+  min-width: 0;
+}
+.gtc-topbar-left { position: relative; flex: none; min-width: 0; }
+.gtc-chatmenu-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  max-width: 200px; padding: 4px 10px;
+  border: 1px solid var(--border-color); border-radius: 8px;
+  background: transparent; color: var(--text-primary);
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: all var(--ease-fast);
+}
+.gtc-chatmenu-btn:hover, .gtc-chatmenu-btn.open { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.gtc-chatmenu-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: var(--status-ok, #3fb950);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-ok, #3fb950) 60%, transparent);
+}
+.gtc-chatmenu-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gtc-chatmenu-btn small { font-size: 10px; color: var(--text-muted); font-weight: 400; }
+.gtc-chatmenu-caret { font-size: 9px; color: var(--text-muted); }
+.gtc-rename-input {
+  width: 180px; padding: 4px 10px;
+  border: 1px solid var(--accent-cyan); border-radius: 8px;
+  background: var(--bg-primary); color: var(--text-primary); font-size: 13px; font-weight: 700;
+  outline: none;
+}
+.gtc-chatmenu-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 50;
+  min-width: 240px; padding: 6px;
+  background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.gtc-chatmenu-label {
+  font-size: 10px; font-weight: 700; color: var(--text-muted);
+  padding: 4px 8px 2px; letter-spacing: 0.06em;
+}
+.gtc-chatmenu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text-primary);
+  font-size: 12.5px; cursor: pointer; text-align: left;
+}
+.gtc-chatmenu-item:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
+.gtc-chatmenu-item.selected { color: var(--accent-cyan); }
+.gtc-chatmenu-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.gtc-chatmenu-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gtc-chatmenu-item small { color: var(--text-muted); font-size: 10px; }
+.gtc-chatmenu-check { color: var(--accent-cyan); font-size: 11px; flex: none; }
+.gtc-chatmenu-actions {
+  display: flex; gap: 6px; margin-top: 4px; padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+}
+.gtc-chatmenu-actions button {
+  flex: 1; padding: 5px 4px; border: 1px solid var(--border-color); border-radius: 7px;
+  background: transparent; color: var(--text-primary); font-size: 11.5px; cursor: pointer;
+  white-space: nowrap;
+}
+.gtc-chatmenu-actions button:hover:not(:disabled) { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.gtc-chatmenu-actions button.is-danger:hover:not(:disabled) { border-color: var(--status-critical); color: var(--status-critical); }
+.gtc-chatmenu-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.gtc-topbar-members {
+  display: flex; align-items: center; gap: 6px;
+  flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: visible;
+  scrollbar-width: thin;
+}
+.gtc-member { flex: none; }
+.gtc-member-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0; background: transparent; padding: 0;
+  color: inherit; cursor: pointer; font: inherit;
+}
+.gtc-member-chip:hover .gtc-member-name { color: var(--accent-cyan); }
+.gtc-topbar-actions { display: flex; gap: 6px; flex: none; }
+.gtc-topbar-btn {
+  padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 7px;
+  background: transparent; color: var(--text-primary); font-size: 11.5px; cursor: pointer;
+  white-space: nowrap; transition: all var(--ease-fast);
+}
+.gtc-topbar-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.gtc-invite-divider { height: 1px; background: var(--border-color); margin: 4px 0; }
+.gtc-invite-create {
+  padding: 6px 8px; border: 0; border-radius: 7px;
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  color: var(--accent-cyan); font-size: 12px; font-weight: 600; cursor: pointer;
+  text-align: left;
+}
+.gtc-invite-create:hover { background: color-mix(in srgb, var(--accent-cyan) 20%, transparent); }
+
+/* ===== 气泡常用操作（复制 / 存素材）：hover 浮现 ===== */
+.gtc-bubble-foot {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 2px;
+}
+.gtc-bubble-foot time { font-size: 10px; color: var(--text-muted); opacity: 0.7; }
+.gtc-msg-actions {
+  display: inline-flex; gap: 4px;
+  opacity: 0; transition: opacity .12s ease;
+}
+.gtc-msg:hover .gtc-msg-actions { opacity: 1; }
+.gtc-msg-actions button {
+  border: 0; background: transparent; color: var(--text-muted);
+  font-size: 10.5px; padding: 1px 5px; border-radius: 5px; cursor: pointer;
+}
+.gtc-msg-actions button:hover {
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+}
+
+/* ===== 成员角色卡（portal 弹层） ===== */
+.gtc-card-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.35);
+}
+.gtc-role-card {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 1001;
+  width: min(430px, 92vw); max-height: 86vh;
+  display: flex; flex-direction: column;
+  background: var(--bg-card, var(--bg-primary));
+  border: 1px solid var(--border-color); border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.gtc-role-card-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-bottom: 1px solid var(--border-color);
+}
+.gtc-role-card-avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 36px; height: 36px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent-cyan) 16%, transparent);
+  color: var(--accent-cyan); border: 1px solid color-mix(in srgb, var(--accent-cyan) 40%, transparent);
+  font-size: 16px; font-weight: 700;
+}
+.gtc-role-card-avatar.is-custom {
+  background: color-mix(in srgb, #c9a961 16%, transparent);
+  color: #c9a961; border-color: color-mix(in srgb, #c9a961 40%, transparent);
+}
+.gtc-role-card-title { flex: 1; min-width: 0; }
+.gtc-role-card-title h3 { margin: 0; font-size: 14px; color: var(--text-primary); }
+.gtc-role-card-title small { font-size: 10.5px; color: var(--text-muted); }
+.gtc-role-card-close {
+  border: 0; background: transparent; color: var(--text-muted);
+  font-size: 14px; cursor: pointer; padding: 4px;
+}
+.gtc-role-card-close:hover { color: var(--text-primary); }
+.gtc-role-card-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 12px;
+}
+.gtc-role-field { display: flex; flex-direction: column; gap: 5px; }
+.gtc-role-field > span { font-size: 11px; font-weight: 700; color: var(--text-muted); }
+.gtc-role-field input,
+.gtc-role-field textarea {
+  width: 100%; padding: 7px 10px;
+  border: 1px solid var(--border-color); border-radius: 8px;
+  background: var(--bg-secondary); color: var(--text-primary);
+  font-size: 12.5px; font-family: inherit; line-height: 1.5;
+  resize: vertical; outline: none;
+  transition: border-color .15s ease;
+}
+.gtc-role-field input:focus,
+.gtc-role-field textarea:focus { border-color: var(--accent-cyan); }
+.gtc-role-meta {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 10.5px; color: var(--text-muted);
+}
+.gtc-role-meta code {
+  font-family: ui-monospace, monospace; font-size: 10.5px;
+  color: var(--text-muted);
+}
+.gtc-role-card-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-top: 1px solid var(--border-color);
+}
+.gtc-role-card-foot-space { flex: 1; }
+.gtc-role-card-btn {
+  padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 8px;
+  background: transparent; color: var(--text-primary); font-size: 12.5px; cursor: pointer;
+  transition: all var(--ease-fast);
+}
+.gtc-role-card-btn:hover:not(:disabled) { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.gtc-role-card-btn.primary {
+  background: color-mix(in srgb, var(--accent-cyan) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent-cyan) 45%, transparent);
+  color: var(--accent-cyan); font-weight: 600;
+}
+.gtc-role-card-btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-cyan) 26%, transparent);
+}
+.gtc-role-card-btn.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.gtc-role-card-btn.danger { color: var(--status-critical, #f85149); border-color: color-mix(in srgb, var(--status-critical, #f85149) 35%, var(--border-color)); }
+.gtc-role-card-btn.danger:hover { border-color: var(--status-critical, #f85149); }
+.gtc-role-card-btn.danger.confirm {
+  background: color-mix(in srgb, var(--status-critical, #f85149) 16%, transparent);
 }
 .gtc-bubble-text { white-space: pre-wrap; word-break: break-word; }
 /* 成员报告的 Markdown 渲染排版（气泡内收敛尺寸） */

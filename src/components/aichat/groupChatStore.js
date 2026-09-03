@@ -1,17 +1,127 @@
 /**
  * groupChatStore.js - 团队群聊状态（模块级单例，模式同 teamStore.js）
  *
- * 「一个人的公司」协作模型，v2 支持多群聊：
- * - chats：多个群聊（每个有自己的 roster + messages），可创建/切换/重命名/删除
- * - roster：群聊内已邀请的子代理 preset id 列表（explorer/researcher/writer/critic）
+ * 「一个人的公司」协作模型，v3 支持多群聊 + 角色灵魂：
+ * - chats：多个群聊（每个有自己的 roster + messages + profiles），可创建/切换/重命名/解散
+ * - roster：群聊内已邀请的成员 id 列表（内置 preset id 或自定义角色 id）
+ * - profiles：成员性格档案（id → { name?, description?, style? }，内置角色的个性化覆盖）
+ * - customRoles：自定义角色库（localStorage 持久化，保存即可邀请入群）
  * - messages：群聊消息流（user / agent 两类），所有成员共享同一份上下文
- * - running：当前群聊一轮接力是否在跑（UI 禁输入 + 流水线状态）
- * 持久化 localStorage 'agentTeamGroupChat'（v1 单群聊格式自动迁移）；subscribe 供 UI 同步。
+ * - running：当前群聊一轮流水线是否在跑（UI 禁输入 + 流水线状态）
+ * 持久化 localStorage 'agentTeamGroupChat'（v1/v2 格式自动迁移）；subscribe 供 UI 同步。
  */
 
+import { SUBAGENT_PRESETS } from '../../domain/agent/subagentCore.js';
+
 const STORAGE_KEY = 'agentTeamGroupChat';
+const CUSTOM_ROLES_KEY = 'agentTeamCustomRoles';
 const MAX_MESSAGES = 200;
 const MAX_CHATS = 20;
+const MAX_CUSTOM_ROLES = 24;
+
+/* ---------- 自定义角色库 ---------- */
+
+/** 自定义角色默认工具白名单（读为主，可写工作空间） */
+const DEFAULT_ROLE_TOOLS = [
+  'search_news', 'web_search', 'fetch_page', 'read_workspace_file',
+  'list_knowledge', 'read_intelligence_focus',
+];
+
+function loadCustomRoles() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_ROLES_KEY);
+    const arr = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(r => r && typeof r === 'object' && r.id && r.name)
+      .slice(0, MAX_CUSTOM_ROLES)
+      .map(r => ({
+        id: String(r.id),
+        name: String(r.name).slice(0, 16),
+        description: String(r.description || '').slice(0, 300),
+        style: String(r.style || '').slice(0, 500),
+        tools: Array.isArray(r.tools) && r.tools.length ? r.tools.slice(0, 16) : null, // null = 用默认白名单
+        createdAt: Number(r.createdAt) || Date.now(),
+      }));
+  } catch { return []; }
+}
+
+let customRoles = loadCustomRoles();
+const roleListeners = new Set();
+
+function notifyRoles() {
+  roleListeners.forEach(fn => { try { fn([...customRoles]); } catch { /* ignore */ } });
+}
+
+function persistRoles() {
+  try { localStorage.setItem(CUSTOM_ROLES_KEY, JSON.stringify(customRoles)); } catch { /* ignore */ }
+}
+
+/** 自定义角色 → 可执行 preset（补全工具白名单/轮次/systemPrompt，注入性格风格） */
+export function customRoleToPreset(role) {
+  const styleLine = role.style ? `\n【性格与风格】${role.style}` : '';
+  return {
+    id: role.id,
+    name: role.name,
+    description: role.description || '团队自定义成员',
+    style: role.style || '', // 回传给角色卡回显（保存时不能丢）
+    systemPrompt: [
+      `你是「${role.name}」，团队群聊中的成员（创始人创建的自定义角色）。`,
+      role.description ? `角色职责：${role.description}` : '',
+      role.style ? `性格与说话风格：${role.style}。回复必须体现这个性格，让人一眼认出是你。` : '',
+      '工作准则：基于群聊共享上下文完成你职责内的事；输出为结构化 Markdown；不越俎代庖，与队友互补而不是重复。',
+    ].filter(Boolean).join('\n') + styleLine,
+    tools: role.tools || DEFAULT_ROLE_TOOLS,
+    maxTurns: 6,
+  };
+}
+
+export function getCustomRoles() {
+  return [...customRoles];
+}
+
+/** 创建/更新自定义角色。role.id 存在则更新，否则创建；返回保存后的角色。 */
+export function saveCustomRole(role) {
+  const name = String(role?.name || '').trim().slice(0, 16);
+  if (!name) return null;
+  const id = role?.id && customRoles.some(r => r.id === role.id)
+    ? role.id
+    : `cr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
+  const saved = {
+    id,
+    name,
+    description: String(role?.description || '').trim().slice(0, 300),
+    style: String(role?.style || '').trim().slice(0, 500),
+    tools: Array.isArray(role?.tools) && role.tools.length ? role.tools.slice(0, 16) : null,
+    createdAt: Date.now(),
+  };
+  const exists = customRoles.some(r => r.id === id);
+  customRoles = exists
+    ? customRoles.map(r => (r.id === id ? saved : r))
+    : [...customRoles, saved].slice(-MAX_CUSTOM_ROLES);
+  persistRoles();
+  notifyRoles();
+  return saved;
+}
+
+/** 删除自定义角色，并从所有群聊 roster 中移除引用 */
+export function deleteCustomRole(roleId) {
+  if (!customRoles.some(r => r.id === roleId)) return false;
+  customRoles = customRoles.filter(r => r.id !== roleId);
+  state.chats = state.chats.map(c => (
+    c.roster.includes(roleId) ? { ...c, roster: c.roster.filter(x => x !== roleId) } : c
+  ));
+  persistRoles();
+  persist();
+  notifyRoles();
+  notify();
+  return true;
+}
+
+export function subscribeCustomRoles(fn) {
+  roleListeners.add(fn);
+  return () => roleListeners.delete(fn);
+}
 
 function makeChat(name, roster = [], messages = []) {
   return {
@@ -19,6 +129,7 @@ function makeChat(name, roster = [], messages = []) {
     name: String(name || '').slice(0, 24) || '新团队群聊',
     createdAt: Date.now(),
     roster,
+    profiles: {}, // 成员性格档案：agentId → { name?, description?, style? }
     messages,
   };
 }
@@ -37,6 +148,7 @@ function load() {
           name: String(c.name || '新团队群聊').slice(0, 24),
           createdAt: Number(c.createdAt) || Date.now(),
           roster: Array.isArray(c.roster) ? c.roster : [],
+          profiles: (c.profiles && typeof c.profiles === 'object' && !Array.isArray(c.profiles)) ? c.profiles : {},
           messages: Array.isArray(c.messages) ? c.messages : [],
         }));
       if (chats.length) {
@@ -184,6 +296,61 @@ export function removeMember(agentId) {
   persist();
   notify();
   return true;
+}
+
+/* ============ 成员性格档案（灵魂设定） ============ */
+
+/** 读写当前群聊内某成员的性格档案覆盖 { name?, description?, style? } */
+export function setMemberProfile(agentId, patch) {
+  const chat = activeChat();
+  if (!chat.profiles) chat.profiles = {}; // v2 旧数据兜底
+  const prev = chat.profiles[agentId] || {};
+  const next = { ...prev, ...(patch || {}) };
+  // 空档案清除，避免无限膨胀
+  if (!next.name && !next.description && !next.style) {
+    const { [agentId]: _, ...rest } = chat.profiles;
+    chat.profiles = rest;
+  } else {
+    chat.profiles = { ...chat.profiles, [agentId]: next };
+  }
+  persist();
+  notify();
+  return chat.profiles[agentId] || null;
+}
+
+export function getMemberProfile(agentId) {
+  const chat = activeChat();
+  return (chat.profiles && chat.profiles[agentId]) || null;
+}
+
+/** 全部可选角色（内置 preset + 自定义角色转 preset），供邀请菜单/渲染使用 */
+export function getAllRolePresets() {
+  return [...SUBAGENT_PRESETS, ...customRoles.map(customRoleToPreset)];
+}
+
+/**
+ * 解析某成员的**生效 preset**：内置/自定义本体 + 当前群聊 profile 覆盖。
+ * 性格风格注入 systemPrompt（runToolLoop 层），两个阶段都会带上灵魂。
+ */
+export function resolveMemberPreset(agentId) {
+  const custom = customRoles.find(r => r.id === agentId);
+  const base = SUBAGENT_PRESETS.find(p => p.id === agentId) || (custom ? customRoleToPreset(custom) : null);
+  if (!base) return null;
+  const profile = getMemberProfile(agentId) || {};
+  const preset = { ...base, maxTurns: base.maxTurns || 6 };
+  if (profile.name) preset.name = profile.name;
+  if (profile.description) {
+    preset.description = profile.description;
+    // 内置角色的职责覆盖：替换 systemPrompt 里的自我介绍首段
+    if (!custom) {
+      preset.systemPrompt = `${base.systemPrompt}\n【职责覆盖（创始人设定）】${profile.description}`;
+    }
+  }
+  if (profile.style) {
+    preset.systemPrompt = `${preset.systemPrompt}\n【性格与风格（创始人设定）】${profile.style}。回复必须体现这个性格，让人一眼认出是你。`;
+    preset.styleOverride = profile.style; // 角色卡回显用
+  }
+  return preset;
 }
 
 /** 追加消息 { role:'user'|'agent', agentId?, agentName?, content, at, meta? }
