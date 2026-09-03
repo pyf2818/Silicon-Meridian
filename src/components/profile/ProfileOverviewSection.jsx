@@ -20,6 +20,7 @@ import CognitiveCompass from './charts/CognitiveCompass.jsx';
 import ConversionFunnel from './charts/ConversionFunnel.jsx';
 import BubbleField from './charts/BubbleField.jsx';
 import { ObservationLog, SourceTrust, SpectrumRow, TimeBand } from './charts/AtlasPanels.jsx';
+import { Panel, Tele, Brand } from './charts/AtlasShell.jsx';
 
 /* 偏好频谱的刻度定义（与 profileLearning.js 的 LABELS 保持一致） */
 const SPECTRUM_DEFS = [
@@ -28,35 +29,6 @@ const SPECTRUM_DEFS = [
   { label: '内容长度', field: 'preferredLength', options: [['short', '短'], ['medium', '中'], ['long', '长']] },
   { label: '语言偏好', field: 'preferredLanguage', options: [['zh', '中文'], ['en', '英文'], ['mixed', '中英混合']] },
 ];
-
-function Tele({ label, value, unit, note, pct = 0, tone = '' }) {
-  return (
-    <div className={'pa-tele ' + tone}>
-      <span className="pa-tele-label">{label}</span>
-      <div className="pa-tele-value-row">
-        <strong className="pa-tele-value">{value}</strong>
-        {unit && <span className="pa-tele-unit">{unit}</span>}
-      </div>
-      <span className="pa-tele-note">{note}</span>
-      <span className="pa-tele-track"><i style={{ width: `${Math.max(2, Math.min(100, pct))}%` }} /></span>
-    </div>
-  );
-}
-
-function Panel({ kicker, title, meta, children, className = '' }) {
-  return (
-    <section className={'pa-panel ' + className}>
-      <div className="pa-panel-head">
-        <div className="pa-panel-titles">
-          <span className="pa-kicker">{kicker}</span>
-          <h2>{title}</h2>
-        </div>
-        {meta && <span className="pa-panel-meta">{meta}</span>}
-      </div>
-      <div className="pa-panel-body">{children}</div>
-    </section>
-  );
-}
 
 export default function ProfileOverviewSection({
   readingHistory = [],
@@ -158,14 +130,12 @@ export default function ProfileOverviewSection({
     <div className="profile-overview pa-atlas" data-level={confLevel}>
       {/* ============ 观测抬头：一行遥测带 ============ */}
       <header className="pa-header">
-        <div className="pa-header-brand">
-          <span className="pa-kicker">COGNITIVE ATLAS</span>
-          <h2>认知星图</h2>
-          <p>
-            {engine.behaviorDepth || '探索校准型'} · {engine.confidenceLabel || '待校准'}
-            {personaTags.length > 0 && <em> / {personaTags.join(' / ')}</em>}
-          </p>
-        </div>
+        <Brand
+          kicker="COGNITIVE ATLAS"
+          title="认知星图"
+          desc={`${engine.behaviorDepth || '探索校准型'} · ${engine.confidenceLabel || '待校准'}`}
+          tags={personaTags}
+        />
         <div className="pa-tele-grid">
           {tele.map(t => <Tele key={t.label} {...t} />)}
         </div>

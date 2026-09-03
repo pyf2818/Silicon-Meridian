@@ -2573,3 +2573,394 @@
   }
   .profile-center-page .pa-bubble:hover { transform: none; }
 }
+
+/* ============================================================
+   Section 20 — 画像中心三分区统一升级
+   · 行为洞察 INSIGHT DECK（pi-*）／我的社交 SOCIAL BADGE（ps-*）
+   · 偏好设置增强（tier-rail / learning ring）
+   全部作用域在 .profile-center-page 下；颜色只用 token，深浅主题自适应。
+   ============================================================ */
+
+/* ---------- 通用：双联栅格 ---------- */
+.profile-center-page .pa-grid-duo {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+/* ---------- 加权横条（pi-bars） ---------- */
+.profile-center-page .pi-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.profile-center-page .pi-bar-row {
+  display: grid;
+  grid-template-columns: 20px minmax(56px, 116px) 1fr 36px;
+  align-items: center;
+  gap: 8px;
+}
+.profile-center-page .pi-bar-rank {
+  font: 600 10px/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+.profile-center-page .pi-bar-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.profile-center-page .pi-bar-track,
+.profile-center-page .pi-meter-track {
+  height: 8px;
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+  clip-path: polygon(0 0, calc(100% - 3px) 0, 100% 100%, 3px 100%);
+  overflow: hidden;
+}
+.profile-center-page .pi-bar-track i,
+.profile-center-page .pi-meter-track i {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  animation: piGrow 0.55s var(--hud-ease, cubic-bezier(0.2, 0.8, 0.2, 1)) both;
+}
+.profile-center-page .pi-bar-val,
+.profile-center-page .pi-meter-count {
+  font: 600 11px/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+  text-align: right;
+}
+
+/* ---------- 偏好强度计（pi-meters） ---------- */
+.profile-center-page .pi-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.profile-center-page .pi-meter-row {
+  display: grid;
+  grid-template-columns: 34px auto 1fr 30px;
+  align-items: center;
+  gap: 8px;
+}
+.profile-center-page .pi-meter-dim {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.profile-center-page .pi-meter-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border: 1px solid var(--border-color);
+  clip-path: var(--hud-notch, none);
+  white-space: nowrap;
+}
+
+/* ---------- 环形仪表（pi-ring） ---------- */
+.profile-center-page .pi-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.profile-center-page .pi-ring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+}
+.profile-center-page .pi-ring-track {
+  stroke: color-mix(in srgb, var(--text-muted) 20%, transparent);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+.profile-center-page .pi-ring-val {
+  stroke: var(--accent-cyan);
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.8s var(--hud-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+.profile-center-page .pi-ring-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  z-index: 1;
+}
+.profile-center-page .pi-ring-text b {
+  font: 700 20px/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+}
+.profile-center-page .pi-ring-text b i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.profile-center-page .pi-ring-text em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+.profile-center-page .pi-ring-text u {
+  text-decoration: none;
+  font-size: 9px;
+  color: color-mix(in srgb, var(--accent-cyan) 80%, var(--text-primary));
+  letter-spacing: 0.08em;
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 实体 chips（pi-chips） ---------- */
+.profile-center-page .pi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.profile-center-page .pi-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-card) 60%, transparent);
+  clip-path: var(--hud-notch, none);
+  font-size: 12px;
+  color: var(--text-primary);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.profile-center-page .pi-chip:hover { border-color: var(--accent-cyan); }
+.profile-center-page .pi-chip b { font-weight: 600; }
+.profile-center-page .pi-chip i {
+  font-style: normal;
+  font: 600 10px/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--accent-cyan);
+}
+.profile-center-page .pi-chip em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ---------- 会话习惯瓦片（pi-sessions） ---------- */
+.profile-center-page .pi-sessions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.profile-center-page .pi-session {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-card) 55%, transparent);
+  clip-path: var(--hud-notch, none);
+}
+.profile-center-page .pi-session b {
+  font: 700 20px/1.1 var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+}
+.profile-center-page .pi-session span { font-size: 11px; color: var(--text-muted); }
+.profile-center-page .pi-session i {
+  display: block;
+  height: 3px;
+  margin-top: 6px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent-cyan) 35%, transparent), var(--accent-cyan));
+}
+.profile-center-page .pi-session-note {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  border-left: 2px solid var(--accent-cyan);
+  padding-left: 10px;
+}
+
+/* ---------- 我的社交：铭牌 ---------- */
+.profile-center-page .ps-id {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.profile-center-page .ps-avatar {
+  width: 76px;
+  height: 76px;
+  flex: none;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid color-mix(in srgb, var(--accent-cyan) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+}
+.profile-center-page .ps-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-center-page .ps-avatar-initial {
+  font: 700 30px/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--accent-cyan);
+}
+.profile-center-page .ps-id-main { min-width: 0; }
+.profile-center-page .ps-id-main h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+.profile-center-page .ps-username,
+.profile-center-page .ps-joined {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 10px;
+}
+.profile-center-page .ps-signature {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.profile-center-page .ps-id-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color);
+}
+.profile-center-page .ps-id-stats span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.profile-center-page .ps-id-stats b {
+  font: 700 18px/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+}
+.profile-center-page .ps-id-stats em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+}
+
+/* ---------- 我的社交：影响力 + 覆盖 ---------- */
+.profile-center-page .ps-influence {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.profile-center-page .ps-influence-ring { width: 116px; height: 116px; }
+.profile-center-page .ps-influence-ring .pi-ring-text b { font-size: 26px; }
+.profile-center-page .ps-influence-ring.is-high .pi-ring-val { stroke: var(--status-ok); }
+.profile-center-page .ps-influence-ring.is-mid .pi-ring-val { stroke: var(--accent-cyan); }
+.profile-center-page .ps-influence-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.profile-center-page .ps-coverage {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.profile-center-page .ps-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.profile-center-page .ps-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  clip-path: var(--hud-notch, none);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
+}
+.profile-center-page .ps-tag svg { width: 12px; height: 12px; color: var(--accent-cyan); }
+.profile-center-page .ps-tags-empty {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ---------- 偏好设置：档位指示轨（tier-rail） ---------- */
+.profile-center-page .tier-rail {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  flex: none;
+}
+.profile-center-page .tier-rail i {
+  width: 16px;
+  height: 4px;
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+}
+.profile-center-page .tier-rail[data-tier="focus"] i { background: var(--accent-cyan); }
+.profile-center-page .tier-rail[data-tier="focus"] i:nth-child(2),
+.profile-center-page .tier-rail[data-tier="focus"] i:nth-child(3) {
+  background: color-mix(in srgb, var(--accent-cyan) 45%, transparent);
+}
+.profile-center-page .tier-rail[data-tier="normal"] i:nth-child(-n+2) {
+  background: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+.profile-center-page .tier-rail[data-tier="explore"] i {
+  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+}
+.profile-center-page .tier-rail[data-tier="explore"] i:first-child {
+  background: color-mix(in srgb, var(--text-muted) 60%, transparent);
+}
+
+/* ---------- 偏好设置：学习引擎置信环 ---------- */
+.profile-center-page .profile-learning-score {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.profile-center-page .profile-learning-score-text { min-width: 0; }
+.profile-center-page .profile-learning-score-text strong {
+  font: 700 26px/1.1 var(--font-mono, ui-monospace, monospace);
+}
+
+/* ---------- 动画 & 响应式 ---------- */
+@keyframes piGrow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@media (max-width: 1080px) {
+  .profile-center-page .pa-grid-duo { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .profile-center-page .pi-sessions { grid-template-columns: 1fr; }
+  .profile-center-page .pi-bar-row { grid-template-columns: 20px 1fr 34px; }
+  .profile-center-page .pi-bar-track { grid-column: 1 / -1; }
+  .profile-center-page .ps-id { flex-direction: column; align-items: flex-start; }
+  .profile-center-page .ps-id-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-center-page .ps-influence { flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-center-page .pi-bar-track i,
+  .profile-center-page .pi-meter-track i {
+    animation: none !important;
+  }
+  .profile-center-page .pi-ring-val { transition: none; }
+}

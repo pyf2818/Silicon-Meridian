@@ -15,6 +15,7 @@ import SnapshotHistorySection from './profile/SnapshotHistorySection.jsx';
 import ProfileOverviewSection from './profile/ProfileOverviewSection.jsx';
 import ProfileInsightsSection from './profile/ProfileInsightsSection.jsx';
 import ProfileSocialSection from './profile/ProfileSocialSection.jsx';
+import { ConfidenceRing } from './profile/charts/InsightPanels.jsx';
 
 // 偏好设置内的模块导航（每个模块独立一页，只显示一个组件）
 const PROFILE_VIEWS = [
@@ -217,9 +218,12 @@ export default function ProfilePage({
                     <p className="section-desc">系统把关注领域、阅读点击、收藏、素材沉淀和反馈动作汇总成可解释的推荐记忆。</p>
                   </div>
                   <div className="profile-learning-score">
-                    <strong>{profileLearningEngine.confidence}%</strong>
-                    <span>{profileLearningEngine.confidenceLabel} · {profileLearningEngine.behaviorDepth}</span>
-                    <p>{profileLearningEngine.summary}</p>
+                    <ConfidenceRing value={profileLearningEngine.confidence} size={96} label="置信" sub={profileLearningEngine.behaviorDepth} />
+                    <div className="profile-learning-score-text">
+                      <strong>{profileLearningEngine.confidence}%</strong>
+                      <span>{profileLearningEngine.confidenceLabel} · {profileLearningEngine.behaviorDepth}</span>
+                      <p>{profileLearningEngine.summary}</p>
+                    </div>
                   </div>
                   <div className="profile-learning-actions">
                     {(profileLearningEngine.nextActions.length ? profileLearningEngine.nextActions : ['继续阅读每日汇报并收藏真正有价值的内容']).map(action => (
@@ -254,7 +258,7 @@ export default function ProfilePage({
                   </div>
                   <div className="priority-list">
                     {profilePriorityItems.map(item => (
-                      <div key={item.id} className="priority-row" data-testid="profile-domain-row" data-domain-id={item.id}>
+                      <div key={item.id} className="priority-row" data-testid="profile-domain-row" data-domain-id={item.id} data-tier={item.tier}>
                         <span>{ICONS[item.icon]} {item.label}</span>
                         <div className="profile-tier-control" role="group" aria-label={item.label + '关注等级'}>
                           {PROFILE_TIER_OPTIONS.map(option => (
@@ -271,6 +275,7 @@ export default function ProfilePage({
                             </button>
                           ))}
                         </div>
+                        <span className="tier-rail" data-tier={item.tier} aria-hidden="true"><i /><i /><i /></span>
                         <strong>{PROFILE_TIERS[item.tier]?.shortLabel || '二级'}</strong>
                       </div>
                     ))}
