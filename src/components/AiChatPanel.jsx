@@ -113,6 +113,12 @@ export default function AiChatPanel({
   // 底部上下文胶囊的"查看内容"弹层：null | 'intel' | 'material'（数字胶囊点开看具体条目）
   const [contextPeek, setContextPeek] = useState(null);
   const contextPeekRef = useRef(null);
+  // 弹层条目级排除：情报 / 素材各自的排除集（弹层内变灰透明），叠加在 excludeAll* 全局开关之上
+  const [excludedIntelIds, setExcludedIntelIds] = useState(() => new Set());
+  const [excludedMaterialIds, setExcludedMaterialIds] = useState(() => new Set());
+  // Ctrl+点击多选暂存（切换弹层域时清空）
+  const [peekSelection, setPeekSelection] = useState(() => new Set());
+  useEffect(() => { setPeekSelection(new Set()); }, [contextPeek]);
   // 点外部关闭弹层（胶囊自身 stopPropagation，保证点胶囊本体仍是 toggle）
   useEffect(() => {
     if (!contextPeek) return undefined;
@@ -229,6 +235,60 @@ export default function AiChatPanel({
     setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
+  /* ===== 条目级排除：过滤后的"有效上下文"（prompt 注入与胶囊计数都用过滤版） ===== */
+  const effectiveIntelContext = useMemo(() => {
+    if (!intelligenceContext || excludedIntelIds.size === 0) return intelligenceContext;
+    return { ...intelligenceContext, items: (intelligenceContext.items || []).filter(i => !excludedIntelIds.has(i.id)) };
+  }, [intelligenceContext, excludedIntelIds]);
+  const effectiveMaterialContext = useMemo(() => {
+    if (excludedMaterialIds.size === 0) return materialContext;
+    return { ...materialContext, selected: (materialContext.selected || []).filter(m => !excludedMaterialIds.has(m.id)) };
+  }, [materialContext, excludedMaterialIds]);
+
+  // 弹层条目点击：Ctrl/⌘+点击 = 多选切换；已排除条目单击 = 恢复；普通点击 = 插入引用
+  const handlePeekItemClick = useCallback((domain, id, ref, isExcluded, e) => {
+    if (e?.ctrlKey || e?.metaKey) {
+      e.preventDefault();
+      setPeekSelection(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      });
+      return;
+    }
+    if (isExcluded) {
+      const clear = prev => { const n = new Set(prev); n.delete(id); return n; };
+      if (domain === 'intel') setExcludedIntelIds(clear); else setExcludedMaterialIds(clear);
+      return;
+    }
+    insertContextReference(ref);
+  }, [insertContextReference]);
+
+  // 批量注入：把选中的多条引用一次性插入输入框
+  const injectSelectedContext = useCallback(() => {
+    const items = contextPeek === 'intel' ? intelPeekItems : materialContext.selected;
+    const refs = (items || [])
+      .filter(i => peekSelection.has(i.id))
+      .map(i => (contextPeek === 'intel' ? `[资讯:${i.id}]` : `[素材:${i.id}]`));
+    if (!refs.length) return;
+    setInput(prev => {
+      const base = prev || '';
+      const needSpace = base.length > 0 && !/\s$/.test(base);
+      return `${base}${needSpace ? ' ' : ''}${refs.join(' ')}`;
+    });
+    setPeekSelection(new Set());
+    setContextPeek(null); // 与单条点击插入行为一致：注入后收起弹层
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [contextPeek, intelPeekItems, materialContext, peekSelection]);
+
+  // 批量排除：选中的条目加入排除集（弹层内变灰透明，注入时过滤掉）
+  const excludeSelectedContext = useCallback(() => {
+    if (!peekSelection.size) return;
+    if (contextPeek === 'intel') setExcludedIntelIds(prev => new Set([...prev, ...peekSelection]));
+    else setExcludedMaterialIds(prev => new Set([...prev, ...peekSelection]));
+    setPeekSelection(new Set());
+  }, [contextPeek, peekSelection]);
+
   // 工作空间召回：异步检索相关文件（IndexedDB），debounce 避免频繁查询
   const [recalledFiles, setRecalledFiles] = useState([]);
 
@@ -316,6 +376,75 @@ export default function AiChatPanel({
       window.removeEventListener('resize', update);
     };
   }, [showSkillMenu]);
+
+  // ===== 快捷指令收纳：单按钮弹层（情境指令 + 用户自定义），替代原横向 pill 行 =====
+  const QUICK_CMD_KEY = 'aiWorkstationQuickCommands';
+  const [showQuickMenu, setShowQuickMenu] = useState(false);
+  const [quickMenuPos, setQuickMenuPos] = useState(null);
+  const [showQuickForm, setShowQuickForm] = useState(false);
+  const [quickForm, setQuickForm] = useState({ label: '', prompt: '' });
+  const [customQuickCommands, setCustomQuickCommands] = useState(() => {
+    try {
+      const raw = localStorage.getItem(QUICK_CMD_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter(c => c?.id && c?.label && c?.prompt) : [];
+    } catch { return []; }
+  });
+  const quickBtnRef = useRef(null);
+  const quickMenuRef = useRef(null);
+
+  const persistQuickCommands = useCallback((next) => {
+    setCustomQuickCommands(next);
+    try { localStorage.setItem(QUICK_CMD_KEY, JSON.stringify(next)); } catch { /* quota 忽略 */ }
+  }, []);
+
+  const addQuickCommand = useCallback(() => {
+    const label = quickForm.label.trim().slice(0, 16);
+    const prompt = quickForm.prompt.trim().slice(0, 2000);
+    if (!label || !prompt) return;
+    persistQuickCommands([...customQuickCommands, { id: `qc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`, label, prompt }]);
+    setQuickForm({ label: '', prompt: '' });
+    setShowQuickForm(false);
+  }, [quickForm, customQuickCommands, persistQuickCommands]);
+
+  const removeQuickCommand = useCallback((id) => {
+    persistQuickCommands(customQuickCommands.filter(c => c.id !== id));
+  }, [customQuickCommands, persistQuickCommands]);
+
+  const toggleQuickMenu = useCallback(() => {
+    setShowQuickMenu(prev => {
+      if (prev) { setShowQuickForm(false); return false; }
+      if (quickBtnRef.current) {
+        const rect = quickBtnRef.current.getBoundingClientRect();
+        setQuickMenuPos({ left: rect.left, bottom: window.innerHeight - rect.top + 6 });
+      }
+      return true;
+    });
+  }, []);
+
+  // 点击外部 / 滚动时关闭与重定位（与 skill 菜单同款交互）
+  useEffect(() => {
+    if (!showQuickMenu) return;
+    const onDown = (e) => {
+      if (quickMenuRef.current && !quickMenuRef.current.contains(e.target) &&
+          quickBtnRef.current && !quickBtnRef.current.contains(e.target)) {
+        setShowQuickMenu(false); setShowQuickForm(false);
+      }
+    };
+    const update = () => {
+      if (!quickBtnRef.current) return;
+      const rect = quickBtnRef.current.getBoundingClientRect();
+      setQuickMenuPos({ left: rect.left, bottom: window.innerHeight - rect.top + 6 });
+    };
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [showQuickMenu]);
 
   // 选中 skill：把 skill 的 prompt 模板注入到输入框（或作为 systemPrompt 追加）
   const applySkill = useCallback((skill) => {
@@ -413,14 +542,15 @@ export default function AiChatPanel({
   // sessions 持久化由 sessionsStore.setState 自动处理（流式过程中持续写回）
 
   // Build system prompt：已抽离至 aichat/buildSystemPrompt.js
+  // 注意：情报/素材用"过滤版"（条目级排除生效），excludeAll* 全局开关照旧叠加
   const systemPrompt = useMemo(() => buildSystemPrompt({
-    selectedInterests, categories, intelligenceProfile, workbenchItems, intelligenceContext,
+    selectedInterests, categories, intelligenceProfile, workbenchItems, intelligenceContext: effectiveIntelContext,
     workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs,
-    excludeAllEvidence, excludeAllMaterials, materialContext, agent, personaSummary,
-  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, excludeAllEvidence, excludeAllMaterials, materialContext, agent, personaSummary]);
+    excludeAllEvidence, excludeAllMaterials, materialContext: effectiveMaterialContext, agent, personaSummary,
+  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, effectiveIntelContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, excludeAllEvidence, excludeAllMaterials, effectiveMaterialContext, agent, personaSummary]);
 
   // 情境化快捷建议：已抽离至 aichat/buildQuickActions.js
-  const quickActions = useMemo(() => buildQuickActions(intelligenceContext, workbenchItems, materialContext), [intelligenceContext, workbenchItems, materialContext]);
+  const quickActions = useMemo(() => buildQuickActions(effectiveIntelContext, workbenchItems, effectiveMaterialContext), [effectiveIntelContext, workbenchItems, effectiveMaterialContext]);
 
   // 多视角协作（AI 工作站多智能体编排）：一次任务多 agent 接力产出再综合
   const multiAgent = useMultiAgentOrchestrator({ agents, llmConfig, enabled: !!agents?.length });
@@ -464,6 +594,29 @@ export default function AiChatPanel({
   const jumpToMessage = useCallback((idx) => {
     const el = document.getElementById(`chat-msg-${idx}`);
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+
+  /* ===== 波浪节点导航：短条长度随内容错落，hover 变长 + 悬浮 tip 显示消息内容 ===== */
+  const [activeRailNode, setActiveRailNode] = useState(null);
+  const [railTip, setRailTip] = useState(null); // { n, content, left, bottom }
+  const railNodeRefs = useRef(new Map()); // idx → button element（tip 定位锚点）
+
+  // 条长 = 内容长度的错落映射（√ 曲线压缩，10–28px），自然形成波浪排列
+  const railBarWidth = useCallback((content) => {
+    const len = String(content || '').replace(/\s+/g, '').length;
+    return Math.round(Math.max(10, Math.min(28, 10 + Math.sqrt(len) * 3.2)));
+  }, []);
+
+  const showRailTip = useCallback((idx, n, content) => {
+    const el = railNodeRefs.current.get(idx);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setRailTip({
+      n,
+      content: String(content || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+      left: rect.left - 10,
+      bottom: Math.min(window.innerHeight - rect.top, window.innerHeight - 130),
+    });
   }, []);
 
   const createSession = useCallback(() => {
@@ -1299,23 +1452,34 @@ export default function AiChatPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 侧边节点导航：记录用户每条消息，点击跳转 */}
+      {/* 侧边节点导航：波浪短条，hover 变长并悬浮显示消息内容，点击跳转 */}
       {userMessageNodes.length > 0 && (
-        <nav className="chat-side-rail custom-scrollbar" aria-label="对话节点导航">
+        <nav className="chat-side-rail" aria-label="对话节点导航" onMouseLeave={() => setRailTip(null)}>
           <div className="chat-side-rail-label">节点</div>
           {userMessageNodes.map((node, n) => (
             <button
               key={node.idx}
               type="button"
-              className="chat-side-rail-node"
-              onClick={() => jumpToMessage(node.idx)}
-              title={node.content}
+              ref={el => { if (el) railNodeRefs.current.set(node.idx, el); else railNodeRefs.current.delete(node.idx); }}
+              className={`chat-side-rail-node ${activeRailNode === node.idx ? 'active' : ''}`}
+              style={{ '--rail-w': `${railBarWidth(node.content)}px` }}
+              onClick={() => { setActiveRailNode(node.idx); jumpToMessage(node.idx); }}
+              onMouseEnter={() => showRailTip(node.idx, n + 1, node.content)}
+              onFocus={() => showRailTip(node.idx, n + 1, node.content)}
+              onBlur={() => setRailTip(null)}
+              aria-label={`第 ${n + 1} 条消息，点击跳转`}
             >
-              <span className="chat-side-rail-num">{n + 1}</span>
-              <span className="chat-side-rail-text">{node.content}</span>
+              <span className="chat-side-rail-bar" aria-hidden="true" />
             </button>
           ))}
         </nav>
+      )}
+      {railTip && createPortal(
+        <div className="chat-side-rail-tip" style={{ position: 'fixed', left: railTip.left, bottom: railTip.bottom }} role="tooltip">
+          <i className="chat-side-rail-tip-num">{railTip.n}</i>
+          <span className="chat-side-rail-tip-text">{railTip.content || '（空消息）'}</span>
+        </div>,
+        document.body
       )}
       </div>
 
@@ -1353,16 +1517,20 @@ export default function AiChatPanel({
               <span className="chat-skill-caret">{ICONS.chevronUp || '▴'}</span>
             </button>
           </div>
-          {messages.length > 0 && (
-            <div className="chat-quick-bar">
-              {quickActions.map(action => (
-                <button key={action.label} className="chat-quick-pill" onClick={() => (action.orchestrate ? handleOrchestrate(action.prompt) : sendMessage(action.prompt))} disabled={isStreaming} title={action.desc}>
-                  <span className="chat-quick-pill-icon">{SUGGEST_ICONS[action.icon] || SUGGEST_ICONS.sparkle}</span>
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* 快捷指令收纳：单按钮弹层（情境指令 + 自定义），不再平铺占位 */}
+          <div className="chat-quick-wrap">
+            <button
+              ref={quickBtnRef}
+              type="button"
+              className={`chat-quick-btn ${showQuickMenu ? 'open' : ''}`}
+              onClick={toggleQuickMenu}
+              title="快捷指令（含自定义）"
+            >
+              <span className="icon-sm">{ICONS.sparkles || ICONS.star}</span>
+              快捷指令
+              <span className="chat-skill-caret">{ICONS.chevronUp || '▴'}</span>
+            </button>
+          </div>
         </div>
         {/* 输入框 */}
         <div className="chat-input-area">
@@ -1398,7 +1566,11 @@ export default function AiChatPanel({
                 title="查看注入的情报证据条目"
               >
                 <span className="icon-sm">{ICONS.messageSquare}</span>
-                {excludeAllEvidence ? '已排除情报' : `情报 ${intelligenceContext.items.length}`}
+                {excludeAllEvidence
+                  ? '已排除情报'
+                  : (excludedIntelIds.size > 0
+                    ? `情报 ${effectiveIntelContext.items.length}/${intelligenceContext.items.length}`
+                    : `情报 ${intelligenceContext.items.length}`)}
                 <span className="chat-context-pill-caret">▴</span>
               </button>
             )}
@@ -1418,7 +1590,10 @@ export default function AiChatPanel({
                 title="查看注入的素材条目"
               >
                 <span className="icon-sm">{ICONS.layers}</span>
-                {excludeAllMaterials ? '已排除素材' : (materialContext.hasElf ? `精灵素材 ${materialContext.elfCount}` : `素材 ${materialContext.total}`)}
+                {excludeAllMaterials
+                  ? '已排除素材'
+                  : (materialContext.hasElf ? `精灵素材 ${materialContext.elfCount}` : `素材 ${materialContext.total}`)}
+                {excludedMaterialIds.size > 0 && !excludeAllMaterials && <span className="chat-context-pill-excluded">已排除 {excludedMaterialIds.size}</span>}
                 <span className="chat-context-pill-caret">▴</span>
               </button>
             )}
@@ -1462,37 +1637,58 @@ export default function AiChatPanel({
                   <button type="button" className="chat-context-peek-close" onClick={() => setContextPeek(null)} title="关闭">{ICONS.x}</button>
                 </div>
                 <div className="chat-context-peek-list custom-scrollbar">
-                  {contextPeek === 'intel' && intelPeekItems.map(item => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="chat-context-peek-item"
-                      onClick={() => insertContextReference(`[资讯:${item.id}]`)}
-                      title={item.summary || item.title}
-                    >
-                      <span className="chat-context-peek-item-title">{item.title}</span>
-                      <span className="chat-context-peek-item-meta">{item.source || '未知来源'}</span>
-                    </button>
-                  ))}
-                  {contextPeek === 'material' && materialContext.selected.map(mat => (
-                    <button
-                      key={mat.id}
-                      type="button"
-                      className="chat-context-peek-item"
-                      onClick={() => insertContextReference(`[素材:${mat.id}]`)}
-                      title={String(mat.fullContent || mat.content || '').slice(0, 200)}
-                    >
-                      <span className="chat-context-peek-item-title">{mat.title || '未命名素材'}</span>
-                      <span className="chat-context-peek-item-meta">{mat.type || 'material'}{mat.source ? ` · ${mat.source}` : ''}</span>
-                    </button>
-                  ))}
+                  {contextPeek === 'intel' && intelPeekItems.map(item => {
+                    const isExcluded = excludedIntelIds.has(item.id);
+                    const isSelected = peekSelection.has(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`chat-context-peek-item ${isExcluded ? 'excluded' : ''} ${isSelected ? 'selected' : ''}`}
+                        onClick={e => handlePeekItemClick('intel', item.id, `[资讯:${item.id}]`, isExcluded, e)}
+                        title={isExcluded ? '已排除注入 · 单击恢复' : (item.summary || item.title)}
+                      >
+                        <span className="chat-context-peek-item-title">{item.title}</span>
+                        <span className="chat-context-peek-item-meta">{item.source || '未知来源'}{isExcluded ? ' · 已排除' : ''}</span>
+                      </button>
+                    );
+                  })}
+                  {contextPeek === 'material' && materialContext.selected.map(mat => {
+                    const isExcluded = excludedMaterialIds.has(mat.id);
+                    const isSelected = peekSelection.has(mat.id);
+                    return (
+                      <button
+                        key={mat.id}
+                        type="button"
+                        className={`chat-context-peek-item ${isExcluded ? 'excluded' : ''} ${isSelected ? 'selected' : ''}`}
+                        onClick={e => handlePeekItemClick('material', mat.id, `[素材:${mat.id}]`, isExcluded, e)}
+                        title={isExcluded ? '已排除注入 · 单击恢复' : String(mat.fullContent || mat.content || '').slice(0, 200)}
+                      >
+                        <span className="chat-context-peek-item-title">{mat.title || '未命名素材'}</span>
+                        <span className="chat-context-peek-item-meta">{mat.type || 'material'}{mat.source ? ` · ${mat.source}` : ''}{isExcluded ? ' · 已排除' : ''}</span>
+                      </button>
+                    );
+                  })}
                   {contextPeek === 'material' && materialContext.total > materialContext.selected.length && (
                     <div className="chat-context-peek-more">
                       仅相关性最高的 {materialContext.selected.length} 条注入上下文，素材库共 {materialContext.total} 条
                     </div>
                   )}
                 </div>
-                <div className="chat-context-peek-hint">点击条目将 [资讯:ID] / [素材:ID] 引用插入输入框</div>
+                {peekSelection.size > 0 && (
+                  <div className="chat-context-peek-actions">
+                    <button type="button" className="chat-context-peek-act primary" onClick={injectSelectedContext}>
+                      注入 {peekSelection.size} 条
+                    </button>
+                    <button type="button" className="chat-context-peek-act is-exclude" onClick={excludeSelectedContext}>
+                      排除 {peekSelection.size} 条
+                    </button>
+                    <button type="button" className="chat-context-peek-act" onClick={() => setPeekSelection(new Set())}>
+                      清除选择
+                    </button>
+                  </div>
+                )}
+                <div className="chat-context-peek-hint">Ctrl+点击多选 · 单击插入引用 · 已排除条目单击恢复</div>
               </div>
             )}
           </div>
@@ -1649,6 +1845,95 @@ export default function AiChatPanel({
           )}
           {skillsHook.error && (
             <div className="chat-skill-error">加载失败：{skillsHook.error}</div>
+          )}
+        </div>,
+        document.body
+      )}
+
+      {/* 快捷指令弹层：情境指令 + 我的自定义指令（可新建/删除） */}
+      {showQuickMenu && quickMenuPos && createPortal(
+        <div
+          ref={quickMenuRef}
+          className="chat-quick-menu custom-scrollbar"
+          role="menu"
+          style={{ position: 'fixed', left: quickMenuPos.left, bottom: quickMenuPos.bottom }}
+        >
+          <div className="chat-quick-menu-head">
+            <span className="chat-quick-menu-title">快捷指令</span>
+            {customQuickCommands.length > 0 && <span className="chat-quick-menu-count">{customQuickCommands.length} 条自定义</span>}
+          </div>
+          {quickActions.length > 0 && <div className="chat-quick-menu-label">情境推荐</div>}
+          {quickActions.map(action => (
+            <button
+              key={`ctx-${action.label}`}
+              type="button"
+              className="chat-quick-menu-item"
+              disabled={isStreaming}
+              onClick={() => { setShowQuickMenu(false); setShowQuickForm(false); action.orchestrate ? handleOrchestrate(action.prompt) : sendMessage(action.prompt); }}
+              title={action.desc}
+            >
+              <span className="chat-quick-pill-icon">{SUGGEST_ICONS[action.icon] || SUGGEST_ICONS.sparkle}</span>
+              <span className="chat-quick-menu-item-text">
+                <strong>{action.label}</strong>
+                {action.desc && <small>{action.desc}</small>}
+              </span>
+            </button>
+          ))}
+          {customQuickCommands.length > 0 && <div className="chat-quick-menu-label">我的指令</div>}
+          {customQuickCommands.map(cmd => (
+            <div key={cmd.id} className="chat-quick-menu-row">
+              <button
+                type="button"
+                className="chat-quick-menu-item is-custom"
+                disabled={isStreaming}
+                onClick={() => { setShowQuickMenu(false); setShowQuickForm(false); sendMessage(cmd.prompt); }}
+                title={cmd.prompt}
+              >
+                <span className="chat-quick-pill-icon">✦</span>
+                <span className="chat-quick-menu-item-text">
+                  <strong>{cmd.label}</strong>
+                  <small>{cmd.prompt}</small>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="chat-quick-menu-del"
+                onClick={() => removeQuickCommand(cmd.id)}
+                title="删除该指令"
+                aria-label={`删除指令 ${cmd.label}`}
+              >✕</button>
+            </div>
+          ))}
+          {showQuickForm ? (
+            <div className="chat-quick-form" onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && e.target.tagName === 'INPUT') { e.preventDefault(); addQuickCommand(); } }}>
+              <input
+                autoFocus
+                value={quickForm.label}
+                onChange={e => setQuickForm(f => ({ ...f, label: e.target.value }))}
+                placeholder="指令名称（如：周报生成）"
+                maxLength={16}
+              />
+              <textarea
+                value={quickForm.prompt}
+                onChange={e => setQuickForm(f => ({ ...f, prompt: e.target.value }))}
+                placeholder="指令内容：点击后发送给智能体的完整 prompt"
+                rows={3}
+                maxLength={2000}
+              />
+              <div className="chat-quick-form-actions">
+                <button type="button" className="chat-quick-form-cancel" onClick={() => { setShowQuickForm(false); setQuickForm({ label: '', prompt: '' }); }}>取消</button>
+                <button
+                  type="button"
+                  className="chat-quick-form-save"
+                  onClick={addQuickCommand}
+                  disabled={!quickForm.label.trim() || !quickForm.prompt.trim()}
+                >保存</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="chat-quick-add" onClick={() => setShowQuickForm(true)}>
+              ＋ 新建快捷指令
+            </button>
           )}
         </div>,
         document.body

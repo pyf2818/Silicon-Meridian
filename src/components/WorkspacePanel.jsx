@@ -16,7 +16,7 @@ import { renderMarkdown } from '../utils/markdown.jsx';
 import {
   isFileSystemSupported, pickRootDirectory, restoreRootDirectory, clearRootDirectory,
   peekSavedHandle, requestHandlePermission,
-  listFiles, readFile, exportMaterials, exportBriefing, downloadMarkdown,
+  listFiles, readFile, writeFile, exportMaterials, exportBriefing, downloadMarkdown,
   materialToMarkdown, briefingToMarkdown,
 } from '../utils/workspace.js';
 import { setRootHandle as setSharedRootHandle } from '../utils/workspaceHandleStore.js';
@@ -49,6 +49,10 @@ export default function WorkspacePanel({
   const [previewContent, setPreviewContent] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  // 预览内直接编辑：切换「预览 ⇄ 编辑」，保存写回本地文件
+  const [editingPreview, setEditingPreview] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const [savingPreview, setSavingPreview] = useState(false);
   // 权限失效后需要用户手势重新激活
   const [pendingHandle, setPendingHandle] = useState(null); // 待激活权限的 handle
   const [reactivating, setReactivating] = useState(false);
@@ -235,6 +239,8 @@ export default function WorkspacePanel({
     setPreviewContent('');
     setPreviewError('');
     setPreviewLoading(true);
+    setEditingPreview(false);
+    setEditDraft('');
     try {
       const segments = file.path.split('/');
       const text = await readFile(rootHandle, segments);
@@ -251,7 +257,38 @@ export default function WorkspacePanel({
     setPreviewContent('');
     setPreviewError('');
     setPreviewLoading(false);
+    setEditingPreview(false);
+    setEditDraft('');
   }, []);
+
+  // 预览 ⇄ 编辑 切换
+  const togglePreviewEdit = useCallback(() => {
+    setEditingPreview(prev => {
+      if (!prev) setEditDraft(previewContent);
+      return !prev;
+    });
+  }, [previewContent]);
+
+  // 保存编辑到本地文件（写回原路径）+ 刷新文件树 + 更新空间关联内容
+  const savePreviewEdit = useCallback(async () => {
+    if (!previewFile || !rootHandle) return;
+    setSavingPreview(true);
+    try {
+      const segs = previewFile.path.split('/');
+      const fileName = segs.pop();
+      await writeFile(rootHandle, segs, fileName, editDraft);
+      setPreviewContent(editDraft);
+      setEditingPreview(false);
+      indexFile(previewFile.path, previewFile.name, editDraft);
+      associateFiles(spaceId, [{ name: previewFile.name, path: previewFile.path, content: editDraft }]);
+      showToast(`已保存：${previewFile.name}`);
+      await refreshFiles(rootHandle);
+    } catch (e) {
+      setPreviewError(e.message || '保存失败');
+    } finally {
+      setSavingPreview(false);
+    }
+  }, [previewFile, rootHandle, editDraft, spaceId, showToast, refreshFiles]);
 
   // Esc 关闭预览
   useEffect(() => {
@@ -485,11 +522,23 @@ export default function WorkspacePanel({
           <aside className="workspace-side-panel" role="dialog" aria-modal="false" aria-label="文件预览">
             <div className="workspace-side-panel-head">
               <div className="workspace-side-panel-meta">
-                <span className="workspace-side-panel-type">file</span>
+                <span className="workspace-side-panel-type">{editingPreview ? 'edit' : 'file'}</span>
                 <h3>{previewFile.name}</h3>
                 <span className="workspace-side-panel-path">{previewFile.path}</span>
               </div>
-              <button className="workspace-side-panel-close" onClick={closePreview} title="关闭 (Esc)">{CLOSE_SVG}</button>
+              <div className="workspace-side-panel-head-actions">
+                {!previewLoading && !previewError && (
+                  <button
+                    type="button"
+                    className={`workspace-side-panel-toggle ${editingPreview ? 'active' : ''}`}
+                    onClick={togglePreviewEdit}
+                    title={editingPreview ? '切回预览' : '切换为可编辑格式，直接修改并保存'}
+                  >
+                    {editingPreview ? '✓ 编辑中' : '✎ 编辑'}
+                  </button>
+                )}
+                <button className="workspace-side-panel-close" onClick={closePreview} title="关闭 (Esc)">{CLOSE_SVG}</button>
+              </div>
             </div>
             <div className="workspace-side-panel-body">
               {previewLoading && (
@@ -498,7 +547,20 @@ export default function WorkspacePanel({
               {!previewLoading && previewError && (
                 <p className="workspace-side-panel-empty">读取失败：{previewError}</p>
               )}
-              {!previewLoading && !previewError && (
+              {!previewLoading && !previewError && editingPreview && (
+                <textarea
+                  className="workspace-preview-editor"
+                  value={editDraft}
+                  onChange={e => setEditDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); savePreviewEdit(); }
+                    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setEditingPreview(false); }
+                  }}
+                  spellCheck={false}
+                  placeholder="直接编辑文件内容…（Ctrl+S 保存，Esc 退出编辑）"
+                />
+              )}
+              {!previewLoading && !previewError && !editingPreview && (
                 isMarkdown(previewFile.name)
                   ? (previewContent
                     ? <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(previewContent) }} />
@@ -507,6 +569,17 @@ export default function WorkspacePanel({
               )}
             </div>
             <div className="workspace-side-panel-foot">
+              {editingPreview && (
+                <button
+                  type="button"
+                  className="workspace-side-panel-action primary"
+                  onClick={savePreviewEdit}
+                  disabled={savingPreview || editDraft === previewContent}
+                  title="写回本地文件（Ctrl+S）"
+                >
+                  {savingPreview ? '保存中…' : '保存到本地'}
+                </button>
+              )}
               <button
                 type="button"
                 className="workspace-side-panel-action"

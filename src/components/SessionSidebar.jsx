@@ -15,6 +15,9 @@ import { SUBAGENT_PRESETS } from '../domain/agent/subagentCore.js';
 import { listTeams, subscribeTeams } from '../store/teamStore.js';
 import { getGroupState, subscribeGroup } from './aichat/groupChatStore.js';
 import {
+  isFileSystemSupported, pickDirectoryHandle, saveHandleToSlot,
+} from '../utils/workspace.js';
+import {
   getSpaces, getActiveSpaceId, setActiveSpace,
   createSpace, renameSpace, deleteSpace, getDefaultSpaceId, subscribeSpaces,
 } from '../utils/workspaceStore.js';
@@ -375,9 +378,39 @@ export default function SessionSidebar({
     if (newSpaceName.trim()) {
       const sp = createSpace(newSpaceName.trim());
       if (sp) setExpanded(prev => new Set(prev).add(sp.id));
+      else setErrorHint('空间已存在同名或数量达上限');
     }
     setNewSpaceName('');
     setCreatingSpace(false);
+  };
+
+  /* 新建空间 = 直接选本地文件夹（文件夹名即空间名）；不支持 FSA API 或同名冲突时降级为手动输入 */
+  const [errorHint, setErrorHint] = useState('');
+  const handleCreateSpace = async () => {
+    setErrorHint('');
+    if (isFileSystemSupported()) {
+      try {
+        const handle = await pickDirectoryHandle();
+        if (!handle) return; // 用户取消
+        const sp = createSpace(handle.name);
+        if (!sp) {
+          // 同名空间已存在：降级为输入框（预填文件夹名，用户改名即可）
+          setNewSpaceName(handle.name);
+          setCreatingSpace(true);
+          setErrorHint(`空间「${handle.name}」已存在，请换一个名字`);
+          return;
+        }
+        await saveHandleToSlot(sp.id, handle);
+        setExpanded(prev => new Set(prev).add(sp.id)); // createSpace 已自动激活
+      } catch (e) {
+        if (e.name !== 'AbortError') {
+          setCreatingSpace(true);
+          setErrorHint(e.message || '文件夹选择失败，可手动输入空间名');
+        }
+      }
+    } else {
+      setCreatingSpace(true);
+    }
   };
 
   const handlers = {
@@ -456,8 +489,9 @@ export default function SessionSidebar({
               />
             ))}
 
-            {/* 新建空间 */}
+            {/* 新建空间：直接选本地文件夹（文件夹名即空间名）；不支持的浏览器降级为手动输入 */}
             <div className="space-create">
+              {errorHint && <div className="space-create-hint">{errorHint}</div>}
               {creatingSpace ? (
                 <input
                   className="space-create-input"
@@ -472,8 +506,8 @@ export default function SessionSidebar({
                   placeholder="空间名称，回车创建"
                 />
               ) : (
-                <button type="button" className="space-create-btn" onClick={() => setCreatingSpace(true)}>
-                  ＋ 新建空间
+                <button type="button" className="space-create-btn" onClick={handleCreateSpace} title="选择一个本地文件夹创建空间，文件夹名即空间名">
+                  ＋ 新建空间（选择文件夹）
                 </button>
               )}
             </div>

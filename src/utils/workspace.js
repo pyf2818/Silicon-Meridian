@@ -31,11 +31,15 @@ export function isFileSystemSupported() {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
-/* 选择根目录，返回 handle 并存入 IndexedDB
- * key：存储槽位——多工作空间机制下每个空间绑定自己的文件夹（key = spaceId），默认槽 'root' 兼容旧数据 */
-export async function pickRootDirectory(key = HANDLE_KEY) {
+/* 仅弹出目录选择器，不落盘 —— 「新建空间=选文件夹」流程用：
+ * 先拿到 handle → 以文件夹名建空间 → 再 saveHandleToSlot(spaceId, handle) */
+export async function pickDirectoryHandle() {
   if (!isFileSystemSupported()) return null;
-  const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+  return window.showDirectoryPicker({ mode: 'readwrite' });
+}
+
+/* 把 handle 写入 IndexedDB 槽位（key = spaceId），配合 pickDirectoryHandle 使用 */
+export async function saveHandleToSlot(key, handle) {
   const db = await openDB();
   await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
@@ -43,6 +47,14 @@ export async function pickRootDirectory(key = HANDLE_KEY) {
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
+}
+
+/* 选择根目录，返回 handle 并存入 IndexedDB
+ * key：存储槽位——多工作空间机制下每个空间绑定自己的文件夹（key = spaceId），默认槽 'root' 兼容旧数据 */
+export async function pickRootDirectory(key = HANDLE_KEY) {
+  const handle = await pickDirectoryHandle();
+  if (!handle) return null;
+  await saveHandleToSlot(key, handle);
   return handle;
 }
 
