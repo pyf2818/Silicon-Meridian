@@ -428,7 +428,9 @@ export function normalizeWorkflowTemplate(workflow, fallback = DEFAULT_AGENT_WOR
       classifierLabels: type === 'classifier' ? (node?.classifierLabels || '必读,追踪,素材,创作,降噪') : node?.classifierLabels,
       inputKey: String(node?.inputKey || previousOutputKey).trim(),
       outputKey: String(node?.outputKey || (type === 'output' ? 'final_output' : `step_${index + 1}`)).trim(),
-      enabled: node?.enabled !== false
+      enabled: node?.enabled !== false,
+      // 画布坐标（无限画布）：旧数据无 position 时按序自动排布一列
+      position: normalizeNodePosition(node?.position, index),
     };
   });
 
@@ -440,7 +442,15 @@ export function normalizeWorkflowTemplate(workflow, fallback = DEFAULT_AGENT_WOR
   };
 }
 
-export function createWorkflowNode(type, index, existingNodesLength, workflowNodeType = 'llm') {
+/** 画布坐标规范化：非法/缺失时按索引排成一列（x=90, y=60+idx*190） */
+export function normalizeNodePosition(position, index = 0) {
+  const x = Number(position?.x);
+  const y = Number(position?.y);
+  if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
+  return { x: 90, y: 60 + index * 190 };
+}
+
+export function createWorkflowNode(type, index, existingNodesLength, workflowNodeType = 'llm', position = null) {
   const meta = WORKFLOW_NODE_TYPES.includes(type) ? type : 'llm';
   return {
     id: `wf-${type}-${Date.now()}`,
@@ -455,6 +465,7 @@ export function createWorkflowNode(type, index, existingNodesLength, workflowNod
     classifierLabels: meta === 'classifier' ? '必读,追踪,素材,创作,降噪' : undefined,
     inputKey: `step_${Math.max(existingNodesLength, 1)}`,
     outputKey: `step_${existingNodesLength + 1}`,
-    enabled: true
+    enabled: true,
+    position: position || { x: 90, y: 60 + existingNodesLength * 190 },
   };
 }
