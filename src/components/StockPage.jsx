@@ -155,8 +155,10 @@ export default function StockPage({ llmConfig, onOpenLlmConfig }) {
       benchmark: BENCHMARK_OPTIONS.find(item => item.code === benchmarkCode),
       realtime,
       sectors,
+      experienceMode,
+      investorPolicy,
     });
-  }, [ai, adjust, benchmarkCode, klineData, period, selectedCode, selectedName, realtime, sectors]);
+  }, [ai, adjust, benchmarkCode, experienceMode, investorPolicy, klineData, period, selectedCode, selectedName, realtime, sectors]);
 
   // 触发 AI 早报
   const runBriefing = useCallback(() => {
@@ -165,10 +167,12 @@ export default function StockPage({ llmConfig, onOpenLlmConfig }) {
       stocks: dashboard?.stocks || [],
       sectors,
       coverage: dashboard?.coverage,
+      experienceMode,
+      investorPolicy,
     });
     setBriefingTab('current');
     setShowBriefing(true);
-  }, [ai, dashboard, sectors]);
+  }, [ai, dashboard, experienceMode, investorPolicy, sectors]);
 
   // 首次进入股市页自动生成早报：用户进入页面即可看到当日早报，无需主动点击
   // 条件：有 LLM 配置 + dashboard 已加载 + 当日尚未生成过 + 会话内只触发一次
@@ -195,8 +199,10 @@ export default function StockPage({ llmConfig, onOpenLlmConfig }) {
       stocks: dashboard.stocks || [],
       sectors,
       coverage: dashboard.coverage,
+      experienceMode,
+      investorPolicy,
     });
-  }, [llmConfig, dashboard, ai, sectors]);
+  }, [llmConfig, dashboard, ai, experienceMode, investorPolicy, sectors]);
 
   // 触发自选监控
   const runAlerts = useCallback(() => {
@@ -418,6 +424,23 @@ export default function StockPage({ llmConfig, onOpenLlmConfig }) {
       confidence: breadth.total >= 20 ? '中等置信度' : '低置信度',
     };
   }, [breadth, dashboard, realtime]);
+  const modeGuide = useMemo(() => {
+    const hasDiagnosis = ai.diagnosis?.status === 'ready';
+    if (experienceMode === 'pro') {
+      return {
+        eyebrow: '\u4e13\u4e1a\u7814\u7a76\u53f0',
+        title: hasDiagnosis ? `\u8bc1\u636e\u94fe\u5df2\u5c31\u7eea\uff1a${ai.diagnosis.rating}` : '\u4ece\u6570\u636e\u5230\u51b3\u7b56',
+        description: '\u5148\u786e\u8ba4\u6570\u636e\u8986\u76d6\u548c\u6bd4\u8f83\u57fa\u51c6\uff0c\u518d\u7528\u8bc1\u636e\u3001\u98ce\u9669\u548c\u5931\u6548\u6761\u4ef6\u590d\u6838\u5047\u8bbe\u3002',
+        steps: ['\u786e\u8ba4\u6bd4\u8f83\u57fa\u51c6\u4e0e\u6570\u636e\u8986\u76d6', '\u8fd0\u884c\u8bca\u65ad\uff0c\u6838\u5bf9\u652f\u6301/\u53cd\u5411\u8bc1\u636e', '\u7528\u98ce\u9669\u9884\u7b97\u548c\u60c5\u666f\u63a8\u6f14\u590d\u6838\u5047\u8bbe'],
+      };
+    }
+    return {
+      eyebrow: '\u65b0\u624b\u5bfc\u822a',
+      title: marketRead.tone === '\u8c28\u614e' ? '\u5148\u5b66\u4f1a\u8bc6\u522b\u98ce\u9669' : marketRead.tone === '\u504f\u5f3a' ? '\u5f3a\u52bf\u4e2d\u4e5f\u8981\u5148\u770b\u98ce\u9669' : '\u5148\u7406\u89e3\u884c\u60c5\u518d\u505a\u5224\u65ad',
+      description: 'AI \u4f1a\u628a\u6307\u6807\u7ffb\u8bd1\u6210\u767d\u8bdd\uff0c\u5e2e\u4f60\u5148\u770b\u61c2\u3001\u518d\u89c2\u5bdf\uff0c\u4e0d\u628a\u6da8\u8dcc\u76f4\u63a5\u7b49\u540c\u4e8e\u4e70\u5356\u4fe1\u53f7\u3002',
+      steps: ['\u5148\u770b\u5927\u76d8\u4e0e\u6da8\u8dcc\u5bb6\u6570', '\u518d\u770b\u4e00\u53ea\u80a1\u7968\u7684\u8d8b\u52bf\u548c\u6ce2\u52a8', '\u6700\u540e\u68c0\u67e5\u98ce\u9669\u4e0e\u4e2a\u4eba\u7b56\u7565\u662f\u5426\u5339\u914d'],
+    };
+  }, [ai.diagnosis, experienceMode, marketRead]);
 
   const pickStock = (code, name) => {
     setSelectedCode(code);
@@ -575,6 +598,20 @@ export default function StockPage({ llmConfig, onOpenLlmConfig }) {
           </nav>
         </>
       )}
+
+      <section className={`stock-mode-guide ${experienceMode}`} aria-label={modeGuide.eyebrow}>
+        <div className="stock-mode-guide-lead">
+          <span className="stock-mode-guide-eyebrow">{modeGuide.eyebrow}</span>
+          <strong>{modeGuide.title}</strong>
+          <p>{modeGuide.description}</p>
+        </div>
+        <div className="stock-mode-guide-steps">
+          {modeGuide.steps.map((step, index) => <div key={step}><b>{index + 1}</b><span>{step}</span></div>)}
+        </div>
+        <button type="button" className="stock-mode-guide-ai" onClick={experienceMode === 'pro' ? runDiagnosis : () => { setBriefingTab('current'); setShowBriefing(true); }}>
+          {ICONS.sparkle}<span>{experienceMode === 'pro' ? (ai.diagnosis ? '\u91cd\u65b0\u8fd0\u884c\u8bca\u65ad' : '\u8fd0\u884c AI \u8bca\u65ad') : '\u6253\u5f00 AI \u65e9\u62a5'}</span>
+        </button>
+      </section>
 
       <IntelligenceRadar
         dashboard={dashboard}

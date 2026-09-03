@@ -66,7 +66,7 @@ const store = {
   setState(patch) { this.state = { ...this.state, ...patch }; this.notify(); },
 };
 
-export async function runStockAnalysis({ input, llmConfig, callLlm: invokeLlm = callLlm }) {
+export async function runStockAnalysis({ input, llmConfig, experienceMode = 'beginner', investorPolicy = null, callLlm: invokeLlm = callLlm }) {
   const algorithm = analyzeStock(input);
   const algorithmResult = {
     ...algorithm,
@@ -76,7 +76,11 @@ export async function runStockAnalysis({ input, llmConfig, callLlm: invokeLlm = 
   if (!llmAvailable || algorithm.status !== 'ready') return algorithmResult;
 
   const metrics = algorithm.metrics;
-  const systemPrompt = '你是专业的股市分析师。只能基于给定的确定性指标增强表述，不得改变算法评级或虚构数据。区分事实与推断，禁止给出买卖建议，180字内。';
+  const modeGuidance = experienceMode === 'pro'
+    ? '\u9762\u5411\u4e13\u4e1a\u7528\u6237\uff1a\u4f18\u5148\u62a5\u544a\u8bc1\u636e\u94fe\u3001\u76f8\u5bf9\u5f3a\u5f31\u3001\u6ce2\u52a8/\u56de\u64a4\u3001\u5931\u6548\u6761\u4ef6\u4e0e\u6570\u636e\u7f3a\u53e3\uff0c\u4f7f\u7528\u6807\u51c6\u672f\u8bed\u4f46\u4e0d\u8981\u5806\u780c\u6307\u6807\u3002'
+    : '\u9762\u5411\u65b0\u624b\u7528\u6237\uff1a\u5148\u7528\u4e00\u53e5\u8bdd\u89e3\u91ca\u7ed3\u8bba\uff0c\u518d\u89e3\u91ca\u6700\u591a 3 \u4e2a\u5173\u952e\u6307\u6807\uff0c\u6240\u6709\u672f\u8bed\u9644\u5e26\u767d\u8bdd\u89e3\u91ca\uff0c\u7ed9\u51fa\u53ef\u89c2\u5bdf\u7684\u4e0b\u4e00\u6b65\uff0c\u4e0d\u4f7f\u7528\u4ea4\u6613\u9ed1\u8bdd\u3002';
+  const policyGuidance = investorPolicy ? `\u7528\u6237\u7b56\u7565\uff1a${investorPolicy.horizon || '\u672a\u8bbe\u7f6e'}\u5468\u671f\u3001${investorPolicy.riskTolerance || '\u672a\u8bbe\u7f6e'}\u98ce\u9669\u504f\u597d\u3001\u5355\u7b14\u98ce\u9669\u4e0a\u9650 ${investorPolicy.riskPerTrade || '--'}%\u3002` : '';
+  const systemPrompt = `\u4f60\u662f\u4e13\u4e1a\u4e14\u5ba1\u614e\u7684\u80a1\u5e02\u5206\u6790\u5e08\u3002\u53ea\u80fd\u57fa\u4e8e\u7ed9\u5b9a\u7684\u786e\u5b9a\u6027\u6307\u6807\u589e\u5f3a\u8868\u8ff0\uff0c\u4e0d\u5f97\u6539\u53d8\u7b97\u6cd5\u8bc4\u7ea7\u6216\u865a\u6784\u6570\u636e\u3002\u533a\u5206\u4e8b\u5b9e\u4e0e\u63a8\u65ad\uff0c\u7981\u6b62\u7ed9\u51fa\u4e70\u5356\u5efa\u8bae\uff0c180\u5b57\u5185\u3002${modeGuidance}${policyGuidance}`;
   const userPrompt = `股票：${algorithm.stock.name}（${algorithm.stock.code}）
 算法评级：${algorithm.rating}；风险：${algorithm.risk}
 现价：${metrics.price}；MA5/10/20：${metrics.ma5}/${metrics.ma10}/${metrics.ma20}
@@ -110,11 +114,13 @@ export function useStockAi(llmConfig) {
   useEffect(() => store.subscribe(setSnapshot), []);
 
   // ===== 模块 A：确定性算法分析 + 可选 AI 增强 =====
-  const diagnoseStock = useCallback(async ({ stock, kline, benchmarkKline, benchmark, realtime, sectors }) => {
+  const diagnoseStock = useCallback(async ({ stock, kline, benchmarkKline, benchmark, realtime, sectors, experienceMode = 'beginner', investorPolicy = null }) => {
     store.setState({ diagnosing: true, diagnoseError: '' });
     try {
       const result = await runStockAnalysis({
         input: { stock, realtime, klines: kline?.klines || [], benchmarkKlines: benchmarkKline?.klines || [], benchmark },
+        experienceMode,
+        investorPolicy,
         llmConfig: store.state.llmConfig,
       });
       store.setState({ diagnosis: { ...result, at: Date.now() }, diagnosing: false });
@@ -124,7 +130,7 @@ export function useStockAi(llmConfig) {
   }, []);
 
   // ===== 模块 B：AI 市场早报 =====
-  const generateMorningBrief = useCallback(async ({ indices, stocks, sectors, coverage }) => {
+  const generateMorningBrief = useCallback(async ({ indices, stocks, sectors, coverage, experienceMode = 'beginner', investorPolicy = null }) => {
     const cfg = store.state.llmConfig;
     if (!cfg || !cfg.baseUrl || !cfg.apiKey || !cfg.selectedModel) {
       store.setState({ briefingError: '请先配置大模型' });
@@ -141,6 +147,8 @@ export function useStockAi(llmConfig) {
       const down = stockRows.filter(item => item.changePct < 0).length;
       const generatedAt = new Date().toISOString();
 
+      const modeGuidance = experienceMode === 'pro' ? '\u9762\u5411\u4e13\u4e1a\u7528\u6237\uff0c\u5f3a\u8c03\u8bc1\u636e\u6743\u91cd\u3001\u76f8\u5bf9\u5f3a\u5f31\u3001\u98ce\u9669\u9884\u7b97\u3001\u5931\u6548\u6761\u4ef6\u4e0e\u6570\u636e\u8fb9\u754c\u3002' : '\u9762\u5411\u65b0\u624b\u7528\u6237\uff0c\u5148\u7ed9\u767d\u8bdd\u6458\u8981\uff0c\u518d\u89e3\u91ca\u672f\u8bed\uff0c\u907f\u514d\u628a\u6da8\u8dcc\u76f4\u63a5\u7b49\u540c\u4e8e\u4e70\u5356\u4fe1\u53f7\u3002';
+      const policyGuidance = investorPolicy ? `\u7528\u6237\u7b56\u7565\uff1a${investorPolicy.horizon || '\u672a\u8bbe\u7f6e'}\u5468\u671f\u3001${investorPolicy.riskTolerance || '\u672a\u8bbe\u7f6e'}\u98ce\u9669\u504f\u597d\u3001\u6700\u5927\u4ed3\u4f4d ${investorPolicy.maxPosition || '--'}%\u3002` : '';
       const systemPrompt = `你是审慎、专业的中国股票市场研究员。只能使用用户提供的行情样本，生成 700-1200 字中文结构化早报。
 必须按以下标题输出：
 ## 一、执行摘要
@@ -151,7 +159,7 @@ export function useStockAi(llmConfig) {
 ## 六、风险清单
 ## 七、今日观察清单
 ## 八、数据边界
-规则：明确区分"数据事实"和"分析推断"；解释驱动因素时只能写待验证假设，不能伪造新闻、公告、财务、资金流或宏观数据；同时给出支持证据、反向证据和失效条件；不提供确定性涨跌预测、目标价或买卖指令。内容具体、可复核，避免空泛套话。`;
+规则：明确区分"数据事实"和"分析推断"；解释驱动因素时只能写待验证假设，不能伪造新闻、公告、财务、资金流或宏观数据；同时给出支持证据、反向证据和失效条件；不提供确定性涨跌预测、目标价或买卖指令。内容具体、可复核，避免空泛套话。${modeGuidance}${policyGuidance}`;
       const userPrompt = `生成时间：${generatedAt}
 数据口径：${coverage?.label || '行情样本'}，共 ${stockRows.length} 只；上涨 ${up}、下跌 ${down}。这不是全市场涨跌家数。
 数据频率：轮询行情，不是交易所逐笔数据。

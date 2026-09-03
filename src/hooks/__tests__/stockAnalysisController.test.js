@@ -24,3 +24,33 @@ it('keeps algorithm evidence when AI enhancement fails', async () => {
   expect(result.aiError).toBe('timeout');
   expect(result.metrics.ma20).not.toBeNull();
 });
+
+it('adapts AI guidance for beginner mode and investor policy', async () => {
+  const callLlm = vi.fn().mockResolvedValue('解释完成');
+  await runStockAnalysis({
+    input,
+    experienceMode: 'beginner',
+    investorPolicy: { horizon: '中线', riskTolerance: '稳健', riskPerTrade: 1 },
+    llmConfig: { baseUrl: 'x', apiKey: 'x', selectedModel: 'x' },
+    callLlm,
+  });
+  const [, systemPrompt] = callLlm.mock.calls[0];
+  expect(systemPrompt).toContain('面向新手用户');
+  expect(systemPrompt).toContain('白话解释');
+  expect(systemPrompt).toContain('稳健');
+  expect(systemPrompt).toContain('1%');
+});
+
+it('adapts AI guidance for professional evidence review', async () => {
+  const callLlm = vi.fn().mockResolvedValue('分析完成');
+  await runStockAnalysis({
+    input,
+    experienceMode: 'pro',
+    llmConfig: { baseUrl: 'x', apiKey: 'x', selectedModel: 'x' },
+    callLlm,
+  });
+  const [, systemPrompt] = callLlm.mock.calls[0];
+  expect(systemPrompt).toContain('面向专业用户');
+  expect(systemPrompt).toContain('证据链');
+  expect(systemPrompt).toContain('失效条件');
+});
