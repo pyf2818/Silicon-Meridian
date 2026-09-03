@@ -1,14 +1,15 @@
 /**
- * WorkspacePanel - 本地工作空间面板（AI 工作站左栏"工作空间"tab）
+ * WorkspacePanel - 本地工作空间面板（AI 工作站左栏"文件"tab）
  *
- * - 顶部：当前文件夹路径 + 切换/断开
+ * v2：工作空间以本地文件为核心 —— 面板**跟随当前空间**：
+ * - 每个空间绑定自己的本地文件夹（handle 按 spaceId 存 IndexedDB 槽位）
+ * - 切换空间 → 自动切到该空间的目录树；「加入 AI 上下文」= 把文件**关联**进该空间
+ * - 关联文件随空间持久化（元数据+截断内容），对话上下文按空间隔离
+ * - 顶部：当前空间 + 绑定目录路径 + 切换/断开
  * - 中部：文件树（展开/折叠），多选文件
- * - 底部：操作区（加入 AI 上下文 / 在对话中分析）
- * - 首次进入：引导选择文件夹
- * - 不支持 File System Access API 时：降级提示
- * - 双击文件：右侧滑出 panel 预览文件内容
+ * - 底部：操作区（关联文件 / 在对话中分析）
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { indexFile } from '../utils/workspaceIndex.js';
 import { renderMarkdown } from '../utils/markdown.jsx';
@@ -19,6 +20,10 @@ import {
   materialToMarkdown, briefingToMarkdown,
 } from '../utils/workspace.js';
 import { setRootHandle as setSharedRootHandle } from '../utils/workspaceHandleStore.js';
+import {
+  getActiveSpaceId, subscribeSpaces, getSpaces,
+  setSpaceRoot, associateFiles, clearSpaceFiles,
+} from '../utils/workspaceStore.js';
 
 // 支持预览的文件扩展名（其他类型直接显示原始文本）
 const PREVIEWABLE_EXT = new Set(['.md', '.markdown', '.txt']);
@@ -27,7 +32,6 @@ const CLOSE_SVG = (
 );
 
 export default function WorkspacePanel({
-  onAddContextFiles,
   materials = [],
   todayBriefing,
   todayLanes,
@@ -49,6 +53,60 @@ export default function WorkspacePanel({
   const [pendingHandle, setPendingHandle] = useState(null); // 待激活权限的 handle
   const [reactivating, setReactivating] = useState(false);
   const supported = isFileSystemSupported();
+
+  /* ---------- 跟随当前空间：空间切换 → 切换到该空间的目录 ---------- */
+  const [spaceId, setSpaceId] = useState(() => getActiveSpaceId());
+  const [spaceName, setSpaceName] = useState(() => getSpaces().find(s => s.id === getActiveSpaceId())?.name || '');
+  const handlesRef = useRef(new Map()); // spaceId → FileSystemDirectoryHandle（会话内缓存，切回免重授权）
+
+  useEffect(() => subscribeSpaces(() => {
+    setSpaceId(getActiveSpaceId());
+    setSpaceName(getSpaces().find(s => s.id === getActiveSpaceId())?.name || '');
+  }), []);
+
+  const bindHandle = useCallback((handle, sid) => {
+    handlesRef.current.set(sid, handle);
+    setRootHandle(handle);
+    setRootName(handle.name);
+    setPendingHandle(null);
+  }, []);
+
+  // 空间切换 / 首次挂载：恢复该空间的 handle（内存缓存 → IndexedDB 槽位 → 待激活）
+  useEffect(() => {
+    if (!supported || !spaceId) return;
+    let cancelled = false;
+    setSelected(new Set());
+    setExpanded(new Set());
+    setPreviewFile(null);
+    (async () => {
+      const cached = handlesRef.current.get(spaceId);
+      if (cached) {
+        setRootHandle(cached);
+        setRootName(cached.name);
+        setPendingHandle(null);
+        await refreshFiles(cached);
+        return;
+      }
+      setRootHandle(null);
+      setRootName('');
+      setFiles([]);
+      try {
+        const handle = await restoreRootDirectory(spaceId);
+        if (cancelled) return;
+        if (handle) {
+          bindHandle(handle, spaceId);
+          setSpaceRoot(spaceId, handle.name);
+          await refreshFiles(handle);
+          return;
+        }
+        const saved = await peekSavedHandle(spaceId);
+        if (cancelled) return;
+        if (saved) setPendingHandle(saved);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceId, supported]);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -99,7 +157,7 @@ export default function WorkspacePanel({
     return () => { cancelled = true; };
   }, [supported, refreshFiles]);
 
-  // 用户手势触发：重新激活工作空间权限
+  // 用户手势触发：重新激活当前空间的目录权限
   const handleReActivate = useCallback(async () => {
     if (!pendingHandle) return;
     setReactivating(true);
@@ -107,9 +165,8 @@ export default function WorkspacePanel({
     try {
       const granted = await requestHandlePermission(pendingHandle);
       if (granted) {
-        setRootHandle(pendingHandle);
-        setRootName(pendingHandle.name);
-        setPendingHandle(null);
+        bindHandle(pendingHandle, spaceId);
+        setSpaceRoot(spaceId, pendingHandle.name);
         await refreshFiles(pendingHandle);
       } else {
         setError('权限未授予，请重新点击激活按钮');
@@ -119,30 +176,35 @@ export default function WorkspacePanel({
     } finally {
       setReactivating(false);
     }
-  }, [pendingHandle, refreshFiles]);
+  }, [pendingHandle, refreshFiles, spaceId, bindHandle]);
 
+  // 为当前空间选择/更换绑定的本地文件夹（换绑时清空旧关联文件）
   const handlePick = useCallback(async () => {
     setError('');
     try {
-      const handle = await pickRootDirectory();
+      const handle = await pickRootDirectory(spaceId);
       if (handle) {
-        setRootHandle(handle);
-        setRootName(handle.name);
-        setPendingHandle(null);
+        bindHandle(handle, spaceId);
+        setSpaceRoot(spaceId, handle.name);
+        clearSpaceFiles(spaceId);
         await refreshFiles(handle);
       }
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.message || '选择文件夹失败');
     }
-  }, [refreshFiles]);
+  }, [refreshFiles, spaceId, bindHandle]);
 
+  // 断开当前空间的目录绑定（空间与会话数据都保留）
   const handleDisconnect = useCallback(async () => {
-    await clearRootDirectory();
+    await clearRootDirectory(spaceId);
+    handlesRef.current.delete(spaceId);
     setRootHandle(null);
     setRootName('');
     setFiles([]);
     setSelected(new Set());
-  }, []);
+    setSpaceRoot(spaceId, '');
+    clearSpaceFiles(spaceId);
+  }, [spaceId]);
 
   const toggleSelect = useCallback((path) => {
     setSelected(prev => {
@@ -205,16 +267,17 @@ export default function WorkspacePanel({
     return PREVIEWABLE_EXT.has(lower.slice(lower.lastIndexOf('.')));
   }, []);
 
-  // 在预览 panel 内一键加入 AI 上下文
+  // 在预览 panel 内一键关联当前文件到空间（并进对话上下文）
   const addPreviewToContext = useCallback(async () => {
-    if (!previewFile || !onAddContextFiles) return;
-    onAddContextFiles([{ name: previewFile.name, path: previewFile.path, content: previewContent }]);
-    showToast(`已加入上下文：${previewFile.name}`);
+    if (!previewFile) return;
+    associateFiles(spaceId, [{ name: previewFile.name, path: previewFile.path, content: previewContent }]);
+    showToast(`已关联到空间「${spaceName}」：${previewFile.name}`);
     closePreview();
-  }, [previewFile, previewContent, onAddContextFiles, showToast, closePreview]);
+  }, [previewFile, previewContent, spaceId, spaceName, showToast, closePreview]);
 
+  // 关联选中文件到当前空间（元数据 + 截断内容持久化，随空间切换自动进出上下文）
   const handleAddContext = useCallback(async () => {
-    if (!rootHandle || selected.size === 0 || !onAddContextFiles) return;
+    if (!rootHandle || selected.size === 0) return;
     const picked = files.filter(f => !f.isDir && selected.has(f.path));
     const result = [];
     for (const f of picked) {
@@ -226,8 +289,9 @@ export default function WorkspacePanel({
         result.push({ name: f.name, path: f.path, content: `读取失败: ${e.message}`, error: true });
       }
     }
-    onAddContextFiles(result);
-  }, [rootHandle, selected, files, onAddContextFiles]);
+    associateFiles(spaceId, result);
+    showToast(`已关联 ${result.length} 个文件到空间「${spaceName}」`);
+  }, [rootHandle, selected, files, spaceId, spaceName, showToast]);
 
   // 导出全部素材到工作空间（或降级下载）
   const handleExportMaterials = useCallback(async () => {
@@ -306,8 +370,8 @@ export default function WorkspacePanel({
       <aside className="workspace-panel">
         <div className="workspace-empty">
           <div className="workspace-empty-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
-          <p className="workspace-empty-title">连接本地工作空间</p>
-          <p className="workspace-empty-desc">授权一个文件夹作为你的数据资产库，可将资讯、日报沉淀为 Markdown，也可作为 AI 对话上下文。</p>
+          <p className="workspace-empty-title">为空间「{spaceName}」绑定本地文件夹</p>
+          <p className="workspace-empty-desc">每个空间绑定一个本地文件夹：文件树、导出沉淀与对话上下文都随空间隔离。新建空间后在这里绑定对应目录即可。</p>
           <button type="button" className="workspace-connect-btn" onClick={handlePick}>选择文件夹</button>
         </div>
       </aside>
@@ -321,9 +385,10 @@ export default function WorkspacePanel({
   return (
     <aside className="workspace-panel">
       <div className="workspace-top">
-        <div className="workspace-path" title={rootName}>
+        <div className="workspace-path" title={`空间「${spaceName}」· ${rootName}`}>
+          <span className="workspace-space-tag">{spaceName || '未命名空间'}</span>
           <span className="workspace-path-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-          <span className="workspace-path-name">{rootName}</span>
+          <span className="workspace-path-name">{rootName || '未绑定目录'}</span>
         </div>
         <div className="workspace-top-actions">
           <button type="button" className="workspace-icon-btn" onClick={() => refreshFiles(rootHandle)} title="刷新">↻</button>
@@ -405,8 +470,8 @@ export default function WorkspacePanel({
             <span>已选 {selected.size} 个文件</span>
             <button type="button" className="workspace-link-btn" onClick={clearSelection}>清除</button>
           </div>
-          <button type="button" className="workspace-action-btn primary" onClick={handleAddContext} disabled={!onAddContextFiles}>
-            加入 AI 上下文
+          <button type="button" className="workspace-action-btn primary" onClick={handleAddContext}>
+            关联到空间
           </button>
           {files.filter(f => !f.isDir).length > 0 && selected.size === 0 && (
             <button type="button" className="workspace-link-btn" onClick={selectAll}>全选</button>
@@ -446,10 +511,10 @@ export default function WorkspacePanel({
                 type="button"
                 className="workspace-side-panel-action"
                 onClick={addPreviewToContext}
-                disabled={!onAddContextFiles || previewLoading || !!previewError}
-                title="把当前文件内容作为 AI 对话上下文"
+                disabled={previewLoading || !!previewError}
+                title="把当前文件内容关联到当前空间（进对话上下文）"
               >
-                加入 AI 上下文
+                关联到空间
               </button>
             </div>
           </aside>

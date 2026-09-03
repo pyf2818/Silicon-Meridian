@@ -14,6 +14,9 @@
 const STORAGE_KEY = 'aiWorkstationSpaces';
 const DEFAULT_SPACE_ID = 'default';
 const MAX_SPACES = 20;
+/* 空间关联文件限制：元数据+截断后的内容一起持久化，防 localStorage 配额爆炸 */
+const MAX_FILES_PER_SPACE = 30;
+const MAX_FILE_CONTENT_CHARS = 16_000;
 
 function loadFromStorage() {
   try {
@@ -142,4 +145,80 @@ export function migrateSessionSpaces(sessions) {
     return s;
   });
   return changed ? next : null;
+}
+
+/* ============================================================
+   空间 × 本地文件（工作空间以本地文件为核心）
+   - space.rootName：空间绑定的本地根目录名（handle 本体在 IndexedDB，
+     槽位 key = spaceId，见 utils/workspace.js）
+   - space.files：关联文件 [{ name, path, content?, truncated? }]，
+     content 截断持久化，供对话上下文直接使用
+   ============================================================ */
+
+function findSpace(spaceId) {
+  return state.spaces.find(s => s.id === spaceId) || null;
+}
+
+/** 空间绑定/换绑本地根目录（记录目录名元数据） */
+export function setSpaceRoot(spaceId, rootName) {
+  const space = findSpace(spaceId);
+  if (!space) return false;
+  space.rootName = String(rootName || '').slice(0, 60);
+  persist();
+  notify();
+  return true;
+}
+
+/**
+ * 关联文件到空间（合并去重，按 path）。
+ * @param {Array<{name,path,content?}>} files
+ * @returns {number} 关联后的文件总数；失败返回 -1
+ */
+export function associateFiles(spaceId, files) {
+  const space = findSpace(spaceId);
+  if (!space || !Array.isArray(files)) return -1;
+  if (!Array.isArray(space.files)) space.files = [];
+  const byPath = new Map(space.files.map(f => [f.path, f]));
+  files.forEach(f => {
+    if (!f?.path) return;
+    const content = typeof f.content === 'string' ? f.content : '';
+    const truncated = content.length > MAX_FILE_CONTENT_CHARS;
+    byPath.set(f.path, {
+      name: String(f.name || f.path.split('/').pop() || 'file').slice(0, 120),
+      path: String(f.path).slice(0, 300),
+      content: truncated ? content.slice(0, MAX_FILE_CONTENT_CHARS) : content,
+      truncated,
+      associatedAt: Date.now(),
+    });
+  });
+  space.files = [...byPath.values()]
+    .sort((a, b) => (b.associatedAt || 0) - (a.associatedAt || 0))
+    .slice(0, MAX_FILES_PER_SPACE);
+  persist();
+  notify();
+  return space.files.length;
+}
+
+/** 解除关联 */
+export function removeSpaceFile(spaceId, path) {
+  const space = findSpace(spaceId);
+  if (!space || !Array.isArray(space.files)) return false;
+  const before = space.files.length;
+  space.files = space.files.filter(f => f.path !== path);
+  if (space.files.length !== before) {
+    persist();
+    notify();
+    return true;
+  }
+  return false;
+}
+
+/** 清空空间的关联文件（换绑目录时用） */
+export function clearSpaceFiles(spaceId) {
+  const space = findSpace(spaceId);
+  if (!space) return false;
+  space.files = [];
+  persist();
+  notify();
+  return true;
 }

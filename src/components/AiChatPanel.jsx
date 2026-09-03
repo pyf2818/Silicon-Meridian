@@ -23,8 +23,10 @@ import {
 import { PersonaDrawer } from './PersonaEditor.jsx';
 import { ToolCallCard, ApprovalCard } from './aichat/ToolCards.jsx';
 import AgentTeamPanel from './aichat/AgentTeamPanel.jsx';
+import AgentTeamChat from './aichat/AgentTeamChat.jsx';
 import {
   getActiveSpaceId, getDefaultSpaceId, deleteSpace, renameSpace, migrateSessionSpaces,
+  getSpaces, subscribeSpaces, associateFiles,
 } from '../utils/workspaceStore.js';
 import { sessionsStore, loadSessions, saveSessions } from './aichat/sessionsStore.js';
 import { WELCOME_MSGS, EMPTY_MESSAGES, SUGGEST_ICONS } from './aichat/constants.jsx';
@@ -95,7 +97,14 @@ export default function AiChatPanel({
   const setActiveSessionId = useCallback((id) => sessionsStore.setState({ activeSessionId: id }), []);
   const setIsStreaming = useCallback((v) => sessionsStore.setState({ isStreaming: v }), []);
 
-  const [workspaceFiles, setWorkspaceFiles] = useState([]); // 工作空间加入上下文的文件
+  const [workspaceVersion, setWorkspaceVersion] = useState(0); // 空间/关联文件变更版本（订阅 workspaceStore）
+  useEffect(() => subscribeSpaces(() => setWorkspaceVersion(v => v + 1)), []);
+  // 当前空间的关联文件 = 对话上下文里的 workspaceFiles（空间以本地文件为核心，随空间切换自动进出上下文）
+  const activeSpace = useMemo(() =>
+    getSpaces().find(s => s.id === getActiveSpaceId()) || null, [workspaceVersion]);
+  const workspaceFiles = useMemo(() =>
+    (activeSpace?.files || []).map(f => ({ name: f.name, path: f.path, content: f.content || '' })),
+  [activeSpace]);
   const [memoriesVersion, setMemoriesVersion] = useState(0); // 会话记忆版本（摘要生成后刷新）
   const [learnedVersion, setLearnedVersion] = useState(0); // 学习画像版本（观测后刷新）
   const [autoTodos, setAutoTodos] = useState([]); // 对话自动提取的行动项
@@ -979,12 +988,14 @@ export default function AiChatPanel({
   }, [isStreaming, activeSessionId, sessions, sendMessage]);
 
   // 工作空间文件加入对话上下文
+  // 关联文件到当前空间（AgentPanel 召回文件 / 外部入口统一走空间存储）
   const handleAddContextFiles = useCallback((files) => {
-    setWorkspaceFiles(prev => {
-      const existing = new Set(prev.map(f => f.path));
-      return [...prev, ...files.filter(f => !existing.has(f.path))];
-    });
-  }, []);
+    if (!Array.isArray(files) || files.length === 0) return;
+    const existing = new Set((activeSpace?.files || []).map(f => f.path));
+    const fresh = files.filter(f => f?.path && !existing.has(f.path));
+    if (fresh.length === 0) return;
+    associateFiles(getActiveSpaceId(), fresh);
+  }, [activeSpace]);
 
   // Watch for pending messages from external triggers (e.g. 右栏「剖析」按钮 / 快捷入口)
   useEffect(() => {
@@ -1033,6 +1044,7 @@ export default function AiChatPanel({
           onRenameSpace={renameSpace}
           onDeleteSpace={handleDeleteSpace}
           onOpenTeamCenter={() => setCenterView('team')}
+          onOpenRecords={() => setCenterView('teamRecords')}
           onOpenNewspaper={onOpenNewspaper}
           todayBriefing={todayBriefing}
           todayLanes={todayLanes}
@@ -1042,14 +1054,34 @@ export default function AiChatPanel({
         />
       )}
 
-      {/* 中栏：对话主区 / 团队中心（AgentTeamPanel 专有页面） */}
+      {/* 中栏：对话主区 / Agent Team 群聊 / 执行记录（看板） */}
       {centerView === 'team' ? (
         <div className="chat-main-col team-center-col">
           <div className="team-center-topbar">
             <button type="button" className="team-center-back" onClick={() => setCenterView('chat')}>
               ← 返回对话
             </button>
-            <span className="team-center-crumb">AI 工作站 / 团队中心</span>
+            <span className="team-center-crumb">AI 工作站 / Agent Team</span>
+          </div>
+          <div className="team-center-scroll custom-scrollbar">
+            <AgentTeamChat
+              runtime={{
+                llmConfig,
+                selectedModel,
+                approvalMode: agentPermissionMode,
+              }}
+              onViewRecords={() => setCenterView('teamRecords')}
+              onNeedConfig={onOpenLlmConfig}
+            />
+          </div>
+        </div>
+      ) : centerView === 'teamRecords' ? (
+        <div className="chat-main-col team-center-col">
+          <div className="team-center-topbar">
+            <button type="button" className="team-center-back" onClick={() => setCenterView('team')}>
+              ← 返回群聊
+            </button>
+            <span className="team-center-crumb">AI 工作站 / Agent Team / 执行记录</span>
           </div>
           <div className="team-center-scroll custom-scrollbar">
             <AgentTeamPanel

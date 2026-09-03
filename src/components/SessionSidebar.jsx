@@ -13,10 +13,13 @@ import WorkspacePanel from './WorkspacePanel.jsx';
 import { ICONS } from '../constants/appConstants.jsx';
 import { SUBAGENT_PRESETS } from '../domain/agent/subagentCore.js';
 import { listTeams, subscribeTeams } from '../store/teamStore.js';
+import { getGroupState, subscribeGroup } from './aichat/groupChatStore.js';
 import {
   getSpaces, getActiveSpaceId, setActiveSpace,
   createSpace, renameSpace, deleteSpace, getDefaultSpaceId, subscribeSpaces,
 } from '../utils/workspaceStore.js';
+
+const PRESET_INDEX = new Map(SUBAGENT_PRESETS.map(p => [p.id, p]));
 
 function formatTime(ts) {
   return new Date(ts).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -245,27 +248,37 @@ function SpaceSection({ space, expanded, sessions, activeSessionId, spaces, acti
   );
 }
 
-/* ---------- 智能体 Tab：能力一览 + 团队入口 ---------- */
-function AgentsTab({ teams, onOpenTeamCenter }) {
+/* ---------- Agent Team Tab：群聊入口 + 成员预览 + 执行记录 ---------- */
+function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
   const running = teams.filter(t => t.status === 'running');
+  const [roster, setRoster] = useState(() => getGroupState().roster || []);
+  useEffect(() => subscribeGroup(() => setRoster([...(getGroupState().roster || [])])), []);
+  const members = roster.map(id => PRESET_INDEX.get(id)).filter(Boolean);
+
   return (
     <div className="agents-tab custom-scrollbar">
-      <button type="button" className="agents-team-entry" onClick={onOpenTeamCenter}>
+      <button type="button" className="agents-team-entry is-chat" onClick={onOpenTeamCenter}>
         <span className="agents-team-entry-icon" aria-hidden="true">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
         </span>
         <span className="agents-team-entry-text">
-          <strong>团队中心</strong>
-          <small>{teams.length} 个团队{running.length > 0 ? ` · ${running.length} 个执行中` : ''}</small>
+          <strong>进入团队群聊</strong>
+          <small>{members.length ? `${members.length} 名成员在群` : '邀请 preset 专家进群协作'}</small>
         </span>
         {running.length > 0 && <span className="agents-team-badge" title="执行中团队数">{running.length}</span>}
       </button>
 
+      {members.length > 0 && (
+        <div className="agents-roster-preview">
+          {members.map(m => <span key={m.id} className="agents-roster-chip" title={m.description}>{m.name}</span>)}
+        </div>
+      )}
+
       {running.length > 0 && (
         <div className="agents-running">
-          <div className="agents-running-label">执行中</div>
+          <div className="agents-running-label">spawn 团队执行中</div>
           {running.map(t => (
-            <button key={t.id} type="button" className="agents-running-item" onClick={onOpenTeamCenter} title={t.goal}>
+            <button key={t.id} type="button" className="agents-running-item" onClick={onOpenRecords} title={t.goal}>
               <i className="agents-running-dot" aria-hidden="true" />
               <span className="agents-running-goal">{(t.goal || '').slice(0, 22)}</span>
               <em>{relTime(t.updatedAt)}</em>
@@ -274,36 +287,25 @@ function AgentsTab({ teams, onOpenTeamCenter }) {
         </div>
       )}
 
-      <div className="agents-cap-label">子代理编队</div>
-      <div className="agents-cap-list">
-        {SUBAGENT_PRESETS.map(p => (
-          <div key={p.id} className="agents-cap-item" title={p.description}>
-            <span className="agents-cap-name">{p.name}</span>
-            <span className="agents-cap-id">{p.id}</span>
-            <p>{p.description.slice(0, 26)}…</p>
-          </div>
-        ))}
-      </div>
+      <button type="button" className="agents-open-center" onClick={onOpenTeamCenter}>
+        打开群聊协作 →
+      </button>
 
       <div className="agents-cap-label">编排能力</div>
       <div className="agents-mode-list">
         <div className="agents-mode-item">
+          <code>@ 召唤</code>
+          <p>群聊里 @ 成员接力协作，共享上下文流水线</p>
+        </div>
+        <div className="agents-mode-item">
           <code>spawn_subagent</code>
-          <p>派活收报告 · 独立上下文 · 深度封顶 1 层</p>
+          <p>对话里派活收报告 · 独立上下文 · 深度封顶 1 层</p>
         </div>
         <div className="agents-mode-item">
           <code>spawn_agent_team</code>
           <p>常驻团队 · 共享任务板 + 成员邮箱 · lead 汇总</p>
         </div>
-        <div className="agents-mode-item">
-          <code>set_plan</code>
-          <p>计划模式 · 任务卡批准后按依赖执行</p>
-        </div>
       </div>
-
-      <button type="button" className="agents-open-center" onClick={onOpenTeamCenter}>
-        进入团队中心 →
-      </button>
     </div>
   );
 }
@@ -321,12 +323,12 @@ export default function SessionSidebar({
   onRenameSpace,
   onDeleteSpace,
   onOpenTeamCenter,
+  onOpenRecords,
   onOpenNewspaper,
   todayBriefing,
   todayLanes,
   selectedDate,
   materials = [],
-  onAddContextFiles,
 }) {
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState('sessions'); // 'sessions' | 'files' | 'agents'
@@ -380,17 +382,24 @@ export default function SessionSidebar({
 
   const handlers = {
     onSwitch, onRename, onDelete, onTogglePin, onMove: onMoveSession,
-    onRenameSpace, onDeleteSpace, onToggleSpace: toggleSpace,
+    onRenameSpace, onDeleteSpace,
+    // 点空间行 = 激活该空间（文件模块/新会话归属跟随）+ 折叠展开
+    onToggleSpace: (spaceId) => { setActiveSpace(spaceId); toggleSpace(spaceId); },
   };
 
   return (
     <aside className="session-sidebar">
-      {/* Tab 切换：对话 / 文件 / 智能体 */}
+      {/* Tab 切换：对话 / 文件 / Agent Team */}
       <div className="session-tabs">
         <button type="button" className={`session-tab ${tab === 'sessions' ? 'active' : ''}`} onClick={() => setTab('sessions')}>对话</button>
         <button type="button" className={`session-tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>文件</button>
-        <button type="button" className={`session-tab ${tab === 'agents' ? 'active' : ''}`} onClick={() => setTab('agents')}>
-          智能体{teams.some(t => t.status === 'running') && <i className="session-tab-dot" aria-hidden="true" />}
+        <button
+          type="button"
+          className={`session-tab ${tab === 'agents' ? 'active' : ''}`}
+          onClick={() => { setTab('agents'); onOpenTeamCenter?.(); }}
+          title="Agent Team 群聊协作"
+        >
+          Agent Team{teams.some(t => t.status === 'running') && <i className="session-tab-dot" aria-hidden="true" />}
         </button>
       </div>
 
@@ -474,7 +483,6 @@ export default function SessionSidebar({
 
       {tab === 'files' && (
         <WorkspacePanel
-          onAddContextFiles={onAddContextFiles}
           materials={materials}
           todayBriefing={todayBriefing}
           todayLanes={todayLanes}
@@ -482,7 +490,7 @@ export default function SessionSidebar({
       )}
 
       {tab === 'agents' && (
-        <AgentsTab teams={teams} onOpenTeamCenter={onOpenTeamCenter} />
+        <AgentsTab teams={teams} onOpenTeamCenter={onOpenTeamCenter} onOpenRecords={onOpenRecords} />
       )}
 
       {onOpenNewspaper && (

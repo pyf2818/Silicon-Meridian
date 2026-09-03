@@ -31,14 +31,15 @@ export function isFileSystemSupported() {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
-/* 选择根目录，返回 handle 并存入 IndexedDB */
-export async function pickRootDirectory() {
+/* 选择根目录，返回 handle 并存入 IndexedDB
+ * key：存储槽位——多工作空间机制下每个空间绑定自己的文件夹（key = spaceId），默认槽 'root' 兼容旧数据 */
+export async function pickRootDirectory(key = HANDLE_KEY) {
   if (!isFileSystemSupported()) return null;
   const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
   const db = await openDB();
   await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(handle, HANDLE_KEY);
+    tx.objectStore(STORE).put(handle, key);
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
@@ -46,12 +47,12 @@ export async function pickRootDirectory() {
 }
 
 /* 从 IndexedDB 读取已保存的 handle，但不请求权限（用于检测是否需要重新激活） */
-export async function peekSavedHandle() {
+export async function peekSavedHandle(key = HANDLE_KEY) {
   if (!isFileSystemSupported()) return null;
   const db = await openDB();
   const handle = await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).get(HANDLE_KEY);
+    const req = tx.objectStore(STORE).get(key);
     req.onsuccess = () => resolve(req.result || null);
     req.onerror = () => reject(req.error);
   });
@@ -71,9 +72,9 @@ export async function requestHandlePermission(handle) {
  * - 权限已是 granted 时直接返回 handle（无需用户手势）
  * - 权限为 prompt/denied 时返回 null，调用方应改用 peekSavedHandle + requestHandlePermission 在用户手势中重试
  */
-export async function restoreRootDirectory() {
+export async function restoreRootDirectory(key = HANDLE_KEY) {
   if (!isFileSystemSupported()) return null;
-  const handle = await peekSavedHandle();
+  const handle = await peekSavedHandle(key);
   if (!handle) return null;
   const perm = await handle.queryPermission({ mode: 'readwrite' });
   if (perm === 'granted') return handle;
@@ -86,11 +87,11 @@ export async function restoreRootDirectory() {
   }
 }
 
-export async function clearRootDirectory() {
+export async function clearRootDirectory(key = HANDLE_KEY) {
   const db = await openDB();
   await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(HANDLE_KEY);
+    tx.objectStore(STORE).delete(key);
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });

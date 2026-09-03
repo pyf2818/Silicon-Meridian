@@ -208,3 +208,6 @@ export async function runSubagentTasks({ tasks, llmConfig, selectedModel, parent
     ? { id: '', agent: 'unknown', agentName: '未知', objective: '', status: 'failed', error: r.__poolError?.message || String(r.__poolError), usage: null, turns: 0, transcriptPath: '' }
     : r));
 }
+
+/** 单跑一个子代理任务（Agent Team 群聊的 @召唤接力执行复用同一执行核） */
+export { runOneSubagent };
