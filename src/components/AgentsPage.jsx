@@ -1,4 +1,5 @@
 import React from 'react';
+import WorkflowCanvas from './workflow/WorkflowCanvas.jsx';
 import { ICONS } from '../constants/index.jsx';
 import {
   WORKFLOW_TEMPLATE_LIBRARY,
@@ -263,35 +264,14 @@ function AgentsPage({
                     </label>
                   </div>
 
-                  <div className="workflow-canvas">
-                    {agentWorkflowDraft.nodes.map((node, index) => (
-                      <div
-                        key={node.id}
-                        className={`workflow-node-frame ${draggingWorkflowNodeId === node.id ? 'dragging' : ''}`}
-                        draggable
-                        onDragStart={() => setDraggingWorkflowNodeId(node.id)}
-                        onDragOver={e => e.preventDefault()}
-                        onDrop={() => {
-                          reorderWorkflowNode(draggingWorkflowNodeId, node.id);
-                          setDraggingWorkflowNodeId('');
-                        }}
-                        onDragEnd={() => setDraggingWorkflowNodeId('')}
-                      >
-                        <button
-                          type="button"
-                          className={`workflow-builder-node tone-${workflowTypeMeta[node.type]?.tone || 'slate'} ${selectedWorkflowNodeId === node.id ? 'active' : ''} ${node.enabled === false ? 'disabled' : ''}`}
-                          onClick={() => setSelectedWorkflowNodeId(node.id)}
-                        >
-                          <span className="workflow-node-index">{String(index + 1).padStart(2, '0')}</span>
-                          <span className="workflow-node-type">{workflowTypeMeta[node.type]?.label || node.type}</span>
-                          <strong>{node.title}</strong>
-                          <p>{node.role}</p>
-                          {formatWorkflowNodeConfig(node) && <small>{formatWorkflowNodeConfig(node)}</small>}
-                        </button>
-                        {index < agentWorkflowDraft.nodes.length - 1 && <span className="workflow-connector">→</span>}
-                      </div>
-                    ))}
-                  </div>
+                  <WorkflowCanvas
+                    nodes={agentWorkflowDraft.nodes}
+                    selectedId={selectedWorkflowNodeId}
+                    onSelect={setSelectedWorkflowNodeId}
+                    onMoveNode={(id, x, y) => updateWorkflowNode(id, { position: { x, y } })}
+                    onCreateNodeAt={(type, x, y) => addWorkflowNode({ x, y }, type)}
+                    nodeTypeMeta={workflowTypeMeta}
+                  />
 
                   <div className="workflow-add-row">
                     <select value={newWorkflowNodeType} onChange={e => setNewWorkflowNodeType(e.target.value)}>

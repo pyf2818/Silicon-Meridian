@@ -140,22 +140,26 @@ export function useWorkflowOps({
     });
   }, []);
 
-  const addWorkflowNode = useCallback(() => {
-    const meta = workflowTypeMeta[newWorkflowNodeType] || workflowTypeMeta.llm;
+  const addWorkflowNode = useCallback((position = null, typeOverride = null) => {
+    const nodeType = typeOverride || newWorkflowNodeType;
+    const meta = workflowTypeMeta[nodeType] || workflowTypeMeta.llm;
     const node = {
-      id: `wf-${newWorkflowNodeType}-${Date.now()}`,
-      type: newWorkflowNodeType,
+      id: `wf-${nodeType}-${Date.now()}`,
+      type: nodeType,
       title: meta.label,
       role: '描述这个节点负责的判断、工具或输出职责。',
       prompt: '在这里填写该节点的执行指令。',
-      skillId: newWorkflowNodeType === 'skill' ? 'evidence-pack' : undefined,
-      conditionMetric: newWorkflowNodeType === 'condition' ? 'itemCount' : undefined,
-      conditionOperator: newWorkflowNodeType === 'condition' ? '>=' : undefined,
-      conditionValue: newWorkflowNodeType === 'condition' ? 1 : undefined,
-      classifierLabels: newWorkflowNodeType === 'classifier' ? '必读,追踪,素材,创作,降噪' : undefined,
+      skillId: nodeType === 'skill' ? 'evidence-pack' : undefined,
+      conditionMetric: nodeType === 'condition' ? 'itemCount' : undefined,
+      conditionOperator: nodeType === 'condition' ? '>=' : undefined,
+      conditionValue: nodeType === 'condition' ? 1 : undefined,
+      classifierLabels: nodeType === 'classifier' ? '必读,追踪,素材,创作,降噪' : undefined,
       inputKey: `step_${Math.max(agentWorkflowDraft.nodes.length, 1)}`,
       outputKey: `step_${agentWorkflowDraft.nodes.length + 1}`,
-      enabled: true
+      enabled: true,
+      position: position && Number.isFinite(Number(position.x)) && Number.isFinite(Number(position.y))
+        ? { x: Number(position.x), y: Number(position.y) }
+        : { x: 90, y: 60 + agentWorkflowDraft.nodes.length * 190 }
     };
     setAgentWorkflowDraft(prev => ({ ...prev, nodes: [...prev.nodes, node] }));
     setSelectedWorkflowNodeId(node.id);
