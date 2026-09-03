@@ -620,6 +620,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig }) {
         onSelect={pickStock}
         onInspect={(code, name) => { pickStock(code, name); setResearchToolTab('decision'); setShowResearchTools(true); }}
         policy={investorPolicy}
+        experienceMode={experienceMode}
       />
 
       {/* 板块涨幅榜（行业/概念切换） */}

@@ -10,6 +10,10 @@ describe('intelligence radar', () => {
     expect(rows[0].code).toBe('a');
     expect(rows[0].reasons.join(' ')).toContain('动量');
     expect(rows[1].risks.join(' ')).toContain('回撤');
+    expect(rows[0].evidenceCoverage).toMatch(/^\d\/4$/);
+    expect(rows[0].factorScores).toMatchObject({ momentum: expect.any(Number), liquidity: expect.any(Number), policy: expect.any(Number) });
+    expect(rows[0].confidenceScore).toBeLessThanOrEqual(68);
+    expect(rows[0].beginnerSummary).toBeTruthy();
   });
 
   it('labels incomplete data instead of inventing confidence', () => {

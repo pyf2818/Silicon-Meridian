@@ -2,15 +2,16 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { buildCandidateRadar, buildDecisionCard, buildMarketEvidence } from '../../domain/stock/intelligenceRadar.js';
 import { normalizeInvestorPolicy } from '../../domain/stock/investorPolicy.js';
 
-function IntelligenceRadar({ dashboard, sectors, selectedCode, onSelect, onInspect, policy }) {
+function IntelligenceRadar({ dashboard, sectors, selectedCode, onSelect, onInspect, policy, experienceMode = 'beginner' }) {
   const candidates = useMemo(() => buildCandidateRadar(dashboard?.stocks || [], { limit: 5, policy }), [dashboard?.stocks, policy]);
   const evidence = useMemo(() => buildMarketEvidence({ indices: dashboard?.indices || [], sectors, coverage: dashboard?.coverage }), [dashboard?.coverage, dashboard?.indices, sectors]);
+  const pro = experienceMode === 'pro';
   return (
     <section className="stock-intelligence-radar" aria-label="智能机会雷达">
       <div className="stock-intelligence-head">
         <div>
-          <strong>智能机会雷达</strong>
-          <span>先排序，再研究；不直接等同于买入信号</span>
+          <strong>{pro ? "研究机会雷达" : "智能机会雷达"}</strong>
+          <span>{pro ? "按动量、流动性、价格位置与策略适配度拆解证据" : "先排序，再研究；不直接等同于买入信号"}</span>
         </div>
         <div className="stock-intelligence-market"><b>{evidence.indexTone}</b><span>{evidence.indexBreadth}</span></div>
       </div>
@@ -21,14 +22,15 @@ function IntelligenceRadar({ dashboard, sectors, selectedCode, onSelect, onInspe
             <button type="button" className="stock-intelligence-pick" onClick={() => onSelect(item.code, item.name)}>
               <span className="stock-intelligence-card-top"><strong>{item.name}</strong><em>{item.code}</em><b>{item.score}</b></span>
               <span className={`stock-intelligence-state ${item.state === '值得研究' ? 'positive' : ['风险偏高', '超出策略范围'].includes(item.state) ? 'negative' : 'caution'}`}>{item.state} · {item.confidence}置信</span>
-              <span className="stock-intelligence-reason">{item.reasons[0]}</span>
-              <span className="stock-intelligence-risk">{item.risks[0]}</span>
+              <span className="stock-intelligence-reason">{pro ? `证据覆盖 ${item.evidenceCoverage} \u00b7 ${item.reasons[0]}` : item.beginnerSummary}</span>
+              {pro && <span className="stock-intelligence-factors">动量 {item.factorScores.momentum} {"\u00b7"} 流动性 {item.factorScores.liquidity} {"\u00b7"} 位置 {item.factorScores.position ?? "N/A"} {"\u00b7"} 策略 {item.factorScores.policy}</span>}
+              <span className="stock-intelligence-risk">{pro ? `下一步：${item.nextCheck}` : item.risks[0]}</span>
             </button>
             <button type="button" className="stock-intelligence-inspect" onClick={() => onInspect(item.code, item.name)}>查看决策卡</button>
           </article>
         ))}
       </div>
-      <div className="stock-intelligence-foot"><span>覆盖：{evidence.coverageLabel} · {({ conservative: '稳健', balanced: '均衡', aggressive: '进取' })[policy?.riskTolerance] || '均衡'}策略</span><span>{evidence.limitation}</span></div>
+      <div className="stock-intelligence-foot"><span>{pro ? "评分是研究排序，不是预测" : "建议先看解释和风险"} {"\u00b7"} {evidence.coverageLabel}</span><span>{evidence.limitation}</span></div>
     </section>
   );
 }

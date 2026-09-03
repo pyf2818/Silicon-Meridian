@@ -33,38 +33,64 @@ export function buildCandidateRadar(stocks = [], { now = Date.now(), limit = 5, 
     const low = finite(stock.low);
     const price = finite(stock.price) ?? 0;
     const dayPosition = high !== null && low !== null && high > low ? (price - low) / (high - low) : null;
+    const changeRank = percentile(changePct, changes);
+    const liquidityRank = amount > 0 ? percentile(amount, amounts) : 0;
     const changeScore = Math.max(-14, Math.min(18, changePct * 4));
-    const liquidityScore = amounts.length > 1 && amount > 0 ? percentile(amount, amounts) * 8 : 0;
+    const liquidityScore = amounts.length > 1 && amount > 0 ? liquidityRank * 8 : 0;
     const positionScore = dayPosition === null ? 0 : (dayPosition >= 0.72 ? 6 : dayPosition <= 0.28 ? -6 : 1);
     const fresh = freshness(stock.timestamp, now);
     const policyFit = evaluatePolicyFit(stock, policy || {});
     const score = Math.max(0, Math.min(100, Math.round(50 + changeScore + liquidityScore + positionScore + fresh.score + policyFit.adjustment)));
+    const availableEvidence = [amount > 0, dayPosition !== null, fresh.score > 0, changes.length >= 10].filter(Boolean).length;
+    const confidenceScore = Math.min(68, Math.round(
+      18
+      + (fresh.score >= 4 ? 18 : fresh.score >= 2 ? 10 : 0)
+      + (amount > 0 ? 12 : 0)
+      + (dayPosition !== null ? 10 : 0)
+      + (rows.length >= 20 ? 10 : rows.length >= 8 ? 5 : 0)
+    ));
+    const factorScores = {
+      momentum: Math.round(changeRank * 100),
+      liquidity: Math.round(liquidityRank * 100),
+      position: dayPosition === null ? null : Math.round(dayPosition * 100),
+      policy: Math.max(0, Math.min(100, 70 + policyFit.adjustment)),
+    };
     const reasons = [];
     const risks = [];
     if (changePct >= 2) reasons.push(`日内动量 +${changePct.toFixed(2)}%`);
     else if (changePct <= -2) risks.push(`日内回撤 ${changePct.toFixed(2)}%`);
     if (liquidityScore >= 5) reasons.push('成交额处于样本高位');
-    if (dayPosition !== null && dayPosition >= 0.72) reasons.push('接近日内高位');
-    if (dayPosition !== null && dayPosition <= 0.28) risks.push('接近日内低位');
+    if (dayPosition !== null && dayPosition >= 0.72) reasons.push('价格接近日内高位');
+    if (dayPosition !== null && dayPosition <= 0.28) risks.push('价格接近日内低位');
     if (fresh.score === 0) risks.push(fresh.label);
     if (amount <= 0) risks.push('成交额未提供');
     risks.push(...policyFit.flags);
     if (reasons.length === 0) reasons.push('暂未形成明确强势证据');
     if (risks.length === 0) risks.push('仅为活跃样本排序，不含基本面验证');
+    const state = !policyFit.eligible ? '超出策略范围' : score >= 68 ? '值得研究' : score <= 38 ? '风险偏高' : '等待证据';
     return {
       ...stock,
       score,
       changePct,
       dayPosition,
       freshness: fresh.label,
-      confidence: fresh.score >= 4 && amounts.length >= 5 ? '中等' : '低',
+      confidence: confidenceScore >= 60 ? '中等' : confidenceScore >= 42 ? '有限' : '低',
+      confidenceScore,
+      evidenceCoverage: `${availableEvidence}/4`,
+      factorScores,
       eligible: policyFit.eligible,
       policyFlags: policyFit.flags,
       reasons,
       risks,
-      state: !policyFit.eligible ? '超出策略范围' : score >= 68 ? '值得研究' : score <= 38 ? '风险偏高' : '等待证据',
+      state,
+      beginnerSummary: state === '值得研究'
+        ? '活跃度和价格动量靠前，适合加入观察，不代表适合立即买入。'
+        : state === '超出策略范围'
+          ? '它不符合你设置的投资范围，先不要被短期涨幅吸引。'
+          : '现有证据还不够一致，先等待更多数据确认。',
+      nextCheck: risks[0] || '补充财务、公告和估值信息',
     };
-  }).sort((a, b) => b.score - a.score || b.changePct - a.changePct).slice(0, limit);
+  }).sort((a, b) => b.score - a.score || b.confidenceScore - a.confidenceScore || b.changePct - a.changePct).slice(0, limit);
 }
 
 export function buildMarketEvidence({ indices = [], sectors = [], coverage = null } = {}) {
