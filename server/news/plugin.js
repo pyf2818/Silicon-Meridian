@@ -3,6 +3,7 @@ import { getSourceGrade, getSourceGradeInfo } from './config/sourceGrades.js';
 import { sendJson, parseBody, isSafeUrl } from './utils/httpUtils.js';
 import { handleAuthRequest } from '../http/authHandlers.js';
 import { handleCommunityRequest } from '../http/communityHandlers.js';
+import { handleChatRequest } from '../http/chatHandlers.js';
 import { handleCreativeRequest } from '../http/creativeHandlers.js';
 import { handleProfileRequest } from '../http/profileHandlers.js';
 import { handleAgentMemoryRequest } from '../http/agentMemoryHandlers.js';
@@ -162,6 +163,10 @@ export function newsPlugin() {
         if (requestUrl.pathname === '/api/user/profile' || requestUrl.pathname === '/api/user/interests') {
           const action = requestUrl.pathname.endsWith('/interests') ? 'interests' : 'profile';
           return handleAuthRequest(req, res, { action });
+        }
+        if (requestUrl.pathname.startsWith('/api/chat/')) {
+          const path = requestUrl.pathname.slice('/api/chat/'.length).split('/');
+          return handleChatRequest(req, res, { path });
         }
         if (requestUrl.pathname.startsWith('/api/community/')) {
           const path = requestUrl.pathname.slice('/api/community/'.length).split('/');
