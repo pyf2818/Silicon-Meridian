@@ -23,7 +23,7 @@ function IntelligenceRadar({ dashboard, sectors, selectedCode, onSelect, onInspe
               <span className="stock-intelligence-card-top"><strong>{item.name}</strong><em>{item.code}</em><b>{item.score}</b></span>
               <span className={`stock-intelligence-state ${item.state === '值得研究' ? 'positive' : ['风险偏高', '超出策略范围'].includes(item.state) ? 'negative' : 'caution'}`}>{item.state} · {item.confidence}置信</span>
               <span className="stock-intelligence-reason">{pro ? `证据覆盖 ${item.evidenceCoverage} \u00b7 ${item.reasons[0]}` : item.beginnerSummary}</span>
-              {pro && <span className="stock-intelligence-factors">动量 {item.factorScores.momentum} {"\u00b7"} 流动性 {item.factorScores.liquidity} {"\u00b7"} 位置 {item.factorScores.position ?? "N/A"} {"\u00b7"} 策略 {item.factorScores.policy}</span>}
+              {pro && <span className="stock-intelligence-factors">动量 {item.factorScores.momentum ?? "N/A"} {"\u00b7"} 流动性 {item.factorScores.liquidity ?? "N/A"} {"\u00b7"} 位置 {item.factorScores.position ?? "N/A"} {"\u00b7"} 策略 {item.factorScores.policy}</span>}
               <span className="stock-intelligence-risk">{pro ? `下一步：${item.nextCheck}` : item.risks[0]}</span>
             </button>
             <button type="button" className="stock-intelligence-inspect" onClick={() => onInspect(item.code, item.name)}>查看决策卡</button>

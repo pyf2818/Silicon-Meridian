@@ -41,7 +41,9 @@ export function buildCandidateRadar(stocks = [], { now = Date.now(), limit = 5, 
     const fresh = freshness(stock.timestamp, now);
     const policyFit = evaluatePolicyFit(stock, policy || {});
     const score = Math.max(0, Math.min(100, Math.round(50 + changeScore + liquidityScore + positionScore + fresh.score + policyFit.adjustment)));
-    const availableEvidence = [amount > 0, dayPosition !== null, fresh.score > 0, changes.length >= 10].filter(Boolean).length;
+    const hasChangeEvidence = finite(stock.changePct) !== null;
+    const hasLiquidityEvidence = amounts.length >= 2 && amount > 0;
+    const availableEvidence = [hasChangeEvidence, amount > 0, dayPosition !== null, fresh.score > 0].filter(Boolean).length;
     const confidenceScore = Math.min(68, Math.round(
       18
       + (fresh.score >= 4 ? 18 : fresh.score >= 2 ? 10 : 0)
@@ -50,8 +52,8 @@ export function buildCandidateRadar(stocks = [], { now = Date.now(), limit = 5, 
       + (rows.length >= 20 ? 10 : rows.length >= 8 ? 5 : 0)
     ));
     const factorScores = {
-      momentum: Math.round(changeRank * 100),
-      liquidity: Math.round(liquidityRank * 100),
+      momentum: changes.length >= 2 && hasChangeEvidence ? Math.round(changeRank * 100) : null,
+      liquidity: hasLiquidityEvidence ? Math.round(liquidityRank * 100) : null,
       position: dayPosition === null ? null : Math.round(dayPosition * 100),
       policy: Math.max(0, Math.min(100, 70 + policyFit.adjustment)),
     };
@@ -83,12 +85,17 @@ export function buildCandidateRadar(stocks = [], { now = Date.now(), limit = 5, 
       reasons,
       risks,
       state,
-      beginnerSummary: state === '值得研究'
-        ? '活跃度和价格动量靠前，适合加入观察，不代表适合立即买入。'
-        : state === '超出策略范围'
-          ? '它不符合你设置的投资范围，先不要被短期涨幅吸引。'
-          : '现有证据还不够一致，先等待更多数据确认。',
-      nextCheck: risks[0] || '补充财务、公告和估值信息',
+      beginnerSummary: state === '\u503c\u5f97\u7814\u7a76'
+        ? [
+            changePct >= 2 ? '\u52a8\u91cf\u9760\u524d' : null,
+            liquidityScore >= 5 ? '\u6210\u4ea4\u989d\u6d3b\u8dc3' : null,
+            dayPosition !== null && dayPosition >= 0.72 ? '\u4ef7\u683c\u63a5\u8fd1\u65e5\u5185\u9ad8\u4f4d' : null,
+            fresh.score >= 2 ? '\u6570\u636e\u8f83\u65b0' : null,
+          ].filter(Boolean).join('\u3001') || '\u7efc\u5408\u8bc4\u5206\u6682\u65f6\u9760\u524d\uff0c\u5efa\u8bae\u7ee7\u7eed\u6838\u5bf9\u8bc1\u636e\u3002'
+        : state === '\u8d85\u51fa\u7b56\u7565\u8303\u56f4'
+          ? '\u5b83\u4e0d\u7b26\u5408\u4f60\u8bbe\u7f6e\u7684\u6295\u8d44\u8303\u56f4\uff0c\u5148\u4e0d\u8981\u88ab\u77ed\u671f\u6da8\u5e45\u5438\u5f15\u3002'
+          : '\u73b0\u6709\u8bc1\u636e\u8fd8\u4e0d\u591f\u4e00\u81f4\uff0c\u5148\u7b49\u5f85\u66f4\u591a\u6570\u636e\u786e\u8ba4\u3002',
+      nextCheck: risks[0] || '\u8865\u5145\u8d22\u52a1\u3001\u516c\u544a\u548c\u4f30\u503c\u4fe1\u606f',
     };
   }).sort((a, b) => b.score - a.score || b.confidenceScore - a.confidenceScore || b.changePct - a.changePct).slice(0, limit);
 }
