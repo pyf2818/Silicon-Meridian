@@ -166,6 +166,14 @@ export default function ProfilePage({
                 </div>
               </section>
 
+              <nav className="profile-section-rail" aria-label={'\u7528\u6237\u753b\u50cf\u89c6\u56fe'}>
+                {PROFILE_VIEWS.map(view => (
+                  <button type="button" key={view.id} className={"profile-section-rail-item" + (activeSection === view.id ? " active" : "")} onClick={() => setActiveSection(view.id)} aria-current={activeSection === view.id ? 'page' : undefined}>
+                    {ICONS[view.icon]}<span>{view.label}</span>
+                  </button>
+                ))}
+              </nav>
+
               {activeSection === 'overview' && (
                 <ProfileOverviewSection
                   readingHistory={readingHistory}
