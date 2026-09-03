@@ -27110,3 +27110,11 @@ body {
 .profile-section-rail-item svg { width: 13px; height: 13px; }
 @media (max-width: 900px) { .profile-dashboard-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .profile-dashboard-grid-main, .profile-dashboard-grid-secondary { grid-template-columns: 1fr; } .profile-preference-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .profile-dashboard-v2.profile-overview { padding-left: 12px; padding-right: 12px; } .profile-section-rail { padding-left: 12px; padding-right: 12px; } .profile-preference-grid { grid-template-columns: 1fr; } .profile-heatmap-grid { gap: 3px; } }
+
+
+/* profile overview cleanup: remove visual noise */
+.profile-dashboard-v2 .profile-panel-head h2 { display: block; font-weight: 650; letter-spacing: .01em; }
+.profile-dashboard-v2 .profile-panel-head h2::before { content: ''; display: inline-block; width: 5px; height: 5px; margin: 0 7px 3px 0; border-radius: 50%; background: var(--accent-cyan); box-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 55%, transparent); }
+.profile-dashboard-v2 .profile-panel-summary { max-width: 62ch; }
+.profile-dashboard-v2 .profile-data-panel { overflow: hidden; }
+.profile-dashboard-v2 .profile-chart-caption { padding-top: 2px; }

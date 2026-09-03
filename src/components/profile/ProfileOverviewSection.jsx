@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { ICONS } from '../../constants/index.jsx';
 import { useProfileStore } from '../../store';
 import { useThemeColors } from '../../hooks/useThemeColors.js';
 import { computeReadingProfile } from '../../utils/profileModel.js';
@@ -60,7 +59,7 @@ export default function ProfileOverviewSection({ readingHistory, bookmarks, mate
 
     <div className="profile-dashboard-grid profile-dashboard-grid-main">
       <section className="profile-data-panel profile-learning-panel">
-        <div className="profile-panel-head"><div><span className="profile-panel-kicker">LEARNING SIGNAL</span><h2>{ICONS.sparkles} AI 正在如何理解你</h2></div><span className="profile-panel-status">LIVE</span></div>
+        <div className="profile-panel-head"><div><span className="profile-panel-kicker">LEARNING SIGNAL</span><h2>AI 正在如何理解你</h2></div><span className="profile-panel-status">LIVE</span></div>
         <p className="profile-panel-summary">{profileLearningEngine?.summary || '继续阅读与收藏，系统会逐步形成更稳定的偏好判断。'}</p>
         <div className="profile-confidence-bar"><span>{profileLearningEngine?.confidenceLabel || '需要更多样本'}</span><div className="profile-confidence-track"><i style={{ width: confidence + '%' }} /></div><strong>{confidence}%</strong></div>
         <HudLineChart labels={trend.labels} series={trend.series} height={164} area />
@@ -68,7 +67,7 @@ export default function ProfileOverviewSection({ readingHistory, bookmarks, mate
       </section>
 
       <section className="profile-data-panel profile-radar-panel">
-        <div className="profile-panel-head"><div><span className="profile-panel-kicker">INTEREST MAP</span><h2>{ICONS.target} 兴趣结构</h2></div><span className="profile-panel-meta">{selectedInterests.length} 个关注域</span></div>
+        <div className="profile-panel-head"><div><span className="profile-panel-kicker">INTEREST MAP</span><h2>兴趣结构</h2></div><span className="profile-panel-meta">{selectedInterests.length} 个关注域</span></div>
         {radar.axes.length ? <HudRadarChart axes={radar.axes} values={radar.values} max={100} color={theme.cyan} /> : <div className="profile-empty-hint">积累阅读后生成兴趣结构</div>}
         <div className="profile-mini-legend"><span><i className="dot cyan" />关注强度</span><span><i className="dot green" />行为样本</span></div>
       </section>
@@ -76,13 +75,13 @@ export default function ProfileOverviewSection({ readingHistory, bookmarks, mate
 
     <div className="profile-dashboard-grid profile-dashboard-grid-secondary">
       <section className="profile-data-panel profile-heatmap-panel">
-        <div className="profile-panel-head"><div><span className="profile-panel-kicker">ACTIVITY RHYTHM</span><h2>{ICONS.calendar} 阅读热力图</h2></div><span className="profile-panel-meta">30 DAYS</span></div>
+        <div className="profile-panel-head"><div><span className="profile-panel-kicker">ACTIVITY RHYTHM</span><h2>阅读热力图</h2></div><span className="profile-panel-meta">30 DAYS</span></div>
         <div className="profile-heatmap-wrap"><div className="profile-heatmap-weekdays"><span>一</span><span>三</span><span>五</span></div><div className="profile-heatmap-grid">{heatValues.map((value, index) => <span key={index} className="profile-heat-cell" data-level={value ? Math.min(4, Math.ceil(value / heatMax * 4)) : 0} title={(reading.day30?.[index] || '') + ' · ' + (value || 0) + ' 条'} />)}</div></div>
         <div className="profile-heatmap-foot"><span>低</span><i data-level="0" /><i data-level="1" /><i data-level="2" /><i data-level="3" /><i data-level="4" /><span>高</span></div>
       </section>
 
       <section className="profile-data-panel profile-persona-panel">
-        <div className="profile-panel-head"><div><span className="profile-panel-kicker">PERSONA LAYER</span><h2>{ICONS.user} AI 性格画像</h2></div><HudSparkline values={heatValues.slice(-10)} color={theme.violet} width={86} height={28} /></div>
+        <div className="profile-panel-head"><div><span className="profile-panel-kicker">PERSONA LAYER</span><h2>AI 性格画像</h2></div><HudSparkline values={heatValues.slice(-10)} color={theme.violet} width={86} height={28} /></div>
         <TagCloud items={personaTags.map(label => ({ label }))} emptyText="与 AI 对话后生成性格画像" />
         <div className="profile-topic-divider" />
         <div className="profile-panel-head profile-topic-head"><h3>高频关注主题</h3><span>{topicCloud.length} 个信号</span></div>
@@ -91,7 +90,7 @@ export default function ProfileOverviewSection({ readingHistory, bookmarks, mate
     </div>
 
     <section className="profile-data-panel profile-preference-panel">
-      <div className="profile-panel-head"><div><span className="profile-panel-kicker">CONTROL SURFACE</span><h2>{ICONS.chart} 当前偏好 · 可调整</h2></div><span className="profile-panel-meta">系统将按此优化推荐</span></div>
+      <div className="profile-panel-head"><div><span className="profile-panel-kicker">CONTROL SURFACE</span><h2>当前偏好 · 可调整</h2></div><span className="profile-panel-meta">系统将按此优化推荐</span></div>
       <div className="profile-preference-grid">{prefRows.length ? prefRows.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong><i /></div>) : <span className="profile-empty-hint">暂无足够行为样本，先调整关注领域或开始阅读</span>}</div>
     </section>
   </div>;
