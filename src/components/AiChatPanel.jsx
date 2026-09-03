@@ -22,6 +22,10 @@ import {
 } from '../utils/sandbox.js';
 import { PersonaDrawer } from './PersonaEditor.jsx';
 import { ToolCallCard, ApprovalCard } from './aichat/ToolCards.jsx';
+import AgentTeamPanel from './aichat/AgentTeamPanel.jsx';
+import {
+  getActiveSpaceId, getDefaultSpaceId, deleteSpace, renameSpace, migrateSessionSpaces,
+} from '../utils/workspaceStore.js';
 import { sessionsStore, loadSessions, saveSessions } from './aichat/sessionsStore.js';
 import { WELCOME_MSGS, EMPTY_MESSAGES, SUGGEST_ICONS } from './aichat/constants.jsx';
 import { buildMaterialContext } from './aichat/buildMaterialContext.js';
@@ -114,6 +118,14 @@ export default function AiChatPanel({
   const [selectedModel, setSelectedModel] = useState(llmConfig?.selectedModel || '');
   const [attachments, setAttachments] = useState([]);
   const [sessionCollapsed, setSessionCollapsed] = useState(false);
+  // 中栏视图：'chat' 对话 | 'team' 团队中心（AgentTeamPanel 专有页面）
+  const [centerView, setCenterView] = useState('chat');
+
+  // 会话空间归属迁移（幂等）：老会话没有 spaceId / 指向已删空间 → 归入默认空间
+  useEffect(() => {
+    const migrated = migrateSessionSpaces(sessionsStore.state.sessions);
+    if (migrated) sessionsStore.setState({ sessions: migrated });
+  }, []);
   // 无 LLM 首屏：三级链接"为什么需要配置大模型"的内联说明展开态
   const [showWhyLlm, setShowWhyLlm] = useState(false);
 
@@ -452,9 +464,27 @@ export default function AiChatPanel({
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      spaceId: getActiveSpaceId(),
     };
     setSessions(prev => [newSession, ...prev]);
     setActiveSessionId(newSession.id);
+    setCenterView('chat');
+  }, []);
+
+  // 置顶/移动空间（SessionSidebar 多空间管理回调）
+  const togglePin = useCallback((id) => {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, pinned: !s.pinned } : s));
+  }, []);
+
+  const moveSession = useCallback((id, spaceId) => {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, spaceId } : s));
+  }, []);
+
+  // 删除空间：空间本身删除 + 其下会话迁回默认空间
+  const handleDeleteSpace = useCallback((spaceId) => {
+    if (!deleteSpace(spaceId)) return;
+    const fallback = getDefaultSpaceId();
+    setSessions(prev => prev.map(s => s.spaceId === spaceId ? { ...s, spaceId: fallback } : s));
   }, []);
 
   const deleteSession = useCallback((id) => {
@@ -469,6 +499,7 @@ export default function AiChatPanel({
 
   const switchSession = useCallback((id) => {
     setActiveSessionId(id);
+    setCenterView('chat');
   }, []);
 
   // 重命名会话（由 SessionSidebar inline 编辑后回调，title 已是用户输入的新值）
@@ -531,6 +562,7 @@ export default function AiChatPanel({
         messages: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        spaceId: getActiveSpaceId(),
       };
       setSessions(prev => [newSession, ...prev]);
       targetId = newSession.id;
@@ -996,6 +1028,11 @@ export default function AiChatPanel({
           onSwitch={switchSession}
           onDelete={deleteSession}
           onRename={renameSession}
+          onTogglePin={togglePin}
+          onMoveSession={moveSession}
+          onRenameSpace={renameSpace}
+          onDeleteSpace={handleDeleteSpace}
+          onOpenTeamCenter={() => setCenterView('team')}
           onOpenNewspaper={onOpenNewspaper}
           todayBriefing={todayBriefing}
           todayLanes={todayLanes}
@@ -1005,7 +1042,22 @@ export default function AiChatPanel({
         />
       )}
 
-      {/* 中栏：对话主区 */}
+      {/* 中栏：对话主区 / 团队中心（AgentTeamPanel 专有页面） */}
+      {centerView === 'team' ? (
+        <div className="chat-main-col team-center-col">
+          <div className="team-center-topbar">
+            <button type="button" className="team-center-back" onClick={() => setCenterView('chat')}>
+              ← 返回对话
+            </button>
+            <span className="team-center-crumb">AI 工作站 / 团队中心</span>
+          </div>
+          <div className="team-center-scroll custom-scrollbar">
+            <AgentTeamPanel
+              onLaunch={(prompt) => { setCenterView('chat'); setInput(prompt); setTimeout(() => inputRef.current?.focus(), 60); }}
+            />
+          </div>
+        </div>
+      ) : (
       <div className="chat-main-col">
       {/* Header（已抽离至 aichat/ChatHeader.jsx） */}
       <ChatHeader
@@ -1569,7 +1621,8 @@ export default function AiChatPanel({
         </div>,
         document.body
       )}
-      </div>{/* /.chat-main-col */}
+      </div>
+      )}{/* 中栏条件渲染结束（chat | team） */}
 
       {/* 右栏：智能管理面板 */}
       {variant === 'main' && (

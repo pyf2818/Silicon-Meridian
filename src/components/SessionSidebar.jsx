@@ -1,84 +1,85 @@
 /**
- * SessionSidebar - AI 工作站左侧会话管理栏
+ * SessionSidebar - AI 工作站左侧栏（WorkBuddy 式三分区）
  *
- * 从 AiChatPanel 抽出的独立左栏：
- * - 顶部：搜索框 + 新建对话按钮
- * - 列表：按时间分组（今天/昨天/7 天内/更早），当前会话高亮
- * - 单击切换、hover 显示重命名/删除按钮、双击也可重命名
- * - 重命名为 inline 编辑模式（input 替换标题，回车保存/Esc 取消）
- * - 底部：今日速报入口（展开完整日报）
+ * Tab 1「对话」：置顶会话 + 多工作空间分区 —— 每个空间可展开/收起，
+ *   会话嵌套在空间下（对标 WorkBuddy 的「空间 (3) > Silicon Meridian > 会话」）；
+ *   空间支持行内新建/重命名/删除；会话支持置顶与跨空间移动。
+ * Tab 2「文件」：工作空间文件上下文（原 WorkspacePanel，保留）。
+ * Tab 3「智能体」：多智能体能力一览（4 个子代理 preset + 团队）+ 团队中心入口，
+ *   运行中团队带实时角标 —— spawn 能力此前对用户不可见，这里首次前端化。
  */
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import WorkspacePanel from './WorkspacePanel.jsx';
 import { ICONS } from '../constants/appConstants.jsx';
-
-function timeGroup(ts) {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const yesterday = today - 86400000;
-  const sevenDaysAgo = today - 7 * 86400000;
-  if (ts >= today) return '今天';
-  if (ts >= yesterday) return '昨天';
-  if (ts >= sevenDaysAgo) return '7 天内';
-  return '更早';
-}
+import { SUBAGENT_PRESETS } from '../domain/agent/subagentCore.js';
+import { listTeams, subscribeTeams } from '../store/teamStore.js';
+import {
+  getSpaces, getActiveSpaceId, setActiveSpace,
+  createSpace, renameSpace, deleteSpace, getDefaultSpaceId, subscribeSpaces,
+} from '../utils/workspaceStore.js';
 
 function formatTime(ts) {
   return new Date(ts).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-/* 会话项：管理 inline 重命名编辑态，避免整个列表 re-render */
-function SessionItem({ session, isActive, onSwitch, onRename, onDelete }) {
+function relTime(ts) {
+  const diff = Date.now() - (ts || 0);
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+  return `${Math.floor(diff / 86400000)}天前`;
+}
+
+/* ---------- 订阅 spaces / teams 的轻量 hook ---------- */
+function useSpaces() {
+  const [snap, setSnap] = useState(() => ({ spaces: getSpaces(), activeId: getActiveSpaceId() }));
+  useEffect(() => subscribeSpaces(() => setSnap({ spaces: getSpaces(), activeId: getActiveSpaceId() })), []);
+  return snap;
+}
+
+function useTeamsLite() {
+  const [teams, setTeams] = useState(() => listTeams());
+  useEffect(() => subscribeTeams(() => setTeams(listTeams())), []);
+  return teams;
+}
+
+/* ---------- 会话项：inline 重命名 + 置顶 + 移动空间 ---------- */
+function SessionItem({ session, isActive, spaces, activeSpaceId, onSwitch, onRename, onDelete, onTogglePin, onMove }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title || '');
+  const [moving, setMoving] = useState(false);
   const inputRef = useRef(null);
 
-  // 进入编辑模式时聚焦 + 选中全部
   useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
+    if (editing && inputRef.current) inputRef.current.focus();
   }, [editing]);
-
-  // session 标题外部变更时同步草稿（非编辑态）
   useEffect(() => {
     if (!editing) setDraft(session.title || '');
   }, [session.title, editing]);
 
-  const startEdit = (e) => {
-    e?.stopPropagation?.();
-    setDraft(session.title || '');
-    setEditing(true);
-  };
-  const cancelEdit = () => {
-    setDraft(session.title || '');
-    setEditing(false);
-  };
+  const startEdit = (e) => { e?.stopPropagation?.(); setDraft(session.title || ''); setEditing(true); };
   const commitEdit = () => {
     const next = draft.trim();
-    if (next && next !== session.title) {
-      onRename(session.id, next);
-    }
+    if (next && next !== session.title) onRename(session.id, next);
     setEditing(false);
   };
   const onKeyDown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
-    else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
   };
 
-  // hover 预览（原生 title，轻量零依赖）：完整标题 + 消息数 + 首条提问摘要 + 更新时间。
-  // 替代"点小点弹窗预览再跳转"的两跳交互：hover 即预览，点击即跳转，一次点击完成切换。
   const preview = useMemo(() => {
     const msgs = session.messages || [];
     const firstUser = msgs.find(m => m.role === 'user')?.content || '';
     const lines = [
-      String(session.title || '新对话'),
+      `${session.pinned ? '📌 ' : ''}${String(session.title || '新对话')}`,
       `${msgs.length} 条消息 · 更新于 ${formatTime(session.updatedAt)}`,
     ];
     if (firstUser) lines.push('', `首条：${firstUser.replace(/\s+/g, ' ').slice(0, 120)}`);
     return lines.join('\n');
   }, [session]);
+
+  const targetSpaces = spaces.filter(sp => sp.id !== session.spaceId);
 
   return (
     <div
@@ -87,7 +88,6 @@ function SessionItem({ session, isActive, onSwitch, onRename, onDelete }) {
       onDoubleClick={startEdit}
       title={editing ? '回车保存 · Esc 取消' : preview}
     >
-      {/* 轨道小点：当前会话点亮 */}
       <span className="session-dot" aria-hidden="true" />
       {editing ? (
         <input
@@ -96,16 +96,30 @@ function SessionItem({ session, isActive, onSwitch, onRename, onDelete }) {
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onClick={e => e.stopPropagation()}
-          onDoubleClick={e => e.stopPropagation()}
           onKeyDown={onKeyDown}
           onBlur={commitEdit}
           placeholder="输入新名称"
         />
       ) : (
         <>
+          {session.pinned && <span className="session-pin-mark" title="已置顶">📌</span>}
           <span className="session-item-title">{session.title || '新对话'}</span>
-          <span className="session-item-meta">{formatTime(session.updatedAt)}</span>
+          <span className="session-item-meta">{relTime(session.updatedAt)}</span>
           <div className="session-item-actions">
+            <button
+              className="session-item-btn session-item-pin"
+              onClick={e => { e.stopPropagation(); onTogglePin(session.id); }}
+              title={session.pinned ? '取消置顶' : '置顶'}
+              aria-label={session.pinned ? '取消置顶' : '置顶会话'}
+            >⌖</button>
+            {targetSpaces.length > 0 && (
+              <button
+                className={`session-item-btn session-item-move ${moving ? 'is-open' : ''}`}
+                onClick={e => { e.stopPropagation(); setMoving(m => !m); }}
+                title="移动到其他空间"
+                aria-label="移动到其他空间"
+              >⇄</button>
+            )}
             <button
               className="session-item-btn session-item-rename"
               onClick={startEdit}
@@ -119,12 +133,182 @@ function SessionItem({ session, isActive, onSwitch, onRename, onDelete }) {
               aria-label="删除会话"
             >{ICONS.x}</button>
           </div>
+          {moving && (
+            <div className="session-move-menu" onClick={e => e.stopPropagation()}>
+              <span className="session-move-title">移动到</span>
+              {targetSpaces.map(sp => (
+                <button
+                  key={sp.id}
+                  type="button"
+                  className={sp.id === activeSpaceId ? 'is-here' : ''}
+                  onClick={() => { onMove(session.id, sp.id); setMoving(false); }}
+                >
+                  <i aria-hidden="true">▸</i>{sp.name}
+                  {sp.id === activeSpaceId && <em>当前</em>}
+                </button>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
   );
 }
 
+/* ---------- 空间分区行（WorkBuddy 式：▸ 名称 (n) + 展开嵌套会话） ---------- */
+function SpaceSection({ space, expanded, sessions, activeSessionId, spaces, activeSpaceId, handlers }) {
+  const [renaming, setRenaming] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const nameRef = useRef(null);
+  const isDefault = space.id === getDefaultSpaceId();
+
+  useEffect(() => {
+    if (renaming && nameRef.current) nameRef.current.focus();
+  }, [renaming]);
+
+  const count = sessions.length;
+  const commitRename = () => {
+    const el = nameRef.current;
+    if (el?.value?.trim()) handlers.onRenameSpace(space.id, el.value.trim());
+    setRenaming(false);
+  };
+
+  return (
+    <div className={`space-section ${expanded ? 'is-open' : ''} ${space.id === activeSpaceId ? 'is-active' : ''}`}>
+      <div className="space-row">
+        <button
+          type="button"
+          className="space-row-main"
+          onClick={() => handlers.onToggleSpace(space.id)}
+          title={expanded ? '收起空间' : '展开空间'}
+        >
+          <span className={`space-arrow ${expanded ? 'open' : ''}`} aria-hidden="true">▸</span>
+          <span className="space-icon" aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </span>
+          {renaming ? (
+            <input
+              ref={nameRef}
+              className="space-rename-input"
+              defaultValue={space.name}
+              onClick={e => e.stopPropagation()}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                else if (e.key === 'Escape') setRenaming(false);
+              }}
+              onBlur={commitRename}
+            />
+          ) : (
+            <span className="space-name">{space.name}</span>
+          )}
+          <span className="space-count">({count})</span>
+        </button>
+        <div className="space-row-actions">
+          {!isDefault && (
+            <>
+              <button type="button" className="space-act" title="重命名空间" onClick={e => { e.stopPropagation(); setRenaming(true); }}>✎</button>
+              <button
+                type="button"
+                className={`space-act is-danger ${confirmDel ? 'confirm' : ''}`}
+                title={confirmDel ? '再次点击确认删除（会话将迁回默认空间）' : '删除空间'}
+                onClick={e => {
+                  e.stopPropagation();
+                  if (confirmDel) { handlers.onDeleteSpace(space.id); setConfirmDel(false); }
+                  else { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); }
+                }}
+              >{confirmDel ? '确认?' : '✕'}</button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="space-sessions">
+          {count === 0 && <div className="space-empty">该空间暂无对话</div>}
+          {sessions.map(s => (
+            <SessionItem
+              key={s.id}
+              session={s}
+              isActive={s.id === activeSessionId}
+              spaces={spaces}
+              activeSpaceId={activeSpaceId}
+              onSwitch={handlers.onSwitch}
+              onRename={handlers.onRename}
+              onDelete={handlers.onDelete}
+              onTogglePin={handlers.onTogglePin}
+              onMove={handlers.onMove}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- 智能体 Tab：能力一览 + 团队入口 ---------- */
+function AgentsTab({ teams, onOpenTeamCenter }) {
+  const running = teams.filter(t => t.status === 'running');
+  return (
+    <div className="agents-tab custom-scrollbar">
+      <button type="button" className="agents-team-entry" onClick={onOpenTeamCenter}>
+        <span className="agents-team-entry-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </span>
+        <span className="agents-team-entry-text">
+          <strong>团队中心</strong>
+          <small>{teams.length} 个团队{running.length > 0 ? ` · ${running.length} 个执行中` : ''}</small>
+        </span>
+        {running.length > 0 && <span className="agents-team-badge" title="执行中团队数">{running.length}</span>}
+      </button>
+
+      {running.length > 0 && (
+        <div className="agents-running">
+          <div className="agents-running-label">执行中</div>
+          {running.map(t => (
+            <button key={t.id} type="button" className="agents-running-item" onClick={onOpenTeamCenter} title={t.goal}>
+              <i className="agents-running-dot" aria-hidden="true" />
+              <span className="agents-running-goal">{(t.goal || '').slice(0, 22)}</span>
+              <em>{relTime(t.updatedAt)}</em>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="agents-cap-label">子代理编队</div>
+      <div className="agents-cap-list">
+        {SUBAGENT_PRESETS.map(p => (
+          <div key={p.id} className="agents-cap-item" title={p.description}>
+            <span className="agents-cap-name">{p.name}</span>
+            <span className="agents-cap-id">{p.id}</span>
+            <p>{p.description.slice(0, 26)}…</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="agents-cap-label">编排能力</div>
+      <div className="agents-mode-list">
+        <div className="agents-mode-item">
+          <code>spawn_subagent</code>
+          <p>派活收报告 · 独立上下文 · 深度封顶 1 层</p>
+        </div>
+        <div className="agents-mode-item">
+          <code>spawn_agent_team</code>
+          <p>常驻团队 · 共享任务板 + 成员邮箱 · lead 汇总</p>
+        </div>
+        <div className="agents-mode-item">
+          <code>set_plan</code>
+          <p>计划模式 · 任务卡批准后按依赖执行</p>
+        </div>
+      </div>
+
+      <button type="button" className="agents-open-center" onClick={onOpenTeamCenter}>
+        进入团队中心 →
+      </button>
+    </div>
+  );
+}
+
+/* ================= 主组件 ================= */
 export default function SessionSidebar({
   sessions = [],
   activeSessionId,
@@ -132,6 +316,11 @@ export default function SessionSidebar({
   onSwitch,
   onDelete,
   onRename,
+  onTogglePin,
+  onMoveSession,
+  onRenameSpace,
+  onDeleteSpace,
+  onOpenTeamCenter,
   onOpenNewspaper,
   todayBriefing,
   todayLanes,
@@ -140,82 +329,160 @@ export default function SessionSidebar({
   onAddContextFiles,
 }) {
   const [query, setQuery] = useState('');
-  const [tab, setTab] = useState('sessions'); // 'sessions' | 'workspace'
+  const [tab, setTab] = useState('sessions'); // 'sessions' | 'files' | 'agents'
+  const [creatingSpace, setCreatingSpace] = useState(false);
+  const [newSpaceName, setNewSpaceName] = useState('');
+  const { spaces, activeId: activeSpaceId } = useSpaces();
+  const teams = useTeamsLite();
+
+  // 展开状态：默认展开当前激活空间；用户手动展开/收起后以本地状态为准
+  const [expanded, setExpanded] = useState(() => new Set([getActiveSpaceId()]));
+  const toggleSpace = useCallback((spaceId) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(spaceId)) next.delete(spaceId);
+      else next.add(spaceId);
+      return next;
+    });
+  }, []);
 
   const filtered = useMemo(() => {
-    const sorted = [...sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    if (!query.trim()) return sorted;
     const q = query.trim().toLowerCase();
-    return sorted.filter(s => (s.title || '').toLowerCase().includes(q) || (s.messages || []).some(m => (m.content || '').toLowerCase().includes(q)));
+    if (!q) return sessions;
+    return sessions.filter(s =>
+      (s.title || '').toLowerCase().includes(q)
+      || (s.messages || []).some(m => (m.content || '').toLowerCase().includes(q)));
   }, [sessions, query]);
 
-  const groups = useMemo(() => {
+  const pinned = useMemo(() =>
+    filtered.filter(s => s.pinned).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)),
+  [filtered]);
+
+  const bySpace = useMemo(() => {
     const map = new Map();
-    filtered.forEach(s => {
-      const g = timeGroup(s.updatedAt || Date.now());
-      if (!map.has(g)) map.set(g, []);
-      map.get(g).push(s);
+    spaces.forEach(sp => map.set(sp.id, []));
+    filtered.filter(s => !s.pinned).forEach(s => {
+      const list = map.get(s.spaceId);
+      if (list) list.push(s);
     });
-    return [...map.entries()];
-  }, [filtered]);
+    map.forEach(list => list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
+    return map;
+  }, [filtered, spaces]);
+
+  const submitNewSpace = () => {
+    if (newSpaceName.trim()) {
+      const sp = createSpace(newSpaceName.trim());
+      if (sp) setExpanded(prev => new Set(prev).add(sp.id));
+    }
+    setNewSpaceName('');
+    setCreatingSpace(false);
+  };
+
+  const handlers = {
+    onSwitch, onRename, onDelete, onTogglePin, onMove: onMoveSession,
+    onRenameSpace, onDeleteSpace, onToggleSpace: toggleSpace,
+  };
 
   return (
     <aside className="session-sidebar">
-      {/* Tab 切换：会话 / 工作空间 */}
+      {/* Tab 切换：对话 / 文件 / 智能体 */}
       <div className="session-tabs">
-        <button
-          type="button"
-          className={`session-tab ${tab === 'sessions' ? 'active' : ''}`}
-          onClick={() => setTab('sessions')}
-        >会话</button>
-        <button
-          type="button"
-          className={`session-tab ${tab === 'workspace' ? 'active' : ''}`}
-          onClick={() => setTab('workspace')}
-        >工作空间</button>
+        <button type="button" className={`session-tab ${tab === 'sessions' ? 'active' : ''}`} onClick={() => setTab('sessions')}>对话</button>
+        <button type="button" className={`session-tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>文件</button>
+        <button type="button" className={`session-tab ${tab === 'agents' ? 'active' : ''}`} onClick={() => setTab('agents')}>
+          智能体{teams.some(t => t.status === 'running') && <i className="session-tab-dot" aria-hidden="true" />}
+        </button>
       </div>
 
-      {tab === 'sessions' ? (
+      {tab === 'sessions' && (
         <>
-        <div className="session-sidebar-top">
-          <button type="button" className="session-new-btn" onClick={onCreate}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            新对话
-          </button>
-          <div className="session-search">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索对话..." />
-          </div>
-        </div>
-
-        <div className="session-list custom-scrollbar">
-          {filtered.length === 0 && (
-            <div className="session-list-empty">{query ? '没有匹配的对话' : '尚无对话记录'}</div>
-          )}
-          {groups.map(([group, items]) => (
-            <div key={group} className="session-group">
-              <div className="session-group-label">{group}</div>
-              {items.map(s => (
-                <SessionItem
-                  key={s.id}
-                  session={s}
-                  isActive={s.id === activeSessionId}
-                  onSwitch={onSwitch}
-                  onRename={onRename}
-                  onDelete={onDelete}
-                />
-              ))}
+          <div className="session-sidebar-top">
+            <button type="button" className="session-new-btn" onClick={onCreate}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              新对话
+            </button>
+            <div className="session-search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索对话..." />
             </div>
-          ))}
-        </div>
+          </div>
+
+          <div className="session-list custom-scrollbar">
+            {filtered.length === 0 && (
+              <div className="session-list-empty">{query ? '没有匹配的对话' : '尚无对话记录'}</div>
+            )}
+
+            {/* 置顶区（跨空间） */}
+            {pinned.length > 0 && (
+              <div className="session-group session-group-pinned">
+                <div className="session-group-label">📌 置顶 ({pinned.length})</div>
+                {pinned.map(s => (
+                  <SessionItem
+                    key={s.id}
+                    session={s}
+                    isActive={s.id === activeSessionId}
+                    spaces={spaces}
+                    activeSpaceId={activeSpaceId}
+                    onSwitch={onSwitch}
+                    onRename={onRename}
+                    onDelete={onDelete}
+                    onTogglePin={onTogglePin}
+                    onMove={onMoveSession}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* 空间分区 */}
+            {spaces.map(sp => (
+              <SpaceSection
+                key={sp.id}
+                space={sp}
+                expanded={expanded.has(sp.id)}
+                sessions={bySpace.get(sp.id) || []}
+                activeSessionId={activeSessionId}
+                spaces={spaces}
+                activeSpaceId={activeSpaceId}
+                handlers={handlers}
+              />
+            ))}
+
+            {/* 新建空间 */}
+            <div className="space-create">
+              {creatingSpace ? (
+                <input
+                  className="space-create-input"
+                  autoFocus
+                  value={newSpaceName}
+                  onChange={e => setNewSpaceName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); submitNewSpace(); }
+                    else if (e.key === 'Escape') { setCreatingSpace(false); setNewSpaceName(''); }
+                  }}
+                  onBlur={submitNewSpace}
+                  placeholder="空间名称，回车创建"
+                />
+              ) : (
+                <button type="button" className="space-create-btn" onClick={() => setCreatingSpace(true)}>
+                  ＋ 新建空间
+                </button>
+              )}
+            </div>
+          </div>
         </>
-      ) : (
+      )}
+
+      {tab === 'files' && (
         <WorkspacePanel
           onAddContextFiles={onAddContextFiles}
           materials={materials}
           todayBriefing={todayBriefing}
           todayLanes={todayLanes}
         />
+      )}
+
+      {tab === 'agents' && (
+        <AgentsTab teams={teams} onOpenTeamCenter={onOpenTeamCenter} />
       )}
 
       {onOpenNewspaper && (
