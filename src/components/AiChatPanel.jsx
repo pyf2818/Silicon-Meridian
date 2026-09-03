@@ -297,9 +297,32 @@ export default function AiChatPanel({
   const personaSummary = useProfileStore(s => s.personaSummary);
   const setPersonaSummary = useProfileStore(s => s.setPersonaSummary);
 
-  // Agent 权限模式：assist / autonomous / plan（会话级，非持久化）
+  // Agent 权限模式（v6：manual 手动 / semi 半自动 / auto 全自动，会话级非持久化）
   const agentPermissionMode = useUiStore(s => s.agentPermissionMode);
   const setAgentPermissionMode = useUiStore(s => s.setAgentPermissionMode);
+  // 旧值归一化：v5 的 assist/autonomous/plan → manual/semi/semi
+  useEffect(() => {
+    if (agentPermissionMode === 'assist') setAgentPermissionMode('manual');
+    else if (agentPermissionMode === 'autonomous' || agentPermissionMode === 'plan') setAgentPermissionMode('semi');
+  }, [agentPermissionMode, setAgentPermissionMode]);
+
+  // 权限模式选择弹层（输入框内左下角按钮）
+  const PERMISSION_MODES = [
+    { id: 'manual', label: '手动', desc: '每个工具调用都先征求我的同意', hue: 'var(--status-warn, #d29922)' },
+    { id: 'semi', label: '半自动', desc: '仅危险操作（写文件/删文件/执行命令等）需要审批', hue: 'var(--accent-cyan)' },
+    { id: 'auto', label: '全自动', desc: '不需要任何审批，智能体全托管执行', hue: 'var(--status-ok, #3fb950)' },
+  ];
+  const [showModeMenu, setShowModeMenu] = useState(false);
+  const modeWrapRef = useRef(null);
+  useEffect(() => {
+    if (!showModeMenu) return;
+    const onDown = (e) => {
+      if (modeWrapRef.current && !modeWrapRef.current.contains(e.target)) setShowModeMenu(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showModeMenu]);
+  const currentModeMeta = PERMISSION_MODES.find(m => m.id === agentPermissionMode) || PERMISSION_MODES[1];
 
   // 联网搜索切换：直接打补丁到 llmConfig（持久化由 useLlmConfig effect 负责）
   const webSearchEnabled = llmConfig?.webSearchEnabled !== false;
@@ -840,13 +863,6 @@ export default function AiChatPanel({
       if (llmConfig?.webSearchEnabled === false) {
         toolSchemas = toolSchemas.filter(s => s?.function?.name !== 'web_search');
       }
-      // plan 模式：仅生成计划与思路，不实际调用任何工具
-      // 通过清空 toolSchemas 强制走流式回复，并在 systemPrompt 后追加计划模式约束
-      const planMode = agentPermissionMode === 'plan';
-      const finalSystemPrompt = planMode && toolSchemas.length > 0
-        ? `${systemPrompt}\n\n【当前为计划模式】请仅输出详细执行计划与思路，不要尝试调用任何工具。分步骤说明你将如何完成用户请求，包括需要哪些工具/数据/步骤，以及预期产出。`
-        : systemPrompt;
-      if (planMode) toolSchemas = [];
       if (toolSchemas.length > 0) {
         await runAgentLoop({
           targetId,
@@ -898,7 +914,7 @@ export default function AiChatPanel({
               apiKey: llmConfig.apiKey,
               model: selectedModel,
               action: 'chat',
-              systemPrompt: finalSystemPrompt,
+              systemPrompt,
               messages: sendMessages.map(m => ({ role: m.role, content: m.content })),
               max_tokens: 4000,
               stream: true,
@@ -1601,29 +1617,65 @@ export default function AiChatPanel({
             </button>
           </div>
         </div>
-        {/* 输入框 */}
+        {/* 输入框：上=textarea+发送；下=权限模式 + 附件（收进输入框内左下角，节省下方空间） */}
         <div className="chat-input-area">
           <input ref={fileInputRef} type="file" accept="image/*,.pdf,.txt,.md" style={{ display: 'none' }} onChange={handleFileUpload} />
-          <button className="chat-attach-btn" onClick={() => fileInputRef.current?.click()} title="上传附件" disabled={!hasConfig}>
-            {ICONS.paperclip}
-          </button>
-          <textarea ref={inputRef} className="chat-input" value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder={hasConfig ? (isStreaming ? "正在生成中，输入下一条消息自动排队…" : "给智能体发消息…  (Shift+Enter 换行)") : "请先配置大模型"} rows={1} disabled={!hasConfig} />
-          {queueCount > 0 && (
-            <span className="chat-queue-indicator" title={`${queueCount} 条消息排队中`}>
-              <span className="icon-sm">{ICONS.history}</span>
-              {queueCount}
-            </span>
-          )}
-          {isStreaming && (
-            <button className="chat-stop-btn" onClick={stopGeneration} title="停止生成" aria-label="停止生成">
-              {ICONS.stopSquare}
+          <div className="chat-input-main-row">
+            <textarea ref={inputRef} className="chat-input" value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder={hasConfig ? (isStreaming ? "正在生成中，输入下一条消息自动排队…" : "给智能体发消息…  (Shift+Enter 换行)") : "请先配置大模型"} rows={1} disabled={!hasConfig} />
+            {queueCount > 0 && (
+              <span className="chat-queue-indicator" title={`${queueCount} 条消息排队中`}>
+                <span className="icon-sm">{ICONS.history}</span>
+                {queueCount}
+              </span>
+            )}
+            {isStreaming && (
+              <button className="chat-stop-btn" onClick={stopGeneration} title="停止生成" aria-label="停止生成">
+                {ICONS.stopSquare}
+              </button>
+            )}
+            <button className="chat-send-btn" onClick={() => sendMessage()} disabled={!input.trim() || !hasConfig} title={isStreaming ? '排队发送' : '发送'}>
+              {ICONS.send}
             </button>
-          )}
-          <button className="chat-send-btn" onClick={() => sendMessage()} disabled={!input.trim() || !hasConfig} title={isStreaming ? '排队发送' : '发送'}>
-            {ICONS.send}
-          </button>
+          </div>
+          <div className="chat-input-tools" ref={modeWrapRef}>
+            {/* 权限模式胶囊（弹层向上） */}
+            <button
+              type="button"
+              className={`chat-mode-chip ${showModeMenu ? 'open' : ''}`}
+              onClick={() => setShowModeMenu(v => !v)}
+              title={`权限模式：${currentModeMeta.label} — ${currentModeMeta.desc}`}
+            >
+              <span className="chat-mode-dot" style={{ background: currentModeMeta.hue }} />
+              {currentModeMeta.label}
+              <span className="chat-skill-caret">{ICONS.chevronUp || '▴'}</span>
+            </button>
+            {showModeMenu && (
+              <div className="chat-mode-pop" role="menu">
+                {PERMISSION_MODES.map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`chat-mode-item ${agentPermissionMode === m.id ? 'selected' : ''}`}
+                    onClick={() => { setAgentPermissionMode(m.id); setShowModeMenu(false); }}
+                    title={m.desc}
+                  >
+                    <span className="chat-mode-dot" style={{ background: m.hue }} />
+                    <span className="chat-mode-item-text">
+                      <strong>{m.label}</strong>
+                      <small>{m.desc}</small>
+                    </span>
+                    {agentPermissionMode === m.id && <span className="chat-model-item-check">✓</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* 附件按钮（小图标） */}
+            <button className="chat-attach-mini" onClick={() => fileInputRef.current?.click()} title="上传附件" disabled={!hasConfig}>
+              {ICONS.paperclip}
+            </button>
+          </div>
         </div>
-        {/* 底部一行：上下文胶囊（可点开查看条目）+ 联网搜索 + 权限模式（单行并排，溢出滚动） */}
+        {/* 底部一行：模型胶囊 + 上下文进度环 + 上下文胶囊（可点开查看条目）+ 联网搜索 */}
         <div className="chat-composer-bottom">
           {/* 模型胶囊 + 上下文进度环（左端固定） */}
           <div className="chat-model-wrap">
@@ -1788,24 +1840,6 @@ export default function AiChatPanel({
                 <div className="chat-context-peek-hint">Ctrl+点击多选 · 单击插入引用 · 已排除条目单击恢复</div>
               </div>
             )}
-          </div>
-          <div className="chat-permission-mode" role="group" aria-label="Agent 权限模式">
-            {[
-              { id: 'assist', label: '协助', title: '协助模式：每步工具调用前征求同意' },
-              { id: 'autonomous', label: '自主', title: '自主模式：白名单工具自动执行' },
-              { id: 'plan', label: '计划', title: '计划模式：仅生成思路，不调用工具' },
-            ].map(m => (
-              <button
-                key={m.id}
-                type="button"
-                className={`chat-permission-pill ${agentPermissionMode === m.id ? 'active' : ''}`}
-                onClick={() => setAgentPermissionMode(m.id)}
-                title={m.title}
-                aria-pressed={agentPermissionMode === m.id}
-              >
-                {m.label}
-              </button>
-            ))}
           </div>
         </div>
       </div>

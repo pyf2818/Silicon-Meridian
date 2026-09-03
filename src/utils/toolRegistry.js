@@ -174,11 +174,13 @@ export function getToolMeta(name) {
 /**
  * 判定本次调用是否需要用户审批 —— 全系统唯一审批判定处（P0-1）。
  *
- * 两条来源在此合流，避免「循环层 + 注册表层」重复弹卡：
- *  1. 工具自身敏感：meta.requiresApproval（可被 Settings 覆写）
- *  2. 会话处于协助模式：ctx.approvalMode === 'assist' → 任何工具都要问
+ * 三种权限模式（v6 真实现）：
+ *  - manual  手动：所有工具逐次确认
+ *  - semi    半自动（默认）：仅敏感工具的写操作需审批，只读自动放行
+ *  - auto    全自动：不需要任何审批（用户明确授权全托管）
+ * 兼容旧值：assist → manual，autonomous → semi，plan（已废弃）→ semi。
  *
- * 注意：assist 模式下依然复用 sandbox 的 allow-always grant，
+ * 注意：手动模式下依然复用 sandbox 的 allow-always grant，
  * 所以用户点过"本会话始终允许"后不会被重复打扰。
  *
  * @param {ToolEntry} entry
@@ -200,13 +202,21 @@ export function resolveApprovalDecision(entry, ctx, args) {
     try { grade = entry.meta.riskLevel(args || {}) || 'write'; } catch { grade = 'write'; }
   }
 
-  // 敏感工具的写操作：无论什么模式都必须问
+  // 旧值归一（localStorage 里可能还存着 v5 的 assist/autonomous/plan）
+  const raw = ctx?.approvalMode || 'semi';
+  const mode = raw === 'assist' ? 'manual' : (raw === 'autonomous' || raw === 'plan') ? 'semi' : raw;
+
+  // 全自动：用户明确授权全托管，不做任何审批
+  if (mode === 'auto') {
+    return { required: false, reason: '' };
+  }
+  // 手动：所有工具逐次确认
+  if (mode === 'manual') {
+    return { required: true, reason: `手动模式：智能体请求调用工具 "${name}"` };
+  }
+  // 半自动（默认）：仅敏感工具的写操作需审批
   if (sensitive && grade !== 'read') {
     return { required: true, reason: `敏感操作：${label}` };
-  }
-  // 协助模式：全部工具逐次确认（含上面被降级的只读敏感调用，因为 assist 的语义就是"每步都让我看一眼"）
-  if (ctx?.approvalMode === 'assist') {
-    return { required: true, reason: `协助模式：智能体请求调用工具 "${name}"` };
   }
   return { required: false, reason: sensitive ? `只读调用，自动放行：${name}` : '' };
 }

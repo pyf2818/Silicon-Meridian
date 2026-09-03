@@ -13,7 +13,7 @@ import WorkspacePanel from './WorkspacePanel.jsx';
 import { ICONS } from '../constants/appConstants.jsx';
 import { SUBAGENT_PRESETS } from '../domain/agent/subagentCore.js';
 import { listTeams, subscribeTeams } from '../store/teamStore.js';
-import { getActiveChat, subscribeGroup } from './aichat/groupChatStore.js';
+import { getGroupState, getActiveChat, subscribeGroup, switchChat, createChat } from './aichat/groupChatStore.js';
 import {
   isFileSystemSupported, pickDirectoryHandle, saveHandleToSlot,
 } from '../utils/workspace.js';
@@ -251,30 +251,52 @@ function SpaceSection({ space, expanded, sessions, activeSessionId, spaces, acti
   );
 }
 
-/* ---------- 团队 Tab：群聊入口 + 成员预览 + 执行记录 ---------- */
+/* ---------- 团队 Tab：群聊列表（自由切换） + 成员预览 + 执行记录 ---------- */
 function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
   const running = teams.filter(t => t.status === 'running');
-  const [roster, setRoster] = useState(() => getActiveChat()?.roster || []);
-  useEffect(() => subscribeGroup(() => setRoster([...(getActiveChat()?.roster || [])])), []);
-  const members = roster.map(id => PRESET_INDEX.get(id)).filter(Boolean);
+  const [groupSnap, setGroupSnap] = useState(() => {
+    const s = getGroupState();
+    return { chats: [...(s.chats || [])], activeId: s.activeId, roster: [...(getActiveChat()?.roster || [])] };
+  });
+  useEffect(() => subscribeGroup(() => {
+    const s = getGroupState();
+    setGroupSnap({ chats: [...(s.chats || [])], activeId: s.activeId, roster: [...(getActiveChat()?.roster || [])] });
+  }), []);
+  const { chats, activeId } = groupSnap;
+  const members = groupSnap.roster.map(id => PRESET_INDEX.get(id)).filter(Boolean);
 
   return (
     <div className="agents-tab custom-scrollbar">
-      <button type="button" className="agents-team-entry is-chat" onClick={onOpenTeamCenter}>
-        <span className="agents-team-entry-icon" aria-hidden="true">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-        </span>
-        <span className="agents-team-entry-text">
-          <strong>进入团队群聊</strong>
-          <small>{members.length ? `${members.length} 名成员在群` : '邀请 preset 专家进群协作'}</small>
-        </span>
-        {running.length > 0 && <span className="agents-team-badge" title="执行中团队数">{running.length}</span>}
-      </button>
+      <div className="agents-cap-label">团队群聊</div>
+      <div className="agents-chats">
+        {chats.map(c => (
+          <button
+            key={c.id}
+            type="button"
+            className={`agents-chat-item ${c.id === activeId ? 'active' : ''}`}
+            onClick={() => { if (switchChat(c.id)) onOpenTeamCenter?.(); }}
+            title={`切换到「${c.name}」（${c.messages.length} 条消息）`}
+          >
+            <i className="agents-chat-dot" aria-hidden="true" />
+            <span className="agents-chat-name">{c.name}</span>
+            <em>{c.messages.length}</em>
+          </button>
+        ))}
+        <button
+          type="button"
+          className="agents-chat-new"
+          onClick={() => { createChat(); onOpenTeamCenter?.(); }}
+          title="新建团队群聊"
+        >＋ 新建群聊</button>
+      </div>
 
       {members.length > 0 && (
-        <div className="agents-roster-preview">
-          {members.map(m => <span key={m.id} className="agents-roster-chip" title={m.description}>{m.name}</span>)}
-        </div>
+        <>
+          <div className="agents-cap-label">当前群成员</div>
+          <div className="agents-roster-preview">
+            {members.map(m => <span key={m.id} className="agents-roster-chip" title={m.description}>{m.name}</span>)}
+          </div>
+        </>
       )}
 
       {running.length > 0 && (
@@ -289,10 +311,6 @@ function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
           ))}
         </div>
       )}
-
-      <button type="button" className="agents-open-center" onClick={onOpenTeamCenter}>
-        打开群聊协作 →
-      </button>
 
       <div className="agents-cap-label">编排能力</div>
       <div className="agents-mode-list">

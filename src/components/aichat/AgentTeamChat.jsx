@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { SUBAGENT_PRESETS } from '../../domain/agent/subagentCore.js';
 import { runOneSubagent } from './subagentRunner.js';
+import { renderMarkdown } from '../../utils/markdown.jsx';
 import {
   getGroupState, getActiveChat, subscribeGroup, inviteMember, removeMember,
   addGroupMessage, updateGroupMessage, setGroupRunning, clearGroupChat,
@@ -242,7 +243,7 @@ export default function AgentTeamChat({
             selectedModel: runtime.selectedModel,
             parentCtx: {
               sessionId: 'team-group-chat',
-              approvalMode: runtime.approvalMode || 'autonomous',
+              approvalMode: runtime.approvalMode || 'semi',
               tavilyKey: runtime.tavilyKey || '',
               doubaoSearchKey: runtime.doubaoSearchKey || '',
               webSearchEnabled: runtime.webSearchEnabled !== false,
@@ -395,7 +396,13 @@ export default function AgentTeamChat({
                 </div>
                 {m.status === 'running'
                   ? <div className="gtc-typing"><span /><span /><span /></div>
-                  : <div className="gtc-bubble-text">{m.content}</div>}
+                  : (
+                    /* 成员输出是结构化报告：走 Markdown 渲染（标题/列表/表格/代码块） */
+                    <div
+                      className="gtc-bubble-text markdown-body gtc-markdown"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(String(m.content || '')) }}
+                    />
+                  )}
                 <time>{formatTime(m.at)}</time>
               </div>
             </div>

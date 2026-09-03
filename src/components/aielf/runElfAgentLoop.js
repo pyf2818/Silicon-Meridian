@@ -41,7 +41,7 @@ export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas
     tavilyKey: llmConfig?.tavilyKey || '',
     doubaoSearchKey: llmConfig?.doubaoSearchKey || '',
     webSearchEnabled: llmConfig?.webSearchEnabled !== false,
-    approvalMode: 'autonomous',
+    approvalMode: 'semi',
     // 精灵无审批卡片 UI：敏感写操作直接拒绝（错误信息会引导用户去工作站）
     approvalPolicy: 'deny',
     signal: abortController.signal,

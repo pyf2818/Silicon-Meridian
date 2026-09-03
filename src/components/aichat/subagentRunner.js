@@ -98,7 +98,7 @@ async function runOneSubagent(task, { llmConfig, selectedModel, parentCtx, onPro
     agentId: preset.id,
     agentName: `${preset.name}（子代理）`,
     agentTools: whitelist,
-    approvalMode: parentCtx?.approvalMode || 'autonomous',
+    approvalMode: parentCtx?.approvalMode || 'semi',
     signal: controller.signal,
     llmConfig,
     tavilyKey: parentCtx?.tavilyKey || '',

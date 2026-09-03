@@ -79,15 +79,33 @@ describe('execute_command 子命令风险分级（P0-3）', () => {
 describe('resolveApprovalDecision 单点判定（P0-1）', () => {
   const mkEntry = (name, meta) => ({ schema: { type: 'function', function: { name } }, meta });
 
-  it('非敏感工具 + 自主模式 → 免审批', () => {
+  it('非敏感工具 + 自主模式（旧值→semi）→ 免审批', () => {
     const d = resolveApprovalDecision(mkEntry('search_news', {}), { approvalMode: 'autonomous' }, {});
     expect(d.required).toBe(false);
   });
 
-  it('非敏感工具 + 协助模式 → 需审批', () => {
+  it('非敏感工具 + 协助模式（旧值→manual 手动）→ 需审批', () => {
     const d = resolveApprovalDecision(mkEntry('search_news', {}), { approvalMode: 'assist' }, {});
     expect(d.required).toBe(true);
-    expect(d.reason).toContain('协助模式');
+    expect(d.reason).toContain('手动模式');
+  });
+
+  it('全自动模式：连敏感写操作也免审批（真实实现：不需要任何审批）', () => {
+    const d = resolveApprovalDecision(mkEntry('write_workspace_file', { requiresApproval: true }), { approvalMode: 'auto' }, {});
+    expect(d.required).toBe(false);
+  });
+
+  it('手动模式：非敏感工具也需审批', () => {
+    const d = resolveApprovalDecision(mkEntry('search_news', {}), { approvalMode: 'manual' }, {});
+    expect(d.required).toBe(true);
+    expect(d.reason).toContain('手动模式');
+  });
+
+  it('缺省模式 → semi 语义：仅敏感写需审批', () => {
+    const nonSensitive = resolveApprovalDecision(mkEntry('search_news', {}), {}, {});
+    expect(nonSensitive.required).toBe(false);
+    const sensitiveWrite = resolveApprovalDecision(mkEntry('write_workspace_file', { requiresApproval: true }), {}, {});
+    expect(sensitiveWrite.required).toBe(true);
   });
 
   it('敏感工具 + 自主模式 → 需审批', () => {
@@ -140,7 +158,7 @@ describe('审批卡去重：一次调用只弹一张（P0-1 回归防线）', ()
     } finally { unsub(); }
     expect(seen.length).toBe(1);
     expect(seen[0].request.toolName).toBe('search_news');
-    expect(seen[0].request.reason).toContain('协助模式');
+    expect(seen[0].request.reason).toContain('手动模式');
   });
 
   it('协助模式下调用敏感工具，也只产生 1 次审批请求（不是循环层+注册表层两张）', async () => {
