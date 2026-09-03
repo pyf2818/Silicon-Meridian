@@ -1,13 +1,13 @@
 /**
  * WorkspacePanel - 本地工作空间面板（AI 工作站左栏"文件"tab）
  *
- * v2：工作空间以本地文件为核心 —— 面板**跟随当前空间**：
+ * v3：纯空间视图 —— 目录只由当前空间绑定决定：
  * - 每个空间绑定自己的本地文件夹（handle 按 spaceId 存 IndexedDB 槽位）
  * - 切换空间 → 自动切到该空间的目录树；「加入 AI 上下文」= 把文件**关联**进该空间
  * - 关联文件随空间持久化（元数据+截断内容），对话上下文按空间隔离
- * - 顶部：当前空间 + 绑定目录路径 + 切换/断开
- * - 中部：文件树（展开/折叠），多选文件
- * - 底部：操作区（关联文件 / 在对话中分析）
+ * - 顶部：当前空间 + 绑定目录路径 + 刷新/断开（换绑通过断开后重选）
+ * - 中部：文件树（展开/折叠），多选文件；双击预览可切编辑并写回
+ * - 底部：操作区（关联文件）
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -16,8 +16,7 @@ import { renderMarkdown } from '../utils/markdown.jsx';
 import {
   isFileSystemSupported, pickRootDirectory, restoreRootDirectory, clearRootDirectory,
   peekSavedHandle, requestHandlePermission,
-  listFiles, readFile, writeFile, exportMaterials, exportBriefing, downloadMarkdown,
-  materialToMarkdown, briefingToMarkdown,
+  listFiles, readFile, writeFile,
 } from '../utils/workspace.js';
 import { setRootHandle as setSharedRootHandle } from '../utils/workspaceHandleStore.js';
 import {
@@ -31,11 +30,7 @@ const CLOSE_SVG = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 );
 
-export default function WorkspacePanel({
-  materials = [],
-  todayBriefing,
-  todayLanes,
-}) {
+export default function WorkspacePanel() {
   const [rootHandle, setRootHandle] = useState(null);
   const [rootName, setRootName] = useState('');
   const [files, setFiles] = useState([]);
@@ -134,32 +129,6 @@ export default function WorkspacePanel({
   useEffect(() => {
     setSharedRootHandle(rootHandle);
   }, [rootHandle]);
-
-  // 启动时尝试恢复已授权的目录
-  useEffect(() => {
-    if (!supported) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        // 优先用 restoreRootDirectory：仅在权限已 granted 时返回 handle（无需用户手势）
-        const handle = await restoreRootDirectory();
-        if (cancelled) return;
-        if (handle) {
-          setRootHandle(handle);
-          setRootName(handle.name);
-          await refreshFiles(handle);
-          return;
-        }
-        // restore 失败：检查 IndexedDB 是否有保存的 handle（权限失效，需用户手势激活）
-        const saved = await peekSavedHandle();
-        if (cancelled) return;
-        if (saved) setPendingHandle(saved);
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [supported, refreshFiles]);
 
   // 用户手势触发：重新激活当前空间的目录权限
   const handleReActivate = useCallback(async () => {
@@ -330,47 +299,6 @@ export default function WorkspacePanel({
     showToast(`已关联 ${result.length} 个文件到空间「${spaceName}」`);
   }, [rootHandle, selected, files, spaceId, spaceName, showToast]);
 
-  // 导出全部素材到工作空间（或降级下载）
-  const handleExportMaterials = useCallback(async () => {
-    if (!materials.length) { showToast('素材库为空'); return; }
-    if (rootHandle) {
-      showToast(`正在导出 ${materials.length} 条素材…`);
-      try {
-        const results = await exportMaterials(rootHandle, materials);
-        const ok = results.filter(r => r.ok).length;
-        // 建索引：让工作空间文件可被对话检索召回
-        materials.forEach((m, i) => {
-          const r = results[i];
-          if (r?.ok) indexFile(r.path, `${m.title || 'material'}.md`, materialToMarkdown(m));
-        });
-        showToast(`已导出 ${ok}/${materials.length} 条素材到 news/`);
-        await refreshFiles(rootHandle);
-      } catch (e) { showToast(`导出失败: ${e.message}`); }
-    } else {
-      // 降级：逐个下载
-      materials.forEach(m => downloadMarkdown(m.title || 'material', materialToMarkdown(m)));
-      showToast(`已下载 ${materials.length} 个文件`);
-    }
-  }, [materials, rootHandle, showToast, refreshFiles]);
-
-  // 导出今日速报
-  const handleExportBriefing = useCallback(async () => {
-    if (!todayBriefing) { showToast('暂无今日速报'); return; }
-    const date = todayBriefing.date || new Date().toISOString().slice(0, 10);
-    const content = briefingToMarkdown(todayBriefing, todayLanes);
-    if (rootHandle) {
-      try {
-        const path = await exportBriefing(rootHandle, todayBriefing, todayLanes);
-        indexFile(path, `${date}.md`, content);
-        showToast(`已导出今日速报到 briefings/${date}.md`);
-        await refreshFiles(rootHandle);
-      } catch (e) { showToast(`导出失败: ${e.message}`); }
-    } else {
-      downloadMarkdown(`briefing-${date}`, content);
-      showToast('已下载今日速报');
-    }
-  }, [todayBriefing, todayLanes, rootHandle, showToast, refreshFiles]);
-
   // 不支持 File System Access API
   if (!supported) {
     return (
@@ -429,20 +357,8 @@ export default function WorkspacePanel({
         </div>
         <div className="workspace-top-actions">
           <button type="button" className="workspace-icon-btn" onClick={() => refreshFiles(rootHandle)} title="刷新">↻</button>
-          <button type="button" className="workspace-icon-btn" onClick={handlePick} title="切换文件夹">⇄</button>
           <button type="button" className="workspace-icon-btn" onClick={handleDisconnect} title="断开连接">✕</button>
         </div>
-      </div>
-
-      <div className="workspace-export-bar">
-        <button type="button" className="workspace-export-btn" onClick={handleExportMaterials} title="把素材库全部导出为 Markdown">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          导出素材 {materials.length > 0 && <span className="workspace-count">{materials.length}</span>}
-        </button>
-        <button type="button" className="workspace-export-btn" onClick={handleExportBriefing} title="导出今日速报为 Markdown">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6z"/></svg>
-          导出日报
-        </button>
       </div>
       {toast && <div className="workspace-toast">{toast}</div>}
 

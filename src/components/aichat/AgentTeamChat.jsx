@@ -4,10 +4,10 @@
  * - 多群聊：可创建多个团队群聊、切换、重命名、删除（groupChatStore v2）
  * - 成员栏：从 4 个预置子代理中邀请进群（roster 持久化），可移除
  * - 群聊流：用户消息 + 各 agent 回复气泡（带执行 meta：轮次/tokens）
- * - @ 召唤：输入 @ 弹出成员选择器；支持一条消息 @ 多个成员
- * - 接力流水线：被召唤成员按提及顺序**依次执行**，每人都能看到
- *   完整群聊上下文（共享）+ 本轮前序成员的产出（彼此知晓进度），
- *   在此基础上接力完成任务 —— 共享上下文 + 显式接力，不是各说各话
+ * - @ 强调：@ 仅指定优先接收顺序，不再过滤收件人
+ * - 两阶段广播流水线（v7）：每条消息全员收到 → Phase 1 各成员按角色认领
+ *   （【认领】/【关注】/【旁观】轻量声明）→ Phase 2 认领者 + 被 @ 者执行
+ *   完整产出，共享转写含彼此认领与前序产出，互相讨论接力推进
  * - 执行核：复用 subagentRunner.runOneSubagent（独立工具白名单/预算/审批会话）
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
@@ -190,17 +190,24 @@ export default function AgentTeamChat({
     setTimeout(() => { el?.focus(); }, 30);
   };
 
-  /* ---------- 接力流水线执行 ---------- */
+  /* ---------- 两阶段广播流水线（v7） ----------
+   * Phase 1 认领：每条消息广播给全员（@ 成员优先接收），各成员按角色设定
+   *   发出轻量认领声明（【认领】/【关注】/【旁观】）。
+   * Phase 2 协作：认领者 + 被 @ 者依次执行完整产出；共享转写含彼此的认领
+   *   与前序产出，形成"看到对方消息 → 讨论接力 → 推进任务"的协作闭环。 */
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || running) return;
-    if (roster.length === 0) { showToast('先邀请成员进群，再用 @ 召唤'); return; }
-    const mentioned = parseMentions(text, roster);
-    if (mentioned.length === 0) {
-      showToast('用 @ 召唤成员参与，例如：@研究员 调研一下 XX');
-      return;
-    }
+    if (roster.length === 0) { showToast('先邀请成员进群，再发消息协作'); return; }
     if (!runtime.llmConfig?.baseUrl || !runtime.selectedModel) { onNeedConfig?.(); return; }
+
+    const mentioned = parseMentions(text, roster);
+    const mentionedIds = new Set(mentioned.map(p => p.id));
+    // 广播顺序：被 @ 的成员优先接收，其余按入群顺序
+    const ordered = [
+      ...rosterPresets.filter(p => mentionedIds.has(p.id)),
+      ...rosterPresets.filter(p => !mentionedIds.has(p.id)),
+    ];
 
     addGroupMessage({ role: 'user', content: text });
     setInput('');
@@ -211,52 +218,99 @@ export default function AgentTeamChat({
     // 防御： unexpected 异常也以失败气泡落进群聊，而不是无声消失
     let failureCaught = null;
 
+    const parentCtx = {
+      sessionId: 'team-group-chat',
+      approvalMode: runtime.approvalMode || 'semi',
+      tavilyKey: runtime.tavilyKey || '',
+      doubaoSearchKey: runtime.doubaoSearchKey || '',
+      webSearchEnabled: runtime.webSearchEnabled !== false,
+    };
+    const runMember = (preset, objective, placeholder) => runOneSubagent(
+      { id: `gtc_${placeholder.id}`, index: 0, preset, objective },
+      {
+        llmConfig: runtime.llmConfig,
+        selectedModel: runtime.selectedModel,
+        parentCtx,
+        signal: controller.signal,
+        persist: false, // 群聊消息轮次不落盘，避免 outputs/ 噪音
+      },
+    );
+
     try {
-      let priorRound = '';
-      for (const preset of mentioned) {
+      /* ---- Phase 1：全员广播 · 角色认领 ---- */
+      const claims = new Map(); // presetId → { preset, claimText, kind }
+      for (const preset of ordered) {
+        if (controller.signal.aborted) break;
         const placeholder = addGroupMessage({
           role: 'agent', agentId: preset.id, agentName: preset.name,
-          content: '', status: 'running',
+          content: '', status: 'running', meta: { phase: 'claim' },
         });
-        if (!placeholder?.id) {
-          failureCaught = new Error('占位消息创建失败');
-          break;
-        }
+        if (!placeholder?.id) { failureCaught = new Error('占位消息创建失败'); break; }
         const shared = buildSharedTranscript(getActiveChat().messages.filter(m => m.id !== placeholder.id));
         const objective = [
-          '【群聊共享上下文】（所有成员共享的同一份白板，彼此可见）',
+          '【群聊共享上下文】（全员可见的同一份白板）',
+          shared,
+          '',
+          `【本轮用户消息】${text}`,
+          '',
+          '【你的任务：认领阶段】',
+          `你是群成员「${preset.name}」。请基于你的角色设定判断如何回应这条消息，只输出认领声明本身（不要执行任务、不要展开工作）：`,
+          '- 消息与你的职责相关且你愿承担 → 第一行输出「【认领】」，随后 ≤60 字说明你打算做什么；',
+          '- 值得补充观点但无需深度参与 → 第一行输出「【关注】」，随后一句简短看法（≤40 字）；',
+          '- 与你职责无关 → 输出「【旁观】」即可。',
+        ].join('\n');
+        const result = await runMember(preset, objective, placeholder);
+        const claimText = result.status === 'done' && result.report
+          ? String(result.report).trim()
+          : `⚠️ ${result.error || '认领未产出'}`;
+        // 认领语义解析：标记优先；无标记时被 @ 者视为认领、其余视为关注
+        const kind = claimText.startsWith('【认领】') ? 'claim'
+          : claimText.startsWith('【关注】') ? 'watch'
+            : claimText.startsWith('【旁观】') ? 'bystander'
+              : (mentionedIds.has(preset.id) ? 'claim' : 'watch');
+        updateGroupMessage(placeholder.id, {
+          content: claimText,
+          status: result.status === 'done' ? 'done' : result.status,
+          meta: { phase: 'claim', turns: result.turns, tokens: result.usage?.total_tokens || 0 },
+        });
+        claims.set(preset.id, { preset, claimText, kind });
+      }
+
+      /* ---- Phase 2：认领成员协作产出（共享转写含彼此认领与前序产出） ---- */
+      const contributors = ordered.filter(p => {
+        const c = claims.get(p.id);
+        return c && (c.kind === 'claim' || mentionedIds.has(p.id)); // 被 @ 点名者必然参与
+      });
+      let priorRound = '';
+      for (const preset of contributors) {
+        if (controller.signal.aborted) break;
+        const placeholder = addGroupMessage({
+          role: 'agent', agentId: preset.id, agentName: preset.name,
+          content: '', status: 'running', meta: { phase: 'work' },
+        });
+        if (!placeholder?.id) { failureCaught = new Error('占位消息创建失败'); break; }
+        const shared = buildSharedTranscript(getActiveChat().messages.filter(m => m.id !== placeholder.id));
+        const myClaim = claims.get(preset.id)?.claimText || '';
+        const objective = [
+          '【群聊共享上下文】（含本轮各成员的认领声明，彼此可见）',
           shared,
           '',
           `【本轮用户指令】${text}`,
           '',
-          priorRound
-            ? `【本轮前序成员产出】（请在接力时引用/校对/深化，不要重复劳动）\n${priorRound}`
-            : '【本轮前序成员产出】（你是本轮第一个响应者，负责打好接力第一棒）',
+          myClaim ? `【你已认领】${myClaim}` : '【你的认领】（被创始人点名参与，直接承担）',
           '',
-          '请基于以上上下文接力完成任务，直接给出你的结构化产出（这是发到群里的回复，不要寒暄）。',
+          priorRound
+            ? `【前序成员产出】（请引用/校对/深化，不要重复劳动）\n${priorRound}`
+            : '【前序成员产出】（你是本轮第一个执行者，负责打好第一棒）',
+          '',
+          '请执行你认领的部分，直接给出结构化产出（这是发到群里的回复，不要寒暄）。',
         ].join('\n');
-
-        const result = await runOneSubagent(
-          { id: `gtc_${placeholder.id}`, index: 0, preset, objective },
-          {
-            llmConfig: runtime.llmConfig,
-            selectedModel: runtime.selectedModel,
-            parentCtx: {
-              sessionId: 'team-group-chat',
-              approvalMode: runtime.approvalMode || 'semi',
-              tavilyKey: runtime.tavilyKey || '',
-              doubaoSearchKey: runtime.doubaoSearchKey || '',
-              webSearchEnabled: runtime.webSearchEnabled !== false,
-            },
-            signal: controller.signal,
-          },
-        );
-
+        const result = await runMember(preset, objective, placeholder);
         const ok = result.status === 'done' && result.report;
         updateGroupMessage(placeholder.id, {
           content: ok ? result.report : `⚠️ ${result.error || '未产出内容'}`,
           status: ok ? 'done' : result.status,
-          meta: { turns: result.turns, tokens: result.usage?.total_tokens || 0 },
+          meta: { phase: 'work', turns: result.turns, tokens: result.usage?.total_tokens || 0 },
         });
         priorRound += `${priorRound ? '\n\n' : ''}### @${preset.name}（${result.status === 'done' ? '已完成' : result.status}）\n${String(result.report || result.error || '').slice(0, 2400)}`;
       }
@@ -266,14 +320,14 @@ export default function AgentTeamChat({
       if (failureCaught) {
         addGroupMessage({
           role: 'agent', agentId: 'system', agentName: '系统',
-          content: `⚠️ 接力流水线异常中断：${failureCaught.message || failureCaught}`,
+          content: `⚠️ 团队协作异常中断：${failureCaught.message || failureCaught}`,
           status: 'failed',
         });
       }
       setGroupRunning(false);
       abortRef.current = null;
     }
-  }, [input, running, roster, runtime, onNeedConfig]);
+  }, [input, running, roster, rosterPresets, runtime, onNeedConfig]);
 
   const handleStop = () => { abortRef.current?.abort(); };
 
@@ -293,7 +347,7 @@ export default function AgentTeamChat({
         <div className="gtc-head-main">
           <span className="team-center-kicker">TEAM</span>
           <h2>团队群聊</h2>
-          <p>@ 召唤成员接力协作 · 全员共享同一份上下文 · 一个人的公司</p>
+          <p>每条消息全员可见 · @ 指定优先响应 · 成员按角色主动认领协作</p>
         </div>
         <div className="gtc-head-actions">
           {onViewRecords && (
@@ -366,8 +420,9 @@ export default function AgentTeamChat({
             <p className="gtc-empty-title">建立你的第一个团队</p>
             <p className="gtc-empty-desc">
               ① 点「＋ 邀请成员」把专家拉进群<br />
-              ② 在下方输入框 @ 成员发布任务，可以一次 @ 多人<br />
-              ③ 被召唤的成员共享全部上下文、按顺序接力产出 —— 形成协作流水线
+              ② 直接发消息给团队；@ 某位成员可指定 TA 优先响应<br />
+              ③ 全员都会收到消息并按角色认领：认领者深度产出，其余成员简短表态<br />
+              ④ 认领后成员互相看到彼此的产出，接力讨论推进任务
             </p>
             <p className="gtc-empty-example">例：@探索者 检索今天端侧模型的资讯，@研究员 交叉验证，@撰写者 写成简报</p>
           </div>
@@ -391,6 +446,7 @@ export default function AgentTeamChat({
               <div className="gtc-bubble">
                 <div className="gtc-bubble-head">
                   <b>@{m.agentName || m.agentId}</b>
+                  {m.meta?.phase === 'claim' && <span className="gtc-phase-tag">认领</span>}
                   {m.status === 'running' && <span className="gtc-running-tag">执行中…</span>}
                   {m.meta?.turns > 0 && <small>{m.meta.turns} 轮{m.meta.tokens ? ` · ${Number(m.meta.tokens).toLocaleString()} tokens` : ''}</small>}
                 </div>
@@ -408,7 +464,7 @@ export default function AgentTeamChat({
             </div>
           );
         })}
-        {running && <div className="gtc-pipeline-hint">接力流水线执行中，后一位成员正在阅读前序产出…</div>}
+        {running && <div className="gtc-pipeline-hint">团队协作中：成员正在认领与接力推进任务…</div>}
         <div ref={streamRef} />
       </div>
 
@@ -431,7 +487,7 @@ export default function AgentTeamChat({
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          placeholder={running ? '流水线执行中…' : '@ 召唤成员发布任务（Enter 发送，Shift+Enter 换行）'}
+          placeholder={running ? '团队协作执行中…' : '发消息给团队（@ 成员可指定优先响应；Enter 发送，Shift+Enter 换行）'}
           rows={2}
           disabled={running}
         />

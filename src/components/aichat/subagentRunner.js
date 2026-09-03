@@ -73,10 +73,11 @@ function transcriptText(task, messages) {
  * @param {Object} [opts.extraCtx] 追加进 toolCtx 的静态字段
  * @param {(task: Object) => Object} [opts.extraCtxFn] 按任务生成追加 toolCtx 字段
  *        （team 模式下为每个队友绑定 teamId / teamMember 身份）
- * @param {Object} [opts.extraCtx] 追加进 toolCtx 的字段（teamId / teamMember 等）
+ * @param {boolean} [opts.persist] 是否把执行转写落盘到工作空间（默认 true；
+ *        群聊认领等轻量轮次传 false，避免产出噪音文件）
  * @returns {Promise<{id,agent,agentName,objective,status,report,error,usage,turns,transcriptPath,memberName}>}
  */
-async function runOneSubagent(task, { llmConfig, selectedModel, parentCtx, onProgress, signal, extraTools = [], buildSystemSuffix, extraCtx, extraCtxFn }) {
+async function runOneSubagent(task, { llmConfig, selectedModel, parentCtx, onProgress, signal, extraTools = [], buildSystemSuffix, extraCtx, extraCtxFn, persist = true }) {
   const preset = task.preset;
   const controller = new AbortController();
   const onParentAbort = () => controller.abort();

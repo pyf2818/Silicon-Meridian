@@ -12658,11 +12658,39 @@ body {
   box-shadow: none;
   background: var(--surface-workbench);
   display: grid;
-  grid-template-columns: 200px 1fr 260px;
+  /* 三栏列宽可拖拽（v7）：变量由 AiChatPanel 根节点注入，拖动手柄改写 */
+  grid-template-columns: var(--ws-left-w, 200px) 1fr var(--ws-right-w, 260px);
 }
 .ai-chat-panel-main.session-collapsed {
-  grid-template-columns: 1fr 260px;
+  grid-template-columns: 1fr var(--ws-right-w, 260px);
 }
+/* 三栏拖拽手柄：绝对定位贴列边界，不占 grid 单元 */
+.ws-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 60;
+  touch-action: none;
+}
+.ws-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%) scaleX(0);
+  background: var(--accent-cyan);
+  transition: transform .15s ease;
+}
+.ws-resize-handle:hover::after,
+.ws-resize-handle:active::after {
+  transform: translateX(-50%) scaleX(1);
+}
+.ws-resize-left { left: calc(var(--ws-left-w, 200px) - 4px); }
+.ws-resize-right { right: calc(var(--ws-right-w, 260px) - 4px); }
 .ai-chat-panel-main .chat-main-col {
   display: flex;
   flex-direction: column;
@@ -14490,28 +14518,7 @@ body {
   transition: color var(--ease-fast);
 }
 .chat-model-manage:hover { color: var(--accent-cyan); }
-/* 底部工具栏：上下文胶囊 + 联网 + 权限模式 单行并排 */
-.chat-composer-bottom {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: nowrap;
-  /* 改为 visible：上下文条目弹层要从胶囊向上浮出，hidden 会把弹层整体裁掉 */
-  overflow: visible;
-  padding: 0 4px;
-}
-.chat-composer-bottom .chat-context-group {
-  flex: 1 1 auto;
-  min-width: 0;
-  /* 上下文条目弹层（chat-context-peek）挂在本组内向上浮出，overflow 必须放行；
-     水平溢出改由 pill 自身 flex 收缩承担 */
-  overflow: visible;
-  scrollbar-width: thin;
-}
-.chat-composer-bottom .chat-permission-mode {
-  flex-shrink: 0;
-  margin-left: auto;
-}
+/* （v7）原 chat-composer-bottom 底部工具栏已整体收进输入框内（.chat-input-tools），规则移除 */
 /* 联网搜索切换：与上下文胶囊同形，但用 globe 图标 + 状态色 */
 .chat-websearch-toggle {
   cursor: pointer;
@@ -14854,12 +14861,26 @@ body {
   gap: 6px;
   min-width: 0;
 }
-/* 工具行：权限模式 + 附件（输入框内左下角） */
+/* 工具行：权限模式 + 附件 + 模型/上下文胶囊（全部收进输入框内，v7） */
 .chat-input-tools {
   position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  /* peek 弹层从胶囊向上浮出，禁止裁剪 */
+  overflow: visible;
+}
+/* 收纳进来的模型胶囊：推到工具行中段，右侧留给上下文胶囊 */
+.chat-input-tools .chat-model-wrap {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.chat-input-tools .chat-context-group {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* peek 弹层挂在本组内向上浮出，overflow 必须放行；水平溢出由 pill 自身收缩承担 */
+  overflow: visible;
 }
 .chat-mode-chip {
   display: inline-flex;
@@ -28071,6 +28092,16 @@ body {
 .gtc-running-tag {
   font-size: 10px; color: var(--status-ok, #3fb950);
   animation: tabDotPulse 1.4s ease-in-out infinite;
+}
+/* 认领阶段标签：区分 Phase 1 认领声明与 Phase 2 完整产出 */
+.gtc-phase-tag {
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--accent-cyan);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 40%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+  flex: none;
 }
 .gtc-bubble-text { white-space: pre-wrap; word-break: break-word; }
 /* 成员报告的 Markdown 渲染排版（气泡内收敛尺寸） */

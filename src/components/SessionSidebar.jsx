@@ -534,11 +534,7 @@ export default function SessionSidebar({
       )}
 
       {tab === 'files' && (
-        <WorkspacePanel
-          materials={materials}
-          todayBriefing={todayBriefing}
-          todayLanes={todayLanes}
-        />
+        <WorkspacePanel />
       )}
 
       {tab === 'agents' && (

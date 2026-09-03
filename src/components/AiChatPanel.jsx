@@ -166,6 +166,60 @@ export default function AiChatPanel({
     onUpdateAgent(agentId, patch);
   }, [onUpdateAgent]);
 
+  // 三栏拖拽调宽（v7）：左（会话栏）/ 右（智能管理栏）列宽，localStorage 持久化
+  const WS_WIDTHS_KEY = 'aiWorkstationPanelWidths';
+  const clampW = (v, min, max, fallback) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, Math.round(n)));
+  };
+  const [panelWidths, setPanelWidths] = useState(() => {
+    try {
+      const raw = localStorage.getItem(WS_WIDTHS_KEY);
+      if (raw) {
+        const p = JSON.parse(raw) || {};
+        return { left: clampW(p.left, 160, 400, 200), right: clampW(p.right, 200, 480, 260) };
+      }
+    } catch { /* ignore */ }
+    return { left: 200, right: 260 };
+  });
+  const panelWidthsRef = useRef(panelWidths);
+  panelWidthsRef.current = panelWidths;
+  const dragRef = useRef(null); // { side, startX, startW }
+  const startPanelDrag = useCallback((side) => (e) => {
+    e.preventDefault();
+    dragRef.current = { side, startX: e.clientX, startW: panelWidthsRef.current[side] };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+  useEffect(() => {
+    const onMove = (e) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const delta = e.clientX - d.startX;
+      if (d.side === 'left') {
+        const w = clampW(d.startW + delta, 160, 400, 200);
+        setPanelWidths(p => (p.left === w ? p : { ...p, left: w }));
+      } else {
+        const w = clampW(d.startW - delta, 200, 480, 260);
+        setPanelWidths(p => (p.right === w ? p : { ...p, right: w }));
+      }
+    };
+    const onUp = () => {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try { localStorage.setItem(WS_WIDTHS_KEY, JSON.stringify(panelWidthsRef.current)); } catch { /* ignore */ }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, []);
+
   // Sync model selection when llmConfig changes externally (e.g. from LLM modal)
   useEffect(() => {
     if (llmConfig?.selectedModel && llmConfig.selectedModel !== selectedModel) {
@@ -1268,7 +1322,10 @@ export default function AiChatPanel({
   const hasConfig = Boolean(llmConfig?.baseUrl && selectedModel);
 
   return (
-    <div className={`ai-chat-panel ${variant === 'main' ? 'ai-chat-panel-main' : ''} ${variant === 'main' && sessionCollapsed ? 'session-collapsed' : ''}`}>
+    <div
+      className={`ai-chat-panel ${variant === 'main' ? 'ai-chat-panel-main' : ''} ${variant === 'main' && sessionCollapsed ? 'session-collapsed' : ''}`}
+      style={variant === 'main' ? { '--ws-left-w': `${panelWidths.left}px`, '--ws-right-w': `${panelWidths.right}px` } : undefined}
+    >
       {/* 左栏：会话管理（可折叠） */}
       {variant === 'main' && !sessionCollapsed && (
         <SessionSidebar
@@ -1617,7 +1674,7 @@ export default function AiChatPanel({
             </button>
           </div>
         </div>
-        {/* 输入框：上=textarea+发送；下=权限模式 + 附件（收进输入框内左下角，节省下方空间） */}
+        {/* 输入框：上=textarea+发送；下=权限模式+附件+模型/上下文胶囊（全部收进输入框内，v7） */}
         <div className="chat-input-area">
           <input ref={fileInputRef} type="file" accept="image/*,.pdf,.txt,.md" style={{ display: 'none' }} onChange={handleFileUpload} />
           <div className="chat-input-main-row">
@@ -1673,12 +1730,8 @@ export default function AiChatPanel({
             <button className="chat-attach-mini" onClick={() => fileInputRef.current?.click()} title="上传附件" disabled={!hasConfig}>
               {ICONS.paperclip}
             </button>
-          </div>
-        </div>
-        {/* 底部一行：模型胶囊 + 上下文进度环 + 上下文胶囊（可点开查看条目）+ 联网搜索 */}
-        <div className="chat-composer-bottom">
-          {/* 模型胶囊 + 上下文进度环（左端固定） */}
-          <div className="chat-model-wrap">
+            {/* 模型胶囊 + 上下文进度环（v7：从底部一行收进输入框内，整体更干练） */}
+            <div className="chat-model-wrap">
             <button
               ref={modelBtnRef}
               type="button"
@@ -1840,6 +1893,7 @@ export default function AiChatPanel({
                 <div className="chat-context-peek-hint">Ctrl+点击多选 · 单击插入引用 · 已排除条目单击恢复</div>
               </div>
             )}
+          </div>
           </div>
         </div>
       </div>
@@ -2134,6 +2188,21 @@ export default function AiChatPanel({
         agent={agent}
         onChange={handleSavePersona}
       />
+      {/* 三栏拖拽手柄：贴在左右列边界上，hover 显色 */}
+      {variant === 'main' && !sessionCollapsed && (
+        <div
+          className="ws-resize-handle ws-resize-left"
+          onPointerDown={startPanelDrag('left')}
+          title="拖动调整会话栏宽度"
+        />
+      )}
+      {variant === 'main' && (
+        <div
+          className="ws-resize-handle ws-resize-right"
+          onPointerDown={startPanelDrag('right')}
+          title="拖动调整智能管理栏宽度"
+        />
+      )}
     </div>
   );
 }
