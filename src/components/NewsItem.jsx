@@ -2,7 +2,7 @@ import { memo, useRef, useEffect, useState } from 'react';
 import { ICONS, MODE_MAP, REGION_MAP } from '../constants/index.jsx';
 import { getGradeColors, isEnglishText, formatRelative, isFreshNews } from '../utils/format.js';
 
-function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBookmarked = false, isInMaterials = false, onBookmark, onSummary, isSummaryOpen, summaryText, summaryLoading = false, summaryMode = '', isFollowed = false, onRead, showTranslation, onToggleTranslation, onRequestTranslation, isTranslating, translation, onOpenLightbox, onAddMaterial }) {
+function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBookmarked = false, isInMaterials = false, onBookmark, onSummary, isSummaryOpen, summaryText, summaryLoading = false, summaryMode = '', isFollowed = false, onRead, showTranslation, onToggleTranslation, onRequestTranslation, isTranslating, translation, onOpenLightbox, onAddMaterial, onShareToChat }) {
   const isCompact = viewMode === 'compact';
   const isCard = viewMode === 'card';
   const hasMedia = item.imageUrl || item.videoUrl;
@@ -213,6 +213,7 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
             <div className="item-actions">
               {onBookmark && <button className={`item-action-btn bookmark-btn ${isBookmarked ? 'active' : ''}`} onClick={onBookmark} title={isBookmarked ? '取消收藏' : '收藏'}>{isBookmarked ? ICONS.bookmarkFill : ICONS.bookmark}</button>}
               {onAddMaterial && <button className={`item-action-btn add-material-btn ${isInMaterials ? 'active' : ''}`} onClick={() => onAddMaterial(item)} title={isInMaterials ? '已在素材库' : '收藏为素材'}>{ICONS.layers}</button>}
+              {onShareToChat && <button className="item-action-btn share-chat-btn" onClick={() => onShareToChat(item)} title="Share to chat">{ICONS.messageSquare}</button>}
               {onSummary && <button className={`item-action-btn summary-btn ${summaryLoading ? 'loading' : ''}`} onClick={onSummary} title="生成短摘要" disabled={summaryLoading}>{summaryLoading ? ICONS.spinner : ICONS.sparkle}</button>}
               {isEnglish && onToggleTranslation && <button className={`item-action-btn translate-btn ${showTranslation ? 'active' : ''} ${isTranslating ? 'translating' : ''}`} onClick={() => { if (isTranslating) return; if (!translation && onRequestTranslation) { onRequestTranslation().then(result => { if (result) onToggleTranslation(); }); } else { onToggleTranslation(); } }} title="翻译" disabled={isTranslating}>{isTranslating ? ICONS.spinner : ICONS.globe}</button>}
               <a href={item.url} target="_blank" rel="noreferrer" className="item-link" onClick={() => onRead?.(item)}>阅读原文 {ICONS.arrowRight}</a>
@@ -228,6 +229,7 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
           <div className="item-actions">
             {onBookmark && <button className={`item-action-btn bookmark-btn ${isBookmarked ? 'active' : ''}`} onClick={onBookmark} title={isBookmarked ? '取消收藏' : '收藏'}>{isBookmarked ? ICONS.bookmarkFill : ICONS.bookmark}</button>}
             {onAddMaterial && <button className={`item-action-btn add-material-btn ${isInMaterials ? 'active' : ''}`} onClick={() => onAddMaterial(item)} title={isInMaterials ? '已在素材库' : '收藏为素材'}>{ICONS.layers}</button>}
+            {onShareToChat && <button className="item-action-btn share-chat-btn" onClick={() => onShareToChat(item)} title="Share to chat">{ICONS.messageSquare}</button>}
             {onSummary && <button className={`item-action-btn summary-btn ${summaryLoading ? 'loading' : ''}`} onClick={onSummary} title="生成短摘要" disabled={summaryLoading}>{summaryLoading ? ICONS.spinner : ICONS.sparkle}</button>}
             {isEnglish && onToggleTranslation && <button className={`item-action-btn translate-btn ${showTranslation ? 'active' : ''} ${isTranslating ? 'translating' : ''}`} onClick={() => { if (isTranslating) return; if (!translation && onRequestTranslation) { onRequestTranslation().then(result => { if (result) onToggleTranslation(); }); } else { onToggleTranslation(); } }} title="翻译" disabled={isTranslating}>{isTranslating ? ICONS.spinner : ICONS.globe}</button>}
             <a href={item.url} target="_blank" rel="noreferrer" className="item-link" onClick={() => onRead?.(item)}>{ICONS.arrowRight}</a>

@@ -50,6 +50,8 @@
     "agents": "Agents",
     "editor": "Editor",
     "square": "Community",
+    "chat": "Team Chat",
+    "chatDesc": "Contacts & group collaboration",
     "profileCenter": "Profile",
     "monitor": "Competitive Monitor",
     "monitorDesc": "Track rivals & market moves",
@@ -70,6 +72,7 @@
     "marketAnalysis": "Market Analysis",
     "creativeCenter": "Creative Studio",
     "communitySquare": "Community Square",
+    "chat": "Team Chat",
     "userProfile": "User Profile",
     "monitor": "Competitive Intelligence"
   },

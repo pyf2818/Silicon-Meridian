@@ -48,6 +48,7 @@ export default function WorkflowCanvas({
   onMoveNode = () => {},      // (id, x, y) → 提交 position
   onCreateNodeAt = () => {},  // (type, worldX, worldY)
   nodeTypeMeta = {},
+  selectedNode = null,
 }) {
   const viewportRef = useRef(null);
   const [pan, setPan] = useState({ x: 24, y: 24 });

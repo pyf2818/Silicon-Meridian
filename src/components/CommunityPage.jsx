@@ -19,7 +19,7 @@ function relativeDate(value) {
   return `${Math.floor(delta / 86400000)} 天前`;
 }
 
-export default function CommunityPage({ user, onRequireAuth }) {
+export default function CommunityPage({ user, onRequireAuth, onShareToChat }) {
   const community = useCommunity();
   const [composerOpen, setComposerOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -54,6 +54,7 @@ export default function CommunityPage({ user, onRequireAuth }) {
     try { await action(); } catch (error) { community.setError(error.message); }
   };
   const sharePost = async (post) => {
+    onShareToChat?.({ type: 'community-post', id: post.id, title: post.title, body: post.body, author: post.displayName || post.username });
     await copyPostShareLink(post.id);
     showToast('分享链接已复制，粘贴给好友或群聊即可');
   };

@@ -271,6 +271,7 @@ function AgentsPage({
                     onMoveNode={(id, x, y) => updateWorkflowNode(id, { position: { x, y } })}
                     onCreateNodeAt={(type, x, y) => addWorkflowNode({ x, y }, type)}
                     nodeTypeMeta={workflowTypeMeta}
+                    selectedNode={selectedWorkflowNode}
                   />
 
                   <div className="workflow-add-row">

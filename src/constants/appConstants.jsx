@@ -63,6 +63,7 @@ export const NAV_ITEMS = [
   { id: 'agents', labelKey: 'nav.agents', icon: 'bot' },
   { id: 'editor', labelKey: 'nav.editor', icon: 'edit' },
   { id: 'square', labelKey: 'nav.square', icon: 'user' },
+  { id: 'chat', labelKey: 'nav.chat', icon: 'messageSquare' },
   { id: 'profile-center', labelKey: 'nav.profileCenter', icon: 'target' },
   { id: 'monitor', labelKey: 'nav.monitor', icon: 'target' },
 ];
@@ -75,6 +76,7 @@ export const PRIMARY_NAV_ITEMS = [
   { id: 'github', labelKey: 'nav.github', descKey: 'nav.githubProjects', shortKey: 'nav.github', icon: 'github', nav: 'github', children: ['github'] },
   { id: 'studio', labelKey: 'nav.studio', descKey: 'nav.materialsAgentsCreation', shortKey: 'nav.studio', icon: 'edit', nav: 'studio', children: ['materials', 'agents', 'editor'] },
   { id: 'square', labelKey: 'nav.square', descKey: 'nav.shareCommunity', shortKey: 'nav.square', icon: 'user', nav: 'square', children: ['square'] },
+  { id: 'chat', labelKey: 'nav.chat', descKey: 'nav.chatDesc', shortKey: 'nav.chat', icon: 'messageSquare', nav: 'chat', children: ['chat'] },
   { id: 'profile-center', labelKey: 'nav.profileCenter', descKey: 'nav.profileLearning', shortKey: 'nav.profileCenter', icon: 'target', nav: 'profile-center', children: ['profile-center'] },
   { id: 'monitor', labelKey: 'nav.monitor', descKey: 'nav.monitorDesc', shortKey: 'nav.monitor', icon: 'target', nav: 'monitor', children: ['monitor'] }
 ];
@@ -107,6 +109,10 @@ export const NAV_CONTEXT_SECTIONS = {
   square: {
     labelKey: 'context.communitySquare',
     items: ['square']
+  },
+  chat: {
+    labelKey: 'context.chat',
+    items: ['chat']
   },
   'profile-center': {
     labelKey: 'context.userProfile',

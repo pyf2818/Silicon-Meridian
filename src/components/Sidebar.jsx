@@ -115,7 +115,6 @@ export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileM
                     {!sidebarCollapsed && (
                       <span className="nav-label-wrap">
                         <span className="nav-label">{item.label}</span>
-                        <small>{item.desc}</small>
                       </span>
                     )}
                     {showContext && (

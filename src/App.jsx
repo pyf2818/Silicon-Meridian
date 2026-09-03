@@ -49,6 +49,7 @@ import RecommendationFeed from './components/RecommendationFeed.jsx';
 import RecommendationDateRail from './components/RecommendationDateRail.jsx';
 import TodayNewspaper from './components/TodayNewspaper.jsx';
 import CommunityPage from './components/CommunityPage.jsx';
+import ChatPage from './components/ChatPage.jsx';
 import RecommendationsPage from './components/RecommendationsPage.jsx';
 import ProfilePage from './components/ProfilePage.jsx';
 import Topbar from './components/Topbar.jsx';
@@ -276,6 +277,11 @@ function App() {
   // ========== 用户系统 ==========
   // 认证与用户会话 — 从 App.jsx 提取为独立 hook（减少 ~140 行）
   // 注意：useLlmConfig 需要 user 参数做跨设备同步，必须在 useAuth 之后调用
+  const [pendingChatShare, setPendingChatShare] = useState(null);
+  const shareNewsToChat = (item) => {
+    setPendingChatShare({ type: 'news-item', id: item.id, title: item.title, body: item.summary || '', url: item.url, source: item.source });
+    setNav('chat');
+  };
   const {
     user, token, showAuthModal, authMode, authForm, authLoading, authError, setAuthError,
     showInterestModal, selectedInterests, isLoggedIn,
@@ -2264,7 +2270,7 @@ ${signals}
       }
     } catch { /* ignore prefetch errors */ }
   }, [items.length, githubRepos.length, trendingItems.length, blocked, debouncedQuery, loadNews, loadGithub, loadTrending]);
-  const wideWorkspaceNavs = ['home', 'recommendations', 'studio', 'agents', 'editor', 'materials', 'square', 'profile-center'];
+  const wideWorkspaceNavs = ['home', 'recommendations', 'studio', 'agents', 'editor', 'materials', 'square', 'chat', 'profile-center'];
   // 右侧面板：「全部动态」显示关注关键词；「AI 情报首页」显示情报时间线；「精准推荐」显示日期竖向时间线
   const showRightPanel = nav === 'recommendations';
   const showStatsBar = showRightPanel && nav !== 'home' && nav !== 'recommendations';
@@ -2548,12 +2554,13 @@ ${signals}
               getTranslation={getTranslation}
               setLightbox={setLightbox}
               setTranslationOpen={setTranslationOpen}
+              onShareToChat={shareNewsToChat}
             />
           )}
 
           {/* TRENDING */}
           {nav === 'trending' && (
-            <TrendingPage key="trending" viewMode={viewMode} trendingLoading={trendingLoading} trendingItems={trendingItems} isBookmarked={isBookmarked} isInMaterials={isInMaterials} toggleBookmark={toggleBookmark} toggleMaterial={toggleMaterial} setLightbox={setLightbox} translationOpen={translationOpen} setTranslationOpen={setTranslationOpen} requestTranslation={requestTranslation} translatingItems={translatingItems} getTranslation={getTranslation} trendingLoadingMore={trendingLoadingMore} trendingHasMore={trendingHasMore} loadTrending={loadTrending} trendingPlatform={trendingPlatform} trendingType={trendingType} />
+            <TrendingPage key="trending" viewMode={viewMode} trendingLoading={trendingLoading} trendingItems={trendingItems} isBookmarked={isBookmarked} isInMaterials={isInMaterials} toggleBookmark={toggleBookmark} toggleMaterial={toggleMaterial} setLightbox={setLightbox} translationOpen={translationOpen} setTranslationOpen={setTranslationOpen} requestTranslation={requestTranslation} translatingItems={translatingItems} getTranslation={getTranslation} trendingLoadingMore={trendingLoadingMore} trendingHasMore={trendingHasMore} loadTrending={loadTrending} trendingPlatform={trendingPlatform} trendingType={trendingType} onShareToChat={shareNewsToChat} />
           )}
 
           {/* SMART RECOMMENDATIONS - 当日满足用户关注/画像的资讯卡片流（右栏竖向时间线见 panel） */}
@@ -2601,6 +2608,7 @@ ${signals}
               requestTranslation={requestTranslation}
               setTranslationOpen={setTranslationOpen}
               setLightbox={setLightbox}
+              onShareToChat={shareNewsToChat}
             />
           )}
           {/* recommendations-legacy 已删除（死代码，无导航入口） */}
@@ -2631,7 +2639,9 @@ ${signals}
             </SafeBoundary>
           )}
 
-          {nav === 'square' && <CommunityPage user={user} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} />}
+          {nav === 'square' && <CommunityPage user={user} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} onShareToChat={share => { setPendingChatShare(share); setNav('chat'); }} />}
+
+          {nav === 'chat' && <ChatPage user={user} pendingShare={pendingChatShare} onConsumeShare={() => setPendingChatShare(null)} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} />}
 
           {nav === 'profile-center' && (
             <ProfilePage
