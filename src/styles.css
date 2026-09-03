@@ -14968,6 +14968,12 @@ body {
 .stock-decision-summary strong { color: var(--text-primary); font-size: 14px; }
 .stock-decision-summary button, .stock-decision-next button { padding: 6px 10px; border: 1px solid var(--accent-cyan-border); border-radius: 5px; background: var(--accent-cyan-soft); color: var(--accent-cyan); font-size: 10px; font-weight: 700; cursor: pointer; }
 .stock-decision-summary button:disabled { opacity: .45; cursor: not-allowed; }
+.stock-decision-coverage { display: grid; grid-template-columns: auto minmax(120px, 1fr) auto; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); }
+.stock-decision-coverage > div:first-child { display: flex; align-items: baseline; gap: 7px; white-space: nowrap; }
+.stock-decision-coverage strong { color: var(--text-primary); font-size: 10px; }
+.stock-decision-coverage span, .stock-decision-coverage small { color: var(--text-muted); font-size: 9px; }
+.stock-decision-coverage-bar { height: 5px; overflow: hidden; border-radius: 999px; background: var(--bg-tertiary); }
+.stock-decision-coverage-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--signal-critical), var(--accent-cyan)); transition: width .2s ease; }
 .stock-decision-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .stock-decision-grid section { min-width: 0; padding: 10px 11px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); }
 .stock-decision-grid section.support { border-top-color: rgba(34, 197, 94, .55); }
@@ -15322,6 +15328,7 @@ body {
   .stock-intelligence-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stock-intelligence-foot { align-items: flex-start; flex-direction: column; gap: 3px; }
   .stock-intelligence-foot span:last-child { text-align: left; }
+  .stock-decision-coverage { grid-template-columns: 1fr; gap: 7px; }
   .stock-decision-grid { grid-template-columns: 1fr; }
   .stock-decision-summary, .stock-decision-next { align-items: flex-start; flex-direction: column; }
   .stock-policy-grid, .stock-policy-summary { grid-template-columns: 1fr; }

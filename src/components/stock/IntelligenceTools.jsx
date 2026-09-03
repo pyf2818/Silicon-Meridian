@@ -65,21 +65,28 @@ function InvestorPolicyTool({ policy, onSave }) {
   );
 }
 
-function DecisionEvidenceTool({ stock, realtime, diagnosis, diagnosing, onAnalyze, onOpenTool }) {
-  const card = useMemo(() => buildDecisionCard({ stock, realtime, diagnosis }), [diagnosis, realtime, stock]);
+function DecisionEvidenceTool({ stock, realtime, diagnosis, evidencePacket, diagnosing, onAnalyze, onOpenTool }) {
+  const card = useMemo(() => buildDecisionCard({ stock, realtime, diagnosis, evidencePacket }), [diagnosis, evidencePacket, realtime, stock]);
   return (
     <section className="stock-decision-tool">
       <div className="stock-decision-summary">
         <div><span>当前结论</span><strong>{card.headline}</strong></div>
         <button type="button" onClick={onAnalyze} disabled={diagnosing || !realtime}>{diagnosing ? '分析中…' : diagnosis ? '刷新证据' : '生成证据'}</button>
       </div>
+      {card.coverage && (
+        <div className="stock-decision-coverage">
+          <div><strong>证据覆盖</strong><span>{card.coverage.available}/{card.coverage.total} · {card.coverage.label}</span></div>
+          <div className="stock-decision-coverage-bar"><i style={{ width: `${card.coverage.score}%` }} /></div>
+          <small>覆盖度衡量已接入的数据维度，不代表预测置信度。</small>
+        </div>
+      )}
       <div className="stock-decision-grid">
         <section><strong>已知事实</strong>{card.facts.map(item => <p key={item}>{item}</p>)}</section>
         <section className="support"><strong>支持证据</strong>{card.support.map(item => <p key={item}>{item}</p>)}</section>
         <section className="counter"><strong>反方审查</strong>{card.counter.map(item => <p key={item}>{item}</p>)}</section>
         <section className="invalid"><strong>失效条件</strong>{card.invalidation.map(item => <p key={item}>{item}</p>)}</section>
       </div>
-      <div className="stock-decision-missing"><strong>证据缺口</strong>{card.missing.map(item => <span key={item}>{item}</span>)}</div>
+      <div className="stock-decision-missing"><strong>证据缺口</strong>{card.missing.length ? card.missing.map(item => <span key={item}>{item}</span>) : <span>当前没有待补充项</span>}</div>
       <div className="stock-decision-next"><span>{card.nextAction}</span><div><button type="button" onClick={() => onOpenTool('scenario')}>情景推演</button><button type="button" onClick={() => onOpenTool('risk')}>仓位预算</button></div></div>
     </section>
   );

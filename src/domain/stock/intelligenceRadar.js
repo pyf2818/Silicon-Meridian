@@ -1,4 +1,5 @@
 import { evaluatePolicyFit } from './investorPolicy.js';
+import { buildStockEvidencePacket } from './evidencePacket.js';
 
 const finite = value => Number.isFinite(Number(value)) ? Number(value) : null;
 
@@ -114,31 +115,37 @@ export function buildMarketEvidence({ indices = [], sectors = [], coverage = nul
   };
 }
 
-export function buildDecisionCard({ stock = {}, realtime = null, diagnosis = null } = {}) {
-  const quote = realtime || stock;
-  const price = finite(quote?.price);
-  const changePct = finite(quote?.changePct);
-  const facts = [];
-  if (price !== null) facts.push(`现价 ${price.toFixed(2)}`);
-  if (changePct !== null) facts.push(`日内涨跌 ${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%`);
-  if (diagnosis?.metrics?.excessReturn20 !== null && diagnosis?.metrics?.excessReturn20 !== undefined) facts.push(`20期超额 ${diagnosis.metrics.excessReturn20}%`);
-  if (diagnosis?.metrics?.volumeTrend) facts.push(`量能 ${diagnosis.metrics.volumeTrend}`);
+export function buildDecisionCard({ stock = {}, realtime = null, diagnosis = null, evidencePacket = null, now = Date.now() } = {}) {
+  const packet = evidencePacket || diagnosis?.evidencePacket || buildStockEvidencePacket({ stock, realtime, diagnosis, now });
+  const facts = [...(packet.facts || [])];
+  const trendReady = packet.dimensions?.find(item => item.key === 'trend')?.status === 'ready';
+  if (diagnosis?.metrics?.volumeTrend && trendReady) facts.push(`量能 ${diagnosis.metrics.volumeTrend}`);
 
   const support = diagnosis?.bullCase?.slice(0, 3) || [];
   const counter = diagnosis?.bearCase?.slice(0, 3) || [];
   const invalidation = diagnosis?.invalidation?.slice(0, 3) || [];
-  const missing = [];
-  if (!diagnosis || diagnosis.status !== 'ready') missing.push('尚未运行日 K 诊断');
-  missing.push('暂未接入财务、公告、估值与资金流验证');
+  const missing = [
+    ...(diagnosis?.status === 'ready' ? [] : ['尚未运行日 K 诊断']),
+    ...(packet.partial || []).map(item => `需复核：${item}`),
+    ...(packet.missing || []),
+  ];
+  const quoteReady = packet.dimensions?.find(item => item.key === 'quote')?.status === 'ready';
+  const evidenceReady = diagnosis?.status === 'ready' && quoteReady && trendReady;
 
   return {
-    status: diagnosis?.status === 'ready' ? 'evidence_ready' : 'needs_analysis',
-    headline: diagnosis?.status === 'ready' ? `${diagnosis.rating} · ${diagnosis.risk === 'high' ? '高风险' : diagnosis.risk === 'low' ? '低风险' : '中等风险'}` : '等待证据分析',
-    facts: facts.length ? facts : ['实时行情尚未返回'],
+    status: evidenceReady ? 'evidence_ready' : 'needs_analysis',
+    headline: evidenceReady ? `${diagnosis.rating} · ${diagnosis.risk === 'high' ? '高风险' : diagnosis.risk === 'low' ? '低风险' : '中等风险'}` : '等待证据分析',
+    coverage: packet.coverage,
+    dimensions: packet.dimensions,
+    facts: facts.length ? [...new Set(facts)] : ['实时行情尚未返回'],
     support: support.length ? support : ['当前没有可复核的支持证据'],
     counter: counter.length ? counter : ['运行诊断后生成反方证据'],
     invalidation: invalidation.length ? invalidation : ['在证据不足前不形成行动结论'],
-    missing,
-    nextAction: diagnosis?.status === 'ready' ? '先核验缺失数据，再进入情景推演和仓位预算。' : '先运行确定性诊断，补齐趋势、波动和相对强弱证据。',
+    missing: [...new Set(missing)],
+    nextAction: !evidenceReady
+      ? '先运行确定性诊断，补齐趋势、波动和相对强弱证据。'
+      : packet.coverage?.label === '较完整'
+        ? '复核数据时效与失效条件，再进入情景推演和仓位预算。'
+        : '证据覆盖仍然有限，先核验缺失数据，再进入情景推演和仓位预算。',
   };
 }

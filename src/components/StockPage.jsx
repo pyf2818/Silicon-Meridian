@@ -882,7 +882,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig }) {
             </div>
             <div className="stock-modal-body">
               {researchToolTab === 'decision' ? (
-                <DecisionEvidenceTool stock={selectedStock} realtime={realtime} diagnosis={ai.diagnosis} diagnosing={ai.diagnosing} onAnalyze={runDiagnosis} onOpenTool={setResearchToolTab} />
+                <DecisionEvidenceTool stock={selectedStock} realtime={realtime} diagnosis={ai.diagnosis} evidencePacket={ai.diagnosis?.evidencePacket} diagnosing={ai.diagnosing} onAnalyze={runDiagnosis} onOpenTool={setResearchToolTab} />
               ) : researchToolTab === 'policy' ? (
                 <InvestorPolicyTool policy={investorPolicy} onSave={setInvestorPolicy} />
               ) : researchToolTab === 'risk' ? (

@@ -33,10 +33,22 @@ describe('intelligence radar', () => {
     expect(evidence.limitation).toContain('不代表');
   });
 
+  it('keeps stale diagnosis provisional and excludes unready volume facts', () => {
+    const card = buildDecisionCard({
+      realtime: { price: 12.3, changePct: 1.2, timestamp: 1_000 },
+      diagnosis: { status: 'ready', rating: '观察', risk: 'medium', metrics: { volumeTrend: 'expanding' } },
+      now: 60 * 60_000,
+    });
+
+    expect(card.status).toBe('needs_analysis');
+    expect(card.facts.join(' ')).not.toContain('量能');
+  });
+
   it('keeps facts, counter evidence and missing data separate', () => {
     const card = buildDecisionCard({
-      realtime: { price: 12.3, changePct: 1.2 },
+      realtime: { price: 12.3, changePct: 1.2, timestamp: 1_000 },
       diagnosis: { status: 'ready', rating: '观察', risk: 'medium', metrics: { excessReturn20: 2.1, volumeTrend: 'expanding' }, bullCase: ['趋势改善'], bearCase: ['波动较高'], invalidation: ['跌破支撑'] },
+      now: 1_000,
     });
     expect(card.facts[0]).toContain('现价');
     expect(card.counter).toEqual(['波动较高']);

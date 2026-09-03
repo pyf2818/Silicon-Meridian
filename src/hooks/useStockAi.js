@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { analyzeStock } from '../domain/stock/algorithmAnalysis.js';
+import { buildStockEvidencePacket, formatEvidencePacketForPrompt } from '../domain/stock/evidencePacket.js';
 
 const COMPLIANCE_SUFFIX = '\n\n（以上内容由 AI 基于公开行情数据生成，仅供参考，不构成投资建议）';
 const BRIEFING_HISTORY_KEY = 'stockBriefingHistoryV1';
@@ -68,8 +69,10 @@ const store = {
 
 export async function runStockAnalysis({ input, llmConfig, experienceMode = 'beginner', investorPolicy = null, callLlm: invokeLlm = callLlm }) {
   const algorithm = analyzeStock(input);
+  const evidencePacket = buildStockEvidencePacket({ ...input, diagnosis: algorithm });
   const algorithmResult = {
     ...algorithm,
+    evidencePacket,
     content: `${algorithm.summary}\n\n${algorithm.disclaimer}`,
   };
   const llmAvailable = Boolean(llmConfig?.baseUrl && llmConfig?.apiKey && llmConfig?.selectedModel);
@@ -80,12 +83,12 @@ export async function runStockAnalysis({ input, llmConfig, experienceMode = 'beg
     ? '\u9762\u5411\u4e13\u4e1a\u7528\u6237\uff1a\u4f18\u5148\u62a5\u544a\u8bc1\u636e\u94fe\u3001\u76f8\u5bf9\u5f3a\u5f31\u3001\u6ce2\u52a8/\u56de\u64a4\u3001\u5931\u6548\u6761\u4ef6\u4e0e\u6570\u636e\u7f3a\u53e3\uff0c\u4f7f\u7528\u6807\u51c6\u672f\u8bed\u4f46\u4e0d\u8981\u5806\u780c\u6307\u6807\u3002'
     : '\u9762\u5411\u65b0\u624b\u7528\u6237\uff1a\u5148\u7528\u4e00\u53e5\u8bdd\u89e3\u91ca\u7ed3\u8bba\uff0c\u518d\u89e3\u91ca\u6700\u591a 3 \u4e2a\u5173\u952e\u6307\u6807\uff0c\u6240\u6709\u672f\u8bed\u9644\u5e26\u767d\u8bdd\u89e3\u91ca\uff0c\u7ed9\u51fa\u53ef\u89c2\u5bdf\u7684\u4e0b\u4e00\u6b65\uff0c\u4e0d\u4f7f\u7528\u4ea4\u6613\u9ed1\u8bdd\u3002';
   const policyGuidance = investorPolicy ? `\u7528\u6237\u7b56\u7565\uff1a${investorPolicy.horizon || '\u672a\u8bbe\u7f6e'}\u5468\u671f\u3001${investorPolicy.riskTolerance || '\u672a\u8bbe\u7f6e'}\u98ce\u9669\u504f\u597d\u3001\u5355\u7b14\u98ce\u9669\u4e0a\u9650 ${investorPolicy.riskPerTrade || '--'}%\u3002` : '';
-  const systemPrompt = `\u4f60\u662f\u4e13\u4e1a\u4e14\u5ba1\u614e\u7684\u80a1\u5e02\u5206\u6790\u5e08\u3002\u53ea\u80fd\u57fa\u4e8e\u7ed9\u5b9a\u7684\u786e\u5b9a\u6027\u6307\u6807\u589e\u5f3a\u8868\u8ff0\uff0c\u4e0d\u5f97\u6539\u53d8\u7b97\u6cd5\u8bc4\u7ea7\u6216\u865a\u6784\u6570\u636e\u3002\u533a\u5206\u4e8b\u5b9e\u4e0e\u63a8\u65ad\uff0c\u7981\u6b62\u7ed9\u51fa\u4e70\u5356\u5efa\u8bae\uff0c180\u5b57\u5185\u3002${modeGuidance}${policyGuidance}`;
+  const systemPrompt = `\u4f60\u662f\u4e13\u4e1a\u4e14\u5ba1\u614e\u7684\u80a1\u5e02\u5206\u6790\u5e08\u3002\u53ea\u80fd\u57fa\u4e8e\u7ed9\u5b9a\u7684\u786e\u5b9a\u6027\u6307\u6807\u589e\u5f3a\u8868\u8ff0\uff0c\u4e0d\u5f97\u6539\u53d8\u7b97\u6cd5\u8bc4\u7ea7\u6216\u865a\u6784\u6570\u636e\u3002\u5fc5\u987b\u533a\u5206\u201c\u5df2\u786e\u8ba4\u201d\u3001\u201c\u5f85\u9a8c\u8bc1\u201d\u548c\u201c\u4e0d\u80fd\u5224\u65ad\u201d\uff1b\u8bc1\u636e\u8986\u76d6\u6709\u9650\u65f6\u4e0d\u5f97\u5347\u7ea7\u4e3a\u786e\u5b9a\u6027\u7ed3\u8bba\u3002\u7981\u6b62\u7ed9\u51fa\u4e70\u5356\u5efa\u8bae\uff0c220\u5b57\u5185\u3002${modeGuidance}${policyGuidance}`;
   const userPrompt = `股票：${algorithm.stock.name}（${algorithm.stock.code}）
 算法评级：${algorithm.rating}；风险：${algorithm.risk}
 现价：${metrics.price}；MA5/10/20：${metrics.ma5}/${metrics.ma10}/${metrics.ma20}
 5日动量：${metrics.momentum5}%；年化波动率：${metrics.volatility}%
-支撑/压力：${metrics.support}/${metrics.resistance}；量能：${metrics.volumeTrend}`;
+支撑/压力：${metrics.support}/${metrics.resistance}；量能：${metrics.volumeTrend}\n\n【研究证据包】\n${formatEvidencePacketForPrompt(evidencePacket)}`;
   try {
     const aiNarrative = await invokeLlm(llmConfig, systemPrompt, userPrompt);
     return {
@@ -118,7 +121,7 @@ export function useStockAi(llmConfig) {
     store.setState({ diagnosing: true, diagnoseError: '' });
     try {
       const result = await runStockAnalysis({
-        input: { stock, realtime, klines: kline?.klines || [], benchmarkKlines: benchmarkKline?.klines || [], benchmark },
+        input: { stock, realtime, klines: kline?.klines || [], benchmarkKlines: benchmarkKline?.klines || [], benchmark, sectors },
         experienceMode,
         investorPolicy,
         llmConfig: store.state.llmConfig,
