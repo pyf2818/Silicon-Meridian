@@ -1,14 +1,14 @@
 /**
  * AgentPanel - AI 工作站右侧智能管理面板
  *
- * 三层布局（方案 C）：
- * 1. 顶部固定卡：当前任务摘要（轮次/回复/工具/tokens/模型 LED，永远可见）
- * 2. 中部 Tab 区：技能｜智能体｜记忆（按需切换，避免堆砌）
+ * 两层布局：
+ * 1. 中部 Tab 区：技能｜智能体｜记忆（按需切换，避免堆砌）
  *    - 技能 tab：Skills 生态管理（列表/详情/编辑保存/新建）
- *    - 智能体 tab：工具能力清单 + 定时任务 + 用户画像（聚焦配置态，运行态信息已在顶部卡呈现）
+ *    - 智能体 tab：工具能力清单 + 定时任务 + 用户画像（聚焦配置态）
  *    - 记忆 tab：上下文召回（相关记忆 + 工作空间文件，合并）+ 学习偏好（基于对话总结的习惯）
- * 3. 无底部 sticky
+ * 2. 无底部 sticky
  *
+ * 变更记录：顶部「当前任务」固定卡已移除（用户反馈不好用）；模型状态下沉到输入框的模型胶囊。
  * 角色/灵魂设定入口已移至 chat-header 的 PersonaDrawer，本面板不承载
  */
 import { useMemo, useState } from 'react';
@@ -23,18 +23,6 @@ import SkillsPanel from './SkillsPanel.jsx';
 function getToolDisplay(name) {
   const meta = getToolMetaByName(name);
   return { label: meta?.label || name, iconKey: meta?.iconKey || 'settings' };
-}
-
-/* 自进化记忆相对时间格式化：刚刚 / N 分钟前 / N 小时前 / N 天前 */
-function formatRelativeEvolution(iso) {
-  if (!iso) return '';
-  const t = new Date(iso).getTime();
-  if (!t) return '';
-  const diff = Date.now() - t;
-  if (diff < 60_000) return '刚刚进化';
-  if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)} 小时前`;
-  return `${Math.floor(diff / 86400_000)} 天前`;
 }
 
 /* Tab 配置：图标 + label
@@ -72,40 +60,6 @@ export default function AgentPanel({
   const localSkillsHook = useSkills({ enabled: !skillsHook });
   const skills = skillsHook || localSkillsHook;
 
-  const stats = useMemo(() => {
-    const userMsgs = messages.filter(m => m.role === 'user');
-    const aiMsgs = messages.filter(m => m.role === 'assistant' && !m.error);
-    const charCount = messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
-    const firstQuestion = userMsgs[0]?.content?.slice(0, 60) || '—';
-    // 统计本次会话的工具调用次数（来自 assistant 消息的 toolCalls 字段）
-    const toolCallTotal = messages.reduce((sum, m) => sum + (Array.isArray(m.toolCalls) ? m.toolCalls.length : 0), 0);
-    return {
-      total: messages.length,
-      rounds: userMsgs.length,
-      aiReplies: aiMsgs.length,
-      firstQuestion,
-      estTokens: Math.ceil(charCount / 2.5),
-      toolCallTotal,
-    };
-  }, [messages]);
-
-  const hasConfig = Boolean(llmConfig?.baseUrl && selectedModel);
-
-  /* 当前任务标签：用户正在输入时实时显示输入预览（截断 80 字符），
-   * 否则回退到首条用户问题，都没有则显示"新对话"。
-   * taskFull 为完整内容用于 title 悬停。 */
-  const taskView = useMemo(() => {
-    const draft = String(input || '').trim();
-    if (draft) {
-      return { label: '正在输入', text: draft.slice(0, 80), full: draft, isDraft: true };
-    }
-    const first = stats.firstQuestion;
-    if (first && first !== '—') {
-      return { label: '当前任务', text: first, full: first, isDraft: false };
-    }
-    return { label: '当前任务', text: '新对话', full: '新对话', isDraft: false };
-  }, [input, stats.firstQuestion]);
-
   // 当前 agent 的工具能力清单（用于右栏展示）
   // 规则：
   //   1. 若 agent.tools 明确配置了白名单 → 只渲染白名单内的工具（仍需在注册表中存在，不存在的忽略）
@@ -140,71 +94,7 @@ export default function AgentPanel({
 
   return (
     <aside className="agent-panel custom-scrollbar">
-      {/* ============ 顶部固定卡：当前任务摘要（永远可见，含模型连接 LED） ============ */}
-      <div className={`agent-topcard ${isStreaming ? 'is-streaming' : ''} ${taskView.isDraft ? 'is-draft' : ''} ${!hasConfig ? 'is-warn' : ''}`}>
-        <span className="agent-topcard-stripe" aria-hidden="true" />
-        <div className="agent-topcard-main">
-          <div className="agent-topcard-head">
-            <div className="agent-topcard-head-left">
-              <span className="agent-topcard-label">
-                <span className="agent-topcard-led" title={isStreaming ? '生成中' : (hasConfig ? '已连接' : '未配置')} />
-                {isStreaming ? '生成中' : taskView.label}
-              </span>
-            </div>
-            {isStreaming && <span className="agent-topcard-badge is-running" title="模型正在生成回复">运行中</span>}
-            {taskView.isDraft && !isStreaming && <span className="agent-topcard-badge is-draft" title="输入预览（未发送）">草稿</span>}
-          </div>
-          <p className={`agent-topcard-title ${taskView.isDraft ? 'is-draft' : ''}`} title={taskView.full}>{taskView.text}</p>
-          <div className="agent-topcard-model-row">
-            <span className="agent-topcard-model" title={selectedModel || '未配置模型'}>
-              <span className="agent-topcard-model-dot" />
-              {selectedModel ? selectedModel.split('/').pop() : '未配置'}
-            </span>
-          </div>
-        </div>
-        {/* 会话统计：单行迷你胶囊条（原 2×2 大格子太占空间，且多数时候是 0） */}
-        <div className="agent-topcard-metrics">
-          <span className="agent-metric-pill" title="对话轮次">
-            <b>{stats.rounds}</b>轮次
-          </span>
-          <span className="agent-metric-pill" title="AI 回复数">
-            <b>{stats.aiReplies}</b>回复
-          </span>
-          <span className="agent-metric-pill" title="工具调用次数">
-            <b>{stats.toolCallTotal}</b>工具
-          </span>
-          <span className="agent-metric-pill" title="估算 token 用量">
-            <b>~{stats.estTokens}</b>tok
-          </span>
-        </div>
-        {memoryHealth && memoryHealth.total > 0 && (
-          <div className="agent-topcard-evolution" title="自进化记忆健康度：总记忆数 / 平均置信度 / 高置信记忆数">
-            <span className="agent-evolution-label">自进化</span>
-            <span className="agent-evolution-stat">
-              <span className="agent-evolution-value">{memoryHealth.total}</span>
-              <span className="agent-evolution-unit">条</span>
-            </span>
-            <span className="agent-evolution-divider" />
-            <span className="agent-evolution-stat" title={`平均置信度 ${memoryHealth.avgConfidence}/100`}>
-              <span className="agent-evolution-value">{memoryHealth.avgConfidence}</span>
-              <span className="agent-evolution-unit">/100</span>
-            </span>
-            <span className="agent-evolution-divider" />
-            <span className="agent-evolution-stat" title={`高置信记忆 ${memoryHealth.highConfidenceCount} 条`}>
-              <span className="agent-evolution-value">{memoryHealth.highConfidenceCount}</span>
-              <span className="agent-evolution-unit">高</span>
-            </span>
-            {lastEvolvedAt && (
-              <>
-                <span className="agent-evolution-divider" />
-                <span className="agent-evolution-time" title={`最近一次进化：${new Date(lastEvolvedAt).toLocaleString()}`}>
-                  {formatRelativeEvolution(lastEvolvedAt)}
-                </span>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      {/* 顶部「当前任务」固定卡已移除（用户反馈不好用）——模型状态下沉到输入框模型胶囊 */}
 
       {/* ============ Tab 导航 ============ */}
       <nav className="agent-tabs" role="tablist">

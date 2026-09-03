@@ -1,6 +1,7 @@
 /**
- * AgentTeamChat - Agent Team 类群聊页（「一个人的公司」协作空间）
+ * AgentTeamChat - 团队群聊页（「一个人的公司」协作空间）
  *
+ * - 多群聊：可创建多个团队群聊、切换、重命名、删除（groupChatStore v2）
  * - 成员栏：从 4 个预置子代理中邀请进群（roster 持久化），可移除
  * - 群聊流：用户消息 + 各 agent 回复气泡（带执行 meta：轮次/tokens）
  * - @ 召唤：输入 @ 弹出成员选择器；支持一条消息 @ 多个成员
@@ -13,8 +14,9 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { SUBAGENT_PRESETS } from '../../domain/agent/subagentCore.js';
 import { runOneSubagent } from './subagentRunner.js';
 import {
-  getGroupState, subscribeGroup, inviteMember, removeMember,
+  getGroupState, getActiveChat, subscribeGroup, inviteMember, removeMember,
   addGroupMessage, updateGroupMessage, setGroupRunning, clearGroupChat,
+  createChat, switchChat, renameChat, deleteChat,
 } from './groupChatStore.js';
 import { showToast } from '../../utils/toast.js';
 
@@ -69,6 +71,69 @@ function MemberAvatar({ preset, hue, size = 26 }) {
   );
 }
 
+/* ---------- 单个群聊标签（切换 + 行内重命名 + 删除确认） ---------- */
+function ChatChip({ chat, active, running, canDelete, onSwitch, onRename, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(chat.name);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) inputRef.current.focus();
+  }, [editing]);
+
+  const commitRename = () => {
+    const next = draft.trim();
+    if (next && next !== chat.name) onRename(chat.id, next);
+    setEditing(false);
+  };
+
+  return (
+    <span
+      className={`gtc-chat-chip ${active ? 'active' : ''} ${editing ? 'is-editing' : ''}`}
+      onClick={() => !editing && onSwitch(chat.id)}
+      title={active ? '当前群聊' : `切换到「${chat.name}」`}
+    >
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onClick={e => e.stopPropagation()}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+            else if (e.key === 'Escape') setEditing(false);
+          }}
+          onBlur={commitRename}
+        />
+      ) : (
+        <>
+          <span className="gtc-chat-chip-name">{chat.name}</span>
+          <small>{chat.messages.length}</small>
+          {active && !running && (
+            <button
+              type="button" className="gtc-chat-chip-act" title="重命名"
+              onClick={e => { e.stopPropagation(); setDraft(chat.name); setEditing(true); }}
+            >✎</button>
+          )}
+          {active && canDelete && !running && (
+            <button
+              type="button"
+              className={`gtc-chat-chip-act is-danger ${confirmDel ? 'confirm' : ''}`}
+              title={confirmDel ? '再次点击确认删除（群聊记录不可恢复）' : '删除该群聊'}
+              onClick={e => {
+                e.stopPropagation();
+                if (confirmDel) { onDelete(chat.id); setConfirmDel(false); }
+                else { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 3000); }
+              }}
+            >{confirmDel ? '确认?' : '✕'}</button>
+          )}
+        </>
+      )}
+    </span>
+  );
+}
+
 export default function AgentTeamChat({
   runtime = {},
   onViewRecords,
@@ -76,8 +141,14 @@ export default function AgentTeamChat({
 }) {
   const [snap, setSnap] = useState(() => getGroupState());
   useEffect(() => subscribeGroup(() => setSnap({ ...getGroupState() })), []);
-  const roster = snap.roster || [];
-  const messages = snap.messages || [];
+  const chats = snap.chats || [];
+  const activeId = snap.activeId;
+  const active = useMemo(
+    () => chats.find(c => c.id === activeId) || chats[0] || { roster: [], messages: [] },
+    [chats, activeId],
+  );
+  const roster = active.roster || [];
+  const messages = active.messages || [];
   const running = Boolean(snap.running);
 
   const [input, setInput] = useState('');
@@ -86,7 +157,6 @@ export default function AgentTeamChat({
   const abortRef = useRef(null);
   const inputRef = useRef(null);
   const streamRef = useRef(null);
-  const messagesEndRef = useRef(null);
 
   useEffect(() => {
     streamRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -137,6 +207,8 @@ export default function AgentTeamChat({
     setGroupRunning(true);
     const controller = new AbortController();
     abortRef.current = controller;
+    // 防御： unexpected 异常也以失败气泡落进群聊，而不是无声消失
+    let failureCaught = null;
 
     try {
       let priorRound = '';
@@ -145,7 +217,11 @@ export default function AgentTeamChat({
           role: 'agent', agentId: preset.id, agentName: preset.name,
           content: '', status: 'running',
         });
-        const shared = buildSharedTranscript(getGroupState().messages.filter(m => m.id !== placeholder.id));
+        if (!placeholder?.id) {
+          failureCaught = new Error('占位消息创建失败');
+          break;
+        }
+        const shared = buildSharedTranscript(getActiveChat().messages.filter(m => m.id !== placeholder.id));
         const objective = [
           '【群聊共享上下文】（所有成员共享的同一份白板，彼此可见）',
           shared,
@@ -183,7 +259,16 @@ export default function AgentTeamChat({
         });
         priorRound += `${priorRound ? '\n\n' : ''}### @${preset.name}（${result.status === 'done' ? '已完成' : result.status}）\n${String(result.report || result.error || '').slice(0, 2400)}`;
       }
+    } catch (err) {
+      failureCaught = err;
     } finally {
+      if (failureCaught) {
+        addGroupMessage({
+          role: 'agent', agentId: 'system', agentName: '系统',
+          content: `⚠️ 接力流水线异常中断：${failureCaught.message || failureCaught}`,
+          status: 'failed',
+        });
+      }
       setGroupRunning(false);
       abortRef.current = null;
     }
@@ -205,7 +290,7 @@ export default function AgentTeamChat({
       {/* ============ 成员栏 ============ */}
       <header className="gtc-head">
         <div className="gtc-head-main">
-          <span className="team-center-kicker">AGENT TEAM</span>
+          <span className="team-center-kicker">TEAM</span>
           <h2>团队群聊</h2>
           <p>@ 召唤成员接力协作 · 全员共享同一份上下文 · 一个人的公司</p>
         </div>
@@ -215,9 +300,34 @@ export default function AgentTeamChat({
               执行记录
             </button>
           )}
-          <button type="button" className="gtc-clear-btn" onClick={() => { if (messages.length && window.confirm('清空群聊记录？')) clearGroupChat(); }}>清空</button>
+          <button type="button" className="gtc-clear-btn" onClick={() => { if (messages.length && window.confirm('清空当前群聊记录？')) clearGroupChat(); }}>清空</button>
         </div>
       </header>
+
+      {/* ============ 群聊切换条（多群聊管理） ============ */}
+      <div className="gtc-chats-bar">
+        <div className="gtc-chats-scroll">
+          {chats.map(c => (
+            <ChatChip
+              key={c.id}
+              chat={c}
+              active={c.id === activeId}
+              running={running}
+              canDelete={chats.length > 1}
+              onSwitch={switchChat}
+              onRename={renameChat}
+              onDelete={(id) => { if (deleteChat(id)) showToast('群聊已删除'); }}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          className="gtc-chat-new"
+          onClick={() => { const c = createChat(); if (c) showToast(`已创建「${c.name}」，邀请成员开始协作`); }}
+          disabled={running || chats.length >= 20}
+          title="新建团队群聊"
+        >＋ 新建群聊</button>
+      </div>
 
       <div className="gtc-roster">
         {rosterPresets.map((p, i) => (
@@ -273,10 +383,10 @@ export default function AgentTeamChat({
             );
           }
           const idx = roster.indexOf(m.agentId);
-          const preset = PRESET_INDEX.get(m.agentId);
+          const preset = PRESET_INDEX.get(m.agentId) || { name: m.agentName || m.agentId || '系统' };
           return (
             <div key={m.id} className={`gtc-msg is-agent ${m.status === 'running' ? 'is-running' : ''} ${m.status === 'failed' || m.status === 'aborted' ? 'is-error' : ''}`}>
-              <MemberAvatar preset={preset} hue={hueOf(idx < 0 ? 0 : idx)} />
+              <MemberAvatar preset={preset} hue={hueOf(idx < 0 ? 4 : idx)} />
               <div className="gtc-bubble">
                 <div className="gtc-bubble-head">
                   <b>@{m.agentName || m.agentId}</b>

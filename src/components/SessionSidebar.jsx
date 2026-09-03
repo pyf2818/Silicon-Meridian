@@ -13,7 +13,7 @@ import WorkspacePanel from './WorkspacePanel.jsx';
 import { ICONS } from '../constants/appConstants.jsx';
 import { SUBAGENT_PRESETS } from '../domain/agent/subagentCore.js';
 import { listTeams, subscribeTeams } from '../store/teamStore.js';
-import { getGroupState, subscribeGroup } from './aichat/groupChatStore.js';
+import { getActiveChat, subscribeGroup } from './aichat/groupChatStore.js';
 import {
   isFileSystemSupported, pickDirectoryHandle, saveHandleToSlot,
 } from '../utils/workspace.js';
@@ -251,11 +251,11 @@ function SpaceSection({ space, expanded, sessions, activeSessionId, spaces, acti
   );
 }
 
-/* ---------- Agent Team Tab：群聊入口 + 成员预览 + 执行记录 ---------- */
+/* ---------- 团队 Tab：群聊入口 + 成员预览 + 执行记录 ---------- */
 function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
   const running = teams.filter(t => t.status === 'running');
-  const [roster, setRoster] = useState(() => getGroupState().roster || []);
-  useEffect(() => subscribeGroup(() => setRoster([...(getGroupState().roster || [])])), []);
+  const [roster, setRoster] = useState(() => getActiveChat()?.roster || []);
+  useEffect(() => subscribeGroup(() => setRoster([...(getActiveChat()?.roster || [])])), []);
   const members = roster.map(id => PRESET_INDEX.get(id)).filter(Boolean);
 
   return (
@@ -422,7 +422,7 @@ export default function SessionSidebar({
 
   return (
     <aside className="session-sidebar">
-      {/* Tab 切换：对话 / 文件 / Agent Team */}
+      {/* Tab 切换：对话 / 文件 / 团队 */}
       <div className="session-tabs">
         <button type="button" className={`session-tab ${tab === 'sessions' ? 'active' : ''}`} onClick={() => setTab('sessions')}>对话</button>
         <button type="button" className={`session-tab ${tab === 'files' ? 'active' : ''}`} onClick={() => setTab('files')}>文件</button>
@@ -430,9 +430,9 @@ export default function SessionSidebar({
           type="button"
           className={`session-tab ${tab === 'agents' ? 'active' : ''}`}
           onClick={() => { setTab('agents'); onOpenTeamCenter?.(); }}
-          title="Agent Team 群聊协作"
+          title="团队群聊协作"
         >
-          Agent Team{teams.some(t => t.status === 'running') && <i className="session-tab-dot" aria-hidden="true" />}
+          团队{teams.some(t => t.status === 'running') && <i className="session-tab-dot" aria-hidden="true" />}
         </button>
       </div>
 

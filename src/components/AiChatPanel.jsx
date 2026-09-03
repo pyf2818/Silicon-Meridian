@@ -377,6 +377,68 @@ export default function AiChatPanel({
     };
   }, [showSkillMenu]);
 
+  // ===== 输入框模型胶囊：显示当前大模型 + 点击切换 =====
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const [modelMenuPos, setModelMenuPos] = useState(null);
+  const modelBtnRef = useRef(null);
+  const modelMenuRef = useRef(null);
+
+  const toggleModelMenu = useCallback(() => {
+    setShowModelMenu(prev => {
+      if (prev) return false;
+      if (modelBtnRef.current) {
+        const rect = modelBtnRef.current.getBoundingClientRect();
+        setModelMenuPos({ left: rect.left, bottom: window.innerHeight - rect.top + 6 });
+      }
+      return true;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!showModelMenu) return;
+    const onDown = (e) => {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(e.target) &&
+          modelBtnRef.current && !modelBtnRef.current.contains(e.target)) {
+        setShowModelMenu(false);
+      }
+    };
+    const update = () => {
+      if (!modelBtnRef.current) return;
+      const rect = modelBtnRef.current.getBoundingClientRect();
+      setModelMenuPos({ left: rect.left, bottom: window.innerHeight - rect.top + 6 });
+    };
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [showModelMenu]);
+
+  const pickModel = useCallback((modelId) => {
+    setLlmConfig?.(prev => ({ ...(prev || {}), selectedModel: modelId }));
+    setShowModelMenu(false);
+    showToast(`已切换模型：${modelId}`);
+  }, [setLlmConfig]);
+
+  // 模型去重合并：allLlmModels（拉取 + 手动）+ 当前选中兜底
+  const composerModels = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    const push = (id, name) => {
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      list.push({ id, name: name || id });
+    };
+    (Array.isArray(allLlmModels) ? allLlmModels : []).forEach(m => push(m?.id || m, m?.name));
+    if (selectedModel) push(selectedModel, selectedModel);
+    return list;
+  }, [allLlmModels, selectedModel]);
+
+  // ===== 上下文窗口进度环：定义见 systemPrompt 之后的 ctxUsage（TDZ 约束） =====
+
   // ===== 快捷指令收纳：单按钮弹层（情境指令 + 用户自定义），替代原横向 pill 行 =====
   const QUICK_CMD_KEY = 'aiWorkstationQuickCommands';
   const [showQuickMenu, setShowQuickMenu] = useState(false);
@@ -549,6 +611,20 @@ export default function AiChatPanel({
     excludeAllEvidence, excludeAllMaterials, materialContext: effectiveMaterialContext, agent, personaSummary,
   }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, effectiveIntelContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, excludeAllEvidence, excludeAllMaterials, effectiveMaterialContext, agent, personaSummary]);
 
+  // ===== 上下文窗口进度环：与发送链路同源的估算器（systemPrompt + 历史 + 输入草稿） =====
+  // 注意：必须在 systemPrompt 定义之后（TDZ）；分母 = 流式回复的真实压缩预算
+  // STREAM_CONTEXT_BUDGET（循环超过它就会触发摘要压缩，所以这是"生效的上下文窗口"）
+  const ctxUsage = useMemo(() => {
+    const pending = input.trim() ? [{ role: 'user', content: input }] : [];
+    const tokens = estimateMessages([
+      { role: 'system', content: systemPrompt || '' },
+      ...messages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' })),
+      ...pending,
+    ]);
+    const pct = Math.min(100, Math.round((tokens / STREAM_CONTEXT_BUDGET) * 1000) / 10);
+    return { tokens, budget: STREAM_CONTEXT_BUDGET, pct };
+  }, [messages, systemPrompt, input]);
+
   // 情境化快捷建议：已抽离至 aichat/buildQuickActions.js
   const quickActions = useMemo(() => buildQuickActions(effectiveIntelContext, workbenchItems, effectiveMaterialContext), [effectiveIntelContext, workbenchItems, effectiveMaterialContext]);
 
@@ -596,16 +672,10 @@ export default function AiChatPanel({
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
 
-  /* ===== 波浪节点导航：短条长度随内容错落，hover 变长 + 悬浮 tip 显示消息内容 ===== */
+  /* ===== 节点导航（点状）：hover 变亮放大 + 悬浮 tip 显示消息内容，点击跳转 ===== */
   const [activeRailNode, setActiveRailNode] = useState(null);
   const [railTip, setRailTip] = useState(null); // { n, content, left, bottom }
   const railNodeRefs = useRef(new Map()); // idx → button element（tip 定位锚点）
-
-  // 条长 = 内容长度的错落映射（√ 曲线压缩，10–28px），自然形成波浪排列
-  const railBarWidth = useCallback((content) => {
-    const len = String(content || '').replace(/\s+/g, '').length;
-    return Math.round(Math.max(10, Math.min(28, 10 + Math.sqrt(len) * 3.2)));
-  }, []);
 
   const showRailTip = useCallback((idx, n, content) => {
     const el = railNodeRefs.current.get(idx);
@@ -1207,14 +1277,14 @@ export default function AiChatPanel({
         />
       )}
 
-      {/* 中栏：对话主区 / Agent Team 群聊 / 执行记录（看板） */}
+      {/* 中栏：对话主区 / 团队群聊 / 执行记录（看板） */}
       {centerView === 'team' ? (
         <div className="chat-main-col team-center-col">
           <div className="team-center-topbar">
             <button type="button" className="team-center-back" onClick={() => setCenterView('chat')}>
               ← 返回对话
             </button>
-            <span className="team-center-crumb">AI 工作站 / Agent Team</span>
+            <span className="team-center-crumb">AI 工作站 / 团队</span>
           </div>
           <div className="team-center-scroll custom-scrollbar">
             <AgentTeamChat
@@ -1234,7 +1304,7 @@ export default function AiChatPanel({
             <button type="button" className="team-center-back" onClick={() => setCenterView('team')}>
               ← 返回群聊
             </button>
-            <span className="team-center-crumb">AI 工作站 / Agent Team / 执行记录</span>
+            <span className="team-center-crumb">AI 工作站 / 团队 / 执行记录</span>
           </div>
           <div className="team-center-scroll custom-scrollbar">
             <AgentTeamPanel
@@ -1462,7 +1532,6 @@ export default function AiChatPanel({
               type="button"
               ref={el => { if (el) railNodeRefs.current.set(node.idx, el); else railNodeRefs.current.delete(node.idx); }}
               className={`chat-side-rail-node ${activeRailNode === node.idx ? 'active' : ''}`}
-              style={{ '--rail-w': `${railBarWidth(node.content)}px` }}
               onClick={() => { setActiveRailNode(node.idx); jumpToMessage(node.idx); }}
               onMouseEnter={() => showRailTip(node.idx, n + 1, node.content)}
               onFocus={() => showRailTip(node.idx, n + 1, node.content)}
@@ -1556,6 +1625,34 @@ export default function AiChatPanel({
         </div>
         {/* 底部一行：上下文胶囊（可点开查看条目）+ 联网搜索 + 权限模式（单行并排，溢出滚动） */}
         <div className="chat-composer-bottom">
+          {/* 模型胶囊 + 上下文进度环（左端固定） */}
+          <div className="chat-model-wrap">
+            <button
+              ref={modelBtnRef}
+              type="button"
+              className={`chat-model-chip ${showModelMenu ? 'open' : ''}`}
+              onClick={toggleModelMenu}
+              title="当前大模型，点击切换"
+            >
+              <span className="chat-model-dot" aria-hidden="true" />
+              <span className="chat-model-name">{selectedModel ? selectedModel.split('/').pop() : '未配置模型'}</span>
+              <span className="chat-skill-caret">{ICONS.chevronUp || '▴'}</span>
+            </button>
+            <span
+              className={`chat-ctx-ring ${ctxUsage.pct >= 90 ? 'is-critical' : ctxUsage.pct >= 70 ? 'is-warn' : ''}`}
+              title={`上下文占用 ≈ ${ctxUsage.tokens.toLocaleString()} / ${ctxUsage.budget / 1000}k tokens（${ctxUsage.pct}%）· 与发送链路同源估算`}
+            >
+              <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true">
+                <circle className="chat-ctx-ring-bg" cx="10" cy="10" r="8" />
+                <circle
+                  className="chat-ctx-ring-fill"
+                  cx="10" cy="10" r="8"
+                  strokeDasharray={`${(ctxUsage.pct / 100) * 50.27} 50.27`}
+                />
+              </svg>
+              <em>{ctxUsage.pct >= 100 ? 'FULL' : `${Math.round(ctxUsage.pct)}%`}</em>
+            </span>
+          </div>
           <div className="chat-context-group">
             {intelligenceContext?.items?.length > 0 && (
               <button
@@ -1933,6 +2030,42 @@ export default function AiChatPanel({
           ) : (
             <button type="button" className="chat-quick-add" onClick={() => setShowQuickForm(true)}>
               ＋ 新建快捷指令
+            </button>
+          )}
+        </div>,
+        document.body
+      )}
+
+      {/* 模型切换弹层 */}
+      {showModelMenu && modelMenuPos && createPortal(
+        <div
+          ref={modelMenuRef}
+          className="chat-model-menu custom-scrollbar"
+          role="menu"
+          style={{ position: 'fixed', left: modelMenuPos.left, bottom: modelMenuPos.bottom }}
+        >
+          <div className="chat-quick-menu-head">
+            <span className="chat-quick-menu-title">选择大模型</span>
+            <span className="chat-quick-menu-count">{composerModels.length} 个可用</span>
+          </div>
+          {composerModels.length === 0 && (
+            <div className="chat-skill-empty">暂无可用模型，请先在「设置 → 大模型」中配置。</div>
+          )}
+          {composerModels.map(m => (
+            <button
+              key={m.id}
+              type="button"
+              className={`chat-model-item ${m.id === selectedModel ? 'selected' : ''}`}
+              onClick={() => pickModel(m.id)}
+              title={m.id}
+            >
+              <span className="chat-model-item-name">{m.name}</span>
+              {m.id === selectedModel && <span className="chat-model-item-check">✓ 使用中</span>}
+            </button>
+          ))}
+          {onOpenLlmConfig && (
+            <button type="button" className="chat-model-manage" onClick={() => { setShowModelMenu(false); onOpenLlmConfig(); }}>
+              ⚙ 管理模型与密钥…
             </button>
           )}
         </div>,
