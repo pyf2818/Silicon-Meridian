@@ -158,10 +158,6 @@ export function hueOfChat(id) {
   return MEMBER_HUES[hashStr(`chat_${id}`) % MEMBER_HUES.length];
 }
 
-/** 兼容旧签名：按下标取色（已弃用，仅历史调用兜底） */
-export function hueOfMember(idx) {
-  return MEMBER_HUES[((idx % MEMBER_HUES.length) + MEMBER_HUES.length) % MEMBER_HUES.length];
-}
 
 function load() {
   try {

@@ -1,6 +1,6 @@
 import { ICONS } from '../constants/index.jsx';
 
-export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileMenuOpen, nav, goNav, addRecentVisit, onPrefetchNav, activePrimaryNav, activeContextItems, contextGroupOpen, setContextGroupOpen, agents, currentAgent, setCurrentAgent, setElfQuotedContext, buildWorkbenchContext, showFollowDropdown, setShowFollowDropdown, followKeywords, sortedFollowKeywords, pinnedKeywords, pinFollowKeyword, unpinFollowKeyword, removeFollowKeyword, executeSearch, newKeyword, setNewKeyword, addFollowKeyword, bookmarks, filtered, isLoggedIn, user, setShowProfileModal, setAuthMode, setShowAuthModal, setShowSettings, PRODUCT_NAME, PRODUCT_TAGLINE, PRIMARY_NAV_ITEMS }) {
+export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileMenuOpen, nav, goNav, addRecentVisit, onPrefetchNav, activePrimaryNav, activeContextItems, contextGroupOpen, setContextGroupOpen, showFollowDropdown, setShowFollowDropdown, followKeywords, sortedFollowKeywords, pinnedKeywords, pinFollowKeyword, unpinFollowKeyword, removeFollowKeyword, executeSearch, newKeyword, setNewKeyword, addFollowKeyword, bookmarks, filtered, isLoggedIn, user, setShowProfileModal, setAuthMode, setShowAuthModal, setShowSettings, PRODUCT_NAME, PRODUCT_TAGLINE, PRIMARY_NAV_ITEMS }) {
   return (
     <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-header">
@@ -143,32 +143,6 @@ export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileM
               );
             })}
             </div>
-
-          {!sidebarCollapsed && nav === 'agents' && (
-            <div className="nav-context-group agent-nav-summary">
-              <div className="nav-group-title-static">智能体生态</div>
-              {agents.slice(0, 5).map(agent => (
-                <button
-                  key={agent.id}
-                  className={`nav-item nav-sub-item ${currentAgent === agent.id ? 'active' : ''}`}
-                  onClick={() => {
-                    setCurrentAgent(agent.id);
-                    setElfQuotedContext({
-                      id: Date.now(),
-                      title: `智能体：${agent.name}`,
-                      agentId: agent.id,
-                      content: buildWorkbenchContext(`请作为${agent.name}，基于我的今日情报上下文进入待命。`),
-                      suggestedPrompt: `请作为${agent.name}，告诉我你能如何帮助我处理今天的情报。`
-                    });
-                  }}
-                >
-                  <span className="nav-icon">{ICONS.bot}</span>
-                  <span className="nav-label">{agent.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
 
           {!sidebarCollapsed && activePrimaryNav === 'profile-center' && (
             <div className="nav-group nav-follow-group">

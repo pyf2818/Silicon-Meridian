@@ -1,5 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ICONS, MATERIAL_TYPES } from '../constants/index.jsx';
+import MaterialGraph from './MaterialGraph.jsx';
+import { getSpaces, subscribeSpaces } from '../utils/workspaceStore.js';
 
 const TYPE_OPTIONS = [
   { id: 'quote', label: '金句' },
@@ -58,6 +60,28 @@ export default function MaterialsPage({
 }) {
   const tagFilter = Array.isArray(materialTags) ? materialTags : [];
   const [renamingSpaceId, setRenamingSpaceId] = useState(null);
+
+  // 本地资产：各工作空间关联的文件（素材 ↔ 本地文件 关联在图谱与详情里可视化）
+  const [localFiles, setLocalFiles] = useState(() => getSpaces().flatMap(sp => (sp.files || []).map(f => ({ ...f, spaceName: sp.name }))));
+  useEffect(() => subscribeSpaces(() => {
+    setLocalFiles(getSpaces().flatMap(sp => (sp.files || []).map(f => ({ ...f, spaceName: sp.name }))));
+  }), []);
+  // 素材 → 关联本地文件（标题被文件内容引用或文件名命中）
+  const materialFileLinks = useMemo(() => {
+    const map = new Map();
+    for (const f of localFiles) {
+      const content = String(f.content || '');
+      for (const m of materials || []) {
+        const title = String(m.title || '').trim();
+        if (title.length < 2) continue;
+        if ((content && content.includes(title)) || String(f.name || '').includes(title.slice(0, 12))) {
+          if (!map.has(m.id)) map.set(m.id, []);
+          map.get(m.id).push(f);
+        }
+      }
+    }
+    return map;
+  }, [localFiles, materials]);
   const [spaceDraft, setSpaceDraft] = useState('');
 
   // Esc 关闭详情抽屉
@@ -258,6 +282,7 @@ export default function MaterialsPage({
           <div className="repo-view-toggle" role="group" aria-label="视图切换">
             <button type="button" className={materialView === 'grid' ? 'active' : ''} onClick={() => setMaterialView('grid')} title="网格视图">▦</button>
             <button type="button" className={materialView === 'list' ? 'active' : ''} onClick={() => setMaterialView('list')} title="列表视图">☰</button>
+            <button type="button" className={materialView === 'graph' ? 'active' : ''} onClick={() => setMaterialView('graph')} title="知识图谱（素材 ↔ 标签 ↔ 本地资产）">⌬</button>
           </div>
           <div className="repo-toolbar-spacer" />
           <div className="header-actions">
@@ -347,6 +372,22 @@ export default function MaterialsPage({
             <div className="empty-icon">{ICONS.layers}</div>
             <p className="empty-title">{materialSearch || materialFilter !== 'all' || tagFilter.length > 0 || materialSection !== 'all' ? '没有找到匹配的素材' : '仓库还是空的'}</p>
             <p className="hint">{materialSearch || materialFilter !== 'all' || tagFilter.length > 0 || materialSection !== 'all' ? '试试调整筛选条件' : '浏览资讯时点击收藏按钮，或点击右上角“添加素材”手动添加；AI 精灵与工作站的产出也会自动存入这里。'}</p>
+          </div>
+        ) : materialView === 'graph' ? (
+          /* 知识图谱视图：素材 ↔ 标签 ↔ 本地资产（force-graph 力导向） */
+          <div className="repo-graph-view">
+            <div className="repo-graph-head">
+              <span className="repo-graph-title">素材知识图谱</span>
+              <span className="repo-graph-meta">
+                {viewMaterials.length} 素材 · {localFiles.length} 本地文件 · 连线 = 共享标签 / 内容引用
+              </span>
+            </div>
+            <MaterialGraph
+              materials={viewMaterials}
+              files={localFiles}
+              height={520}
+              onOpenMaterial={(m) => setMaterialDetailId(m.id)}
+            />
           </div>
         ) : materialView === 'list' ? (
           /* 列表视图（紧凑表格，Eagle/Drive 风格） */
@@ -451,6 +492,19 @@ export default function MaterialsPage({
               )}
               <div className="repo-drawer-content">{detail.fullContent || detail.content || '（无内容）'}</div>
               {detail.note && <p className="material-note">{detail.note}</p>}
+
+              {(materialFileLinks.get(detail.id) || []).length > 0 && (
+                <div className="repo-drawer-section">
+                  <label>关联本地资产（{(materialFileLinks.get(detail.id) || []).length}）</label>
+                  <div className="material-file-links">
+                    {(materialFileLinks.get(detail.id) || []).map(f => (
+                      <span key={f.path || f.name} className="material-file-link" title={`${f.spaceName || '空间'} · ${f.path || f.name}`}>
+                        📄 {f.name}<em>{f.spaceName}</em>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="repo-drawer-section">
                 <label>备注</label>

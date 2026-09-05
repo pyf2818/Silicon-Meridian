@@ -7199,6 +7199,15 @@ body {
 
 /* 聊天内容区 */
 .ai-elf-chat-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: var(--space-md); min-height: 0; }
+/* v14 极简单栏头部（旧双栏边栏已移除） */
+.ai-elf-header {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 12px; border-bottom: 1px solid var(--border-color); flex: none;
+}
+.ai-elf-header-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex: none; }
+.ai-elf-header-info { display: flex; flex-direction: column; min-width: 0; }
+.ai-elf-header-info b { font-size: 13px; color: var(--text-primary); }
+.ai-elf-header-info small { font-size: 10px; color: var(--text-muted); }
 .ai-elf-chat-body::-webkit-scrollbar { width: 4px; }
 .ai-elf-chat-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .1); border-radius: 2px; }
 
@@ -14955,6 +14964,43 @@ body {
 .chat-mode-item-text strong { font-size: 12.5px; font-weight: 700; }
 .chat-mode-item-text small { font-size: 10.5px; color: var(--text-muted); line-height: 1.4; }
 /* 附件迷你按钮（工具行内） */
+/* ===== v13 工作流选择弹层（输入框内，列无限画布工作流） ===== */
+.chat-wf-wrap { position: relative; }
+.chat-attach-mini.open { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.chat-wf-pop {
+  position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 60;
+  width: 320px; max-height: 300px; overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.2);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.chat-wf-pop-label {
+  font-size: 10px; font-weight: 700; color: var(--text-muted);
+  letter-spacing: 0.06em; padding: 4px 8px;
+}
+.chat-wf-pop button {
+  display: flex; flex-direction: column; gap: 1px; text-align: left;
+  padding: 7px 9px; border: 0; border-radius: 7px; background: transparent; cursor: pointer;
+}
+.chat-wf-pop button:hover { background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
+.chat-wf-pop b { font-size: 12px; color: var(--text-primary); }
+.chat-wf-pop small { font-size: 10.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== v13 素材管理：知识图谱视图 + 本地资产关联 ===== */
+.repo-graph-view { display: flex; flex-direction: column; gap: 10px; }
+.repo-graph-head { display: flex; align-items: baseline; gap: 12px; padding: 0 2px; }
+.repo-graph-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.repo-graph-meta { font-size: 11px; color: var(--text-muted); }
+.material-file-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.material-file-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border: 1px solid var(--border-color); border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-amber, #c9a961) 8%, transparent);
+  font-size: 11.5px; color: var(--text-primary);
+}
+.material-file-link em { font-style: normal; font-size: 10px; color: var(--text-muted); }
+
 .chat-attach-mini {
   display: grid;
   place-items: center;

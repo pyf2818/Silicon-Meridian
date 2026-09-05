@@ -42,6 +42,7 @@ function readThemeColors() {
       chart:    nodeColor('--graph-node-chart', '--accent-blue', 'chart'),
       project:  nodeColor('--graph-node-project', '--accent-rose', 'project'),
       default:  v('--text-muted', TYPE_COLORS.default),
+      file:     v('--graph-node-file', '--accent-amber', 'file'),
     },
     tag: v('--text-muted', 'rgba(148,163,184,0.85)'),
     edge: v('--border-color', 'rgba(148,163,184,0.35)'),
@@ -58,7 +59,7 @@ function readThemeColors() {
  * @param {Function} props.onOpenMaterial (material) => void  点击素材回调
  * @param {number} [props.height] 渲染高度
  */
-export default function MaterialGraph({ materials, onOpenMaterial, height = 520 }) {
+export default function MaterialGraph({ materials, files = [], onOpenMaterial, height = 520 }) {
   const [hovered, setHovered] = useState(null);
   const [focused, setFocused] = useState(null);
   const boxRef = useRef(null);
@@ -95,7 +96,7 @@ export default function MaterialGraph({ materials, onOpenMaterial, height = 520 
     return () => window.removeEventListener('resize', update);
   }, []);
 
-  const data = useMemo(() => buildGraphData(materials), [materials]);
+  const data = useMemo(() => buildGraphData(materials, { files }), [materials, files]);
   const handleNodeClick = useCallback((n) => {
     setFocused(n ? n.id : null);
     if (n && n.kind === 'material' && n.material && onOpenMaterial) onOpenMaterial(n.material);
@@ -139,7 +140,7 @@ export default function MaterialGraph({ materials, onOpenMaterial, height = 520 
         nodeRelSize={5}
         nodeVal={(n) => (n.kind === 'tag' ? Math.max(2, n.val * 1.2) : 4)}
         nodeColor={nodeColor}
-        nodeLabel={(n) => (n.kind === 'tag' ? `#${n.tag}` : (n.material?.title || '素材'))}
+        nodeLabel={(n) => (n.kind === 'tag' ? `#${n.tag}` : n.kind === 'file' ? `📄 ${n.file?.path || n.file?.name || '本地文件'}` : (n.material?.title || '素材'))}
         linkColor={linkColor}
         linkOpacity={0.4}
         linkWidth={1}
@@ -148,13 +149,14 @@ export default function MaterialGraph({ materials, onOpenMaterial, height = 520 
         onNodeClick={handleNodeClick}
       />
       <div className="material-graph-legend">
-        {Object.entries(themeColors.typeColors).filter(([k]) => k !== 'default').map(([type, color]) => (
+        {Object.entries(themeColors.typeColors).filter(([k]) => k !== 'default' && k !== 'file').map(([type, color]) => (
           <span key={type} className="material-graph-legend-item">
             <span className="dot" style={{ background: color }} />
             {MATERIAL_TYPES[type] || type}
           </span>
         ))}
         <span className="material-graph-legend-item"><span className="dot" style={{ background: themeColors.tag }} />标签</span>
+        <span className="material-graph-legend-item"><span className="dot" style={{ background: themeColors.typeColors.file }} />本地文件</span>
       </div>
     </div>
   );

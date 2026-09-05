@@ -132,18 +132,11 @@ describe('groupChatStore v9：群生命周期系统事件', () => {
 });
 
 describe('groupChatStore v9：共享色相与消息上限', () => {
-  it('hueOfMember 循环取色且对越界/负数安全', async () => {
-    const s = await freshStore();
-    expect(s.hueOfMember(0)).toBe(s.hueOfMember(6));
-    expect(s.hueOfMember(-1)).toBe(s.hueOfMember(5));
-    expect(s.MEMBER_HUES).toHaveLength(6);
-  });
-
   it('hueOfMemberId/hueOfChat 按 id 稳定取色（身份不随位置/成员变化漂移）', async () => {
     const s = await freshStore();
     expect(s.hueOfMemberId('explorer')).toBe(s.hueOfMemberId('explorer'));
     expect(s.hueOfMemberId('explorer')).toBe(s.hueOfMemberId('explorer'));
-    expect(s.hueOfMember('')).toBe(s.hueOfMember(0)); // 空值安全
+    expect(s.MEMBER_HUES).toHaveLength(6); // 色相池容量
     expect(s.MEMBER_HUES).toContain(s.hueOfChat('gc_abc'));
     expect(s.hueOfChat('gc_abc')).toBe(s.hueOfChat('gc_abc'));
   });

@@ -90,8 +90,8 @@ function AgentsPage({
               <section className="agent-home-hero">
                 <div>
                   <div className="workbench-kicker">Agentic Intelligence</div>
-                  <h1>智能体工作流</h1>
-                  <p>这是主力大模型工作区，用来完成深度分析、追踪记忆、风险扫描和创作转化。AI 精灵保留为页面小助手，这里负责真正的宽屏任务处理。</p>
+                  <h1>无限画布 · 工作流</h1>
+                  <p>独立的工作流搭建模块：拖拽节点到无限画布、连线编排执行顺序；搭好的工作流可在 AI 工作站输入框一键调用执行。</p>
                 </div>
                 <button
                   className="ai-primary-action"
@@ -175,8 +175,8 @@ function AgentsPage({
 
                 <div className="agent-workflow-panel builder-panel">
                   <div className="section-header">
-                    <h2 className="section-title">{ICONS.bot} 可视化工作流蓝图</h2>
-                    <p className="section-desc">先用可编辑节点定义智能体协作语言，后续再升级为拖拽式画布和真实节点执行。</p>
+                    <h2 className="section-title">{ICONS.workflow || ICONS.bot} 画布蓝图</h2>
+                    <p className="section-desc">拖拽节点到画布、连线编排执行顺序；搭好的工作流可在 AI 工作站输入框一键调用。</p>
                   </div>
 
                   <div className="workflow-template-bar">
@@ -757,10 +757,10 @@ function AgentsPage({
                       )}
                       <div className="agent-result-actions">
                         <button onClick={() => addManualMaterial({
-                          title: `${agentWorkflowDraft.name || '智能体工作流'} ${new Date().toLocaleDateString('zh-CN')}`,
+                          title: `${agentWorkflowDraft.name || '无限画布工作流'} ${new Date().toLocaleDateString('zh-CN')}`,
                           content: `${agentWorkflowResult.content}\n\n---\n\n工作流蓝图\n${workflowBlueprintText}`,
                           type: 'analysis',
-                          source: '智能体工作流',
+                          source: '无限画布',
                           url: '',
                           tags: '智能体,情报分析',
                           note: '',

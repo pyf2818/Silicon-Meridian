@@ -22,7 +22,8 @@ export default function ShortcutsModal({
             <div className="shortcut-row"><kbd>G A</kbd><span>全部动态</span></div>
             <div className="shortcut-row"><kbd>G G</kbd><span>GitHub 热门</span></div>
             <div className="shortcut-row"><kbd>G S</kbd><span>股市动向</span></div>
-            <div className="shortcut-row"><kbd>G U</kbd><span>智创中心</span></div>
+            <div className="shortcut-row"><kbd>G U</kbd><span>素材管理</span></div>
+            <div className="shortcut-row"><kbd>G W</kbd><span>无限画布</span></div>
             <div className="shortcut-row"><kbd>G C</kbd><span>用户广场</span></div>
             <div className="shortcut-row"><kbd>G P</kbd><span>用户画像</span></div>
             <div className="shortcut-row"><kbd>G M</kbd><span>竞争监测</span></div>

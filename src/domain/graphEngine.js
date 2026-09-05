@@ -31,7 +31,16 @@ export const TYPE_COLORS = {
  * @param {number} [opts.maxNodes] 最多纳入多少素材（避免图过密，缺省 120）
  * @returns {{nodes: Array, links: Array}}
  */
-export function buildGraphData(materials, { maxNodes = 120 } = {}) {
+/**
+ * 构建素材知识图谱数据（纯函数，可单测）
+ * @param {Array} materials 素材列表
+ * @param {Object} opts
+ * @param {Array} [opts.files] 本地空间关联文件 [{ name, path, content?, spaceName? }]
+ *   —— 文件作为独立节点入图；素材标题出现在文件内容中（或文件名包含标题）时连边，
+ *   让"素材 ↔ 本地资产"的关联一眼可见
+ * @param {number} [opts.maxNodes] 素材节点上限
+ */
+export function buildGraphData(materials, { files = [], maxNodes = 120 } = {}) {
   const list = Array.isArray(materials) ? materials : [];
   const selected = list.slice(0, maxNodes);
   const nodes = [];
@@ -72,6 +81,29 @@ export function buildGraphData(materials, { maxNodes = 120 } = {}) {
       const tag = String(t).trim();
       if (!tag) continue;
       links.push({ source: srcId, target: `tag:${tag}` });
+    }
+  }
+
+  // 本地文件节点 + 边：文件 ↔ 素材（素材标题被文件内容引用，或文件名含标题关键词）
+  const fileList = (Array.isArray(files) ? files : []).slice(0, 80);
+  for (const f of fileList) {
+    if (!f?.name) continue;
+    const fileId = `file:${f.path || f.name}`;
+    const content = String(f.content || '');
+    nodes.push({
+      id: fileId,
+      kind: 'file',
+      group: 'file',
+      file: f,
+      val: Math.max(2, Math.min(10, Math.round(content.length / 2000) + 2)),
+    });
+    for (const m of selected) {
+      const title = String(m.title || '').trim();
+      if (title.length < 2) continue;
+      const fileName = String(f.name || '');
+      if ((content && content.includes(title)) || fileName.includes(title.slice(0, 12))) {
+        links.push({ source: materialId(m), target: fileId });
+      }
     }
   }
 
