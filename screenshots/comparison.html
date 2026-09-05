@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Silicon Meridian · 前端视觉优化前后对比</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
+    background: #0c0d0b;
+    color: #e8e6df;
+    padding: 48px 24px 96px;
+  }
+  .wrap { max-width: 1480px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 56px; }
+  header .eyebrow {
+    display: inline-block; padding: 5px 16px; border-radius: 999px;
+    border: 1px solid rgba(201,169,97,.35); color: #c9a961;
+    font-size: 12px; letter-spacing: 3px; margin-bottom: 18px;
+  }
+  header h1 { font-size: 32px; font-weight: 700; letter-spacing: 1px; }
+  header p { color: #9a968a; margin-top: 12px; font-size: 14px; }
+  section { margin-bottom: 64px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 20px; }
+  .sec-head h2 { font-size: 20px; font-weight: 600; }
+  .sec-head span { color: #8a877c; font-size: 13px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .cell { border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.08); background: #131411; }
+  .cell .tag {
+    display: inline-block; margin: 14px 0 0 14px; padding: 4px 12px;
+    font-size: 12px; border-radius: 6px; letter-spacing: 1px;
+  }
+  .tag.before { background: rgba(255,255,255,.07); color: #9a968a; }
+  .tag.after { background: rgba(201,169,97,.16); color: #d4b576; border: 1px solid rgba(201,169,97,.3); }
+  .cell img { display: block; width: 100%; margin-top: 12px; }
+  .notes { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .notes li {
+    list-style: none; font-size: 12.5px; color: #b5b2a6;
+    background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.07);
+    padding: 6px 12px; border-radius: 999px;
+  }
+  .notes li b { color: #d4b576; font-weight: 600; }
+  .single { display: grid; grid-template-columns: 1fr; gap: 20px; max-width: 760px; margin: 0 auto; }
+  @media (max-width: 900px) { .pair { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">SILICON MERIDIAN · UI POLISH</div>
+    <h1>前端视觉优化 · 前后对比</h1>
+    <p>纯 CSS 覆盖层（src/polish.css）· 零业务逻辑改动 · 2026-08-03</p>
+  </header>
+
+  <section>
+    <div class="sec-head"><h2>① 首页 · AI 工作台欢迎区</h2><span>垂直聚焦 / 打字光标 / 遥测胶囊 / 卡片错落进场</span></div>
+    <div class="pair">
+      <div class="cell"><span class="tag before">优化前</span><img src="baseline/01-home.png" alt="首页优化前"></div>
+      <div class="cell"><span class="tag after">优化后</span><img src="after/01-home.png" alt="首页优化后"></div>
+    </div>
+    <ul class="notes">
+      <li><b>去金框</b>：2px 金色描边 → 1px 中性结构线，金色只留给状态与动作</li>
+      <li><b>渐变标题 → 纯色 + 呼吸光标</b>，对抗 AI slop 观感</li>
+      <li><b>统计行 → 遥测胶囊</b>，等宽字体仪表盘化</li>
+      <li><b>欢迎区垂直居中</b>，消除下方死黑空间</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>② GitHub 热门 · 卡片色彩归位</h2><span>Top3 金徽章 / 硬编码蓝紫清除</span></div>
+    <div class="pair">
+      <div class="cell"><span class="tag before">优化前</span><img src="baseline/05-nav-GitHub.png" alt="GitHub优化前"></div>
+      <div class="cell"><span class="tag after">优化后</span><img src="after/05-nav-GitHub.png" alt="GitHub优化后"></div>
+    </div>
+    <ul class="notes">
+      <li><b>Top3 排名</b>：琥珀文字 → 金色填充徽章，排行榜仪式感</li>
+      <li><b>topic 标签</b>：硬编码天蓝 → accent 变量，随调色板统一迁移</li>
+      <li><b>卡片描边</b>：硬编码金渐变 → accent color-mix</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>③ 推荐页 · 空状态重塑</h2><span>从"虚线框告示"到"有呼吸感的留白"</span></div>
+    <div class="pair">
+      <div class="cell"><span class="tag before">优化前</span><img src="baseline/04-nav-推荐.png" alt="推荐页优化前"></div>
+      <div class="cell"><span class="tag after">优化后</span><img src="after/04-nav-推荐.png" alt="推荐页优化后"></div>
+    </div>
+    <ul class="notes">
+      <li><b>虚线框 → 细实线 + 20px 圆角</b>，顶部径向微光锚定视线</li>
+      <li><b>主按钮胶囊化</b> + 柔和金色投影</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>④ 移动端 390px · GitHub 热门</h2><span>Top3 徽章 / 单列卡片层级</span></div>
+    <div class="pair">
+      <div class="cell"><span class="tag before">优化前（用户画像页）</span><img src="baseline/21-mobile-390.png" alt="移动端优化前"></div>
+      <div class="cell"><span class="tag after">优化后（GitHub 页）</span><img src="after/21-mobile-390.png" alt="移动端优化后"></div>
+    </div>
+    <ul class="notes">
+      <li>窄屏欢迎语自动换行，不再溢出</li>
+      <li>prefers-reduced-motion 下自动关闭进场动画</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>⑤ 浅色模式 · 首页</h2><span>中性边框同样生效，双模式一致的高级感</span></div>
+    <div class="single">
+      <div class="cell"><span class="tag after">优化后 · Light</span><img src="after/30-home-light.png" alt="浅色模式"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>⑥ 用户画像 HUD 页 · 回归确认</h2><span>独立 HUD 主题作用域，未受影响</span></div>
+    <div class="pair">
+      <div class="cell"><span class="tag before">优化前</span><img src="baseline/06-nav-用户画像.png" alt="HUD优化前"></div>
+      <div class="cell"><span class="tag after">优化后</span><img src="after/06-nav-用户画像.png" alt="HUD优化后"></div>
+    </div>
+    <ul class="notes">
+      <li>HUD 设计系统作用域独立（.profile-center-page），打磨层不侵入</li>
+      <li>左侧导航激活态：硬编码天蓝 → accent 软底 + 2px 指示条</li>
+    </ul>
+  </section>
+</div>
+</body>
+</html>
