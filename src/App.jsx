@@ -60,7 +60,7 @@ import InsightDashboardPage from './components/InsightDashboardPage.jsx';
 import GithubPage from './components/GithubPage.jsx';
 import MonitorPage from './components/MonitorPage.jsx';
 import TrendingPage from './components/TrendingPage.jsx';
-import AgentsPage from './components/AgentsPage.jsx';
+import CanvasPage from './components/workflow/CanvasPage.jsx';
 import CalendarPage from './components/CalendarPage.jsx';
 import MaterialsPage from './components/MaterialsPage.jsx';
 import ReadingListPage from './components/ReadingListPage.jsx';
@@ -2432,7 +2432,7 @@ ${signals}
           <button className="panel-toggle" onClick={() => setPanelCollapsed(c => !c)}>{panelCollapsed ? ICONS.chevronLeft : ICONS.chevronRight}</button>
         </div>}
 
-        <div className={`feed custom-scrollbar ${(nav === 'home' || nav === 'recommendations') ? 'feed-workbench' : ''} ${nav === 'stock' ? 'feed-stock' : ''}`} ref={feedRef}>
+        <div className={`feed custom-scrollbar ${(nav === 'home' || nav === 'recommendations') ? 'feed-workbench' : ''} ${nav === 'stock' ? 'feed-stock' : ''} ${nav === 'canvas' ? 'feed-canvas' : ''}`} ref={feedRef}>
           {nav === 'home' && (
             <AiChatPanel
               variant="main"
@@ -2467,63 +2467,22 @@ ${signals}
           {nav === 'studio' && renderMaterialsRepo()}
 
           {nav === 'canvas' && (
-            <AgentsPage
-              agents={agents}
-              currentAgent={currentAgent}
-              intelligenceMissions={intelligenceMissions}
-              intelligenceProfile={intelligenceProfile}
-              runAgentWorkflow={runAgentWorkflow}
-              agentWorkflowScopes={agentWorkflowScopes}
-              agentWorkflowScope={agentWorkflowScope}
-              setAgentWorkflowScope={setAgentWorkflowScope}
-              agentWorkflowResult={agentWorkflowResult}
-              agentWorkflowPrompt={agentWorkflowPrompt}
-              setAgentWorkflowPrompt={setAgentWorkflowPrompt}
-              setSettingsTab={setSettingsTab}
-              setShowSettings={setShowSettings}
-              workflowTemplates={workflowTemplates}
-              activeWorkflowId={activeWorkflowId}
-              switchWorkflowTemplate={switchWorkflowTemplate}
-              saveWorkflowAsTemplate={saveWorkflowAsTemplate}
-              deleteWorkflowTemplate={deleteWorkflowTemplate}
-              workflowImportInputRef={workflowImportInputRef}
-              importWorkflowJson={importWorkflowJson}
-              installWorkflowTemplate={installWorkflowTemplate}
-              workflowValidation={workflowValidation}
-              agentWorkflowDraft={agentWorkflowDraft}
-              updateWorkflowDraft={updateWorkflowDraft}
-              draggingWorkflowNodeId={draggingWorkflowNodeId}
-              setDraggingWorkflowNodeId={setDraggingWorkflowNodeId}
-              reorderWorkflowNode={reorderWorkflowNode}
-              workflowTypeMeta={workflowTypeMeta}
-              selectedWorkflowNodeId={selectedWorkflowNodeId}
-              setSelectedWorkflowNodeId={setSelectedWorkflowNodeId}
-              newWorkflowNodeType={newWorkflowNodeType}
-              setNewWorkflowNodeType={setNewWorkflowNodeType}
-              addWorkflowNode={addWorkflowNode}
-              exportWorkflowToMaterials={exportWorkflowToMaterials}
-              downloadWorkflowJson={downloadWorkflowJson}
-              resetWorkflowDraft={resetWorkflowDraft}
-              selectedWorkflowNode={selectedWorkflowNode}
-              moveWorkflowNode={moveWorkflowNode}
-              updateWorkflowNode={updateWorkflowNode}
-              removeWorkflowNode={removeWorkflowNode}
-              selectedWorkflowConnections={selectedWorkflowConnections}
-              enabledWorkflowNodes={enabledWorkflowNodes}
-              agentWorkflowRun={agentWorkflowRun}
-              workflowRunStatusMeta={workflowRunStatusMeta}
-              agentWorkflowHistory={agentWorkflowHistory}
-              clearAgentWorkflowHistory={clearAgentWorkflowHistory}
-              restoreAgentWorkflowHistory={restoreAgentWorkflowHistory}
-              agentWorkflowActions={agentWorkflowActions}
-              executeWorkflowAction={executeWorkflowAction}
-              addManualMaterial={addManualMaterial}
-              workflowBlueprintText={workflowBlueprintText}
-              exportWorkflowResultToEditor={exportWorkflowResultToEditor}
-              sendWorkbenchToElf={sendWorkbenchToElf}
-              setShowLlmQuickConfig={setShowLlmQuickConfig}
+            <CanvasPage
+              draft={agentWorkflowDraft}
+              updateDraft={updateWorkflowDraft}
+              selectedNodeId={selectedWorkflowNodeId}
+              setSelectedNodeId={setSelectedWorkflowNodeId}
+              selectedNode={selectedWorkflowNode}
+              nodeTypeMeta={workflowTypeMeta}
+              updateNode={updateWorkflowNode}
+              removeNode={removeWorkflowNode}
+              addNode={addWorkflowNode}
+              moveNode={moveWorkflowNode}
+              templates={workflowTemplates}
+              saveAsTemplate={(payload) => saveWorkflowAsTemplate(payload)}
+              resetDraft={resetWorkflowDraft}
             />
-          )}
+          )}}
 
           {/* ALL NEWS */}
           {nav === 'all' && (

@@ -49,6 +49,7 @@ export default function WorkflowCanvas({
   onCreateNodeAt = () => {},  // (type, worldX, worldY)
   nodeTypeMeta = {},
   selectedNode = null,
+  children,                   // 画布内浮层（工作流名/动作/节点配置卡），随画布渲染
 }) {
   const viewportRef = useRef(null);
   const [pan, setPan] = useState({ x: 24, y: 24 });
@@ -252,6 +253,9 @@ export default function WorkflowCanvas({
       {nodes.length === 0 && (
         <div className="wf-empty-hint">从左侧面板拖拽节点到画布，开始搭建工作流</div>
       )}
+
+      {/* 页面级浮层（工作流名 / 动作 / 节点配置卡） */}
+      {children}
     </div>
   );
 }

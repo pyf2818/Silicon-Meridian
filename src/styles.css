@@ -27626,6 +27626,88 @@ body {
 
 /* Infinite workflow canvas */
 .wf-canvas { position: relative; min-height: 520px; overflow: hidden; border: 1px solid var(--border-color, rgba(148,163,184,.22)); border-radius: 18px; background: #0b1220; user-select: none; cursor: grab; }
+
+/* ===== v14 纯画布页：画布独占整屏，只有画布内浮动元素 ===== */
+.feed.feed-canvas { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.canvas-page { position: relative; flex: 1; min-height: 0; display: flex; }
+.canvas-page .wf-canvas { flex: 1; min-height: 0; height: auto; border: none; border-radius: 0; }
+.canvas-float { position: absolute; z-index: 20; }
+.canvas-float-name { top: 14px; left: 14px; }
+.canvas-name-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 14px; border: 1px solid var(--border-color); border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  color: var(--text-primary); font-size: 13px; font-weight: 700; cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.canvas-name-chip:hover { border-color: var(--accent-cyan); }
+.canvas-name-chip small { font-size: 10px; color: var(--text-muted); font-weight: 500; }
+.canvas-name-input {
+  width: 220px; padding: 7px 14px;
+  border: 1px solid var(--accent-cyan); border-radius: 999px;
+  background: var(--bg-primary); color: var(--text-primary);
+  font-size: 13px; font-weight: 700; outline: none;
+}
+.canvas-float-actions { top: 14px; right: 236px; display: flex; align-items: center; gap: 6px; }
+.canvas-float-actions > button, .canvas-templates-wrap > button {
+  padding: 6px 12px; border: 1px solid var(--border-color); border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  color: var(--text-primary); font-size: 11.5px; cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.canvas-float-actions > button:hover:not(:disabled), .canvas-templates-wrap > button:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.canvas-float-actions > button:disabled { opacity: 0.45; cursor: not-allowed; }
+.canvas-templates-wrap { position: relative; display: inline-flex; }
+.canvas-templates-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+  min-width: 200px; max-height: 260px; overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.canvas-templates-pop button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 10px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text-primary); font-size: 12px; cursor: pointer; text-align: left;
+}
+.canvas-templates-pop button:hover { background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
+.canvas-templates-pop small { color: var(--text-muted); font-size: 10px; }
+/* 节点配置卡：画布右下浮动 */
+.canvas-node-editor {
+  right: 14px; bottom: 14px;
+  width: 320px; max-height: min(52vh, 460px); overflow-y: auto;
+  padding: 12px;
+  background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+  display: flex; flex-direction: column; gap: 9px;
+}
+.canvas-node-editor .workflow-node-tools { display: flex; align-items: center; gap: 6px; }
+.canvas-node-editor .workflow-node-tools b { font-size: 12px; color: var(--accent-cyan); }
+.canvas-node-editor-space { flex: 1; }
+.canvas-node-editor .workflow-node-tools button {
+  padding: 3px 8px; border: 1px solid var(--border-color); border-radius: 6px;
+  background: transparent; color: var(--text-primary); font-size: 11px; cursor: pointer;
+}
+.canvas-node-editor .workflow-node-tools button:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.canvas-node-editor .workflow-node-tools button.is-danger:hover { border-color: var(--status-critical, #f85149); color: var(--status-critical, #f85149); }
+.canvas-node-editor label { display: flex; flex-direction: column; gap: 4px; }
+.canvas-node-editor label > span { font-size: 10.5px; font-weight: 700; color: var(--text-muted); }
+.canvas-node-editor input, .canvas-node-editor select, .canvas-node-editor textarea {
+  width: 100%; padding: 6px 9px;
+  border: 1px solid var(--border-color); border-radius: 8px;
+  background: var(--bg-secondary); color: var(--text-primary);
+  font-size: 12px; font-family: inherit; line-height: 1.5;
+  outline: none; resize: vertical;
+}
+.canvas-node-editor input:focus, .canvas-node-editor select:focus, .canvas-node-editor textarea:focus { border-color: var(--accent-cyan); }
+.canvas-node-editor .workflow-toggle { display: inline-flex; flex-direction: row; align-items: center; gap: 5px; white-space: nowrap; }
+.canvas-node-editor .workflow-node-editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* 窄屏：节点配置卡收窄 */
+@media (max-width: 1100px) {
+  .canvas-node-editor { width: min(320px, calc(100vw - 28px)); }
+  .canvas-float-actions { right: 14px; }
+}
 .wf-canvas:active { cursor: grabbing; }
 .wf-world { position: absolute; left: 0; top: 0; width: 4000px; height: 3000px; transform-origin: 0 0; background-image: linear-gradient(rgba(148,163,184,.10) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.10) 1px, transparent 1px); }
 .wf-edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; }

@@ -72,11 +72,12 @@
     "multiDomainNews": "Multi-Domain News",
     "openSourceDiscovery": "Open Source Discovery",
     "marketAnalysis": "Market Analysis",
-    "creativeCenter": "Creative Studio",
     "communitySquare": "Community Square",
     "chat": "Team Chat",
     "userProfile": "User Profile",
-    "monitor": "Competitive Intelligence"
+    "monitor": "Competitive Intelligence",
+    "materials": "Materials",
+    "canvas": "Canvas"
   },
   "settings": {
     "title": "Settings",
@@ -251,10 +252,22 @@
       "aboutDesc": "Version, features and author"
     },
     "planned": {
-      "account": { "title": "Account & Profile", "desc": "Manage sessions and cross-device sync. Coming in a later release." },
-      "personalization": { "title": "Personalization", "desc": "Fine-tune interests, recommendation strength and briefing cadence." },
-      "storage": { "title": "Data & Storage", "desc": "Cache, offline reading, asset library and knowledge export." },
-      "labs": { "title": "Labs", "desc": "Toggles for proactive intel, cloud long-tasks and more." }
+      "account": {
+        "title": "Account & Profile",
+        "desc": "Manage sessions and cross-device sync. Coming in a later release."
+      },
+      "personalization": {
+        "title": "Personalization",
+        "desc": "Fine-tune interests, recommendation strength and briefing cadence."
+      },
+      "storage": {
+        "title": "Data & Storage",
+        "desc": "Cache, offline reading, asset library and knowledge export."
+      },
+      "labs": {
+        "title": "Labs",
+        "desc": "Toggles for proactive intel, cloud long-tasks and more."
+      }
     }
   },
   "auth": {

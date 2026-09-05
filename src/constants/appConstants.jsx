@@ -59,9 +59,8 @@ export const NAV_ITEMS = [
 
   { id: 'github', labelKey: 'nav.github', icon: 'github' },
   { id: 'materials', labelKey: 'nav.materials', icon: 'layers' },
-  { id: 'studio', labelKey: 'nav.studio', icon: 'edit' },
-  { id: 'agents', labelKey: 'nav.agents', icon: 'bot' },
-  { id: 'editor', labelKey: 'nav.editor', icon: 'edit' },
+  { id: 'studio', labelKey: 'nav.studio', icon: 'layers' },
+  { id: 'canvas', labelKey: 'nav.canvas', icon: 'workflow' },
   { id: 'square', labelKey: 'nav.square', icon: 'user' },
   { id: 'chat', labelKey: 'nav.chat', icon: 'messageSquare' },
   { id: 'profile-center', labelKey: 'nav.profileCenter', icon: 'target' },
@@ -104,8 +103,12 @@ export const NAV_CONTEXT_SECTIONS = {
     items: []
   },
   studio: {
-    labelKey: 'context.creativeCenter',
-    items: ['materials', 'agents', 'editor']
+    labelKey: 'context.materials',
+    items: ['studio']
+  },
+  canvas: {
+    labelKey: 'context.canvas',
+    items: []
   },
   square: {
     labelKey: 'context.communitySquare',
