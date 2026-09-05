@@ -134,8 +134,12 @@ export default function AiChatPanel({
   const [selectedModel, setSelectedModel] = useState(llmConfig?.selectedModel || '');
   const [attachments, setAttachments] = useState([]);
   const [sessionCollapsed, setSessionCollapsed] = useState(false);
-  // 中栏视图：'chat' 对话 | 'team' 团队中心（AgentTeamPanel 专有页面）
+  // 中栏视图：'chat' 对话 | 'team' 执行记录（AgentTeamPanel 专有页面）
   const [centerView, setCenterView] = useState('chat');
+  // 执行记录页发起 → 切到团队群聊并预填 @ 指派（任务在群里发布，不进单人对话）。
+  // seq 单调递增：同文本重复点击也能再次注入，子组件按 seq 去重
+  const [teamInject, setTeamInject] = useState(null);
+  const teamInjectSeqRef = useRef(0);
 
   // 会话空间归属迁移（幂等）：老会话没有 spaceId / 指向已删空间 → 归入默认空间
   useEffect(() => {
@@ -786,10 +790,6 @@ export default function AiChatPanel({
     setSessions(prev => prev.map(s => s.id === id ? { ...s, pinned: !s.pinned } : s));
   }, []);
 
-  const moveSession = useCallback((id, spaceId) => {
-    setSessions(prev => prev.map(s => s.id === id ? { ...s, spaceId } : s));
-  }, []);
-
   // 删除空间：空间本身删除 + 其下会话迁回默认空间
   const handleDeleteSpace = useCallback((spaceId) => {
     if (!deleteSpace(spaceId)) return;
@@ -1337,7 +1337,6 @@ export default function AiChatPanel({
           onDelete={deleteSession}
           onRename={renameSession}
           onTogglePin={togglePin}
-          onMoveSession={moveSession}
           onRenameSpace={renameSpace}
           onDeleteSpace={handleDeleteSpace}
           onOpenTeamCenter={() => setCenterView('team')}
@@ -1370,6 +1369,8 @@ export default function AiChatPanel({
               onSaveMaterial={addManualMaterial}
               onViewRecords={() => setCenterView('teamRecords')}
               onNeedConfig={onOpenLlmConfig}
+              injection={teamInject}
+              onInjectConsumed={() => setTeamInject(null)}
             />
           </div>
         </div>
@@ -1383,7 +1384,11 @@ export default function AiChatPanel({
           </div>
           <div className="team-center-scroll custom-scrollbar">
             <AgentTeamPanel
-              onLaunch={(prompt) => { setCenterView('chat'); setInput(prompt); setTimeout(() => inputRef.current?.focus(), 60); }}
+              onLaunch={(text) => {
+                teamInjectSeqRef.current += 1;
+                setTeamInject({ text, seq: teamInjectSeqRef.current });
+                setCenterView('team');
+              }}
             />
           </div>
         </div>
@@ -1558,6 +1563,25 @@ export default function AiChatPanel({
                     </button>
                   </>
                 )}
+              </div>
+            )}
+            {/* 用户消息操作（v12）：复制 / 重写（填回输入框重新编辑发送） */}
+            {msg.role === 'user' && !msg.loading && (
+              <div className="chat-msg-actions chat-msg-actions-user">
+                <button type="button" className="chat-action-btn" title="复制" onClick={e => copyMessage(msg.content, e)}>
+                  <span className="icon-sm">{ICONS.copy}</span>
+                  复制
+                </button>
+                <button
+                  type="button"
+                  className="chat-action-btn"
+                  title="把这条消息填回输入框，修改后重新发送"
+                  onClick={() => { setInput(msg.content || ''); setTimeout(() => inputRef.current?.focus(), 60); }}
+                  disabled={isStreaming}
+                >
+                  <span className="icon-sm">{ICONS.edit}</span>
+                  重写
+                </button>
               </div>
             )}
             {msg.role === 'assistant' && !msg.loading && !msg.error && (
