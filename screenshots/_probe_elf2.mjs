@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true });
+const ctx = await browser.newContext({ viewport: { width: 1560, height: 940 }, colorScheme: 'dark', reducedMotion: 'reduce' });
+const page = await ctx.newPage();
+const errs = [];
+page.on('pageerror', e => errs.push('pageerror: ' + e.message.slice(0, 200)));
+page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 200)); });
+await page.goto('http://localhost:5175/', { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(2200);
+console.log('body has 暂未就绪:', (await page.evaluate(() => document.body.innerText)).includes('暂未就绪'));
+console.log('ball:', await page.evaluate(() => document.querySelectorAll('.ai-elf-avatar').length));
+console.log('errors:', errs.length ? errs.slice(0, 5) : 'none');
+await browser.close();
