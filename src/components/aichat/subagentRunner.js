@@ -75,9 +75,12 @@ function transcriptText(task, messages) {
  *        （team 模式下为每个队友绑定 teamId / teamMember 身份）
  * @param {boolean} [opts.persist] 是否把执行转写落盘到工作空间（默认 true；
  *        群聊认领等轻量轮次传 false，避免产出噪音文件）
+ * @param {(payload:{delta:string, content:string}) => void} [opts.onContentDelta]
+ *        流式文本增量回调（跨轮累积的原始流；群聊流式气泡用。最终报告以返回值
+ *        result.report 为准——中间轮的叙述文本会被最终答案替换）
  * @returns {Promise<{id,agent,agentName,objective,status,report,error,usage,turns,transcriptPath,memberName}>}
  */
-async function runOneSubagent(task, { llmConfig, selectedModel, parentCtx, onProgress, signal, extraTools = [], buildSystemSuffix, extraCtx, extraCtxFn, persist = true }) {
+async function runOneSubagent(task, { llmConfig, selectedModel, parentCtx, onProgress, signal, extraTools = [], buildSystemSuffix, extraCtx, extraCtxFn, persist = true, onContentDelta }) {
   const preset = task.preset;
   const controller = new AbortController();
   const onParentAbort = () => controller.abort();
@@ -127,6 +130,16 @@ async function runOneSubagent(task, { llmConfig, selectedModel, parentCtx, onPro
           try { return buildSystemSuffix(task) || ''; } catch { return ''; }
         }
       : undefined;
+    // 流式通道：把 runToolLoop 的逐字 delta 累积成"已流出的全文"再上抛，
+    // 调用方（群聊气泡）无需自己区分增量/全量语义
+    let streamed = '';
+    const handleDelta = typeof onContentDelta === 'function'
+      ? (delta) => {
+          streamed += String(delta || '');
+          emit({ status: 'running', contentDelta: String(delta || ''), content: streamed });
+          try { onContentDelta({ delta: String(delta || ''), content: streamed }); } catch { /* ignore */ }
+        }
+      : undefined;
     const result = await runToolLoop({
       controller,
       toolSchemas: selectToolSchemas(whitelist),
@@ -137,6 +150,7 @@ async function runOneSubagent(task, { llmConfig, selectedModel, parentCtx, onPro
       toolCtx,
       maxIterations: preset.maxTurns,
       buildSystemSuffix: suffixFn,
+      onContentDelta: handleDelta,
       generateSummary: createLlmSummarizer({
         llmConfig,
         selectedModel,

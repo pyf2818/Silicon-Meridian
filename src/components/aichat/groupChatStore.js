@@ -6,7 +6,9 @@
  * - roster：群聊内已邀请的成员 id 列表（内置 preset id 或自定义角色 id）
  * - profiles：成员性格档案（id → { name?, description?, style? }，内置角色的个性化覆盖）
  * - customRoles：自定义角色库（localStorage 持久化，保存即可邀请入群）
- * - messages：群聊消息流（user / agent 两类），所有成员共享同一份上下文
+ * - messages：群聊消息流（user / agent / system 三类；system 为居中系统行，
+ *   承载群生命周期与流水线事件，不进 LLM 白板），所有成员共享同一份上下文
+ * - announcement：群公告（团队目标），右侧群信息面板编辑
  * - running：当前群聊一轮流水线是否在跑（UI 禁输入 + 流水线状态）
  * 持久化 localStorage 'agentTeamGroupChat'（v1/v2 格式自动迁移）；subscribe 供 UI 同步。
  */
@@ -128,10 +130,37 @@ function makeChat(name, roster = [], messages = []) {
     id: `gc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
     name: String(name || '').slice(0, 24) || '新团队群聊',
     createdAt: Date.now(),
+    announcement: '', // 群公告（团队目标），右侧群信息面板编辑
     roster,
     profiles: {}, // 成员性格档案：agentId → { name?, description?, style? }
     messages,
   };
+}
+
+/** 成员头像色相池；群聊/侧栏共用 */
+export const MEMBER_HUES = [190, 150, 40, 280, 20, 330];
+
+/** 稳定字符串哈希（头像色相/群头像派生用） */
+export function hashStr(s) {
+  const str = String(s || '');
+  let h = 5381;
+  for (let i = 0; i < str.length; i += 1) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** 成员头像色相：按成员 id 哈希取色 —— 全局稳定（不随入群顺序/群聊不同而漂移） */
+export function hueOfMemberId(id) {
+  return MEMBER_HUES[hashStr(id) % MEMBER_HUES.length];
+}
+
+/** 群聊头像底色：按群 id 哈希 —— 群的视觉身份稳定，不随成员/消息变化 */
+export function hueOfChat(id) {
+  return MEMBER_HUES[hashStr(`chat_${id}`) % MEMBER_HUES.length];
+}
+
+/** 兼容旧签名：按下标取色（已弃用，仅历史调用兜底） */
+export function hueOfMember(idx) {
+  return MEMBER_HUES[((idx % MEMBER_HUES.length) + MEMBER_HUES.length) % MEMBER_HUES.length];
 }
 
 function load() {
@@ -147,6 +176,7 @@ function load() {
           id: String(c.id || `gc_${Date.now().toString(36)}`),
           name: String(c.name || '新团队群聊').slice(0, 24),
           createdAt: Number(c.createdAt) || Date.now(),
+          announcement: String(c.announcement || '').slice(0, 600),
           roster: Array.isArray(c.roster) ? c.roster : [],
           profiles: (c.profiles && typeof c.profiles === 'object' && !Array.isArray(c.profiles)) ? c.profiles : {},
           messages: Array.isArray(c.messages) ? c.messages : [],
@@ -236,6 +266,7 @@ export function createChat(name) {
   state.chats = [...state.chats, chat];
   state.activeId = chat.id;
   state.running = false;
+  pushEvent(chat.id, `创建了群聊「${chat.name}」`);
   persist();
   notify();
   return chat;
@@ -254,7 +285,10 @@ export function renameChat(chatId, name) {
   const trimmed = String(name || '').trim().slice(0, 24);
   if (!trimmed) return false;
   if (state.chats.some(c => c.id !== chatId && c.name === trimmed)) return false;
+  const prev = state.chats.find(c => c.id === chatId);
+  if (!prev || prev.name === trimmed) return false;
   state.chats = state.chats.map(c => (c.id === chatId ? { ...c, name: trimmed } : c));
+  pushEvent(chatId, `群聊「${prev.name}」更名为「${trimmed}」`);
   persist();
   notify();
   return true;
@@ -283,7 +317,9 @@ export function deleteChat(chatId) {
 export function inviteMember(agentId) {
   const chat = activeChat();
   if (!agentId || chat.roster.includes(agentId) || chat.roster.length >= 6) return false;
+  const preset = getAllRolePresets().find(p => p.id === agentId);
   chat.roster = [...chat.roster, agentId];
+  pushEvent(chat.id, `邀请了「${preset?.name || agentId}」加入群聊`);
   persist();
   notify();
   return true;
@@ -292,7 +328,27 @@ export function inviteMember(agentId) {
 export function removeMember(agentId) {
   const chat = activeChat();
   if (!chat.roster.includes(agentId)) return false;
+  const preset = getAllRolePresets().find(p => p.id === agentId);
   chat.roster = chat.roster.filter(id => id !== agentId);
+  pushEvent(chat.id, `「${preset?.name || agentId}」被请出了群聊`);
+  persist();
+  notify();
+  return true;
+}
+
+/* ============ 群公告（团队目标 = 环境设定） ============ */
+
+/** 读写当前群聊的群公告（右侧群信息面板编辑，最长 600 字）。
+ *  公告是环境设定：保存后立即以系统行发进群里让成员注意，
+ *  且每轮协作注入成员上下文（buildSharedTranscript 的调用方负责带上）。 */
+export function setChatAnnouncement(text) {
+  const chat = activeChat();
+  const next = String(text || '').trim().slice(0, 600);
+  if (next === (chat.announcement || '')) return false;
+  chat.announcement = next;
+  pushEvent(chat.id, next
+    ? `📌 更新了群公告，请各位成员注意：\n${next}`
+    : '清空了群公告');
   persist();
   notify();
   return true;
@@ -353,16 +409,36 @@ export function resolveMemberPreset(agentId) {
   return preset;
 }
 
-/** 追加消息 { role:'user'|'agent', agentId?, agentName?, content, at, meta? }
+/** 群生命周期事件 → role:'system' 消息（居中灰色系统行，微信"XX加入了群聊"同款）。
+ *  落到指定群聊（可非当前激活群），不计入 LLM 共享白板（buildSharedTranscript 过滤）。 */
+function pushEvent(chatId, content) {
+  const chat = state.chats.find(c => c.id === chatId);
+  if (!chat || !content) return;
+  const entry = {
+    id: `gm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    role: 'system',
+    agentId: '',
+    agentName: '',
+    content: String(content).slice(0, 300),
+    at: Date.now(),
+    status: 'done',
+    meta: null,
+  };
+  chat.messages = [...chat.messages, entry];
+  if (chat.messages.length > MAX_MESSAGES) chat.messages = chat.messages.slice(-MAX_MESSAGES);
+}
+
+/** 追加消息 { role:'user'|'agent'|'system', agentId?, agentName?, content, at, meta? }
  *  agent 占位消息允许 content 为空（status='running' 的气泡）——此前空 content 被误拒，
- *  导致占位创建返回 null、接力链路在读取 placeholder.id 时崩溃（群聊不回复 bug）。 */
+ *  导致占位创建返回 null、接力链路在读取 placeholder.id 时崩溃（群聊不回复 bug）。
+ *  system 消息是居中系统行（群生命周期/流水线事件），必须有 content。 */
 export function addGroupMessage(msg) {
   if (!msg) return null;
   const isAgentPlaceholder = msg.role === 'agent' && msg.status === 'running';
   if (!isAgentPlaceholder && !msg.content && !msg.loading) return null;
   const entry = {
     id: `gm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-    role: msg.role === 'agent' ? 'agent' : 'user',
+    role: msg.role === 'agent' ? 'agent' : msg.role === 'system' ? 'system' : 'user',
     agentId: msg.agentId || '',
     agentName: msg.agentName || '',
     content: String(msg.content || ''),

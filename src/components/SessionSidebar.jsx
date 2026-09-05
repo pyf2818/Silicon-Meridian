@@ -1,19 +1,40 @@
 /**
  * SessionSidebar - AI 工作站左侧栏（WorkBuddy 式三分区）
  *
- * Tab 1「对话」：置顶会话 + 多工作空间分区 —— 每个空间可展开/收起，
- *   会话嵌套在空间下（对标 WorkBuddy 的「空间 (3) > Silicon Meridian > 会话」）；
- *   空间支持行内新建/重命名/删除；会话支持置顶与跨空间移动。
+ * Tab 1「对话」：多工作空间分区 —— 每个空间可展开/收起，会话嵌套在空间下；
+ *   空间支持行内新建/重命名/删除。空间是一个个独立主体：会话归属创建时的空间，
+ *   不可跨空间移动；置顶是空间内置顶（浮到本空间列表顶部，不跨空间）。
  * Tab 2「文件」：工作空间文件上下文（原 WorkspacePanel，保留）。
- * Tab 3「智能体」：多智能体能力一览（4 个子代理 preset + 团队）+ 团队中心入口，
- *   运行中团队带实时角标 —— spawn 能力此前对用户不可见，这里首次前端化。
+ * Tab 3「智能体」：群聊列表（四宫格头像）+ 群成员预览（带头像）+ 编排能力速览。
  */
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import WorkspacePanel from './WorkspacePanel.jsx';
 import { ICONS } from '../constants/appConstants.jsx';
 import { SUBAGENT_PRESETS } from '../domain/agent/subagentCore.js';
 import { listTeams, subscribeTeams } from '../store/teamStore.js';
-import { getGroupState, getActiveChat, subscribeGroup, switchChat, createChat, getAllRolePresets } from './aichat/groupChatStore.js';
+import { getGroupState, getActiveChat, subscribeGroup, switchChat, createChat, renameChat, deleteChat, getAllRolePresets, hueOfMemberId, hueOfChat } from './aichat/groupChatStore.js';
+import { showToast } from '../utils/toast.js';
+
+/** 稳定的群头像：群名前 4 字拼 2×2（成员变动不影响，仅重命名才变），底色按群 id 哈希 */
+function GroupChatAvatar({ chat, size = 22 }) {
+  const base = String(chat.name || '群').replace(/\s+/g, '') || '群';
+  const chars = [0, 1, 2, 3].map(i => base[i % base.length]);
+  const hue = hueOfChat(chat.id);
+  return (
+    <span className="agents-chat-gavatar" style={{ width: size, height: size }} aria-hidden="true">
+      {chars.map((ch, i) => (
+        <i
+          key={i}
+          style={{
+            background: `hsl(${hue} 55% ${20 + (i % 2) * 5}%)`,
+            color: `hsl(${hue} 80% 72%)`,
+            fontSize: size * 0.34,
+          }}
+        >{ch}</i>
+      ))}
+    </span>
+  );
+}
 import {
   isFileSystemSupported, pickDirectoryHandle, saveHandleToSlot,
 } from '../utils/workspace.js';
@@ -49,11 +70,10 @@ function useTeamsLite() {
   return teams;
 }
 
-/* ---------- 会话项：inline 重命名 + 置顶 + 移动空间 ---------- */
-function SessionItem({ session, isActive, spaces, activeSpaceId, onSwitch, onRename, onDelete, onTogglePin, onMove }) {
+/* ---------- 会话项：inline 重命名 + 空间内置顶 ---------- */
+function SessionItem({ session, isActive, onSwitch, onRename, onDelete, onTogglePin }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title || '');
-  const [moving, setMoving] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -85,8 +105,6 @@ function SessionItem({ session, isActive, spaces, activeSpaceId, onSwitch, onRen
     return lines.join('\n');
   }, [session]);
 
-  const targetSpaces = spaces.filter(sp => sp.id !== session.spaceId);
-
   return (
     <div
       className={`session-item ${isActive ? 'active' : ''} ${editing ? 'is-editing' : ''}`}
@@ -115,17 +133,9 @@ function SessionItem({ session, isActive, spaces, activeSpaceId, onSwitch, onRen
             <button
               className="session-item-btn session-item-pin"
               onClick={e => { e.stopPropagation(); onTogglePin(session.id); }}
-              title={session.pinned ? '取消置顶' : '置顶'}
+              title={session.pinned ? '取消置顶' : '置顶（本空间内）'}
               aria-label={session.pinned ? '取消置顶' : '置顶会话'}
             >⌖</button>
-            {targetSpaces.length > 0 && (
-              <button
-                className={`session-item-btn session-item-move ${moving ? 'is-open' : ''}`}
-                onClick={e => { e.stopPropagation(); setMoving(m => !m); }}
-                title="移动到其他空间"
-                aria-label="移动到其他空间"
-              >⇄</button>
-            )}
             <button
               className="session-item-btn session-item-rename"
               onClick={startEdit}
@@ -139,22 +149,6 @@ function SessionItem({ session, isActive, spaces, activeSpaceId, onSwitch, onRen
               aria-label="删除会话"
             >{ICONS.x}</button>
           </div>
-          {moving && (
-            <div className="session-move-menu" onClick={e => e.stopPropagation()}>
-              <span className="session-move-title">移动到</span>
-              {targetSpaces.map(sp => (
-                <button
-                  key={sp.id}
-                  type="button"
-                  className={sp.id === activeSpaceId ? 'is-here' : ''}
-                  onClick={() => { onMove(session.id, sp.id); setMoving(false); }}
-                >
-                  <i aria-hidden="true">▸</i>{sp.name}
-                  {sp.id === activeSpaceId && <em>当前</em>}
-                </button>
-              ))}
-            </div>
-          )}
         </>
       )}
     </div>
@@ -162,7 +156,7 @@ function SessionItem({ session, isActive, spaces, activeSpaceId, onSwitch, onRen
 }
 
 /* ---------- 空间分区行（WorkBuddy 式：▸ 名称 (n) + 展开嵌套会话） ---------- */
-function SpaceSection({ space, expanded, sessions, activeSessionId, spaces, activeSpaceId, handlers }) {
+function SpaceSection({ space, expanded, sessions, activeSessionId, activeSpaceId, handlers }) {
   const [renaming, setRenaming] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const nameRef = useRef(null);
@@ -236,13 +230,10 @@ function SpaceSection({ space, expanded, sessions, activeSessionId, spaces, acti
               key={s.id}
               session={s}
               isActive={s.id === activeSessionId}
-              spaces={spaces}
-              activeSpaceId={activeSpaceId}
               onSwitch={handlers.onSwitch}
               onRename={handlers.onRename}
               onDelete={handlers.onDelete}
               onTogglePin={handlers.onTogglePin}
-              onMove={handlers.onMove}
             />
           ))}
         </div>
@@ -251,7 +242,7 @@ function SpaceSection({ space, expanded, sessions, activeSessionId, spaces, acti
   );
 }
 
-/* ---------- 团队 Tab：群聊列表（自由切换） + 成员预览 + 执行记录 ---------- */
+/* ---------- 团队 Tab：群聊列表（切换 + 新建/重命名/解散） + 成员预览 + 执行记录 ---------- */
 function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
   const running = teams.filter(t => t.status === 'running');
   const [groupSnap, setGroupSnap] = useState(() => {
@@ -267,23 +258,80 @@ function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
   const members = groupSnap.roster
     .map(id => allPresets.find(p => p.id === id))
     .filter(Boolean);
+  // 行内重命名（群聊管理在侧栏完成：新建/重命名/解散）
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const renameRef = useRef(null);
+  useEffect(() => { if (renamingId && renameRef.current) renameRef.current.focus(); }, [renamingId]);
+
+  const doSwitch = (id) => {
+    if (!switchChat(id)) {
+      showToast('协作执行中，暂不能切换群聊');
+      return;
+    }
+    onOpenTeamCenter?.();
+  };
+  const startRename = (c) => { setRenameDraft(c.name || ''); setRenamingId(c.id); };
+  const commitRename = (c) => {
+    const next = renameDraft.trim();
+    if (next && next !== c.name && !renameChat(c.id, next)) showToast('重命名失败（名称为空或与其他群聊重名）');
+    setRenamingId(null);
+  };
+  const removeChat = (c) => {
+    if (window.confirm(`解散群聊「${c.name}」？聊天记录将不可恢复。`)) {
+      if (deleteChat(c.id)) showToast('群聊已解散');
+      else showToast(c.id === activeId ? '协作执行中，不能解散当前群聊' : '至少保留一个群聊');
+    }
+  };
 
   return (
     <div className="agents-tab custom-scrollbar">
       <div className="agents-cap-label">团队群聊</div>
       <div className="agents-chats">
         {chats.map(c => (
-          <button
-            key={c.id}
-            type="button"
-            className={`agents-chat-item ${c.id === activeId ? 'active' : ''}`}
-            onClick={() => { if (switchChat(c.id)) onOpenTeamCenter?.(); }}
-            title={`切换到「${c.name}」（${c.messages.length} 条消息）`}
-          >
-            <i className="agents-chat-dot" aria-hidden="true" />
-            <span className="agents-chat-name">{c.name}</span>
-            <em>{c.messages.length}</em>
-          </button>
+          <div key={c.id} className={`agents-chat-row ${c.id === activeId ? 'active' : ''}`}>
+            {renamingId === c.id ? (
+              <input
+                ref={renameRef}
+                className="agents-chat-rename"
+                value={renameDraft}
+                onChange={e => setRenameDraft(e.target.value)}
+                onClick={e => e.stopPropagation()}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitRename(c); }
+                  else if (e.key === 'Escape') setRenamingId(null);
+                }}
+                onBlur={() => commitRename(c)}
+                maxLength={24}
+              />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="agents-chat-item"
+                  onClick={() => doSwitch(c.id)}
+                  title={`切换到「${c.name}」（${c.messages.length} 条消息）；悬停可重命名/解散`}
+                >
+                  <GroupChatAvatar chat={c} />
+                  <span className="agents-chat-name">{c.name}</span>
+                  <em>{c.messages.length}</em>
+                </button>
+                <span className="agents-chat-acts">
+                  <button
+                    type="button"
+                    title="重命名"
+                    onClick={e => { e.stopPropagation(); startRename(c); }}
+                  >✎</button>
+                  <button
+                    type="button"
+                    className="is-danger"
+                    title="解散群聊"
+                    onClick={e => { e.stopPropagation(); removeChat(c); }}
+                  >✕</button>
+                </span>
+              </>
+            )}
+          </div>
         ))}
         <button
           type="button"
@@ -297,7 +345,20 @@ function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
         <>
           <div className="agents-cap-label">当前群成员</div>
           <div className="agents-roster-preview">
-            {members.map(m => <span key={m.id} className="agents-roster-chip" title={m.description}>{m.name}</span>)}
+            {members.map((m, i) => (
+              <span key={m.id} className="agents-roster-chip" title={m.description}>
+                <i
+                  className="agents-roster-avatar"
+                  style={{
+                    background: `hsl(${hueOfMemberId(m.id)} 70% 22%)`,
+                    color: `hsl(${hueOfMemberId(m.id)} 85% 70%)`,
+                    borderColor: `hsl(${hueOfMemberId(m.id)} 70% 45%)`,
+                  }}
+                  aria-hidden="true"
+                >{m.name.slice(0, 1)}</i>
+                {m.name}
+              </span>
+            ))}
           </div>
         </>
       )}
@@ -315,20 +376,12 @@ function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
         </div>
       )}
 
+      {/* 编排能力速览：纯文本行（不放卡片，省空间） */}
       <div className="agents-cap-label">编排能力</div>
-      <div className="agents-mode-list">
-        <div className="agents-mode-item">
-          <code>@ 召唤</code>
-          <p>群聊里 @ 成员接力协作，共享上下文流水线</p>
-        </div>
-        <div className="agents-mode-item">
-          <code>spawn_subagent</code>
-          <p>对话里派活收报告 · 独立上下文 · 深度封顶 1 层</p>
-        </div>
-        <div className="agents-mode-item">
-          <code>spawn_agent_team</code>
-          <p>常驻团队 · 共享任务板 + 成员邮箱 · lead 汇总</p>
-        </div>
+      <div className="agents-mode-hints">
+        <p><code>@召唤</code>群里 @ 成员接力协作</p>
+        <p><code>spawn_subagent</code>派活收报告 · 深度封顶 1 层</p>
+        <p><code>spawn_agent_team</code>常驻团队 · 任务板 + 邮箱</p>
       </div>
     </div>
   );
@@ -343,7 +396,6 @@ export default function SessionSidebar({
   onDelete,
   onRename,
   onTogglePin,
-  onMoveSession,
   onRenameSpace,
   onDeleteSpace,
   onOpenTeamCenter,
@@ -380,18 +432,18 @@ export default function SessionSidebar({
       || (s.messages || []).some(m => (m.content || '').toLowerCase().includes(q)));
   }, [sessions, query]);
 
-  const pinned = useMemo(() =>
-    filtered.filter(s => s.pinned).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)),
-  [filtered]);
-
   const bySpace = useMemo(() => {
     const map = new Map();
     spaces.forEach(sp => map.set(sp.id, []));
-    filtered.filter(s => !s.pinned).forEach(s => {
+    filtered.forEach(s => {
+      // 会话归属创建时的空间（空间是独立主体），不提供跨空间移动
       const list = map.get(s.spaceId);
       if (list) list.push(s);
     });
-    map.forEach(list => list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
+    // 置顶是空间内置顶：置顶会话浮到本空间列表顶部，其余按更新时间
+    map.forEach(list => list.sort((a, b) =>
+      (Number(b.pinned || false) - Number(a.pinned || false))
+      || ((b.updatedAt || 0) - (a.updatedAt || 0))));
     return map;
   }, [filtered, spaces]);
 
@@ -435,7 +487,7 @@ export default function SessionSidebar({
   };
 
   const handlers = {
-    onSwitch, onRename, onDelete, onTogglePin, onMove: onMoveSession,
+    onSwitch, onRename, onDelete, onTogglePin,
     onRenameSpace, onDeleteSpace,
     // 点空间行 = 激活该空间（文件模块/新会话归属跟随）+ 折叠展开
     onToggleSpace: (spaceId) => { setActiveSpace(spaceId); toggleSpace(spaceId); },
@@ -475,28 +527,7 @@ export default function SessionSidebar({
               <div className="session-list-empty">{query ? '没有匹配的对话' : '尚无对话记录'}</div>
             )}
 
-            {/* 置顶区（跨空间） */}
-            {pinned.length > 0 && (
-              <div className="session-group session-group-pinned">
-                <div className="session-group-label">📌 置顶 ({pinned.length})</div>
-                {pinned.map(s => (
-                  <SessionItem
-                    key={s.id}
-                    session={s}
-                    isActive={s.id === activeSessionId}
-                    spaces={spaces}
-                    activeSpaceId={activeSpaceId}
-                    onSwitch={onSwitch}
-                    onRename={onRename}
-                    onDelete={onDelete}
-                    onTogglePin={onTogglePin}
-                    onMove={onMoveSession}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* 空间分区 */}
+            {/* 空间分区（置顶会话在各自空间内浮顶） */}
             {spaces.map(sp => (
               <SpaceSection
                 key={sp.id}
@@ -504,7 +535,6 @@ export default function SessionSidebar({
                 expanded={expanded.has(sp.id)}
                 sessions={bySpace.get(sp.id) || []}
                 activeSessionId={activeSessionId}
-                spaces={spaces}
                 activeSpaceId={activeSpaceId}
                 handlers={handlers}
               />

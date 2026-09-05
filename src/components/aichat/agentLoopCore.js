@@ -129,6 +129,7 @@ export async function runToolLoop({
   keepRecent = KEEP_RECENT,
   buildSystemSuffix,
   onProgress,
+  onContentDelta, // (delta:string) => void：纯增量文本流（区别于 onProgress 的混合补丁），群聊流式气泡用
   onToolComplete,
   generateSummary,
 }) {
@@ -214,7 +215,12 @@ export async function runToolLoop({
             maxTokens: 4000,
             tools: iterTools,
             toolChoice: isFinalIteration ? undefined : 'auto',
-            onChunk: (c) => emit({ content: c, thinking: '正在生成...' }),
+            onChunk: (c) => {
+              emit({ content: c, thinking: '正在生成...' });
+              if (onContentDelta) {
+                try { onContentDelta(c); } catch { /* 流式回调失败不拖垮执行 */ }
+              }
+            },
           });
           finalContent = data.content || '';
           break;
