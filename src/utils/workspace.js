@@ -142,13 +142,18 @@ export async function writeFile(root, pathSegments, fileName, content) {
 
 /* 读取文件文本 */
 export async function readFile(root, pathSegments) {
+  const file = await readFileObject(root, pathSegments);
+  return await file.text();
+}
+
+/** 读取原始 File 对象（图片等二进制预览用 object URL） */
+export async function readFileObject(root, pathSegments) {
   let dir = root;
   for (let i = 0; i < pathSegments.length - 1; i++) {
     dir = await dir.getDirectoryHandle(safeName(pathSegments[i]));
   }
   const fileHandle = await dir.getFileHandle(safeName(pathSegments[pathSegments.length - 1]));
-  const file = await fileHandle.getFile();
-  return await file.text();
+  return await fileHandle.getFile();
 }
 
 /* 删除文件（基于 FileSystemDirectoryHandle.removeEntry，破坏性操作，调用方须走审批） */

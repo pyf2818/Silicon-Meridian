@@ -16,7 +16,7 @@ import { renderMarkdown } from '../utils/markdown.jsx';
 import {
   isFileSystemSupported, pickRootDirectory, restoreRootDirectory, clearRootDirectory,
   peekSavedHandle, requestHandlePermission,
-  listFiles, readFile, writeFile,
+  listFiles, readFile, readFileObject, writeFile,
 } from '../utils/workspace.js';
 import { setRootHandle as setSharedRootHandle } from '../utils/workspaceHandleStore.js';
 import {
@@ -25,7 +25,16 @@ import {
 } from '../utils/workspaceStore.js';
 
 // 支持预览的文件扩展名（其他类型直接显示原始文本）
-const PREVIEWABLE_EXT = new Set(['.md', '.markdown', '.txt']);
+// 可预览为文本/代码的扩展名（编辑写回对所有文本类生效）
+const TEXT_EXT = new Set([
+  '.md', '.markdown', '.txt', '.log', '.json', '.csv', '.tsv', '.xml', '.yml', '.yaml', '.toml', '.ini', '.env',
+  '.html', '.htm', '.css', '.scss', '.less',
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx',
+  '.py', '.java', '.c', '.h', '.cpp', '.hpp', '.cs', '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.sql',
+  '.sh', '.bat', '.ps1', '.dockerfile', '.gitignore', '.svg',
+]);
+// 图片：object URL 预览（不可编辑/不可关联为文本上下文）
+const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.avif']);
 const CLOSE_SVG = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 );
@@ -42,6 +51,7 @@ export default function WorkspacePanel() {
   // 文件预览侧边 panel
   const [previewFile, setPreviewFile] = useState(null); // { name, path }
   const [previewContent, setPreviewContent] = useState('');
+  const [previewUrl, setPreviewUrl] = useState(''); // 图片预览 object URL
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
   // 预览内直接编辑：切换「预览 ⇄ 编辑」，保存写回本地文件
@@ -128,7 +138,7 @@ export default function WorkspacePanel() {
   // rootHandle 变化时同步到模块级 store，供 AiChatPanel agent loop 读取
   useEffect(() => {
     setSharedRootHandle(rootHandle);
-  }, [rootHandle]);
+  }, [rootHandle, isImageFile, isTextFile]);
 
   // 用户手势触发：重新激活当前空间的目录权限
   const handleReActivate = useCallback(async () => {
@@ -212,8 +222,14 @@ export default function WorkspacePanel() {
     setEditDraft('');
     try {
       const segments = file.path.split('/');
-      const text = await readFile(rootHandle, segments);
-      setPreviewContent(text);
+      if (isImageFile(file.name)) {
+        const fileObj = await readFileObject(rootHandle, segments);
+        setPreviewUrl(URL.createObjectURL(fileObj));
+      } else if (isTextFile(file.name)) {
+        setPreviewContent(await readFile(rootHandle, segments));
+      } else {
+        setPreviewError('暂不支持预览该格式');
+      }
     } catch (e) {
       setPreviewError(e.message || '读取文件失败');
     } finally {
@@ -223,6 +239,7 @@ export default function WorkspacePanel() {
 
   const closePreview = useCallback(() => {
     setPreviewFile(null);
+    setPreviewUrl(url => { if (url) URL.revokeObjectURL(url); return ''; });
     setPreviewContent('');
     setPreviewError('');
     setPreviewLoading(false);
@@ -443,7 +460,7 @@ export default function WorkspacePanel() {
                 <span className="workspace-side-panel-path">{previewFile.path}</span>
               </div>
               <div className="workspace-side-panel-head-actions">
-                {!previewLoading && !previewError && (
+                              {!previewLoading && !previewError && isTextFile(previewFile.name) && (
                   <button
                     type="button"
                     className={`workspace-side-panel-toggle ${editingPreview ? 'active' : ''}`}
@@ -477,11 +494,24 @@ export default function WorkspacePanel() {
                 />
               )}
               {!previewLoading && !previewError && !editingPreview && (
-                isMarkdown(previewFile.name)
-                  ? (previewContent
-                    ? <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(previewContent) }} />
-                    : <p className="workspace-side-panel-empty">文件为空</p>)
-                  : <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: '12px' }}>{previewContent}</pre>
+                isImageFile(previewFile.name)
+                  ? (previewUrl
+                    ? <img className="wp-image-preview" src={previewUrl} alt={previewFile.name} />
+                    : <p className="workspace-side-panel-empty">图片加载失败</p>)
+                  : isHtmlFile(previewFile.name)
+                    ? (
+                      <iframe
+                        className="wp-html-preview"
+                        title={previewFile.name}
+                        sandbox=""
+                        srcDoc={previewContent}
+                      />
+                    )
+                    : isMarkdownFile(previewFile.name)
+                      ? (previewContent
+                        ? <div className="markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(previewContent) }} />
+                        : <p className="workspace-side-panel-empty">文件为空</p>)
+                      : <pre className="wp-code-preview" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: '12px' }}>{previewContent}</pre>
               )}
             </div>
             <div className="workspace-side-panel-foot">
@@ -496,15 +526,17 @@ export default function WorkspacePanel() {
                   {savingPreview ? '保存中…' : '保存到本地'}
                 </button>
               )}
-              <button
-                type="button"
-                className="workspace-side-panel-action"
-                onClick={addPreviewToContext}
-                disabled={previewLoading || !!previewError}
-                title="把当前文件内容关联到当前空间（进对话上下文）"
-              >
-                关联到空间
-              </button>
+                {!isImageFile(previewFile.name) && (
+                  <button
+                    type="button"
+                    className="workspace-side-panel-action"
+                    onClick={addPreviewToContext}
+                    disabled={previewLoading || !!previewError}
+                    title="把当前文件内容关联到当前空间（进对话上下文）"
+                  >
+                    关联到空间
+                  </button>
+                )}
             </div>
           </aside>
         </>,
