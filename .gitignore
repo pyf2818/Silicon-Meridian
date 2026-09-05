@@ -195,3 +195,6 @@ test-results/
 cookies.txt
 commit-msg.txt
 .workbuddy/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
