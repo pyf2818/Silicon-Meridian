@@ -110,7 +110,8 @@ export function renameSpace(spaceId, name) {
   if (!space || !trimmed) return false;
   if (spaceId === DEFAULT_SPACE_ID) return false; // 默认空间不可改名
   if (state.spaces.some(s => s.id !== spaceId && s.name === trimmed)) return false;
-  space.name = trimmed;
+  // 不可变替换（同 setSpaceRoot：引用变化驱动订阅组件重算）
+  state.spaces = state.spaces.map(s => (s.id === spaceId ? { ...s, name: trimmed } : s));
   persist();
   notify();
   return true;
@@ -159,11 +160,14 @@ function findSpace(spaceId) {
   return state.spaces.find(s => s.id === spaceId) || null;
 }
 
-/** 空间绑定/换绑本地根目录（记录目录名元数据） */
+/** 空间绑定/换绑本地根目录（记录目录名元数据）
+ *  ⚠️ 不可变替换（项目铁律）：原地改 space 字段不会改变对象引用，
+ *  AiChatPanel 的 workspaceFiles useMemo 依赖 space 身份，原地改 = UI 冻结。 */
 export function setSpaceRoot(spaceId, rootName) {
-  const space = findSpace(spaceId);
-  if (!space) return false;
-  space.rootName = String(rootName || '').slice(0, 60);
+  if (!findSpace(spaceId)) return false;
+  state.spaces = state.spaces.map(s => (
+    s.id === spaceId ? { ...s, rootName: String(rootName || '').slice(0, 60) } : s
+  ));
   persist();
   notify();
   return true;
@@ -177,8 +181,8 @@ export function setSpaceRoot(spaceId, rootName) {
 export function associateFiles(spaceId, files) {
   const space = findSpace(spaceId);
   if (!space || !Array.isArray(files)) return -1;
-  if (!Array.isArray(space.files)) space.files = [];
-  const byPath = new Map(space.files.map(f => [f.path, f]));
+  const prev = Array.isArray(space.files) ? space.files : [];
+  const byPath = new Map(prev.map(f => [f.path, f]));
   files.forEach(f => {
     if (!f?.path) return;
     const content = typeof f.content === 'string' ? f.content : '';
@@ -191,33 +195,32 @@ export function associateFiles(spaceId, files) {
       associatedAt: Date.now(),
     });
   });
-  space.files = [...byPath.values()]
+  const nextFiles = [...byPath.values()]
     .sort((a, b) => (b.associatedAt || 0) - (a.associatedAt || 0))
     .slice(0, MAX_FILES_PER_SPACE);
+  // 不可变替换 space 对象（引用变化才能驱动 useMemo 重算）
+  state.spaces = state.spaces.map(s => (s.id === spaceId ? { ...s, files: nextFiles } : s));
   persist();
   notify();
-  return space.files.length;
+  return nextFiles.length;
 }
 
 /** 解除关联 */
 export function removeSpaceFile(spaceId, path) {
   const space = findSpace(spaceId);
   if (!space || !Array.isArray(space.files)) return false;
-  const before = space.files.length;
-  space.files = space.files.filter(f => f.path !== path);
-  if (space.files.length !== before) {
-    persist();
-    notify();
-    return true;
-  }
-  return false;
+  const nextFiles = space.files.filter(f => f.path !== path);
+  if (nextFiles.length === space.files.length) return false;
+  state.spaces = state.spaces.map(s => (s.id === spaceId ? { ...s, files: nextFiles } : s));
+  persist();
+  notify();
+  return true;
 }
 
 /** 清空空间的关联文件（换绑目录时用） */
 export function clearSpaceFiles(spaceId) {
-  const space = findSpace(spaceId);
-  if (!space) return false;
-  space.files = [];
+  if (!findSpace(spaceId)) return false;
+  state.spaces = state.spaces.map(s => (s.id === spaceId ? { ...s, files: [] } : s));
   persist();
   notify();
   return true;

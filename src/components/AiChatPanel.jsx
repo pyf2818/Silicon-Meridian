@@ -26,7 +26,7 @@ import AgentTeamPanel from './aichat/AgentTeamPanel.jsx';
 import AgentTeamChat from './aichat/AgentTeamChat.jsx';
 import {
   getActiveSpaceId, getDefaultSpaceId, deleteSpace, renameSpace, migrateSessionSpaces,
-  getSpaces, subscribeSpaces, associateFiles,
+  getSpaces, subscribeSpaces, associateFiles, clearSpaceFiles,
 } from '../utils/workspaceStore.js';
 import { sessionsStore, loadSessions, saveSessions } from './aichat/sessionsStore.js';
 import { WELCOME_MSGS, EMPTY_MESSAGES, SUGGEST_ICONS } from './aichat/constants.jsx';
@@ -1782,7 +1782,12 @@ export default function AiChatPanel({
               <div className="chat-context-pill chat-context-pill-file" title={workspaceFiles.map(f => f.name).join(', ')}>
                 <span className="icon-sm">{ICONS.document}</span>
                 文件 {workspaceFiles.length}
-                <button type="button" className="chat-context-pill-clear" onClick={() => setWorkspaceFiles([])} title="清除">{ICONS.x}</button>
+                <button
+                  type="button"
+                  className="chat-context-pill-clear"
+                  onClick={() => { clearSpaceFiles(getActiveSpaceId()); showToast('已清除当前空间的关联文件'); }}
+                  title="清除（清空当前空间的关联文件）"
+                >{ICONS.x}</button>
               </div>
             )}
             {materialContext.total > 0 && (
