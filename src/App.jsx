@@ -2217,7 +2217,7 @@ ${signals}
     studio: 'studio',
     editor: 'studio',
     materials: 'studio',
-    agents: 'studio',
+    canvas: 'canvas',
     square: 'square',
     'profile-center': 'profile-center',
     github: 'github',

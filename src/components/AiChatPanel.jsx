@@ -89,7 +89,16 @@ export default function AiChatPanel({
   const sessions = storeSnapshot.sessions;
   const activeSessionId = storeSnapshot.activeSessionId
     || (storeSnapshot.sessions.length > 0 ? storeSnapshot.sessions[0].id : null);
-  const isStreaming = storeSnapshot.isStreaming;
+  // ── 多会话并行流式（v15）──
+  // 每个会话独立的运行状态与中断控制器：切换会话不打断后台生成，侧栏显示运行标记。
+  // isStreaming 派生为「当前激活会话是否生成中」，其余会话在后台继续跑。
+  const streamingSessionsRef = useRef(new Map()); // sessionId → AbortController
+  const [streamingIds, setStreamingIds] = useState([]);
+  // 排队管理弹层
+  const [showQueueMenu, setShowQueueMenu] = useState(false);
+  const [editingQueueIdx, setEditingQueueIdx] = useState(null);
+  const [editDraft, setEditDraft] = useState('');
+  const queueWrapRef = useRef(null);
   // 暴露给原 setSessions 调用点的兼容函数：写入 store + 持久化
   const setSessions = useCallback((updater) => {
     const prev = sessionsStore.state.sessions;
@@ -97,7 +106,18 @@ export default function AiChatPanel({
     sessionsStore.setState({ sessions: next });
   }, []);
   const setActiveSessionId = useCallback((id) => sessionsStore.setState({ activeSessionId: id }), []);
-  const setIsStreaming = useCallback((v) => sessionsStore.setState({ isStreaming: v }), []);
+  const isStreaming = streamingIds.includes(activeSessionId);
+  const setSessionStreaming = useCallback((id, on, controller = null) => {
+    if (on) streamingSessionsRef.current.set(id, controller);
+    else streamingSessionsRef.current.delete(id);
+    setStreamingIds(prev => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return [...next];
+    });
+    sessionsStore.setState({ isStreaming: streamingSessionsRef.current.size > 0 });
+  }, []);
 
   const [workspaceVersion, setWorkspaceVersion] = useState(0); // 空间/关联文件变更版本（订阅 workspaceStore）
   useEffect(() => subscribeSpaces(() => setWorkspaceVersion(v => v + 1)), []);
@@ -238,10 +258,48 @@ export default function AiChatPanel({
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // 消息队列：流式生成中允许用户继续输入下一条消息并排队，流结束后自动发送
-  // 类似 Codex / Claude Code 的多消息排队体验
-  const messageQueueRef = useRef([]);
-  const [queueCount, setQueueCount] = useState(0);
+  // 消息队列（v15）：按会话独立排队——流式生成中继续输入会排进「该会话」的队，
+  // 流结束后自动依序发送。ref 为管道真源（异步回调可靠读取），state 仅供 UI 弹层渲染与编辑。
+  const messageQueueMapRef = useRef({}); // sessionId → [msg, ...]
+  const [messageQueueMap, setMessageQueueMap] = useState({});
+  const syncQueueUI = useCallback(() => setMessageQueueMap({ ...messageQueueMapRef.current }), []);
+  const enqueueQueued = useCallback((sid, msg) => {
+    messageQueueMapRef.current[sid] = [...(messageQueueMapRef.current[sid] || []), msg];
+    syncQueueUI();
+  }, [syncQueueUI]);
+  const shiftQueued = useCallback((sid) => {
+    const q = messageQueueMapRef.current[sid] || [];
+    if (!q.length) return null;
+    const [first, ...rest] = q;
+    messageQueueMapRef.current[sid] = rest;
+    syncQueueUI();
+    return first;
+  }, [syncQueueUI]);
+  const clearQueued = useCallback((sid) => {
+    messageQueueMapRef.current[sid] = [];
+    syncQueueUI();
+  }, [syncQueueUI]);
+  const updateQueuedAt = useCallback((sid, idx, text) => {
+    const q = messageQueueMapRef.current[sid] || [];
+    if (!q[idx]) return;
+    messageQueueMapRef.current[sid] = q.map((m, i) => (i === idx ? text : m));
+    syncQueueUI();
+  }, [syncQueueUI]);
+  const moveQueued = useCallback((sid, idx, dir) => {
+    const q = messageQueueMapRef.current[sid] || [];
+    const j = idx + dir;
+    if (j < 0 || j >= q.length) return;
+    const next = [...q];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    messageQueueMapRef.current[sid] = next;
+    syncQueueUI();
+  }, [syncQueueUI]);
+  const removeQueuedAt = useCallback((sid, idx) => {
+    const q = messageQueueMapRef.current[sid] || [];
+    messageQueueMapRef.current[sid] = q.filter((_, i) => i !== idx);
+    syncQueueUI();
+  }, [syncQueueUI]);
+  const activeQueue = messageQueueMap[activeSessionId] || [];
   const abortControllerRef = useRef(null);
 
   const currentSession = sessions.find(s => s.id === activeSessionId);
@@ -513,6 +571,16 @@ export default function AiChatPanel({
     return () => document.removeEventListener('mousedown', onWfDown);
   }, [showWfMenu]);
 
+  // 排队管理弹层：外点关闭
+  useEffect(() => {
+    if (!showQueueMenu) return undefined;
+    const onQueueDown = (e) => {
+      if (!queueWrapRef.current?.contains(e.target)) { setShowQueueMenu(false); setEditingQueueIdx(null); }
+    };
+    document.addEventListener('mousedown', onQueueDown);
+    return () => document.removeEventListener('mousedown', onQueueDown);
+  }, [showQueueMenu]);
+
   const pickModel = useCallback((modelId) => {
     setLlmConfig?.(prev => ({ ...(prev || {}), selectedModel: modelId }));
     setShowModelMenu(false);
@@ -737,7 +805,8 @@ export default function AiChatPanel({
       ? { ...s, messages: [...s.messages, userMsg, placeholder], updatedAt: Date.now() }
       : s));
     setActiveSessionId(activeSessionId);
-    setIsStreaming(true);
+    const controller = new AbortController();
+    setSessionStreaming(activeSessionId, true, controller);
 
     // 2) 跑编排器
     const { ok, views, synthesis, error } = await multiAgent.run(prompt);
@@ -756,8 +825,17 @@ export default function AiChatPanel({
       msgs[msgs.length - 1] = { role: 'assistant', content: body, loading: false };
       return { ...s, messages: msgs, updatedAt: Date.now() };
     }));
-    setIsStreaming(false);
-  }, [activeSessionId, isStreaming, setSessions, setIsStreaming, multiAgent.run]);
+    // 中止时把占位标记为已停止，避免 loading 卡死
+    const aborted = controller.signal.aborted;
+    setSessions(prev => prev.map(s => {
+      if (s.id !== activeSessionId) return s;
+      const msgs = [...s.messages];
+      const last = msgs[msgs.length - 1];
+      if (aborted && last?.role === 'assistant') msgs[msgs.length - 1] = { ...last, loading: false, stopped: true };
+      return { ...s, messages: msgs };
+    }));
+    setSessionStreaming(activeSessionId, false);
+  }, [activeSessionId, isStreaming, setSessions, setSessionStreaming, multiAgent.run]);
 
   // 用户消息节点列表（用于侧边导航跳转）
   const userMessageNodes = useMemo(() => messages
@@ -863,13 +941,13 @@ export default function AiChatPanel({
     });
   }, [llmConfig, selectedModel, systemPrompt, intelligenceContext, sessions, messages, setSessions, setLearnedVersion, setAutoTodos, setMemoriesVersion, agentPermissionMode, skillsHook, toggleMaterial, agent]);
 
-  const sendMessage = useCallback(async (text) => {
+  const sendMessage = useCallback(async (text, opts = {}) => {
     const msg = text || input.trim();
     if (!msg) return;
-    // 队列模式：流式生成中允许排队，不阻塞用户输入
-    if (isStreaming) {
-      messageQueueRef.current.push(msg);
-      setQueueCount(messageQueueRef.current.length);
+    let targetId = opts.sessionId || activeSessionId;
+    // 队列模式：该会话生成中 → 排进「该会话」的队（不阻塞其他会话并行）
+    if (streamingSessionsRef.current.has(targetId)) {
+      enqueueQueued(targetId, msg);
       setInput('');
       return;
     }
@@ -878,7 +956,6 @@ export default function AiChatPanel({
       return;
     }
 
-    let targetId = activeSessionId;
     if (!targetId) {
       const newSession = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -895,6 +972,8 @@ export default function AiChatPanel({
 
     const userMessage = { role: 'user', content: msg };
     const assistantPlaceholder = { role: 'assistant', content: '', loading: true };
+    // 目标会话自己的历史（并行时可能是后台会话，不能用当前激活会话的 messages）
+    const targetHistory = (sessions.find(s => s.id === targetId)?.messages) || messages;
 
     setSessions(prev => prev.map(s => {
       if (s.id !== targetId) return s;
@@ -918,13 +997,11 @@ export default function AiChatPanel({
     draftRef.current = '';
     historyIndexRef.current = null;
 
-    // 标记流式生成中：触发 send 按钮变为 stop 按钮，输入框允许继续输入排队
-    setIsStreaming(true);
+    // 标记该会话流式生成中（send 按钮切为 stop；其他会话不受影响）
+    const controller = new AbortController();
+    setSessionStreaming(targetId, true, controller);
 
     try {
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      activeAbortController = controller; // 模块级引用，组件 unmount 后仍可 abort
 
       // Agent 模式：当前智能体配置了 tools 时走 agent loop（非流式 + tool_calls 循环）
       let toolSchemas = agent?.tools?.length ? selectToolSchemas(agent.tools) : [];
@@ -938,14 +1015,14 @@ export default function AiChatPanel({
           userMessage,
           controller,
           toolSchemas,
-          baseMessages: [...messages, userMessage],
+          baseMessages: [...targetHistory, userMessage],
         });
         return;
       }
 
       // 上下文预算检查（对标 pi/compaction）：超预算时把中段折叠为一条本地摘要，
       // 替代 slice(-20) 硬截断。本地摘要不额外调 LLM，失败自动回退到 slice。
-      const fullHistory = [...messages, userMessage];
+      const fullHistory = [...targetHistory, userMessage];
       let sendMessages;
       if (shouldCompact(fullHistory, STREAM_CONTEXT_BUDGET)) {
         const packed = await buildContext(fullHistory, STREAM_CONTEXT_BUDGET, {
@@ -1118,31 +1195,25 @@ export default function AiChatPanel({
         return { ...s, messages: msgs };
       }));
     } finally {
-      // 先捕获 abort 状态再清空 ref（避免 race）
-      const wasAborted = abortControllerRef.current?.signal?.aborted || activeAbortController?.signal?.aborted || false;
-      abortControllerRef.current = null;
-      activeAbortController = null;
-      setIsStreaming(false);
-      // 消费消息队列：若用户在流式生成期间排队了下一条消息，自动发送
-      // 仅当本次非用户主动停止时才消费（避免停止后还自动发下一条）
-      if (!wasAborted && messageQueueRef.current.length > 0) {
-        const nextMsg = messageQueueRef.current.shift();
-        setQueueCount(messageQueueRef.current.length);
-        // 异步触发下一条，避免在 finally 中嵌套调用
-        setTimeout(() => sendMessage(nextMsg), 50);
-      } else if (wasAborted) {
-        // 用户主动停止：清空队列
-        messageQueueRef.current = [];
-        setQueueCount(0);
+      // 先捕获 abort 状态（本会话的 controller）
+      const wasAborted = controller.signal.aborted;
+      setSessionStreaming(targetId, false);
+      // 消费该会话的消息队列：非用户主动停止时自动依序发送
+      if (!wasAborted) {
+        const nextMsg = shiftQueued(targetId);
+        if (nextMsg) setTimeout(() => sendMessage(nextMsg, { sessionId: targetId }), 50);
+      } else {
+        // 用户主动停止：清空该会话队列
+        clearQueued(targetId);
       }
     }
-  }, [input, messages, isStreaming, llmConfig, selectedModel, systemPrompt, onOpenLlmConfig, activeSessionId, intelligenceContext, agent, runAgentLoop]);
+  }, [input, messages, sessions, llmConfig, selectedModel, systemPrompt, onOpenLlmConfig, activeSessionId, intelligenceContext, agent, runAgentLoop, setSessionStreaming, enqueueQueued, shiftQueued, clearQueued]);
 
   // 停止生成：同时取消所有未决审批，让 Agent Loop 解除阻塞
   const stopGeneration = useCallback(() => {
-    abortControllerRef.current?.abort() || activeAbortController?.abort();
+    streamingSessionsRef.current.get(activeSessionId)?.abort();
     cancelAllPending('用户停止生成');
-  }, []);
+  }, [activeSessionId]);
 
   // ── P0-2 计划 → 执行闭环 ──
   // plan 模式下 Agent 只产出方案不执行；用户点"批准执行"后，这里以 autonomous 模式真正跑一遍，
@@ -1160,11 +1231,9 @@ export default function AiChatPanel({
     setSessions(prev => prev.map(s => s.id === targetId
       ? { ...s, messages: [...s.messages, userMessage, assistantPlaceholder], updatedAt: Date.now() }
       : s));
-    setIsStreaming(true);
+    const controller = new AbortController();
+    setSessionStreaming(targetId, true, controller);
     try {
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      activeAbortController = controller;
       let toolSchemas = agent?.tools?.length ? selectToolSchemas(agent.tools) : [];
       if (llmConfig?.webSearchEnabled === false) {
         toolSchemas = toolSchemas.filter(s => s?.function?.name !== 'web_search');
@@ -1185,13 +1254,11 @@ export default function AiChatPanel({
         }));
       }
     } finally {
-      const wasAborted = abortControllerRef.current?.signal?.aborted || activeAbortController?.signal?.aborted || false;
-      abortControllerRef.current = null;
-      activeAbortController = null;
-      setIsStreaming(false);
-      if (wasAborted) { messageQueueRef.current = []; setQueueCount(0); }
+      const wasAborted = controller.signal.aborted;
+      setSessionStreaming(targetId, false);
+      if (wasAborted) clearQueued(targetId);
     }
-  }, [isStreaming, llmConfig, selectedModel, onOpenLlmConfig, activeSessionId, agent, messages, setSessions, runAgentLoop]);
+  }, [isStreaming, llmConfig, selectedModel, onOpenLlmConfig, activeSessionId, agent, messages, setSessions, runAgentLoop, setSessionStreaming, clearQueued]);
 
   // 计划卡交互：批准 / 修改 / 放弃
   const executePlan = useCallback((i) => {
@@ -1345,6 +1412,7 @@ export default function AiChatPanel({
       {variant === 'main' && !sessionCollapsed && (
         <SessionSidebar
           sessions={sessions}
+          streamingIds={streamingIds}
           activeSessionId={activeSessionId}
           onCreate={createSession}
           onSwitch={switchSession}
@@ -1699,6 +1767,60 @@ export default function AiChatPanel({
               <span className="chat-skill-caret">{ICONS.chevronUp || '▴'}</span>
             </button>
           </div>
+          {/* 消息排队（v15）：按钮在输入框上方，弹层可查看/二次编辑/调序/删除排队消息 */}
+          <div className="chat-queue-wrap" ref={queueWrapRef}>
+            {activeQueue.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  className={`chat-queue-btn ${showQueueMenu ? 'open' : ''}`}
+                  onClick={() => setShowQueueMenu(v => !v)}
+                  title={`${activeQueue.length} 条消息排队中，点击管理`}
+                >
+                  <span className="icon-sm">{ICONS.history}</span>
+                  排队 {activeQueue.length}
+                  <span className="chat-skill-caret">{ICONS.chevronUp || '▴'}</span>
+                </button>
+                {showQueueMenu && (
+                  <div className="chat-queue-pop">
+                    <div className="chat-queue-pop-label">排队消息（按顺序自动发送）</div>
+                    {activeQueue.map((q, i) => (
+                      <div key={i} className="chat-queue-item">
+                        {editingQueueIdx === i ? (
+                          <textarea
+                            autoFocus
+                            className="chat-queue-item-edit"
+                            value={editDraft}
+                            onChange={e => setEditDraft(e.target.value)}
+                            rows={2}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                updateQueuedAt(activeSessionId, i, editDraft.trim() || q);
+                                setEditingQueueIdx(null);
+                              } else if (e.key === 'Escape') setEditingQueueIdx(null);
+                            }}
+                          />
+                        ) : (
+                          <span className="chat-queue-item-text" title={q}>{q}</span>
+                        )}
+                        <span className="chat-queue-item-acts">
+                          {editingQueueIdx === i ? (
+                            <button type="button" onClick={() => { updateQueuedAt(activeSessionId, i, editDraft.trim() || q); setEditingQueueIdx(null); }} title="保存">✓</button>
+                          ) : (
+                            <button type="button" onClick={() => { setEditingQueueIdx(i); setEditDraft(q); }} title="二次编辑">✎</button>
+                          )}
+                          <button type="button" disabled={i === 0} onClick={() => moveQueued(activeSessionId, i, -1)} title="上移（提前发送）">↑</button>
+                          <button type="button" disabled={i === activeQueue.length - 1} onClick={() => moveQueued(activeSessionId, i, 1)} title="下移（延后发送）">↓</button>
+                          <button type="button" onClick={() => removeQueuedAt(activeSessionId, i)} title="移除">×</button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           {/* 快捷指令收纳：单按钮弹层（情境指令 + 自定义），不再平铺占位 */}
           <div className="chat-quick-wrap">
             <button
@@ -1719,20 +1841,16 @@ export default function AiChatPanel({
           <input ref={fileInputRef} type="file" accept="image/*,.pdf,.txt,.md" style={{ display: 'none' }} onChange={handleFileUpload} />
           <div className="chat-input-main-row">
             <textarea ref={inputRef} className="chat-input" value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder={hasConfig ? (isStreaming ? "正在生成中，输入下一条消息自动排队…" : "给智能体发消息…  (Shift+Enter 换行)") : "请先配置大模型"} rows={1} disabled={!hasConfig} />
-            {queueCount > 0 && (
-              <span className="chat-queue-indicator" title={`${queueCount} 条消息排队中`}>
-                <span className="icon-sm">{ICONS.history}</span>
-                {queueCount}
-              </span>
-            )}
-            {isStreaming && (
+            {/* 单按钮：生成中=停止，空闲=发送（不再并存） */}
+            {isStreaming ? (
               <button className="chat-stop-btn" onClick={stopGeneration} title="停止生成" aria-label="停止生成">
                 {ICONS.stopSquare}
               </button>
+            ) : (
+              <button className="chat-send-btn" onClick={() => sendMessage()} disabled={!input.trim() || !hasConfig} title="发送">
+                {ICONS.send}
+              </button>
             )}
-            <button className="chat-send-btn" onClick={() => sendMessage()} disabled={!input.trim() || !hasConfig} title={isStreaming ? '排队发送' : '发送'}>
-              {ICONS.send}
-            </button>
           </div>
           <div className="chat-input-tools" ref={modeWrapRef}>
             {/* 权限模式胶囊（弹层向上） */}

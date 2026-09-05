@@ -71,7 +71,7 @@ function useTeamsLite() {
 }
 
 /* ---------- 会话项：inline 重命名 + 空间内置顶 ---------- */
-function SessionItem({ session, isActive, onSwitch, onRename, onDelete, onTogglePin }) {
+function SessionItem({ session, isActive, isRunning = false, onSwitch, onRename, onDelete, onTogglePin }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title || '');
   const inputRef = useRef(null);
@@ -112,7 +112,7 @@ function SessionItem({ session, isActive, onSwitch, onRename, onDelete, onToggle
       onDoubleClick={startEdit}
       title={editing ? '回车保存 · Esc 取消' : preview}
     >
-      <span className="session-dot" aria-hidden="true" />
+      <span className={`session-dot ${isRunning ? 'running' : ''}`} aria-hidden="true" title={isRunning ? '生成中' : undefined} />
       {editing ? (
         <input
           ref={inputRef}
@@ -156,7 +156,7 @@ function SessionItem({ session, isActive, onSwitch, onRename, onDelete, onToggle
 }
 
 /* ---------- 空间分区行（WorkBuddy 式：▸ 名称 (n) + 展开嵌套会话） ---------- */
-function SpaceSection({ space, expanded, sessions, activeSessionId, activeSpaceId, handlers }) {
+function SpaceSection({ space, expanded, sessions, activeSessionId, activeSpaceId, streamingIds = [], handlers }) {
   const [renaming, setRenaming] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const nameRef = useRef(null);
@@ -230,6 +230,7 @@ function SpaceSection({ space, expanded, sessions, activeSessionId, activeSpaceI
               key={s.id}
               session={s}
               isActive={s.id === activeSessionId}
+              isRunning={streamingIds.includes(s.id)}
               onSwitch={handlers.onSwitch}
               onRename={handlers.onRename}
               onDelete={handlers.onDelete}
@@ -390,6 +391,7 @@ function AgentsTab({ teams, onOpenTeamCenter, onOpenRecords }) {
 /* ================= 主组件 ================= */
 export default function SessionSidebar({
   sessions = [],
+  streamingIds = [],
   activeSessionId,
   onCreate,
   onSwitch,
@@ -536,6 +538,7 @@ export default function SessionSidebar({
                 sessions={bySpace.get(sp.id) || []}
                 activeSessionId={activeSessionId}
                 activeSpaceId={activeSpaceId}
+                streamingIds={streamingIds}
                 handlers={handlers}
               />
             ))}
