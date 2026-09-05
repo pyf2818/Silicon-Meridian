@@ -694,7 +694,7 @@ function App() {
     // g 后接的页面键 → nav id（覆盖 9 个主导航，字符取自页面含义）
     const GOTO_MAP = {
       h: 'home', d: 'recommendations', a: 'all',
-      g: 'github', s: 'stock', u: 'studio',
+      g: 'github', s: 'stock', u: 'studio', w: 'canvas',
       c: 'square', p: 'profile-center', m: 'monitor',
     };
     function onKey(e) {
@@ -951,11 +951,11 @@ function App() {
       title = `${PRODUCT_NAME} - GitHub 热门项目`;
       description = '收集 GitHub 日榜、周榜、月榜明星项目，结合图片和应用场景帮助判断项目价值。';
     } else if (nav === 'studio') {
-      title = `${PRODUCT_NAME} - 智创中心`;
-      description = '聚合素材库、智能体工作流和内容创作，沉淀个人知识资产。';
-    } else if (nav === 'agents') {
-      title = `${PRODUCT_NAME} - 智能体工作流`;
-      description = '主力大模型工作区，支持可视化节点蓝图、智能体协作和工作流输出沉淀。';
+      title = `${PRODUCT_NAME} - 素材管理`;
+      description = '素材、知识图谱与本地空间资产统一管理，构建可复用的个人知识资产。';
+    } else if (nav === 'canvas') {
+      title = `${PRODUCT_NAME} - 无限画布`;
+      description = '节点连线搭建工作流：拖拽节点、编排顺序，一键交付 AI 工作站执行。';
     } else if (nav === 'materials') {
       title = `${PRODUCT_NAME} - 素材库`;
       description = '收集资讯卡片、每日汇报、本地上传和智能体输出，形成可复用知识资产。';
@@ -1626,18 +1626,37 @@ function App() {
 
   const { workflowTypeMeta, workflowRunStatusMeta, selectedWorkflowNode, selectedWorkflowConnections, enabledWorkflowNodes } = useWorkflowMeta(agentWorkflowDraft, selectedWorkflowNodeId);
 
-  const workflowBlueprintText = useMemo(() => {
-    return `${agentWorkflowDraft.name}
-${agentWorkflowDraft.description}
+  const buildWorkflowBlueprint = useCallback((draft) => {
+    if (!draft || !Array.isArray(draft.nodes) || draft.nodes.length === 0) return '';
+    const lines = draft.nodes.map((node, index) => [
+      `${index + 1}. [${workflowTypeMeta[node.type]?.label || node.type}] ${node.title}`,
+      `角色：${node.role}`,
+      `输入：${node.inputKey || 'context'}`,
+      `输出：${node.outputKey || `step_${index + 1}`}`,
+      `能力配置：${formatWorkflowNodeConfig(node) || '默认'}`,
+      `指令：${node.prompt}`,
+      `状态：${node.enabled === false ? '停用' : '启用'}`,
+    ].join('\n'));
+    return [`${draft.name || '未命名工作流'}`, draft.description || '', '', lines.join('\n\n')].join('\n');
+  }, [workflowTypeMeta]);
 
-${agentWorkflowDraft.nodes.map((node, index) => `${index + 1}. [${workflowTypeMeta[node.type]?.label || node.type}] ${node.title}
-角色：${node.role}
-输入：${node.inputKey || 'context'}
-输出：${node.outputKey || `step_${index + 1}`}
-能力配置：${formatWorkflowNodeConfig(node) || '默认'}
-指令：${node.prompt}
-状态：${node.enabled === false ? '停用' : '启用'}`).join('\n\n')}`;
-  }, [agentWorkflowDraft, workflowTypeMeta]);
+  const workflowComposerOptions = useMemo(() => {
+    const options = [];
+    const draftText = buildWorkflowBlueprint(agentWorkflowDraft);
+    if (draftText) options.push({ id: 'draft', name: agentWorkflowDraft.name || '当前画布', blueprint: draftText });
+    (workflowTemplates || []).forEach(tpl => {
+      const text = buildWorkflowBlueprint(tpl);
+      if (text && !options.some(o => o.name === tpl.name)) {
+        options.push({ id: tpl.id || tpl.name, name: tpl.name || '未命名模板', blueprint: text });
+      }
+    });
+    return options;
+  }, [agentWorkflowDraft, workflowTemplates, buildWorkflowBlueprint]);
+
+  const workflowBlueprintText = useMemo(
+    () => buildWorkflowBlueprint(agentWorkflowDraft),
+    [agentWorkflowDraft, buildWorkflowBlueprint],
+  );
 
   const {
     updateWorkflowDraft,
@@ -2208,16 +2227,6 @@ ${signals}
   const activeContextSection = navContextSections[activePrimaryNav] || navContextSections.home;
   const activeContextItems = activeContextSection.items.map(id => navItems.find(item => item.id === id)).filter(Boolean);
   const goNav = (nextNav) => {
-    if (nextNav === 'agents') {
-      setCurrentAgent('orchestrator');
-      setElfQuotedContext({
-        id: Date.now(),
-        title: '智能体工作台',
-        agentId: 'orchestrator',
-        content: buildWorkbenchContext('请作为情报总控，先查看我的今日情报上下文和个人画像。'),
-        suggestedPrompt: '请介绍当前智能体团队能为我做什么，并建议今天应该先运行哪个任务。'
-      });
-    }
     const url = new URL(window.location.href);
     url.searchParams.set('view', nextNav);
     window.history.pushState({ view: nextNav }, '', url);
@@ -2270,7 +2279,7 @@ ${signals}
       }
     } catch { /* ignore prefetch errors */ }
   }, [items.length, githubRepos.length, trendingItems.length, blocked, debouncedQuery, loadNews, loadGithub, loadTrending]);
-  const wideWorkspaceNavs = ['home', 'recommendations', 'studio', 'agents', 'editor', 'materials', 'square', 'chat', 'profile-center'];
+  const wideWorkspaceNavs = ['home', 'recommendations', 'studio', 'canvas', 'materials', 'square', 'chat', 'profile-center'];
   // 右侧面板：「全部动态」显示关注关键词；「AI 情报首页」显示情报时间线；「精准推荐」显示日期竖向时间线
   const showRightPanel = nav === 'recommendations';
   const showStatsBar = showRightPanel && nav !== 'home' && nav !== 'recommendations';
@@ -2347,7 +2356,7 @@ ${signals}
       {mobileMenuOpen && <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)} />}
 
       {/* Sidebar */}
-<Sidebar sidebarCollapsed={sidebarCollapsed} setSidebarCollapsed={setSidebarCollapsed} mobileMenuOpen={mobileMenuOpen} nav={nav} goNav={goNav} addRecentVisit={addRecentVisit} onPrefetchNav={prefetchNav} activePrimaryNav={activePrimaryNav} activeContextItems={activeContextItems} contextGroupOpen={contextGroupOpen} setContextGroupOpen={setContextGroupOpen} agents={agents} currentAgent={currentAgent} setCurrentAgent={setCurrentAgent} setElfQuotedContext={setElfQuotedContext} buildWorkbenchContext={buildWorkbenchContext} showFollowDropdown={showFollowDropdown} setShowFollowDropdown={setShowFollowDropdown} followKeywords={followKeywords} sortedFollowKeywords={sortedFollowKeywords} pinnedKeywords={pinnedKeywords} pinFollowKeyword={pinFollowKeyword} unpinFollowKeyword={unpinFollowKeyword} removeFollowKeyword={removeFollowKeyword} executeSearch={executeSearch} newKeyword={newKeyword} setNewKeyword={setNewKeyword} addFollowKeyword={addFollowKeyword} bookmarks={bookmarks} filtered={filtered} isLoggedIn={isLoggedIn} user={user} setShowProfileModal={setShowProfileModal} setAuthMode={setAuthMode} setShowAuthModal={setShowAuthModal} setShowSettings={setShowSettings} PRODUCT_NAME={PRODUCT_NAME} PRODUCT_TAGLINE={PRODUCT_TAGLINE} PRIMARY_NAV_ITEMS={primaryNavItems} />
+<Sidebar sidebarCollapsed={sidebarCollapsed} setSidebarCollapsed={setSidebarCollapsed} mobileMenuOpen={mobileMenuOpen} nav={nav} goNav={goNav} addRecentVisit={addRecentVisit} onPrefetchNav={prefetchNav} activePrimaryNav={activePrimaryNav} activeContextItems={activeContextItems} contextGroupOpen={contextGroupOpen} setContextGroupOpen={setContextGroupOpen} showFollowDropdown={showFollowDropdown} setShowFollowDropdown={setShowFollowDropdown} followKeywords={followKeywords} sortedFollowKeywords={sortedFollowKeywords} pinnedKeywords={pinnedKeywords} pinFollowKeyword={pinFollowKeyword} unpinFollowKeyword={unpinFollowKeyword} removeFollowKeyword={removeFollowKeyword} executeSearch={executeSearch} newKeyword={newKeyword} setNewKeyword={setNewKeyword} addFollowKeyword={addFollowKeyword} bookmarks={bookmarks} filtered={filtered} isLoggedIn={isLoggedIn} user={user} setShowProfileModal={setShowProfileModal} setAuthMode={setAuthMode} setShowAuthModal={setShowAuthModal} setShowSettings={setShowSettings} PRODUCT_NAME={PRODUCT_NAME} PRODUCT_TAGLINE={PRODUCT_TAGLINE} PRIMARY_NAV_ITEMS={primaryNavItems} />
 
       {/* Main */}
       <main data-nav={nav} className={`main ${(nav === 'home' || nav === 'recommendations') ? 'main-workbench' : ''}`}>
@@ -2429,6 +2438,7 @@ ${signals}
               variant="main"
               llmConfig={llmConfig}
               intelligenceProfile={intelligenceProfile}
+              workflowOptions={workflowComposerOptions}
               workbenchItems={workbenchItems}
               selectedInterests={selectedInterests}
               categories={categories}
@@ -2456,7 +2466,7 @@ ${signals}
 
           {nav === 'studio' && renderMaterialsRepo()}
 
-          {nav === 'agents' && (
+          {nav === 'canvas' && (
             <AgentsPage
               agents={agents}
               currentAgent={currentAgent}

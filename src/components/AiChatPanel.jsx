@@ -59,6 +59,7 @@ let activeAbortController = null;
 
 export default function AiChatPanel({
   llmConfig,
+  workflowOptions = [], // 无限画布工作流（当前画布 + 模板），输入框一键引用
   intelligenceProfile,
   workbenchItems,
   selectedInterests,
@@ -463,6 +464,9 @@ export default function AiChatPanel({
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [modelMenuPos, setModelMenuPos] = useState(null);
   const modelBtnRef = useRef(null);
+  // 工作流选择弹层（无限画布）：状态 + 外点关闭锚点
+  const [showWfMenu, setShowWfMenu] = useState(false);
+  const wfWrapRef = useRef(null);
   const modelMenuRef = useRef(null);
 
   const toggleModelMenu = useCallback(() => {
@@ -498,6 +502,16 @@ export default function AiChatPanel({
       window.removeEventListener('resize', update);
     };
   }, [showModelMenu]);
+
+  // 工作流选择弹层：外点关闭（v13 无限画布）
+  useEffect(() => {
+    if (!showWfMenu) return undefined;
+    const onWfDown = (e) => {
+      if (!wfWrapRef.current?.contains(e.target)) setShowWfMenu(false);
+    };
+    document.addEventListener('mousedown', onWfDown);
+    return () => document.removeEventListener('mousedown', onWfDown);
+  }, [showWfMenu]);
 
   const pickModel = useCallback((modelId) => {
     setLlmConfig?.(prev => ({ ...(prev || {}), selectedModel: modelId }));
@@ -1756,6 +1770,39 @@ export default function AiChatPanel({
             <button className="chat-attach-mini" onClick={() => fileInputRef.current?.click()} title="上传附件" disabled={!hasConfig}>
               {ICONS.paperclip}
             </button>
+            {/* 工作流按钮（v13 无限画布）：弹层列出画布工作流，点击把蓝图填入输入框 */}
+            {workflowOptions.length > 0 && (
+              <div className="chat-wf-wrap" ref={wfWrapRef}>
+                <button
+                  type="button"
+                  className={`chat-attach-mini ${showWfMenu ? 'open' : ''}`}
+                  onClick={() => setShowWfMenu(v => !v)}
+                  title="插入无限画布工作流"
+                  disabled={!hasConfig}
+                >
+                  {ICONS.workflow}
+                </button>
+                {showWfMenu && (
+                  <div className="chat-wf-pop">
+                    <div className="chat-wf-pop-label">无限画布 · 工作流</div>
+                    {workflowOptions.map(o => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => {
+                          setInput(prev => `${prev ? `${prev.trimEnd()}\n\n` : ''}请严格按以下工作流的节点顺序推进，每步给出产出，最后汇总：\n\n${o.blueprint}\n\n【我的目标】\n`);
+                          setShowWfMenu(false);
+                          setTimeout(() => inputRef.current?.focus(), 60);
+                        }}
+                      >
+                        <b>{o.name}</b>
+                        <small>{(o.blueprint.split('\n').find(l => /^\d+\./.test(l.trim())) || '工作流').trim().slice(0, 44)}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {/* 模型胶囊 + 上下文进度环（v7：从底部一行收进输入框内，整体更干练） */}
             <div className="chat-model-wrap">
             <button
