@@ -1,14 +1,16 @@
 /**
- * AgentTeamPanel - AI 工作站「团队中心」专有页面
+ * AgentTeamPanel - AI 工作站「执行记录」页
  *
- * spawn_subagent / spawn_agent_team 能力此前只存在于工具注册表里，
- * 用户在 UI 上看不见它们。本页面把多智能体能力首次前端化：
+ * 本页只回答一个问题："我派出去的 AI 团队，活干得怎么样了？"
+ * （v10 精简：删除模式/角色大段说明文案——概念讲解由侧栏「编排能力」与
+ * 群聊空态引导承担；发起入口压缩成一行按钮，职责说明收进 tooltip；
+ * 最近团队列表升为页面主体。v11：组建团队/派活统一改道团队群聊——
+ * 任务在群里 @ 成员发布（认领 → 接力），不再切到单人对话。）
  *
- * - 能力区：4 个子代理 preset（explorer/researcher/writer/critic）+
- *   单代理 / 团队两种编排模式的说明与「发起」按钮（一键填 prompt）
- * - 团队区：最近团队（新→旧，来自 teamStore，localStorage 持久化），
- *   每个团队展开为：成员卡 + 四态任务看板（待认领/进行中/已完成/失败）
- *   + 邮箱消息流 —— 与 teamCore 的共享任务列表/邮箱协议一一对应
+ * - 顶栏：标题 + 执行中徽标 + 「派单代理任务 / ＋组建团队」（→ 群聊 @ 预填）
+ * - 快速派活：4 个子代理 preset 一行 chips（点击 → 群聊 @ 该成员）
+ * - 团队区：最近团队（新→旧，来自 teamStore），展开为成员卡 +
+ *   四态任务看板 + 邮箱消息流 —— 与 teamCore 协议一一对应
  */
 import { useEffect, useMemo, useState } from 'react';
 import { SUBAGENT_PRESETS } from '../../domain/agent/subagentCore.js';
@@ -28,8 +30,10 @@ const TASK_COL_DEFS = [
   { status: 'failed', label: '失败' },
 ];
 
-const LAUNCH_TEAM_PROMPT = '请用 spawn_agent_team 组建一个团队完成以下目标：「（在这里写目标）」。要求：3 个成员，分别负责调研、分析与写作，任务完成后由 lead 汇总出最终结论。';
-const LAUNCH_SUBAGENT_PROMPT = '请用 spawn_subagent 派一个 researcher 子代理调研：「（在这里写调研问题）」，要求返回带来源的调研报告。';
+/* 发起入口都走团队群聊（任务在群里 @ 成员发布，认领接力）：
+   onLaunch(text) → 父层切到群聊视图并把 text 预填进群聊输入框 */
+const TEAM_START_TEXT = '@探索者 @研究员 @撰写者 ';
+const SUBAGENT_START_TEXT = '@研究员 ';
 
 function useTeams() {
   // 注意：不能用 useSyncExternalStore + listTeams()——getSnapshot 每次返回新数组
@@ -48,29 +52,6 @@ function formatTime(ts) {
   if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-/* ---------- 能力卡：单个子代理 preset ---------- */
-function PresetCard({ preset, onLaunch }) {
-  return (
-    <div className="team-preset-card" title={preset.description}>
-      <div className="team-preset-head">
-        <span className="team-preset-name">{preset.name}</span>
-        <span className="team-preset-id">{preset.id}</span>
-      </div>
-      <p className="team-preset-desc">{preset.description}</p>
-      <div className="team-preset-meta">
-        <span title={`工具白名单：${(preset.tools || []).join('、')}`}>{(preset.tools || []).length} 个工具</span>
-        <i />
-        <span>≤ {preset.maxTurns} 轮</span>
-      </div>
-      <button
-        type="button"
-        className="team-preset-launch"
-        onClick={() => onLaunch(`请用 spawn_subagent 派一个 ${preset.id} 子代理完成任务：「（在这里写目标）」。`)}
-      >派活 →</button>
-    </div>
-  );
 }
 
 /* ---------- 单个团队卡：成员 + 看板 + 邮箱 ---------- */
@@ -152,8 +133,8 @@ function TeamCard({ team, defaultOpen = false }) {
 }
 
 /**
- * 团队中心主面板。
- * @param {Function} onLaunch  点击「发起」→ 父层切回对话视图并把 prompt 填入输入框
+ * 执行记录主面板。
+ * @param {Function} onLaunch  点击「发起」→ 父层切到团队群聊视图并把 @ 指派预填进群聊输入框
  */
 export default function AgentTeamPanel({ onLaunch, activeSessionTitle = '' }) {
   const teams = useTeams();
@@ -161,54 +142,55 @@ export default function AgentTeamPanel({ onLaunch, activeSessionTitle = '' }) {
 
   return (
     <div className="team-center">
+      {/* 顶栏：一句话标题 + 发起入口（概念说明收进 tooltip） */}
       <header className="team-center-head">
-        <div>
-          <span className="team-center-kicker">AGENT TEAMS</span>
-          <h2>团队中心</h2>
-          <p>
-            编排者-工作者模式：<b>spawn_subagent</b> 派活收报告，<b>spawn_agent_team</b> 组建常驻团队
-            （共享任务板 + 成员邮箱）。{runningCount > 0 && <em> ● {runningCount} 个团队执行中</em>}
-          </p>
+        <div className="team-center-title">
+          <h2>执行记录</h2>
+          {runningCount > 0 && <span className="team-center-running">● {runningCount} 个团队执行中</span>}
+        </div>
+        <div className="team-center-actions">
+          <button
+            type="button"
+            className="team-launch-btn"
+            title="去团队群聊，@ 单个成员派活（成员认领后独立执行并回群）"
+            onClick={() => onLaunch?.(SUBAGENT_START_TEXT)}
+          >派单代理任务</button>
+          <button
+            type="button"
+            className="team-launch-btn is-primary"
+            title="去团队群聊，@ 多个成员发布任务（认领 → 接力产出）"
+            onClick={() => onLaunch?.(TEAM_START_TEXT)}
+          >＋ 组建团队</button>
         </div>
       </header>
 
-      {/* ============ 能力区：编排模式 + 子代理 preset ============ */}
-      <section className="team-capabilities">
-        <div className="team-mode-row">
-          <div className="team-mode-card">
-            <span className="team-mode-name">单代理派活</span>
-            <code>spawn_subagent</code>
-            <p>独立上下文运行，收一份结构化报告回主循环；工具白名单收窄、深度封顶 1 层，不会递归失控。</p>
-            <button type="button" className="team-launch-btn" onClick={() => onLaunch?.(LAUNCH_SUBAGENT_PROMPT)}>
-              发起单代理任务
-            </button>
-          </div>
-          <div className="team-mode-card is-team">
-            <span className="team-mode-name">常驻团队</span>
-            <code>spawn_agent_team</code>
-            <p>lead 拆解目标为任务卡，队友认领推进并显式标记 done/failed；成员间通过团队邮箱点对点协作，最后由 lead 汇总。</p>
-            <button type="button" className="team-launch-btn is-primary" onClick={() => onLaunch?.(LAUNCH_TEAM_PROMPT)}>
-              组建一个团队
-            </button>
-          </div>
-        </div>
+      {/* 快速派活：一行 chips，点击去群聊 @ 该成员；职责/预算在 tooltip */}
+      <div className="team-quick-row">
+        <span className="team-quick-label">快速派活</span>
+        {SUBAGENT_PRESETS.map(p => (
+          <button
+            key={p.id}
+            type="button"
+            className="team-quick-chip"
+            title={`${p.description}\n（${(p.tools || []).length} 个工具 · ≤ ${p.maxTurns} 轮）`}
+            onClick={() => onLaunch(`@${p.name} `)}
+          >{p.name}</button>
+        ))}
+      </div>
 
-        <div className="team-preset-grid">
-          {SUBAGENT_PRESETS.map(p => (
-            <PresetCard key={p.id} preset={p} onLaunch={onLaunch} />
-          ))}
-        </div>
-      </section>
-
-      {/* ============ 团队列表 ============ */}
+      {/* 最近团队：页面主体 */}
       <section className="team-list-section">
         <div className="team-list-head">
           <h3>最近团队</h3>
-          <span>{teams.length} 个（保留最近 10 个）</span>
+          <span>{teams.length} 个</span>
         </div>
         {teams.length === 0 ? (
           <div className="team-empty">
-            <p>还没有团队记录。在上面的「组建一个团队」或对话里说「用团队完成 XX」，任务板和邮箱就会出现在这里。</p>
+            <p>还没有团队记录</p>
+            <button type="button" className="team-launch-btn is-primary" onClick={() => onLaunch?.(TEAM_START_TEXT)}>
+              组建第一个团队
+            </button>
+            <small>在群聊里 @ 成员发布任务</small>
           </div>
         ) : (
           teams.map((t, i) => <TeamCard key={t.id} team={t} defaultOpen={i === 0} />)
