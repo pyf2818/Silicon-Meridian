@@ -119,8 +119,8 @@ export default function AgentsTab({
                       </div>
                     </div>
                     <div className="setting-item">
-                      <label>Agent管理</label>
-                      <p className="setting-desc">选择和管理AI精灵的智能体，每个Agent有不同的专长和提示词</p>
+                      <label>工作站角色</label>
+                      <p className="setting-desc">管理 AI 工作站对话的角色（每个角色有独立的专长与提示词；AI 精灵为固定单例，不在此列）</p>
                       <div className="agent-filter-bar">
                         {AGENT_CATEGORIES.map(cat => (
                           <button
