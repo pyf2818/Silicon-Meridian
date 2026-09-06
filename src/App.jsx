@@ -1662,6 +1662,9 @@ function App() {
     updateWorkflowDraft,
     switchWorkflowTemplate,
     saveWorkflowAsTemplate,
+    renameWorkflow,
+    duplicateWorkflow,
+    createWorkflow,
     installWorkflowTemplate,
     importWorkflowJson,
     deleteWorkflowTemplate,
@@ -2470,6 +2473,8 @@ ${signals}
             <CanvasPage
               draft={agentWorkflowDraft}
               updateDraft={updateWorkflowDraft}
+              llmConfig={llmConfig}
+              deleteTemplate={deleteWorkflowTemplate}
               selectedNodeId={selectedWorkflowNodeId}
               setSelectedNodeId={setSelectedWorkflowNodeId}
               selectedNode={selectedWorkflowNode}
@@ -2481,6 +2486,11 @@ ${signals}
               templates={workflowTemplates}
               saveAsTemplate={(payload) => saveWorkflowAsTemplate(payload)}
               resetDraft={resetWorkflowDraft}
+              renameWorkflow={renameWorkflow}
+              duplicateWorkflow={duplicateWorkflow}
+              createWorkflow={createWorkflow}
+              switchTemplate={switchWorkflowTemplate}
+              activeWorkflowId={activeWorkflowId}
             />
           )}
 
@@ -2949,7 +2959,9 @@ ${signals}
         {ICONS.chevronLeft ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"/></svg> : ICONS.chevronUp}
       </button>
 
-      {/* AI精灵助手（去 agent 化：全站轻量助理，只接收画像/上下文，不再接智能体生态） */}
+      {/* AI精灵助手（去 agent 化：全站轻量助理，只接收画像/上下文，不再接智能体生态）
+          无限画布页隐藏：画布是全屏独占形态，浮动头像会遮挡 AI 搭建面板的操作区 */}
+      <div className={`ai-elf-slot${nav === 'canvas' ? ' is-hidden' : ''}`}>
       <SafeBoundary name="AI 精灵" icon={ICONS.bot}>
       <Suspense fallback={null}>
       <AiElf
@@ -3007,6 +3019,7 @@ ${signals}
       }} />
       </Suspense>
       </SafeBoundary>
+      </div>
 
       {/* 登录/注册弹窗 */}
 <AuthModal showAuthModal={showAuthModal} setShowAuthModal={setShowAuthModal} authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} handleLogin={handleLogin} handleRegister={handleRegister} authLoading={authLoading} authError={authError} setAuthError={setAuthError} />

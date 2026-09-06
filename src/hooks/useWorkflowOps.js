@@ -3,6 +3,8 @@ import { showToast } from '../utils/toast.js';
 import {
   DEFAULT_AGENT_WORKFLOW,
   createWorkflowTemplateInstance,
+  createWorkflowNode,
+  createBlankWorkflow,
   normalizeWorkflowTemplate,
   validateWorkflowImportPayload,
 } from '../constants/workflowConstants.js';
@@ -45,19 +47,65 @@ export function useWorkflowOps({
     setSelectedWorkflowNodeId(normalized.nodes?.[0]?.id || '');
   }, [workflowTemplates]);
 
-  const saveWorkflowAsTemplate = useCallback(() => {
-    const id = `workflow-${Date.now()}`;
-    const template = {
-      ...agentWorkflowDraft,
-      id,
-      name: `${agentWorkflowDraft.name || '未命名工作流'} 副本`,
-      updatedAt: new Date().toISOString()
-    };
-    setWorkflowTemplates(prev => [template, ...prev]);
+  /**
+   * 保存当前画布
+   * @param {{ mode?: 'update'|'copy', name?: string }} payload
+   *   mode='update' → 覆盖当前工作流；mode='copy' → 另存为一个新工作流
+   */
+  const saveWorkflowAsTemplate = useCallback((payload = {}) => {
+    const mode = payload.mode || 'copy';
+    const name = String(payload.name || agentWorkflowDraft.name || '未命名工作流').trim().slice(0, 32) || '未命名工作流';
+    const snapshot = { ...agentWorkflowDraft, name, updatedAt: new Date().toISOString() };
+    if (mode === 'update' && activeWorkflowId) {
+      setWorkflowTemplates(prev => prev.map(item => (item.id === activeWorkflowId ? { ...snapshot, id: activeWorkflowId } : item)));
+      setAgentWorkflowDraft({ ...snapshot, id: activeWorkflowId });
+      showToast(`已保存「${name}」`);
+      return;
+    }
+    const id = `workflow-${Date.now().toString(36)}`;
+    const next = { ...snapshot, id };
+    setWorkflowTemplates(prev => [next, ...prev]);
     setActiveWorkflowId(id);
-    setAgentWorkflowDraft(template);
-    showToast('已保存为新的工作流模板');
-  }, [agentWorkflowDraft]);
+    setAgentWorkflowDraft(next);
+    showToast(`已另存为「${name}」`);
+  }, [agentWorkflowDraft, activeWorkflowId]);
+
+  /** 重命名已保存的工作流 */
+  const renameWorkflow = useCallback((templateId, name) => {
+    const clean = String(name || '').trim().slice(0, 32);
+    if (!clean) return;
+    setWorkflowTemplates(prev => prev.map(item => (
+      item.id === templateId ? { ...item, name: clean, updatedAt: new Date().toISOString() } : item
+    )));
+    if (activeWorkflowId === templateId) setAgentWorkflowDraft(prev => ({ ...prev, name: clean }));
+  }, [activeWorkflowId]);
+
+  /** 复制一份工作流（含节点深拷贝，避免共享引用） */
+  const duplicateWorkflow = useCallback((templateId) => {
+    const source = (workflowTemplates || []).find(item => item.id === templateId);
+    if (!source) return;
+    const copy = normalizeWorkflowTemplate({
+      ...JSON.parse(JSON.stringify(source)),
+      id: `workflow-${Date.now().toString(36)}`,
+      name: `${source.name || '工作流'} 副本`,
+      updatedAt: new Date().toISOString(),
+    });
+    setWorkflowTemplates(prev => [copy, ...prev]);
+    setActiveWorkflowId(copy.id);
+    setAgentWorkflowDraft(copy);
+    setSelectedWorkflowNodeId(copy.nodes?.[0]?.id || '');
+    showToast(`已复制为「${copy.name}」`);
+  }, [workflowTemplates]);
+
+  /** 新建空白工作流（保留已保存的其它工作流） */
+  const createWorkflow = useCallback((name = '未命名工作流') => {
+    const blank = normalizeWorkflowTemplate(createBlankWorkflow(name));
+    setWorkflowTemplates(prev => [blank, ...prev]);
+    setActiveWorkflowId(blank.id);
+    setAgentWorkflowDraft(blank);
+    setSelectedWorkflowNodeId(blank.nodes?.[0]?.id || '');
+    showToast('已新建工作流');
+  }, []);
 
   const installWorkflowTemplate = useCallback((template) => {
     try {
@@ -92,19 +140,17 @@ export function useWorkflowOps({
 
   const deleteWorkflowTemplate = useCallback((templateId) => {
     setWorkflowTemplates(prev => {
-      if (prev.length <= 1) {
-        showToast('至少保留一个工作流模板');
-        return prev;
-      }
       const next = prev.filter(template => template.id !== templateId);
+      // 删空时补一个空白工作流，保证始终有可编辑的画布
+      const finalList = next.length ? next : [normalizeWorkflowTemplate(createBlankWorkflow('我的工作流'))];
       if (activeWorkflowId === templateId) {
-        const fallback = normalizeWorkflowTemplate(next[0]);
+        const fallback = normalizeWorkflowTemplate(finalList[0]);
         setActiveWorkflowId(fallback.id);
         setAgentWorkflowDraft(fallback);
         setSelectedWorkflowNodeId(fallback.nodes?.[0]?.id || '');
       }
-      showToast('已删除工作流模板');
-      return next;
+      showToast('已删除工作流');
+      return finalList;
     });
   }, [activeWorkflowId]);
 
@@ -141,29 +187,16 @@ export function useWorkflowOps({
   }, []);
 
   const addWorkflowNode = useCallback((position = null, typeOverride = null) => {
-    const nodeType = typeOverride || newWorkflowNodeType;
-    const meta = workflowTypeMeta[nodeType] || workflowTypeMeta.llm;
-    const node = {
-      id: `wf-${nodeType}-${Date.now()}`,
-      type: nodeType,
-      title: meta.label,
-      role: '描述这个节点负责的判断、工具或输出职责。',
-      prompt: '在这里填写该节点的执行指令。',
-      skillId: nodeType === 'skill' ? 'evidence-pack' : undefined,
-      conditionMetric: nodeType === 'condition' ? 'itemCount' : undefined,
-      conditionOperator: nodeType === 'condition' ? '>=' : undefined,
-      conditionValue: nodeType === 'condition' ? 1 : undefined,
-      classifierLabels: nodeType === 'classifier' ? '必读,追踪,素材,创作,降噪' : undefined,
-      inputKey: `step_${Math.max(agentWorkflowDraft.nodes.length, 1)}`,
-      outputKey: `step_${agentWorkflowDraft.nodes.length + 1}`,
-      enabled: true,
-      position: position && Number.isFinite(Number(position.x)) && Number.isFinite(Number(position.y))
-        ? { x: Number(position.x), y: Number(position.y) }
-        : { x: 90, y: 60 + agentWorkflowDraft.nodes.length * 190 }
-    };
+    const node = createWorkflowNode(
+      typeOverride || newWorkflowNodeType,
+      agentWorkflowDraft.nodes.length,
+      agentWorkflowDraft.nodes.length,
+      newWorkflowNodeType,
+      position,
+    );
     setAgentWorkflowDraft(prev => ({ ...prev, nodes: [...prev.nodes, node] }));
     setSelectedWorkflowNodeId(node.id);
-  }, [newWorkflowNodeType, workflowTypeMeta, agentWorkflowDraft.nodes.length]);
+  }, [newWorkflowNodeType, agentWorkflowDraft.nodes.length]);
 
   const removeWorkflowNode = useCallback((nodeId) => {
     setAgentWorkflowDraft(prev => {
@@ -237,6 +270,9 @@ export function useWorkflowOps({
     updateWorkflowDraft,
     switchWorkflowTemplate,
     saveWorkflowAsTemplate,
+    renameWorkflow,
+    duplicateWorkflow,
+    createWorkflow,
     installWorkflowTemplate,
     importWorkflowJson,
     deleteWorkflowTemplate,

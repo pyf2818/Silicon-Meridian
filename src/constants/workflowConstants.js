@@ -76,6 +76,27 @@ export const WORKFLOW_NODE_META = {
   router:      { label: '路由', iconKey: 'compass', color: '#a855f7', category: 'orchestration' },
 };
 
+/* 新建节点的默认蓝图：保证每个节点一落地就是「真实有效」的可执行配置 */
+export const WORKFLOW_NODE_BLUEPRINT = {
+  input:       { title: '输入',       role: '接收上游数据、用户画像与补充指令。', prompt: '读取当前上下文、关注领域与用户补充指令，输出统一的上下文包。' },
+  llm:         { title: '大模型分析', role: '基于上游内容完成理解、推理或生成。', prompt: '请基于输入内容输出关键结论、依据与不确定性，避免空泛表述。' },
+  skill:       { title: '工具调用',   role: '调用内置 Skill 补充证据或做结构化整理。', prompt: '调用所选 Skill 处理输入，输出可直接引用的结构化结果。' },
+  condition:   { title: '条件判断',   role: '按指标阈值决定链路是否继续。', prompt: '不满足阈值时短路后续节点，避免无效执行。' },
+  classifier:  { title: '分类分流',   role: '把内容归入若干分类桶。', prompt: '按分类桶对输入逐条归类，并给出一句归类理由。' },
+  reply:       { title: '指定回复',   role: '按固定模板直接回复，不经过大模型改写。', prompt: '使用预设模板输出回复内容。' },
+  output:      { title: '输出',       role: '汇总结果，产出最终交付物。', prompt: '输出结构化的最终产物，并附关键依据与下一步建议。' },
+  subworkflow: { title: '子工作流',   role: '调用另一个已保存的工作流。', prompt: '把输入交给子工作流执行，并接收其输出继续流转。' },
+  parallel:    { title: '并行扇出',   role: '把输入分发给多条分支同时处理。', prompt: '并行执行各分支，按合并策略汇总结果。' },
+  router:      { title: '路由分发',   role: '按规则把输入路由到不同分支。', prompt: '根据路由规则选择目标分支并传递输入。' },
+};
+
+/** 各节点类型在模拟运行中的基准耗时（毫秒），用于体现真实的执行节奏差异 */
+export const WORKFLOW_SIM_DURATION = {
+  input: 320, llm: 900, skill: 620, condition: 260,
+  classifier: 520, reply: 260, output: 420,
+  subworkflow: 760, parallel: 700, router: 300,
+};
+
 /* 路由规则支持的比较操作 */
 export const WORKFLOW_ROUTER_OPERATORS = [
   { id: 'contains',   label: '包含' },
@@ -450,22 +471,51 @@ export function normalizeNodePosition(position, index = 0) {
   return { x: 90, y: 60 + index * 190 };
 }
 
+let wfNodeSeq = 0;
+const nextNodeId = (type) => `wf-${type}-${Date.now().toString(36)}-${(wfNodeSeq += 1).toString(36)}`;
+
+/**
+ * 创建节点：按类型注入真实可用的默认配置（标题/职责/指令/变量/类型专属参数）
+ * @param {string} type 节点类型
+ * @param {number} index 新节点在链路中的下标（用于变量命名）
+ * @param {number} existingNodesLength 当前节点数
+ * @param {string} workflowNodeType 兜底类型
+ * @param {{x:number,y:number}|null} position 画布坐标
+ */
 export function createWorkflowNode(type, index, existingNodesLength, workflowNodeType = 'llm', position = null) {
-  const meta = WORKFLOW_NODE_TYPES.includes(type) ? type : 'llm';
+  const meta = WORKFLOW_NODE_TYPES.includes(type) ? type : (WORKFLOW_NODE_TYPES.includes(workflowNodeType) ? workflowNodeType : 'llm');
+  const bp = WORKFLOW_NODE_BLUEPRINT[meta] || WORKFLOW_NODE_BLUEPRINT.llm;
+  const seq = Math.max(Number(index) || 0, Number(existingNodesLength) || 0);
   return {
-    id: `wf-${type}-${Date.now()}`,
+    id: nextNodeId(meta),
     type: meta,
-    title: `节点 ${index + 1}`,
-    role: '描述这个节点负责的判断、工具或输出职责。',
-    prompt: '在这里填写该节点的执行指令。',
+    title: bp.title,
+    role: bp.role,
+    prompt: bp.prompt,
     skillId: meta === 'skill' ? 'evidence-pack' : undefined,
     conditionMetric: meta === 'condition' ? 'itemCount' : undefined,
     conditionOperator: meta === 'condition' ? '>=' : undefined,
     conditionValue: meta === 'condition' ? 1 : undefined,
     classifierLabels: meta === 'classifier' ? '必读,追踪,素材,创作,降噪' : undefined,
-    inputKey: `step_${Math.max(existingNodesLength, 1)}`,
-    outputKey: `step_${existingNodesLength + 1}`,
+    routerRules: meta === 'router' ? [{ label: '默认分支', operator: 'contains', value: '' }] : undefined,
+    parallelBranches: meta === 'parallel' ? 3 : undefined,
+    parallelMerge: meta === 'parallel' ? 'concat' : undefined,
+    inputKey: seq === 0 ? 'context' : `step_${seq}`,
+    outputKey: `step_${seq + 1}`,
     enabled: true,
-    position: position || { x: 90, y: 60 + existingNodesLength * 190 },
+    position: position && Number.isFinite(Number(position.x)) && Number.isFinite(Number(position.y))
+      ? { x: Number(position.x), y: Number(position.y) }
+      : { x: 90, y: 60 + seq * 190 },
+  };
+}
+
+/** 创建一个空白工作流（三名可编辑起点） */
+export function createBlankWorkflow(name = '未命名工作流') {
+  return {
+    id: `workflow-${Date.now().toString(36)}`,
+    name,
+    description: '',
+    nodes: [createWorkflowNode('input', 0, 0, 'input', { x: 80, y: 120 }), createWorkflowNode('output', 1, 1, 'output', { x: 560, y: 120 })],
+    updatedAt: new Date().toISOString(),
   };
 }

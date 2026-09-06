@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUiStore } from '../../store/index.js';
 import { PALETTES } from '../../ThemePicker.jsx';
+import { getCanvasPrefs, setCanvasPrefs, subscribeCanvasPrefs } from '../../utils/canvasPrefs.js';
 
 /* 调色板取色辅助（与 ThemePicker 同源） */
 function hexToHSL(hex) {
@@ -76,14 +77,21 @@ export default function AppearanceTab() {
   const onRadius = (v) => { setRadius(v); localStorage.setItem('scRadius', v); applyVars(density, v, fontScale); };
   const onFont = (v) => { setFontScale(v); localStorage.setItem('scFontScale', v); applyVars(density, radius, v); };
 
+  // 画布偏好（v18）：写入 localStorage 并广播给画布页
+  const [prefs, setPrefs] = useState(getCanvasPrefs);
+  useEffect(() => subscribeCanvasPrefs(setPrefs), []);
+  const onPrefs = (patch) => setPrefs(setCanvasPrefs(patch));
+
   const modes = [
     { id: 'dark', icon: '🌙', label: t('settings.appearance.themeDark', '深色') },
     { id: 'light', icon: '☀', label: t('settings.appearance.themeLight', '浅色') },
     { id: 'system', icon: '🖥', label: t('settings.appearance.themeSystem', '跟随系统') },
   ];
 
-  const classic = PALETTES.slice(0, 8);
-  const natural = PALETTES.slice(8);
+  // v16 主题语义分组：暖调 light 模式配暖米白底，冷调配冷白底（表面自动随 palette 分流）
+  const WARM_IDS = ['champagne', 'sakura', 'terracotta', 'amber', 'coral'];
+  const warmPalettes = PALETTES.filter(p => WARM_IDS.includes(p.id));
+  const coolPalettes = PALETTES.filter(p => !WARM_IDS.includes(p.id));
 
   const PaletteCard = ({ p }) => {
     const sw = useMemo(() => paletteSwatches(p.accent), [p.accent]);
@@ -136,13 +144,13 @@ export default function AppearanceTab() {
 
       <div className="sc-card">
         <div className="sc-card-title"><span className="sc-card-kicker" />{t('settings.appearance.paletteTitle', '主题配色')}</div>
-        <div className="sc-row-desc" style={{ padding: '0 0 6px' }}>{t('settings.appearance.classic', '经典配色')}</div>
+        <div className="sc-row-desc" style={{ padding: '0 0 6px' }}>{t('settings.appearance.warmGroup', '暖调配色（浅色模式 · 暖米白底）')}</div>
         <div className="sc-palette-grid">
-          {classic.map((p) => <PaletteCard key={p.id} p={p} />)}
+          {warmPalettes.map((p) => <PaletteCard key={p.id} p={p} />)}
         </div>
-        <div className="sc-row-desc" style={{ padding: '10px 0 6px' }}>{t('settings.appearance.natural', '自然色系')}</div>
+        <div className="sc-row-desc" style={{ padding: '10px 0 6px' }}>{t('settings.appearance.coolGroup', '冷调 / 中性配色（浅色模式 · 冷白底）')}</div>
         <div className="sc-palette-grid">
-          {natural.map((p) => <PaletteCard key={p.id} p={p} />)}
+          {coolPalettes.map((p) => <PaletteCard key={p.id} p={p} />)}
         </div>
       </div>
 
@@ -183,6 +191,62 @@ export default function AppearanceTab() {
             <div className="sc-segment">
               {[['small', t('settings.appearance.small', '小')], ['medium', t('settings.appearance.medium', '中')], ['large', t('settings.appearance.large', '大')]].map(([v, l]) => (
                 <button key={v} className={fontScale === v ? 'active' : ''} onClick={() => onFont(v)}>{l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* 画布与工作流（v18）：网格/动效/模拟速度，实时写入画布 */}
+      <div className="sc-card">
+        <div className="sc-card-title"><span className="sc-card-kicker" />{t('settings.appearance.canvasTitle', '无限画布')}</div>
+        <div className="sc-row">
+          <div className="sc-row-main">
+            <div className="sc-row-label">{t('settings.appearance.canvasGrid', '画布网格')}</div>
+            <div className="sc-row-desc">{t('settings.appearance.canvasGridDesc', '网格线 / 点阵 / 关闭，颜色跟随主题')}</div>
+          </div>
+          <div className="sc-row-control">
+            <div className="sc-segment">
+              {[['line', t('settings.appearance.gridLine', '网格线')], ['dot', t('settings.appearance.gridDot', '点阵')], ['off', t('settings.appearance.gridOff', '关闭')]].map(([v, l]) => (
+                <button key={v} className={prefs.grid === v ? 'active' : ''} onClick={() => onPrefs({ grid: v })}>{l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="sc-row">
+          <div className="sc-row-main">
+            <div className="sc-row-label">{t('settings.appearance.canvasAnimate', '连线流动动画')}</div>
+            <div className="sc-row-desc">{t('settings.appearance.canvasAnimateDesc', '模拟运行时连线上的流光与粒子（关闭可省电）')}</div>
+          </div>
+          <div className="sc-row-control">
+            <div className="sc-segment">
+              {[[true, t('settings.appearance.on', '开')], [false, t('settings.appearance.off', '关')]].map(([v, l]) => (
+                <button key={String(v)} className={Boolean(prefs.animateEdges) === v ? 'active' : ''} onClick={() => onPrefs({ animateEdges: v })}>{l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="sc-row">
+          <div className="sc-row-main">
+            <div className="sc-row-label">{t('settings.appearance.canvasSpeed', '模拟运行速度')}</div>
+            <div className="sc-row-desc">{t('settings.appearance.canvasSpeedDesc', '控制模拟运行时每个节点的停留时长')}</div>
+          </div>
+          <div className="sc-row-control">
+            <div className="sc-segment">
+              {[[0.6, t('settings.appearance.slow', '慢')], [1, t('settings.appearance.normal', '标准')], [1.8, t('settings.appearance.fast', '快')]].map(([v, l]) => (
+                <button key={v} className={Number(prefs.speed) === v ? 'active' : ''} onClick={() => onPrefs({ speed: v })}>{l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="sc-row">
+          <div className="sc-row-main">
+            <div className="sc-row-label">{t('settings.appearance.canvasSnap', '节点吸附网格')}</div>
+            <div className="sc-row-desc">{t('settings.appearance.canvasSnapDesc', '拖拽节点时自动对齐到 28px 网格')}</div>
+          </div>
+          <div className="sc-row-control">
+            <div className="sc-segment">
+              {[[true, t('settings.appearance.on', '开')], [false, t('settings.appearance.off', '关')]].map(([v, l]) => (
+                <button key={String(v)} className={Boolean(prefs.snap) === v ? 'active' : ''} onClick={() => onPrefs({ snap: v })}>{l}</button>
               ))}
             </div>
           </div>
