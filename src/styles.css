@@ -28589,3 +28589,35 @@ body {
 }
 .repo-drawer { display: flex; flex-direction: column; }
 .repo-drawer-body { flex: 1; }
+
+/* ===== v18 素材管理：左栏贴边全高（去留白） ===== */
+/* 素材视图接管 feed 布局：不再用悬浮卡片，而是与工作站侧栏同款的贴边全高面板 */
+.feed:has(.repo-page) {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+}
+.repo-page {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: 244px minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+.repo-rail {
+  height: 100%;
+  max-height: none;
+  border: none;
+  border-right: 1px solid var(--border-color);
+  border-radius: 0;
+  padding: 14px 12px 20px;
+  gap: 18px;
+  background: var(--surface-card, var(--bg-card));
+}
+.repo-main {
+  height: 100%;
+  padding: 14px 20px 24px;
+  overflow-y: auto;
+}
+/* 顶栏工具行贴齐：搜索/筛选行随 main 滚动保持现状 */
