@@ -30,6 +30,15 @@ export default function MonitorPage({ items = [] }) {
   const [monitors, setMonitors] = useState(loadMonitors);
   const [keyword, setKeyword] = useState('');
   const [category, setCategory] = useState('竞品');
+  const [detailId, setDetailId] = useState(null); // 点击卡片 → 右侧详情抽屉
+
+  // 详情抽屉：Esc 关闭
+  useEffect(() => {
+    if (!detailId) return;
+    const onKey = e => { if (e.key === 'Escape') setDetailId(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [detailId]);
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(monitors)); } catch { /* localStorage 不可用时忽略 */ }
@@ -58,6 +67,16 @@ export default function MonitorPage({ items = [] }) {
     }), [monitors, items]);
 
   const totalMatches = computed.reduce((sum, m) => sum + m.count, 0);
+
+  // 详情抽屉数据：全量命中（卡片里只展示最近 8 条，抽屉里给完整列表）
+  const detail = useMemo(() => {
+    if (!detailId) return null;
+    const m = computed.find(x => x.id === detailId);
+    if (!m) return null;
+    const all = matchItems(items, m.keyword)
+      .sort((a, b) => (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0));
+    return { ...m, all };
+  }, [detailId, computed, items]);
 
   return (
     <div className="monitor-page">
@@ -99,7 +118,15 @@ export default function MonitorPage({ items = [] }) {
       ) : (
         <div className="monitor-grid">
           {computed.map(m => (
-            <section key={m.id} className={`monitor-card monitor-card--${m.category}`}>
+            <section
+              key={m.id}
+              className={`monitor-card monitor-card--${m.category}${detailId === m.id ? ' active' : ''}`}
+              onClick={() => setDetailId(m.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setDetailId(m.id); }}
+              title="点击查看命中详情"
+            >
               <div className="monitor-card-head">
                 <div className="monitor-card-id">
                   <span className="monitor-card-tag">{m.category}</span>
@@ -107,7 +134,7 @@ export default function MonitorPage({ items = [] }) {
                 </div>
                 <div className="monitor-card-actions">
                   <span className="monitor-card-count">{m.count} 条</span>
-                  <button className="monitor-card-remove" onClick={() => removeMonitor(m.id)} aria-label="移除监测">×</button>
+                  <button className="monitor-card-remove" onClick={e => { e.stopPropagation(); removeMonitor(m.id); }} aria-label="移除监测">×</button>
                 </div>
               </div>
               {m.matched.length === 0 ? (
@@ -127,6 +154,41 @@ export default function MonitorPage({ items = [] }) {
               )}
             </section>
           ))}
+        </div>
+      )}
+
+      {/* 监测详情抽屉：点击卡片弹出，全量命中列表 */}
+      {detail && (
+        <div className="monitor-drawer-overlay" onClick={() => setDetailId(null)}>
+          <aside className="monitor-drawer" onClick={e => e.stopPropagation()} role="dialog" aria-label={`监测详情：${detail.keyword}`}>
+            <header className="monitor-drawer-head">
+              <div>
+                <span className="monitor-card-tag">{detail.category}</span>
+                <h3 className="monitor-drawer-title">{detail.keyword}</h3>
+              </div>
+              <button className="monitor-drawer-close" onClick={() => setDetailId(null)} aria-label="关闭">×</button>
+            </header>
+            <div className="monitor-drawer-stats">
+              <div><strong>{detail.count}</strong><span>累计命中</span></div>
+              <div><strong>{detail.all.length}</strong><span>当前资讯池</span></div>
+              <div><strong>{detail.all[0] ? new Date(Date.parse(detail.all[0].publishedAt) || Date.now()).toLocaleDateString('zh-CN') : '--'}</strong><span>最近命中</span></div>
+            </div>
+            <div className="monitor-drawer-body custom-scrollbar">
+              {detail.all.length === 0 ? (
+                <p className="monitor-card-empty">当前资讯池中暂无命中报道。</p>
+              ) : detail.all.map(it => (
+                <article key={it.id} className="monitor-drawer-item">
+                  <h4 className="monitor-drawer-item-title">{it.title}</h4>
+                  {it.summary && <p className="monitor-drawer-item-summary">{it.summary}</p>}
+                  <div className="monitor-drawer-item-meta">
+                    <span>{it.source || '未知来源'}</span>
+                    {it.publishedAt && <span> · {new Date(it.publishedAt).toLocaleDateString('zh-CN')}</span>}
+                    {it.url && <a href={it.url} target="_blank" rel="noreferrer">阅读原文 ↗</a>}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </aside>
         </div>
       )}
     </div>

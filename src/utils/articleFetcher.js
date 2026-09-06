@@ -8,48 +8,63 @@
  */
 
 const CACHE_LIMIT = 40;
-const memoryCache = new Map(); // url → content
+const memoryCache = new Map(); // url → { text, images }
 
 export function getCachedPageContent(url) {
   if (!url) return null;
-  return memoryCache.get(url) || null;
+  return memoryCache.get(url)?.text || null;
 }
 
 export function cachePageContent(url, content) {
   if (!url || !content) return;
+  cachePageDetail(url, { text: content, images: memoryCache.get(url)?.images || [] });
+}
+
+function cachePageDetail(url, detail) {
+  if (!url || !detail?.text) return;
   if (memoryCache.size >= CACHE_LIMIT) {
     const oldest = memoryCache.keys().next().value;
     memoryCache.delete(oldest);
   }
-  memoryCache.set(url, content);
+  memoryCache.set(url, detail);
 }
 
 /**
- * 抓取正文全文
- * @returns {Promise<string|null>} 成功返回正文；失败（重试后仍失败）返回 null
+ * 抓取正文全文 + 配图列表（NewsPreviewPanel 用）
+ * @returns {Promise<{text:string|null, images:string[]}>}
  */
-export async function fetchArticleContent(url) {
-  if (!url) return null;
-  const cached = getCachedPageContent(url);
-  if (cached) return cached;
+export async function fetchArticleDetail(url) {
+  if (!url) return { text: null, images: [] };
+  const cached = memoryCache.get(url);
+  if (cached) return { text: cached.text, images: cached.images || [] };
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await fetch(`/api/fetch-page?url=${encodeURIComponent(url)}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      const content = String(data?.content || '');
+      const text = String(data?.content || '');
+      const images = Array.isArray(data?.images) ? data.images.filter(u => typeof u === 'string' && /^https?:\/\//.test(u)) : [];
       // 内容过短多为反爬拦截页：不缓存，再试一次；仍短则视为失败
-      if (content.length > 80) {
-        cachePageContent(url, content);
-        return content;
+      if (text.length > 80) {
+        cachePageDetail(url, { text, images });
+        return { text, images };
       }
-      if (attempt === 1) return null;
+      if (attempt === 1) return { text: null, images: [] };
     } catch {
-      if (attempt === 1) return null;
+      if (attempt === 1) return { text: null, images: [] };
       await new Promise(resolve => setTimeout(resolve, 900));
     }
   }
-  return null;
+  return { text: null, images: [] };
+}
+
+/**
+ * 抓取正文全文（兼容旧调用：AI 精灵拖拽分析等只需要文本）
+ * @returns {Promise<string|null>} 成功返回正文；失败（重试后仍失败）返回 null
+ */
+export async function fetchArticleContent(url) {
+  const { text } = await fetchArticleDetail(url);
+  return text;
 }
 
 /** localStorage 持久缓存（跨刷新稳定）：精灵拖拽快照用 */

@@ -34,7 +34,7 @@ const BENCHMARK_OPTIONS = [
   { code: 'sz399006', name: '创业板指' },
 ];
 
-export default function StockPage({ llmConfig, onOpenLlmConfig }) {
+export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMaterial }) {
   const pageRef = useRef(null);
   const analysisRef = useRef(null);
   const { watchlist, inWatchlist, toggleStock, moveStock } = useStockWatchlist();
@@ -441,6 +441,51 @@ export default function StockPage({ llmConfig, onOpenLlmConfig }) {
       steps: ['\u5148\u770b\u5927\u76d8\u4e0e\u6da8\u8dcc\u5bb6\u6570', '\u518d\u770b\u4e00\u53ea\u80a1\u7968\u7684\u8d8b\u52bf\u548c\u6ce2\u52a8', '\u6700\u540e\u68c0\u67e5\u98ce\u9669\u4e0e\u4e2a\u4eba\u7b56\u7565\u662f\u5426\u5339\u914d'],
     };
   }, [ai.diagnosis, experienceMode, marketRead]);
+
+  // 一键存档：把 AI/算法分析整份存入素材库（addManualMaterial），带模式与证据结构
+  const archiveDiagnosis = useCallback(() => {
+    const d = ai.diagnosis;
+    if (!d || !onArchiveMaterial) return;
+    const m = d.metrics || {};
+    onArchiveMaterial({
+      title: `股市AI分析：${d.stock?.name || selectedName}（${d.stock?.code || selectedCode}）`,
+      content: d.content || d.summary || '',
+      fullContent: [
+        `# 股市AI分析：${d.stock?.name || selectedName}（${d.stock?.code || selectedCode}）`,
+        `分析模式：${d.mode === 'ai' ? 'AI 增强' : '确定性算法'} ｜ 版本：${experienceMode === 'pro' ? '专业版' : '新手版'}`,
+        `评级：${d.rating} ｜ 风险：${d.risk}`,
+        '',
+        d.content || '',
+        '',
+        '## 关键指标',
+        `MA5/10/20：${m.ma5 ?? '--'}/${m.ma10 ?? '--'}/${m.ma20 ?? '--'}；波动率：${m.volatility ?? '--'}%；支撑/压力：${m.support ?? '--'}/${m.resistance ?? '--'}`,
+        '',
+        '## 多空证据',
+        ...(d.bullCase || []).map(x => `- 支持：${x}`),
+        ...(d.bearCase || []).map(x => `- 反向：${x}`),
+        ...(d.invalidation || []).map(x => `- 失效条件：${x}`),
+      ].join('\n'),
+      type: 'viewpoint',
+      source: '股市 AI 分析',
+      tags: ['股市', 'AI分析', experienceMode === 'pro' ? '专业版' : '新手版'],
+      metadata: { kind: 'stock-analysis', code: selectedCode, mode: d.mode || 'algorithm', experienceMode, at: d.at || Date.now() },
+    });
+  }, [ai.diagnosis, onArchiveMaterial, selectedCode, selectedName, experienceMode]);
+
+  // 一键存档：AI 市场早报
+  const archiveBriefing = useCallback(() => {
+    const b = ai.briefing;
+    if (!b || !onArchiveMaterial) return;
+    onArchiveMaterial({
+      title: `AI市场早报 ${new Date(b.at).toLocaleDateString('zh-CN')}`,
+      content: b.content,
+      fullContent: b.content,
+      type: 'viewpoint',
+      source: 'AI 市场早报',
+      tags: ['股市', 'AI早报', b.meta?.coverage || '行情样本'],
+      metadata: { kind: 'stock-briefing', coverage: b.meta?.coverage, stockCount: b.meta?.stockCount, at: b.at },
+    });
+  }, [ai.briefing, onArchiveMaterial]);
 
   const pickStock = (code, name) => {
     setSelectedCode(code);
@@ -935,7 +980,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig }) {
                 <div className="stock-ai-error">{ai.briefingError}<button onClick={runBriefing}>重试</button></div>
               ) : ai.briefing ? (
                 <>
-                  <div className="stock-briefing-meta"><span>{new Date(ai.briefing.at).toLocaleString('zh-CN')}</span><span>{ai.briefing.meta?.coverage || '行情样本'} · {ai.briefing.meta?.stockCount || 0} 只</span></div>
+                  <div className="stock-briefing-meta"><span>{new Date(ai.briefing.at).toLocaleString('zh-CN')}</span><span>{ai.briefing.meta?.coverage || '行情样本'} · {ai.briefing.meta?.stockCount || 0} 只</span>{onArchiveMaterial && <button type="button" className="stock-ai-archive" onClick={archiveBriefing} title="把这份早报存入素材库">{ICONS.bookmark}<span>存档</span></button>}</div>
                   <BriefingContent content={ai.briefing.content} />
                 </>
               ) : !ai.llmReady ? (

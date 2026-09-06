@@ -73,6 +73,9 @@ export default function CanvasPage({
   const cancelRef = useRef(false);
   // AI 搭建（v18）：对话生成/修改节点
   const [aiOpen, setAiOpen] = useState(false);
+  // 右侧节点面板开合（持久化，默认展开）
+  const [paletteOpen, setPaletteOpen] = useState(() => localStorage.getItem('wfPaletteOpen') !== 'false');
+  useEffect(() => { localStorage.setItem('wfPaletteOpen', String(paletteOpen)); }, [paletteOpen]);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState([]); // {role, content, parsed?, note?}
@@ -410,6 +413,8 @@ export default function CanvasPage({
         snap={prefs.snap}
         onDuplicateNode={duplicateNode}
         onRemoveNode={(id) => { removeNode(id); setSelectedNodeId(null); }}
+        paletteOpen={paletteOpen}
+        onSetPaletteOpen={setPaletteOpen}
       >
         {/* 画布内浮动：工作流切换器 + 名称（左上） */}
         <div className="canvas-float canvas-float-name" onMouseDown={e => e.stopPropagation()}>

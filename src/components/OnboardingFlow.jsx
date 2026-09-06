@@ -19,6 +19,42 @@ const STEPS = [
   { id: 'interests', label: '兴趣领域', icon: 'target' },
   { id: 'sources', label: '信源偏好', icon: 'globe' },
   { id: 'llm', label: '智能引擎', icon: 'bot' },
+  { id: 'tour', label: '功能导览', icon: 'grid' },
+];
+
+// 功能导览：按侧栏 4 分组介绍核心模块（与 SIDEBAR_NAV_GROUPS 语义对齐）
+const TOUR_GROUPS = [
+  {
+    label: '资讯情报', icon: 'globe',
+    items: [
+      ['今日汇报', '按兴趣生成的个性化 AI 简报，每天更新'],
+      ['全部动态', '多域资讯总览，点标题可侧边预览原文'],
+      ['股市动向', '行情终端 + AI 分析（新手/专业双模式）'],
+      ['竞争监测', '维护监测词，自动聚合竞品/赛道情报'],
+    ],
+  },
+  {
+    label: '智能体工作', icon: 'cpu',
+    items: [
+      ['AI 工作站', '多智能体深度研究：多视角、团队协作、工具编排'],
+      ['无限画布', '拖拽搭建工作流，模拟运行并可一键存档成果'],
+      ['群聊协作', '像拉群一样给 AI 角色派活，跟进度收结果'],
+    ],
+  },
+  {
+    label: '创作与社区', icon: 'layers',
+    items: [
+      ['素材管理', '收藏的资讯/仓库/成果都在这里，可续写创作'],
+      ['用户广场', '分享与发现其他用户的工作流与洞察'],
+    ],
+  },
+  {
+    label: '个人后勤', icon: 'target',
+    items: [
+      ['用户画像', '领域/信源优先级、学习偏好、AI 简报快照'],
+      ['AI 精灵', '右下角悬浮助手，随时提问或拖入资讯秒析'],
+    ],
+  },
 ];
 
 function loadSourcePrefs() {
@@ -33,6 +69,7 @@ function loadSourcePrefs() {
 export default function OnboardingFlow({
   show,
   onFinish,
+  replay = false,        // 重放模式（从设置/命令面板再次打开）：跳过简报预热直接进入
   categories = [],
   CATEGORY_GROUPS = [],
   selectedInterests,
@@ -268,6 +305,28 @@ export default function OnboardingFlow({
                 )}
               </div>
             )}
+
+            {step === 4 && (
+              <div className="onb-tour">
+                <h2 className="onb-h2">认识你的工作台</h2>
+                <p className="onb-sub">四大分区各司其职；按 <kbd className="onb-kbd">?</kbd> 可随时查看全部快捷键，之后可在设置里重看本导览。</p>
+                <div className="onb-tour-grid">
+                  {TOUR_GROUPS.map(group => (
+                    <div key={group.label} className="onb-tour-group">
+                      <div className="onb-tour-group-title">
+                        <span className="onb-tour-group-ic">{ICONS[group.icon]}</span>
+                        <span>{group.label}</span>
+                      </div>
+                      <ul className="onb-tour-items">
+                        {group.items.map(([name, desc]) => (
+                          <li key={name}><strong>{name}</strong><span>{desc}</span></li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 底部操作条 */}
@@ -284,7 +343,7 @@ export default function OnboardingFlow({
                 </button>
               ) : (
                 <button className="onb-btn-primary" disabled={generating} onClick={handleEnter}>
-                  {generating ? '正在生成首份简报…' : '生成首份简报并进入工作台'}{!generating && ICONS.rocket}
+                  {generating ? '正在生成首份简报…' : replay ? '进入工作台' : '生成首份简报并进入工作台'}{!generating && ICONS.rocket}
                 </button>
               )}
             </div>

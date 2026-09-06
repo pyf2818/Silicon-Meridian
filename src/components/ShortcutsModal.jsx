@@ -36,6 +36,14 @@ export default function ShortcutsModal({
             <div className="shortcut-row"><kbd>1</kbd><span>紧凑视图</span></div>
             <div className="shortcut-row"><kbd>2</kbd><span>标准视图</span></div>
             <div className="shortcut-row"><kbd>3</kbd><span>卡片视图</span></div>
+            <div className="shortcut-row"><kbd>Esc</kbd><span>关闭资讯预览抽屉</span></div>
+
+            <div className="shortcut-group">无限画布</div>
+            <div className="shortcut-row"><kbd>Ctrl Z</kbd><span>撤销节点变更</span></div>
+            <div className="shortcut-row"><kbd>Ctrl Shift Z</kbd> / <kbd>Ctrl Y</kbd><span>重做</span></div>
+            <div className="shortcut-row"><kbd>F</kbd><span>适应视图</span></div>
+            <div className="shortcut-row"><kbd>0</kbd><span>重置视图</span></div>
+            <div className="shortcut-row"><kbd>双击空白</kbd><span>就地创建节点</span></div>
           </div>
         </div>
       </div>

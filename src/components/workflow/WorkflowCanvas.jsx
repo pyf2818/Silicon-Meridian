@@ -64,6 +64,8 @@ export default function WorkflowCanvas({
   snap = true,                // 拖拽节点时吸附到网格
   onDuplicateNode = null,     // (id) → 复制节点（提供时节点工具条出现复制按钮）
   onRemoveNode = null,        // (id) → 删除节点
+  paletteOpen = true,         // 右侧节点面板开合（状态由 CanvasPage 持久化）
+  onSetPaletteOpen = null,    // (open) → 开关节点面板；不提供则面板常驻
 }) {
   const viewportRef = useRef(null);
   const worldRef = useRef(null);
@@ -472,30 +474,48 @@ export default function WorkflowCanvas({
         })}
       </div>
 
-      {/* 节点面板：拖拽到画布，或单击在视口中心创建 */}
-      <aside className="wf-palette" onPointerDown={event => event.stopPropagation()}>
-        <div className="wf-palette-label">节点 · 拖入或点击</div>
-        <div className="wf-palette-list custom-scrollbar">
-          {paletteTypes.map(([type, meta]) => (
-            <button
-              type="button"
-              key={type}
-              className="wf-palette-item"
-              draggable
-              onDragStart={event => {
-                event.dataTransfer.setData('application/x-wf-node-type', type);
-                event.dataTransfer.effectAllowed = 'copy';
-              }}
-              onClick={() => createAtViewCenter(type)}
-              title={`${meta.label}：点击在画布中央创建，或拖到任意位置`}
-            >
-              <span className="wf-palette-dot" style={{ background: meta.color || 'var(--accent-cyan)' }} />
-              {meta.label}
-              <span className="wf-palette-plus">+</span>
-            </button>
-          ))}
-        </div>
-      </aside>
+      {/* 节点面板：拖拽到画布，或单击在视口中心创建；可收起成窄条 */}
+      {paletteOpen ? (
+        <aside className="wf-palette" onPointerDown={event => event.stopPropagation()}>
+          <div className="wf-palette-label">
+            节点 · 拖入或点击
+            {onSetPaletteOpen && (
+              <button type="button" className="wf-palette-collapse" onClick={() => onSetPaletteOpen(false)} title="收起节点面板">»</button>
+            )}
+          </div>
+          <div className="wf-palette-list custom-scrollbar">
+            {paletteTypes.map(([type, meta]) => (
+              <button
+                type="button"
+                key={type}
+                className="wf-palette-item"
+                draggable
+                onDragStart={event => {
+                  event.dataTransfer.setData('application/x-wf-node-type', type);
+                  event.dataTransfer.effectAllowed = 'copy';
+                }}
+                onClick={() => createAtViewCenter(type)}
+                title={`${meta.label}：点击在画布中央创建，或拖到任意位置`}
+              >
+                <span className="wf-palette-dot" style={{ background: meta.color || 'var(--accent-cyan)' }} />
+                {meta.label}
+                <span className="wf-palette-plus">+</span>
+              </button>
+            ))}
+          </div>
+        </aside>
+      ) : onSetPaletteOpen && (
+        <button
+          type="button"
+          className="wf-palette-rail"
+          onPointerDown={event => event.stopPropagation()}
+          onClick={() => onSetPaletteOpen(true)}
+          title="展开节点面板"
+        >
+          <span className="wf-palette-rail-icon">‹</span>
+          <span className="wf-palette-rail-text">节点面板</span>
+        </button>
+      )}
 
       {/* 视图控制条 */}
       <div className="wf-zoombar" onPointerDown={event => event.stopPropagation()}>

@@ -8,29 +8,76 @@
  * 全局唯一实例，挂在 App 根部；NewsItem 通过 newsPreviewStore.open(item) 唤起。
  * 抓取逻辑（缓存/重试）与精灵拖拽分析共用 articleFetcher。
  */
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useNewsPreviewStore } from '../store/newsPreviewStore.js';
 import { ICONS } from '../constants/index.jsx';
 import { formatRelative } from '../utils/format.js';
-import { fetchArticleContent } from '../utils/articleFetcher.js';
+import { fetchArticleDetail } from '../utils/articleFetcher.js';
+import { renderMarkdown } from '../utils/markdown.jsx';
+
+/** 粗判文本是否是 markdown（素材快照/工作空间文章是 md；纯抓取文本不是） */
+function looksLikeMarkdown(text) {
+  if (!text) return false;
+  return /^#{1,3} /m.test(text) || /\*\*[^*]+\*\*/.test(text) || /^[-*] /m.test(text) || /!\[[^\]]*\]\(/.test(text);
+}
+
+/** 抓取纯文本 → 段落数组（按句聚成 ~120 字，长文更可读） */
+function toParagraphs(text) {
+  return (text || '').split(/(?<=[。！？.!?])\s+/).reduce((acc, sentence) => {
+    const last = acc[acc.length - 1];
+    if (last && last.length < 110) acc[acc.length - 1] = `${last}${sentence}`;
+    else acc.push(sentence);
+    return acc;
+  }, []);
+}
+
+/** 配图：懒加载 + 防盗链加载失败自动隐藏 + 点击新窗口打开 */
+function PreviewImage({ src, hero = false }) {
+  return (
+    <figure className={`news-preview-figure${hero ? ' hero' : ''}`}>
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onClick={() => window.open(src, '_blank', 'noopener')}
+        onError={e => { e.currentTarget.closest('figure')?.remove(); }}
+      />
+    </figure>
+  );
+}
 
 export default function NewsPreviewPanel() {
   const item = useNewsPreviewStore(s => s.item);
   const close = useNewsPreviewStore(s => s.close);
   const [status, setStatus] = useState('idle'); // idle | loading | done | failed
   const [content, setContent] = useState('');
+  const [images, setImages] = useState([]);
 
   useEffect(() => {
     if (!item) return;
     let cancelled = false;
     setStatus('loading');
     setContent('');
-    fetchArticleContent(item.url).then((text) => {
+    setImages([]);
+    // 素材/精灵快照自带 md 全文时直接用，不再抓取
+    const local = item.fullContent || item.content;
+    if (looksLikeMarkdown(local) && String(local).length > 120) {
+      setContent(local);
+      setImages(item.imageUrl ? [item.imageUrl] : []);
+      setStatus('done');
+      return () => { cancelled = true; };
+    }
+    fetchArticleDetail(item.url).then(({ text, images: imgs }) => {
       if (cancelled) return;
+      const finalImgs = [...imgs];
+      if (item.imageUrl && !finalImgs.includes(item.imageUrl)) finalImgs.unshift(item.imageUrl);
       if (text) {
         setContent(text);
+        setImages(finalImgs);
         setStatus('done');
       } else {
+        setImages(finalImgs);
         setStatus('failed');
       }
     });
@@ -47,15 +94,45 @@ export default function NewsPreviewPanel() {
 
   if (!item) return null;
 
-  const paragraphs = content
-    ? content.split(/(?<=[。！？.!?])\s+/).reduce((acc, sentence) => {
-        // 把纯文本按句聚成 ~120 字的段落，长文更可读
-        const last = acc[acc.length - 1];
-        if (last && last.length < 110) acc[acc.length - 1] = `${last}${sentence}`;
-        else acc.push(sentence);
-        return acc;
-      }, [])
-    : [];
+  const isMd = looksLikeMarkdown(content);
+  const paragraphs = !isMd ? toParagraphs(content) : [];
+  // 图片穿插：首图作 hero，其余每 5 段插一张
+  const extraImages = images.slice(1);
+  const heroImage = images[0] || null;
+
+  const renderBody = () => {
+    if (status === 'loading') {
+      return (
+        <div className="news-preview-state">
+          <span className="news-preview-spinner" />
+          正在抓取原文全文…
+        </div>
+      );
+    }
+    if (status === 'failed') {
+      return (
+        <div className="news-preview-state">
+          原文抓取失败（站点反爬或超时），以下为卡片摘要。
+          {item.summary && <p className="news-preview-fallback">{item.summary}</p>}
+        </div>
+      );
+    }
+    if (isMd) {
+      return <div className="news-preview-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />;
+    }
+    return (
+      <>
+        {paragraphs.map((p, i) => (
+          <figure-free key={i} index={i}>
+            <p className="news-preview-para">{p}</p>
+            {(i + 1) % 5 === 0 && extraImages[Math.floor(i / 5) - (heroImage ? 0 : 1)] && (
+              <PreviewImage src={extraImages[Math.floor(i / 5) - (heroImage ? 0 : 1)]} />
+            )}
+          </figure-free>
+        ))}
+      </>
+    );
+  };
 
   return (
     <>
@@ -78,21 +155,16 @@ export default function NewsPreviewPanel() {
         </header>
 
         <div className="news-preview-body custom-scrollbar">
-          {status === 'loading' && (
-            <div className="news-preview-state">
-              <span className="news-preview-spinner" />
-              正在抓取原文全文…
-            </div>
-          )}
-          {status === 'failed' && (
-            <div className="news-preview-state">
-              原文抓取失败（站点反爬或超时），以下为卡片摘要。
-              {item.summary && <p className="news-preview-fallback">{item.summary}</p>}
-            </div>
-          )}
-          {status === 'done' && paragraphs.map((p, i) => <p key={i} className="news-preview-para">{p}</p>)}
+          {heroImage && status !== 'loading' && <PreviewImage src={heroImage} hero />}
+          {renderBody()}
         </div>
       </aside>
     </>
   );
 }
+
+// 语义占位：段落 + 穿插图片的包裹（不渲染额外 DOM，仅组织 JSX）
+function figureFree({ children }) {
+  return <>{children}</>;
+}
+const FigureFree = figureFree;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   PROFILE_TIER_OPTIONS,
   PROFILE_TIERS,
@@ -69,8 +69,17 @@ export default function ProfilePage({
   const [domainInput, setDomainInput] = useState('');
   const [sourceInput, setSourceInput] = useState('');
 
-  const submitCustomDomain = () => {
-    if (addCustomDomain?.(domainInput)) {
+  // 预选项：不想手输的用户点一下即加（已存在的自动隐藏）
+  const DOMAIN_PRESETS = ['具身智能', '合成生物', '量子计算', '核聚变', '脑机接口', '端侧模型', 'AI Agent', '人形机器人', '自动驾驶', '半导体', '商业航天', 'Web3'];
+  const SOURCE_PRESETS = ['机器之心', '量子位', 'The Information', 'MIT Technology Review', 'The Verge', 'Ars Technica', '36氪', '硅星人', '智源社区', 'Hugging Face', 'arXiv', '腾讯科技'];
+  const norm = s => String(s || '').trim().toLowerCase();
+  const existingDomainLabels = useMemo(() => new Set(profilePriorityItems.map(i => norm(i.label))), [profilePriorityItems]);
+  const existingSourceLabels = useMemo(() => new Set(sourcePriorityItems.map(i => norm(i.name))), [sourcePriorityItems]);
+  const domainPresetOptions = DOMAIN_PRESETS.filter(d => !existingDomainLabels.has(norm(d)));
+  const sourcePresetOptions = SOURCE_PRESETS.filter(s => !existingSourceLabels.has(norm(s)));
+
+  const submitCustomDomain = (raw = domainInput) => {
+    if (addCustomDomain?.(raw)) {
       setDomainInput('');
       showToast('已添加自定义领域，可调整其优先级');
     } else {
@@ -78,8 +87,8 @@ export default function ProfilePage({
     }
   };
 
-  const submitCustomSource = () => {
-    if (addCustomSource?.(sourceInput)) {
+  const submitCustomSource = (raw = sourceInput) => {
+    if (addCustomSource?.(raw)) {
       setSourceInput('');
       showToast('已添加自定义信息源，可调整其优先级');
     } else {
@@ -297,6 +306,14 @@ export default function ProfilePage({
                     />
                     <button type="button" onClick={submitCustomDomain}>添加领域</button>
                   </div>
+                  {domainPresetOptions.length > 0 && (
+                    <div className="priority-preset-row" aria-label="热门领域预选">
+                      <span className="priority-preset-label">热门领域</span>
+                      {domainPresetOptions.map(d => (
+                        <button key={d} type="button" className="priority-preset-chip" onClick={() => submitCustomDomain(d)}>+ {d}</button>
+                      ))}
+                    </div>
+                  )}
                   <div className="priority-list">
                     {profilePriorityItems.map(item => (
                       <div key={item.id} className="priority-row" data-testid="profile-domain-row" data-domain-id={item.id} data-tier={item.tier}>
@@ -346,6 +363,14 @@ export default function ProfilePage({
                     />
                     <button type="button" onClick={submitCustomSource}>添加信息源</button>
                   </div>
+                  {sourcePresetOptions.length > 0 && (
+                    <div className="priority-preset-row" aria-label="常用信息源预选">
+                      <span className="priority-preset-label">常用信息源</span>
+                      {sourcePresetOptions.map(s => (
+                        <button key={s} type="button" className="priority-preset-chip" onClick={() => submitCustomSource(s)}>+ {s}</button>
+                      ))}
+                    </div>
+                  )}
                   <div className="priority-list">
                     {sourcePriorityItems.map(item => (
                       <div key={item.name} className="priority-row" data-testid="profile-source-row" data-source-id={item.name}>

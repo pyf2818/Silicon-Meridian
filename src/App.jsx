@@ -311,6 +311,7 @@ function App() {
     try { return localStorage.getItem('meridian_onboarded') === '1'; } catch { return false; }
   });
   const finishOnboarding = () => setOnboarded(true);
+  const [tourReplay, setTourReplay] = useState(false); // 重看新手引导/功能导览
 
   // 进场动画（水墨开卷）：控制 splash 显隐，及内容随帷幕升起的 .is-entered 标记
   const [showSplash, setShowSplash] = useState(true);
@@ -2637,7 +2638,7 @@ ${signals}
           {nav === 'stock' && (
             <SafeBoundary name="股市终端" icon={ICONS.cpu}>
               <Suspense fallback={<div className="empty-state"><p>加载股市终端...</p></div>}>
-                <StockPage llmConfig={llmConfig} onOpenLlmConfig={() => setShowLlmQuickConfig(true)} />
+                <StockPage llmConfig={llmConfig} onOpenLlmConfig={() => setShowLlmQuickConfig(true)} onArchiveMaterial={addManualMaterial} />
               </Suspense>
             </SafeBoundary>
           )}
@@ -2918,6 +2919,7 @@ ${signals}
               .then(d => showToast(d?.ok ? '已触发今日简报重新预热' : (d?.error?.message || d?.message || '预热失败')))
               .catch(() => showToast('预热请求失败'));
           } },
+          { id: 'tour', label: '重看新手引导 · 功能导览', icon: 'sparkle', hint: '动作', run: () => setTourReplay(true) },
         ]}
       />
 
@@ -2952,10 +2954,11 @@ ${signals}
         setSavePresetName={setSavePresetName}
       />
 
-      {/* 首跑引导（B2 首跑引导）：首次访问展示，完成后写入 localStorage 标记不再出现 */}
+      {/* 首跑引导（B2 首跑引导）：首次访问展示，完成后写入 localStorage 标记不再出现；tourReplay 支持从命令面板重看 */}
       <OnboardingFlow
-        show={!onboarded}
-        onFinish={finishOnboarding}
+        show={!onboarded || tourReplay}
+        replay={tourReplay}
+        onFinish={() => { if (tourReplay) setTourReplay(false); finishOnboarding(); }}
         categories={categories}
         CATEGORY_GROUPS={CATEGORY_GROUPS}
         selectedInterests={selectedInterests}

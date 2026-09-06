@@ -197,21 +197,30 @@ export default function AgentTeamChat({
     const grew = messages.length > prevCountRef.current;
     prevCountRef.current = messages.length;
     if (atBottomRef.current) {
-      const el = streamElRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
+      anchorToBottom();
     } else if (grew) {
       setUnread(u => u + 1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length]);
+  }, [messages.length, anchorToBottom]);
 
   const lastLen = messages.length ? String(messages[messages.length - 1]?.content || '').length : 0;
-  useEffect(() => {
-    if (atBottomRef.current) {
+  // 流式贴底锚定：合并到 rAF 下一帧执行，避免在布局中段强制写 scrollTop 引发抖动；
+  // pending 标记防止同一帧堆积多个锚定任务。
+  const anchorRafRef = useRef(0);
+  const anchorToBottom = useCallback(() => {
+    if (anchorRafRef.current) return;
+    anchorRafRef.current = requestAnimationFrame(() => {
+      anchorRafRef.current = 0;
+      if (!atBottomRef.current) return;
       const el = streamElRef.current;
-      if (el) el.scrollTop = el.scrollHeight; // 流式增长用瞬时锚定，避免 smooth 动画互相打架
-    }
-  }, [lastLen, running, panelOpen]);
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  }, []);
+  useEffect(() => {
+    if (atBottomRef.current) anchorToBottom(); // 流式增长用瞬时锚定，避免 smooth 动画互相打架
+  }, [lastLen, running, panelOpen, anchorToBottom]);
+  useEffect(() => () => cancelAnimationFrame(anchorRafRef.current), []);
 
   const handleStreamScroll = useCallback(() => {
     const el = streamElRef.current;
