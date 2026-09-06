@@ -12,19 +12,14 @@
    本文件为纯 CSS 覆盖层，不改动任何组件结构与业务逻辑。
    ============================================================ */
 
-/* ---------- 1. 结构边框中性化（覆盖全部 12 套调色板的金色描边） ----------
-   选择器覆盖 :root / [data-mode] / [data-palette] / 组合态，
-   保证在调色板切换后依然生效（后加载 + 同特异性胜出）。 */
+/* ---------- 1. 结构边框统一为 1px（v16：边框颜色回归调色板 token，
+   不再在此中性化——themes.css 各 palette 已提供各自的 border-color，
+   冷暖由调色板声明，避免冷色 palette 被暖棕边框混搭） ---------- */
 :root,
 :root[data-mode],
 :root[data-palette],
 :root[data-mode][data-palette] {
-  --border-color: rgba(255, 255, 255, 0.09);
   --panel-border: 1px solid var(--border-color);
-}
-:root[data-mode="light"],
-:root[data-mode="light"][data-palette] {
-  --border-color: rgba(120, 90, 40, 0.14);
 }
 
 /* 硬编码深色文字修复：active tab 文字跟随底色，深浅模式均保证对比度 */
