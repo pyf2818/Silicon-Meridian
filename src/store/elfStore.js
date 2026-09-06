@@ -48,6 +48,19 @@ export const useElfStore = create(
         set({ elfName: v });
         try { localStorage.setItem('elfName', v); } catch {}
       },
+
+      // ===== 聊天记录（持久化）：用户手动保存的对话快照 =====
+      elfChatHistory: (() => {
+        try {
+          const parsed = JSON.parse(localStorage.getItem('elfChatHistory') || '[]');
+          return Array.isArray(parsed) ? parsed : [];
+        } catch { return []; }
+      })(),
+      setElfChatHistory: (updater) => {
+        const cur = get().elfChatHistory;
+        const next = typeof updater === 'function' ? updater(cur) : updater;
+        set({ elfChatHistory: next });
+      },
     }),
     {
       name: 'siliconstream-elf-store',
@@ -56,6 +69,7 @@ export const useElfStore = create(
         elfAvatar: state.elfAvatar,
         elfAvatarHistory: state.elfAvatarHistory,
         elfName: state.elfName,
+        elfChatHistory: state.elfChatHistory,
       }),
     }
   )

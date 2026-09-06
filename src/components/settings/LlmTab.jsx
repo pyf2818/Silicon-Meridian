@@ -1,4 +1,13 @@
+import { useRef, useState } from 'react';
 import { ICONS } from '../../constants/index.jsx';
+
+/** 当前联网搜索实际生效的渠道：豆包 > Tavily > DuckDuckGo（与服务端选择顺序一致） */
+function resolveWebSearchProvider(llmConfig) {
+  if (llmConfig?.webSearchEnabled === false) return { id: 'off', label: '已关闭', desc: '联网工具不可用' };
+  if (llmConfig?.doubaoSearchKey) return { id: 'doubao', label: '豆包搜索 API', desc: '国内稳定 · 每月 500 次免费' };
+  if (llmConfig?.tavilyKey) return { id: 'tavily', label: 'Tavily API', desc: '海外备选 · 每月 1000 次免费' };
+  return { id: 'duckduckgo', label: 'DuckDuckGo', desc: '免费兜底 · 稳定性一般' };
+}
 
 function formatRelative(ts) {
   if (!ts) return '';
@@ -57,8 +66,34 @@ export default function LlmTab({
     setSavePresetName('');
   };
 
+  const doubaoInputRef = useRef(null);
+  const websearchDetailsRef = useRef(null);
+  const [searchKeyVisible, setSearchKeyVisible] = useState(false);
+  const webSearchProvider = resolveWebSearchProvider(llmConfig);
+
+  /** 快速跳转：展开联网搜索区块并聚焦豆包 Key 输入框 */
+  const jumpToDoubaoSearch = () => {
+    const details = websearchDetailsRef.current;
+    if (details) details.open = true;
+    requestAnimationFrame(() => {
+      doubaoInputRef.current?.focus();
+      doubaoInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
   return (
     <div className="llm-tab-root">
+      {/* 联网搜索状态条：一眼看清当前用的哪家，点击直达豆包 Key 配置 */}
+      <div className={`llm-websearch-status provider-${webSearchProvider.id}`}>
+        <span className="llm-websearch-status-dot" aria-hidden="true" />
+        <div className="llm-websearch-status-main">
+          <b>联网搜索 · {webSearchProvider.label}</b>
+          <small>{webSearchProvider.desc}{llmConfig?.doubaoSearchKey ? ' · Key 已配置' : ''}</small>
+        </div>
+        <button type="button" className="llm-websearch-status-btn" onClick={jumpToDoubaoSearch}>
+          {webSearchProvider.id === 'doubao' ? '管理豆包 Key' : '配置豆包搜索（推荐）'}
+        </button>
+      </div>
       {/* 我的预设：chips 一行，点击即切换整套配置（chips 稳定命名，用户下次还认得） */}
       {(llmPresets || []).length > 0 && (
         <div className="llm-presets-chips">
@@ -189,7 +224,7 @@ export default function LlmTab({
       </div>
 
       {/* 联网搜索（可选）：折叠收纳，不占主视线 */}
-      <details className="llm-websearch-details">
+      <details className="llm-websearch-details" ref={websearchDetailsRef}>
         <summary>联网搜索（可选 · Agent 联网工具的 Key）</summary>
         <div className="llm-websearch-body">
           <div className="llm-config-row" style={{ alignItems: 'center' }}>
@@ -205,9 +240,10 @@ export default function LlmTab({
               </span>
             </label>
           </div>
-          <div className="llm-config-row">
+          <div className="llm-config-row llm-doubao-row">
             <input
-              type="password"
+              ref={doubaoInputRef}
+              type={searchKeyVisible ? 'text' : 'password'}
               placeholder="豆包搜索 API Key（国内稳定 · 每月 500 次免费 · 推荐优先）"
               value={llmConfig.doubaoSearchKey || ''}
               onChange={e => setLlmConfig(prev => ({ ...prev, doubaoSearchKey: e.target.value }))}
@@ -215,7 +251,18 @@ export default function LlmTab({
               autoComplete="off"
               title="火山引擎控制台订阅「豆包搜索 Custom 版」后创建；填写后 web_search 优先使用"
             />
+            <button
+              type="button"
+              className="llm-key-toggle"
+              onClick={() => setSearchKeyVisible(v => !v)}
+              title={searchKeyVisible ? '隐藏 Key' : '显示 Key'}
+            >{searchKeyVisible ? '隐藏' : '显示'}</button>
           </div>
+          <p className="llm-doubao-hint">
+            当前联网搜索由 <b>{webSearchProvider.label}</b> 提供服务。
+            豆包 Key 在火山引擎控制台「豆包搜索 Custom 版」订阅后创建，每月 500 次免费额度；填入后 Agent 的 web_search 工具将优先走豆包。
+            <a href="https://console.volcengine.com/ai-search" target="_blank" rel="noreferrer">打开火山引擎控制台 ↗</a>
+          </p>
           <div className="llm-config-row">
             <input
               type="password"

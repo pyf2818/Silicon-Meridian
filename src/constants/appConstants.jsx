@@ -81,6 +81,17 @@ export const PRIMARY_NAV_ITEMS = [
   { id: 'monitor', labelKey: 'nav.monitor', descKey: 'nav.monitorDesc', shortKey: 'nav.monitor', icon: 'target', nav: 'monitor', children: ['monitor'] }
 ];
 
+/**
+ * 侧边导航分组 SIDEBAR_NAV_GROUPS：按「新用户视角」把 11 个入口归成 4 类，降低记忆成本。
+ * 顺序即展示顺序；侧边栏折叠时不渲染分组标题（保持紧凑图标列）。
+ */
+export const SIDEBAR_NAV_GROUPS = [
+  { id: 'intel', label: '资讯情报', items: ['recommendations', 'all', 'stock', 'github', 'monitor'] },
+  { id: 'agent', label: '智能体工作', items: ['home', 'canvas', 'chat'] },
+  { id: 'create', label: '创作与社区', items: ['studio', 'square'] },
+  { id: 'base', label: '个人后勤', items: ['profile-center'] },
+];
+
 export const NAV_CONTEXT_SECTIONS = {
   home: {
     labelKey: 'context.aiWorkstation',

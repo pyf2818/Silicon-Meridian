@@ -97,18 +97,29 @@ export function buildElfSystemPrompt(profile = {}, context = '') {
  */
 export function buildElfDropPrompt(itemData, pageContent) {
   if (!itemData) return '';
+  const hasFull = Boolean(pageContent && pageContent.length > 50);
   const base = [
-    '【拖入内容】',
-    `- 标题：${itemData.title || '(无标题)'}`,
+    '【拖入内容 · 用户主动提交的稳定快照】',
+    '- 标题：' + (itemData.title || '(无标题)'),
     itemData.source ? `- 来源：${itemData.source}` : '',
     itemData.category ? `- 分类线索：${itemData.category}` : '',
     itemData.url ? `- 链接：${itemData.url}` : '',
     itemData.summary ? `- 摘要：${itemData.summary}` : '',
+    hasFull ? '- 全文状态：已成功抓取网页全文（见下），分析必须以全文为准。' : '- 全文状态：本次未能抓取全文，请直接基于以上快照信息分析，不要怀疑内容缺失。',
   ].filter(Boolean).join('\n');
-  const full = pageContent && pageContent.length > 50
+  const full = hasFull
     ? `\n\n【网页全文】\n${pageContent.slice(0, 6000)}`
     : '';
-  return `${base}${full}\n\n请分析这条内容：概括核心、判断对我的相关性、指出机会或风险，并给出下一步动作。`;
+  const rules = [
+    '',
+    '',
+    '【分析纪律 · 硬性约束】',
+    '1. 这是用户亲手拖入的资讯快照，就是待分析对象本身——必须优先基于快照/全文直接分析，不允许因为"找不到这条资讯"而改用联网搜索；',
+    '2. 只有当用户明确要求"最新进展/后续报道"等超出本文内容的信息时，才允许调用检索工具；',
+    '3. 确需补充检索时，先用 search_news 并用「来源名 + 标题关键词」组合检索，仍无结果才可用 web_search；',
+    '4. 输出必须先有一段针对本文内容的直接分析，再谈补充信息。',
+  ].join('\n');
+  return `${base}${full}${rules}\n\n请分析这条内容：概括核心、判断对我的相关性、指出机会或风险，并给出下一步动作。`;
 }
 
 /** 精灵的其他维度动态快速问答：接收纯文本即可（由精灵自识别），无需额外包装。 */

@@ -47,6 +47,10 @@ export default function ProfilePage({
   setDomainTiers,
   sourcePriorityItems,
   setSourceTiers,
+  addCustomDomain,
+  removeCustomDomain,
+  addCustomSource,
+  removeCustomSource,
   specialFollows,
   setSpecialFollows,
   specialFollowForm,
@@ -61,6 +65,28 @@ export default function ProfilePage({
   categories,
   materials = [],
 }) {
+  // 自定义领域/信息源输入（画像是用户的主动表达，不该只局限在系统推断出的几项）
+  const [domainInput, setDomainInput] = useState('');
+  const [sourceInput, setSourceInput] = useState('');
+
+  const submitCustomDomain = () => {
+    if (addCustomDomain?.(domainInput)) {
+      setDomainInput('');
+      showToast('已添加自定义领域，可调整其优先级');
+    } else {
+      showToast('请输入不重复的领域名称');
+    }
+  };
+
+  const submitCustomSource = () => {
+    if (addCustomSource?.(sourceInput)) {
+      setSourceInput('');
+      showToast('已添加自定义信息源，可调整其优先级');
+    } else {
+      showToast('请输入不重复的信息源名称');
+    }
+  };
+
   const resetForm = () => {
     setSpecialFollowForm({ type: 'source', target: '', note: '' });
     setEditingSpecialFollowId(null);
@@ -255,11 +281,26 @@ export default function ProfilePage({
                   <div className="section-header">
                     <h2 className="section-title">{ICONS.target} 领域优先级</h2>
                     <p className="section-desc">一级进入核心必看，二级正常参与，三级保留探索价值但降低出现频率。</p>
+                    <div className="priority-summary">
+                      <span><i className="tier-dot tier-focus" />一级 {profilePriorityItems.filter(i => i.tier === 'focus').length}</span>
+                      <span><i className="tier-dot tier-normal" />二级 {profilePriorityItems.filter(i => i.tier === 'normal').length}</span>
+                      <span><i className="tier-dot tier-explore" />三级 {profilePriorityItems.filter(i => i.tier === 'explore').length}</span>
+                    </div>
+                  </div>
+                  <div className="priority-add-row">
+                    <input
+                      value={domainInput}
+                      onChange={e => setDomainInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && submitCustomDomain()}
+                      placeholder="添加自定义领域，如：具身智能 / 合成生物…"
+                      maxLength={24}
+                    />
+                    <button type="button" onClick={submitCustomDomain}>添加领域</button>
                   </div>
                   <div className="priority-list">
                     {profilePriorityItems.map(item => (
                       <div key={item.id} className="priority-row" data-testid="profile-domain-row" data-domain-id={item.id} data-tier={item.tier}>
-                        <span>{ICONS[item.icon]} {item.label}</span>
+                        <span className="priority-row-label">{ICONS[item.icon] || ICONS.target} {item.label}{item.custom && <em className="priority-custom-tag">自定义</em>}</span>
                         <div className="profile-tier-control" role="group" aria-label={item.label + '关注等级'}>
                           {PROFILE_TIER_OPTIONS.map(option => (
                             <button
@@ -277,6 +318,9 @@ export default function ProfilePage({
                         </div>
                         <span className="tier-rail" data-tier={item.tier} aria-hidden="true"><i /><i /><i /></span>
                         <strong>{PROFILE_TIERS[item.tier]?.shortLabel || '二级'}</strong>
+                        {item.custom && (
+                          <button type="button" className="priority-remove-btn" onClick={() => removeCustomDomain?.(item.id)} title="删除该自定义领域">删除</button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -285,12 +329,27 @@ export default function ProfilePage({
                 <div className="profile-module-page profile-control-panel" id="profile-source-tiers" data-module="sources">
                   <div className="section-header">
                     <h2 className="section-title">{ICONS.layers} 信号源优先级</h2>
-                    <p className="section-desc">显式信任等级优先于隐式行为，避免一次误点长期改变信源判断。</p>
+                    <p className="section-desc">显式信任等级优先于隐式行为，避免一次误点长期改变信源判断。行为推断的来源之外，可手动添加你信任的信息源。</p>
+                    <div className="priority-summary">
+                      <span><i className="tier-dot tier-focus" />一级 {sourcePriorityItems.filter(i => i.tier === 'focus').length}</span>
+                      <span><i className="tier-dot tier-normal" />二级 {sourcePriorityItems.filter(i => i.tier === 'normal').length}</span>
+                      <span><i className="tier-dot tier-explore" />三级 {sourcePriorityItems.filter(i => i.tier === 'explore').length}</span>
+                    </div>
+                  </div>
+                  <div className="priority-add-row">
+                    <input
+                      value={sourceInput}
+                      onChange={e => setSourceInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && submitCustomSource()}
+                      placeholder="添加自定义信息源，如：The Information / 机器之心…"
+                      maxLength={48}
+                    />
+                    <button type="button" onClick={submitCustomSource}>添加信息源</button>
                   </div>
                   <div className="priority-list">
                     {sourcePriorityItems.map(item => (
                       <div key={item.name} className="priority-row" data-testid="profile-source-row" data-source-id={item.name}>
-                        <span>{item.name}</span>
+                        <span className="priority-row-label">{item.name}{item.count > 0 && <small className="priority-count">{item.count} 次阅读</small>}{item.custom && <em className="priority-custom-tag">自定义</em>}</span>
                         <div className="profile-tier-control" role="group" aria-label={item.name + '信源等级'}>
                           {PROFILE_TIER_OPTIONS.map(option => (
                             <button
@@ -307,6 +366,9 @@ export default function ProfilePage({
                           ))}
                         </div>
                         <strong>{PROFILE_TIERS[item.tier]?.shortLabel || '二级'}</strong>
+                        {item.custom && (
+                          <button type="button" className="priority-remove-btn" onClick={() => removeCustomSource?.(item.name)} title="删除该自定义信息源">删除</button>
+                        )}
                       </div>
                     ))}
                   </div>

@@ -60,6 +60,46 @@ export const useProfileStore = create(
         set({ sourceTiers: next });
       },
 
+      // ===== 自定义领域/信息源（持久化）=====
+      // 用户在画像页手动添加的领域与信息源，参与优先级调整，
+      // 不受「只显示行为推断出的前几项」的限制。
+      customDomains: readLS('customDomains', []),
+      addCustomDomain: (label) => {
+        const clean = String(label || '').trim().slice(0, 24);
+        if (!clean) return false;
+        const cur = get().customDomains;
+        if (cur.some(d => d.label === clean)) return false;
+        set({ customDomains: [...cur, { id: `custom-domain-${Date.now().toString(36)}`, label: clean, custom: true }] });
+        return true;
+      },
+      removeCustomDomain: (id) => {
+        set({ customDomains: get().customDomains.filter(d => d.id !== id) });
+        // 同步清掉它的分层，避免残留配置
+        get().setDomainTiers(prev => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      },
+
+      customSources: readLS('customSources', []),
+      addCustomSource: (name) => {
+        const clean = String(name || '').trim().slice(0, 48);
+        if (!clean) return false;
+        const cur = get().customSources;
+        if (cur.some(s => s.name === clean)) return false;
+        set({ customSources: [...cur, { name: clean, custom: true }] });
+        return true;
+      },
+      removeCustomSource: (name) => {
+        set({ customSources: get().customSources.filter(s => s.name !== name) });
+        get().setSourceTiers(prev => {
+          const next = { ...prev };
+          delete next[name];
+          return next;
+        });
+      },
+
       // ===== 每日画像快照（持久化）=====
       dailyProfileSnapshots: readLS('dailyProfileSnapshots', []),
       setDailyProfileSnapshots: (updater) => {
@@ -179,6 +219,8 @@ export const useProfileStore = create(
         specialFollows: state.specialFollows,
         briefingConfig: state.briefingConfig,
         pendingSuggestions: state.pendingSuggestions,
+        customDomains: state.customDomains,
+        customSources: state.customSources,
         // Bug 3 修复：兼容旧 localStorage 的 updatedAt 字段
         personaSummary: {
           ...state.personaSummary,

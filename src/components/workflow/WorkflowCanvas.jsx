@@ -62,9 +62,12 @@ export default function WorkflowCanvas({
   gridMode = 'line',          // 'line' | 'dot' | 'off'
   animateEdges = true,        // 连线流动动画开关
   snap = true,                // 拖拽节点时吸附到网格
+  onDuplicateNode = null,     // (id) → 复制节点（提供时节点工具条出现复制按钮）
+  onRemoveNode = null,        // (id) → 删除节点
 }) {
   const viewportRef = useRef(null);
   const worldRef = useRef(null);
+  const gridLayerRef = useRef(null);
   const zoomLabelRef = useRef(null);
   const nodeElMap = useRef(new Map());
   /** 视图真相源：拖拽/缩放期间只改这里，避免 React 重渲染 */
@@ -74,6 +77,9 @@ export default function WorkflowCanvas({
   const pendingRef = useRef(null);
   const didFitRef = useRef(false);
   const [spaceDown, setSpaceDown] = useState(false);
+  // 节点拖拽中的 React 态：pointerup 只清 ref 不触发重渲染，若仅凭 dragRef 判断，
+  // 单击选中后工具条会在「选中重渲染时仍处拖拽态」与「松手后无重渲染」之间漏渲染。
+  const [nodeDragActive, setNodeDragActive] = useState(false);
   const spaceRef = useRef(false);
 
   /* ---------- 视图应用：直接写 DOM，不进 React 渲染 ---------- */
@@ -82,8 +88,12 @@ export default function WorkflowCanvas({
     const { x, y, z } = viewRef.current;
     if (world) {
       world.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${z})`;
-      world.style.backgroundSize = `${GRID * z}px ${GRID * z}px, ${GRID * z}px ${GRID * z}px, ${GRID * 5 * z}px ${GRID * 5 * z}px, ${GRID * 5 * z}px ${GRID * 5 * z}px`;
-      world.style.backgroundPosition = `${x}px ${y}px, ${x}px ${y}px, ${x}px ${y}px, ${x}px ${y}px`;
+    }
+    // 网格画在视口层（无限延伸）：尺寸/偏移跟随 pan 与 zoom，永不到边
+    const grid = gridLayerRef.current;
+    if (grid) {
+      grid.style.backgroundSize = `${GRID * z}px ${GRID * z}px, ${GRID * z}px ${GRID * z}px, ${GRID * 5 * z}px ${GRID * 5 * z}px, ${GRID * 5 * z}px ${GRID * 5 * z}px`;
+      grid.style.backgroundPosition = `${x}px ${y}px, ${x}px ${y}px, ${x}px ${y}px, ${x}px ${y}px`;
     }
     if (zoomLabelRef.current) zoomLabelRef.current.textContent = `${Math.round(z * 100)}%`;
   }, []);
@@ -278,6 +288,7 @@ export default function WorkflowCanvas({
       moved: false,
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    setNodeDragActive(true);
     onSelect(node.id);
   }, [onSelect, rect]);
 
@@ -301,6 +312,7 @@ export default function WorkflowCanvas({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragRef.current = null;
+    setNodeDragActive(false);
     event.currentTarget?.releasePointerCapture?.(event.pointerId);
     if (drag.kind === 'node' && drag.moved) onMoveNode(drag.id, drag.cur.x, drag.cur.y);
   }, [onMoveNode]);
@@ -349,7 +361,8 @@ export default function WorkflowCanvas({
   }
 
   const paletteTypes = Object.entries(nodeTypeMeta);
-  const worldClass = `wf-world grid-${gridMode}${spaceDown ? ' grab' : ''}`;
+  const gridClass = `wf-grid-layer grid-${gridMode}${spaceDown ? ' grab' : ''}`;
+  const worldClass = `wf-world${spaceDown ? ' grab' : ''}`;
 
   return (
     <div
@@ -365,7 +378,9 @@ export default function WorkflowCanvas({
       role="application"
       aria-label="工作流无限画布"
     >
-      {/* 世界层：pan+zoom 变换，网格随缩放（全部由 applyView 直接写 DOM） */}
+      {/* 网格层：铺满视口、无限延伸（不随 world 裁剪），尺寸/偏移由 applyView 驱动 */}
+      <div className={gridClass} ref={gridLayerRef} aria-hidden="true" />
+      {/* 世界层：pan+zoom 变换（全部由 applyView 直接写 DOM） */}
       <div className={worldClass} ref={worldRef}>
         <svg className="wf-edges" width={WORLD_W} height={WORLD_H} aria-hidden="true">
           <defs>
@@ -441,6 +456,17 @@ export default function WorkflowCanvas({
               <span className="wf-port wf-port-in" aria-hidden="true" />
               <span className="wf-port wf-port-out" aria-hidden="true" />
               {node.enabled !== false && chainIndex === chain.length - 1 && chain.length > 1 && <span className="wf-flag-end">终</span>}
+              {/* 节点快捷工具条：选中且非拖拽中时浮现在节点上方 */}
+              {selectedId === node.id && !nodeDragActive && (onDuplicateNode || onRemoveNode) && (
+                <span className="wf-node-toolbar" onPointerDown={event => event.stopPropagation()}>
+                  {onDuplicateNode && (
+                    <button type="button" onClick={() => onDuplicateNode(node.id)} title="复制节点（含配置）">⧉ 复制</button>
+                  )}
+                  {onRemoveNode && (
+                    <button type="button" className="danger" onClick={() => onRemoveNode(node.id)} title="删除节点">✕</button>
+                  )}
+                </span>
+              )}
             </div>
           );
         })}

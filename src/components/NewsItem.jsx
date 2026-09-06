@@ -1,6 +1,7 @@
 import { memo, useRef, useEffect, useState } from 'react';
 import { ICONS, MODE_MAP, REGION_MAP } from '../constants/index.jsx';
 import { getGradeColors, isEnglishText, formatRelative, isFreshNews } from '../utils/format.js';
+import { useNewsPreviewStore } from '../store/newsPreviewStore.js';
 
 function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBookmarked = false, isInMaterials = false, onBookmark, onSummary, isSummaryOpen, summaryText, summaryLoading = false, summaryMode = '', isFollowed = false, onRead, showTranslation, onToggleTranslation, onRequestTranslation, isTranslating, translation, onOpenLightbox, onAddMaterial, onShareToChat }) {
   const isCompact = viewMode === 'compact';
@@ -54,6 +55,12 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
             : 'AI 短摘要';
 
   const isEnglish = isEnglishText(item.title);
+  const openNewsPreview = useNewsPreviewStore(s => s.open);
+  // 点击标题 → 右侧抽屉预览原文全文（与素材卡片的详情抽屉一致的交互）
+  const handleTitleClick = (e) => {
+    e.stopPropagation();
+    openNewsPreview(item);
+  };
 
   // 拖拽开始
   const handleDragStart = (e) => {
@@ -155,7 +162,7 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
         </div>
         <div className="item-content-row">
           <div className="item-text">
-            <h2 className="item-title"><span className="item-rank">{index + 1}.</span> {displayTitle}</h2>
+            <h2 className="item-title clickable" onClick={handleTitleClick} title="点击预览原文全文"><span className="item-rank">{index + 1}.</span> {displayTitle}</h2>
             {!isCompact && <p className="item-summary">{displaySummary}</p>}
           </div>
           {hasMedia && isCompact && (

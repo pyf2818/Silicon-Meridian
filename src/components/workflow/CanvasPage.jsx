@@ -21,7 +21,7 @@ import {
   WORKFLOW_PARALLEL_MERGE_STRATEGIES,
 } from '../../constants/workflowConstants.js';
 import { validateWorkflowDraft } from '../../utils/workflowValidation.js';
-import { planSimulation, summarizeSimulation } from '../../utils/workflowSimulator.js';
+import { planSimulation, summarizeSimulation, buildDeliverableText } from '../../utils/workflowSimulator.js';
 import {
   buildWorkflowSystemPrompt,
   parseWorkflowJson,
@@ -29,6 +29,7 @@ import {
   buildLocalWorkflow,
 } from '../../utils/workflowAiBuilder.js';
 import { getCanvasPrefs, setCanvasPrefs, subscribeCanvasPrefs } from '../../utils/canvasPrefs.js';
+import { showToast } from '../../utils/toast.js';
 
 /** 与画布无关的环境项（当前范围资讯数、画像信号），画布页不做判定 */
 const ENV_CHECK_IDS = new Set(['context-items', 'profile-signal']);
@@ -60,6 +61,7 @@ export default function CanvasPage({
   switchTemplate,
   activeWorkflowId,
   llmConfig,
+  onExportDeliverable,
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -75,6 +77,74 @@ export default function CanvasPage({
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState([]); // {role, content, parsed?, note?}
   const undoRef = useRef(null);                     // 上一次 AI 变更前的画布快照
+  // 撤销/重做：监听 draft.nodes 变化记录历史（输入连击 600ms 内合并为一条）
+  const historyRef = useRef({ stack: [], index: -1, lastPush: 0 });
+  const suppressHistoryRef = useRef(false);
+  const lastNodesRef = useRef(draft.nodes);
+  const [showDeliverable, setShowDeliverable] = useState(false);
+  // canUndo/canRedo 必须是 React 态：入栈发生在 render 后的 effect 里，
+  // 若直接读 ref，变化当次渲染算出的仍是旧值，之后无人触发重渲染 → 按钮永不解禁。
+  const [histState, setHistState] = useState({ canUndo: false, canRedo: false });
+  const syncHistState = useCallback(() => {
+    const hist = historyRef.current;
+    setHistState({ canUndo: hist.index > 0, canRedo: hist.index >= 0 && hist.index < hist.stack.length - 1 });
+  }, []);
+
+  // 播种初始快照：栈里必须有「未修改前」的状态，首次操作才能撤销回去
+  useEffect(() => {
+    const hist = historyRef.current;
+    if (hist.index === -1) {
+      hist.stack = [draft.nodes];
+      hist.index = 0;
+      syncHistState();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (draft.nodes === lastNodesRef.current) return;
+    const hist = historyRef.current;
+    if (suppressHistoryRef.current) {
+      // 该次变化来自 undo/redo 本身：只同步游标，不入栈
+      suppressHistoryRef.current = false;
+      lastNodesRef.current = draft.nodes;
+      return;
+    }
+    const now = Date.now();
+    if (now - hist.lastPush < 600 && hist.stack.length) {
+      hist.stack[hist.index] = draft.nodes; // 连续小编辑合并
+    } else {
+      hist.stack = hist.stack.slice(0, hist.index + 1);
+      hist.stack.push(draft.nodes);
+      if (hist.stack.length > 60) hist.stack.shift();
+      hist.index = hist.stack.length - 1;
+    }
+    hist.lastPush = now;
+    lastNodesRef.current = draft.nodes;
+    syncHistState();
+  }, [draft.nodes, syncHistState]);
+
+  const canUndo = histState.canUndo;
+  const canRedo = histState.canRedo;
+
+  const undoNodes = useCallback(() => {
+    const hist = historyRef.current;
+    if (hist.index <= 0) return;
+    hist.index -= 1;
+    suppressHistoryRef.current = true;
+    hist.lastPush = 0; // 撤销后的小编辑必须走「截断 redo + 新栈」而非合并进已恢复的栈位
+    syncHistState();
+    updateDraft({ nodes: hist.stack[hist.index] });
+  }, [updateDraft, syncHistState]);
+
+  const redoNodes = useCallback(() => {
+    const hist = historyRef.current;
+    if (hist.index >= hist.stack.length - 1) return;
+    hist.index += 1;
+    suppressHistoryRef.current = true;
+    syncHistState();
+    updateDraft({ nodes: hist.stack[hist.index] });
+  }, [updateDraft, syncHistState]);
 
   useEffect(() => subscribeCanvasPrefs(setPrefs), []);
 
@@ -135,6 +205,7 @@ export default function CanvasPage({
     const plan = planSimulation(draft.nodes);
     if (!plan.steps.length) return;
     cancelRef.current = false;
+    setShowDeliverable(false);
     setSim({ running: true, flowEdge: -1, flowLabel: '', nodeStates: {}, outputs: {}, report: null, step: 0 });
     (async () => {
       const startedAt = performance.now();
@@ -168,7 +239,11 @@ export default function CanvasPage({
         running: false,
         flowEdge: -1,
         flowLabel: '',
-        report: { ...plan, elapsed: Math.round(performance.now() - startedAt) },
+        report: {
+          ...plan,
+          elapsed: Math.round(performance.now() - startedAt),
+          deliverable: buildDeliverableText(plan, draft.name),
+        },
       }));
     })();
   }, [sim.running, draft.nodes, prefs.speed, stopSim]);
@@ -189,6 +264,8 @@ export default function CanvasPage({
     const onKey = (e) => {
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undoNodes(); return; }
+      if ((e.ctrlKey || e.metaKey) && (e.shiftKey && e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) { e.preventDefault(); redoNodes(); return; }
       if (e.key === 'Escape') { setSelectedNodeId(null); setShowValidate(false); setShowFlows(false); return; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
         e.preventDefault();
@@ -198,7 +275,22 @@ export default function CanvasPage({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedNodeId, removeNode, setSelectedNodeId]);
+  }, [selectedNodeId, removeNode, setSelectedNodeId, undoNodes, redoNodes]);
+
+  /** 复制节点：含全部配置，落在原节点右下方 */
+  const duplicateNode = useCallback((nodeId) => {
+    const source = (draft.nodes || []).find(n => n.id === nodeId);
+    if (!source) return;
+    const copy = {
+      ...source,
+      id: `${source.type}-${Date.now().toString(36)}-copy`,
+      title: `${source.title} 副本`,
+      outputKey: `${source.outputKey}_copy`,
+      position: { x: source.position.x + 60, y: source.position.y + 80 },
+    };
+    updateDraft({ nodes: [...draft.nodes, copy] });
+    setSelectedNodeId(copy.id);
+  }, [draft.nodes, updateDraft, setSelectedNodeId]);
 
   /* ---- AI 搭建：对话生成/修改节点 ---- */
   const applyAiPlan = useCallback((plan, mode) => {
@@ -316,6 +408,8 @@ export default function CanvasPage({
         gridMode={prefs.grid}
         animateEdges={prefs.animateEdges}
         snap={prefs.snap}
+        onDuplicateNode={duplicateNode}
+        onRemoveNode={(id) => { removeNode(id); setSelectedNodeId(null); }}
       >
         {/* 画布内浮动：工作流切换器 + 名称（左上） */}
         <div className="canvas-float canvas-float-name" onMouseDown={e => e.stopPropagation()}>
@@ -415,6 +509,8 @@ export default function CanvasPage({
           >
             {sim.running ? '■ 停止' : '▶ 模拟运行'}
           </button>
+          <button type="button" className="canvas-act-btn" onClick={undoNodes} disabled={!canUndo} title="撤销 (Ctrl+Z)">↶ 撤销</button>
+          <button type="button" className="canvas-act-btn" onClick={redoNodes} disabled={!canRedo} title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
           <button type="button" className="canvas-act-btn" onClick={autoLayout} disabled={!draft.nodes?.length} title="按网格重排节点">整理</button>
           <button
             type="button"
@@ -493,8 +589,32 @@ export default function CanvasPage({
               ))}
             </div>
             <div className="canvas-sim-report-foot">
-              输入 {sim.report.itemCount} 条 · 计划耗时 {sim.report.totalDuration}ms · 实际 {(sim.report.elapsed / 1000).toFixed(1)}s（模拟，未调用大模型）
+              <button
+                type="button"
+                className={`canvas-sim-deliverable-btn${showDeliverable ? ' open' : ''}`}
+                onClick={() => setShowDeliverable(v => !v)}
+                disabled={sim.report.shortCircuitAt !== null}
+                title={sim.report.shortCircuitAt !== null ? '链路被短路，无最终成果' : '查看最终成果全文'}
+              >
+                {showDeliverable ? '收起成果' : '📄 查看最终成果'}
+              </button>
+              <span>输入 {sim.report.itemCount} 条 · 计划 {sim.report.totalDuration}ms · 实际 {(sim.report.elapsed / 1000).toFixed(1)}s（模拟，未调用大模型）</span>
             </div>
+            {showDeliverable && sim.report.deliverable && (
+              <div className="canvas-sim-deliverable">
+                <pre className="custom-scrollbar">{sim.report.deliverable}</pre>
+                <div className="canvas-sim-deliverable-actions">
+                  <button type="button" onClick={() => { navigator.clipboard?.writeText(sim.report.deliverable); showToast('成果已复制到剪贴板'); }}>复制全文</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onExportDeliverable) { onExportDeliverable(`${draft.name || '工作流'} · 模拟成果`, sim.report.deliverable); }
+                      else showToast('暂无法保存素材');
+                    }}
+                  >存入素材库</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

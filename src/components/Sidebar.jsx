@@ -1,4 +1,6 @@
 import { ICONS } from '../constants/index.jsx';
+import { SIDEBAR_NAV_GROUPS } from '../constants/appConstants.jsx';
+
 
 export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileMenuOpen, nav, goNav, addRecentVisit, onPrefetchNav, activePrimaryNav, activeContextItems, contextGroupOpen, setContextGroupOpen, showFollowDropdown, setShowFollowDropdown, followKeywords, sortedFollowKeywords, pinnedKeywords, pinFollowKeyword, unpinFollowKeyword, removeFollowKeyword, executeSearch, newKeyword, setNewKeyword, addFollowKeyword, bookmarks, filtered, isLoggedIn, user, setShowProfileModal, setAuthMode, setShowAuthModal, setShowSettings, PRODUCT_NAME, PRODUCT_TAGLINE, PRIMARY_NAV_ITEMS }) {
   return (
@@ -89,60 +91,68 @@ export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileM
         </div>
 
         <nav className="nav-menu">
-          <div className="nav-primary-group">
-            {!sidebarCollapsed && <div className="nav-group-title-static">主工作区</div>}
-            {PRIMARY_NAV_ITEMS.map(item => {
-              const isActive = activePrimaryNav === item.id;
-              const showContext = isActive && !sidebarCollapsed && activeContextItems.length > 1;
+          {SIDEBAR_NAV_GROUPS.map(group => {
+            const groupItems = group.items
+              .map(id => PRIMARY_NAV_ITEMS.find(item => item.id === id))
+              .filter(Boolean);
+            if (!groupItems.length) return null;
+            return (
+              <div key={group.id} className="nav-primary-group nav-grouped" data-group={group.id}>
+                {!sidebarCollapsed && <div className="nav-group-title-static">{group.label}</div>}
+                {groupItems.map(item => {
+                  const isActive = activePrimaryNav === item.id;
+                  const showContext = isActive && !sidebarCollapsed && activeContextItems.length > 1;
 
-              return (
-                <div key={item.id} className={`nav-primary-entry ${isActive ? 'active' : ''}`}>
-                  <button
-                    className={`nav-item nav-primary-item ${isActive ? 'active' : ''}`}
-                    onClick={() => {
-                      goNav(item.nav);
-                      addRecentVisit('nav', item.nav, item.label);
-                      setContextGroupOpen(current => isActive ? !current : true);
-                    }}
-                    onMouseEnter={() => { if (onPrefetchNav) onPrefetchNav(item.nav); }}
-                    title={sidebarCollapsed ? item.label : undefined}
-                    aria-expanded={showContext ? contextGroupOpen : undefined}
-                  >
-                    <span className="nav-icon">{ICONS[item.icon]}</span>
-                    {sidebarCollapsed && item.short && (
-                      <span className="nav-short-label">{item.short}</span>
-                    )}
-                    {!sidebarCollapsed && (
-                      <span className="nav-label-wrap">
-                        <span className="nav-label">{item.label}</span>
-                      </span>
-                    )}
-                    {showContext && (
-                      <span className={`nav-primary-chevron ${contextGroupOpen ? 'open' : ''}`} aria-hidden="true">
-                        {ICONS.chevronDown}
-                      </span>
-                    )}
-                  </button>
-                  {showContext && contextGroupOpen && (
-                    <div className="nav-context-group nav-context-inline">
-                      {activeContextItems.map(contextItem => (
-                        <button
-                          key={contextItem.id}
-                          className={`nav-item nav-sub-item ${nav === contextItem.id ? 'active' : ''}`}
-                          onClick={() => { goNav(contextItem.id); addRecentVisit('nav', contextItem.id, contextItem.label); }}
-                        >
-                          <span className="nav-icon">{ICONS[contextItem.icon]}</span>
-                          <span className="nav-label">{contextItem.label}</span>
-                          {contextItem.id === 'reading-list' && <span className="nav-count">{bookmarks.length}</span>}
-                          {contextItem.id === 'all' && <span className="nav-count">{filtered.length}</span>}
-                        </button>
-                      ))}
+                  return (
+                    <div key={item.id} className={`nav-primary-entry ${isActive ? 'active' : ''}`}>
+                      <button
+                        className={`nav-item nav-primary-item ${isActive ? 'active' : ''}`}
+                        onClick={() => {
+                          goNav(item.nav);
+                          addRecentVisit('nav', item.nav, item.label);
+                          setContextGroupOpen(current => isActive ? !current : true);
+                        }}
+                        onMouseEnter={() => { if (onPrefetchNav) onPrefetchNav(item.nav); }}
+                        title={sidebarCollapsed ? item.label : undefined}
+                        aria-expanded={showContext ? contextGroupOpen : undefined}
+                      >
+                        <span className="nav-icon">{ICONS[item.icon]}</span>
+                        {sidebarCollapsed && item.short && (
+                          <span className="nav-short-label">{item.short}</span>
+                        )}
+                        {!sidebarCollapsed && (
+                          <span className="nav-label-wrap">
+                            <span className="nav-label">{item.label}</span>
+                          </span>
+                        )}
+                        {showContext && (
+                          <span className={`nav-primary-chevron ${contextGroupOpen ? 'open' : ''}`} aria-hidden="true">
+                            {ICONS.chevronDown}
+                          </span>
+                        )}
+                      </button>
+                      {showContext && contextGroupOpen && (
+                        <div className="nav-context-group nav-context-inline">
+                          {activeContextItems.map(contextItem => (
+                            <button
+                              key={contextItem.id}
+                              className={`nav-item nav-sub-item ${nav === contextItem.id ? 'active' : ''}`}
+                              onClick={() => { goNav(contextItem.id); addRecentVisit('nav', contextItem.id, contextItem.label); }}
+                            >
+                              <span className="nav-icon">{ICONS[contextItem.icon]}</span>
+                              <span className="nav-label">{contextItem.label}</span>
+                              {contextItem.id === 'reading-list' && <span className="nav-count">{bookmarks.length}</span>}
+                              {contextItem.id === 'all' && <span className="nav-count">{filtered.length}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-            </div>
+                  );
+                })}
+              </div>
+            );
+          })}
 
           {!sidebarCollapsed && activePrimaryNav === 'profile-center' && (
             <div className="nav-group nav-follow-group">

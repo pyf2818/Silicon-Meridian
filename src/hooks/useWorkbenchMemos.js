@@ -52,6 +52,8 @@ export function useWorkbenchMemos({
   categories,
   domainTiers,
   sourceTiers,
+  customDomains = [],
+  customSources = [],
   readingProfile,
   insightData,
   isBookmarked,
@@ -145,7 +147,7 @@ export function useWorkbenchMemos({
 
   const profilePriorityItems = useMemo(() => {
     const base = selectedInterests.length ? selectedInterests : categories.slice(0, 6).map(c => c.id);
-    return base.slice(0, 8).map((id, index) => {
+    const inferred = base.slice(0, 8).map((id, index) => {
       const category = categories.find(c => c.id === id);
       return {
         id,
@@ -154,19 +156,36 @@ export function useWorkbenchMemos({
         icon: category?.icon || 'target'
       };
     });
-  }, [selectedInterests, domainTiers, categories]);
+    // 用户手动添加的自定义领域：始终展示（不截断），分层跟随 domainTiers
+    const custom = (customDomains || []).map(d => ({
+      id: d.id,
+      label: d.label,
+      icon: 'plus',
+      custom: true,
+      tier: domainTiers[d.id] || 'normal',
+    }));
+    return [...inferred, ...custom.filter(c => !inferred.some(i => i.label === c.label))];
+  }, [selectedInterests, domainTiers, categories, customDomains]);
 
   const sourcePriorityItems = useMemo(() => {
     const fallbackSources = Array.isArray(insightData.sourceQuality) ? insightData.sourceQuality : [];
     const sources = readingProfile.topSources.length
       ? readingProfile.topSources
       : fallbackSources.slice(0, 5).map(source => ({ name: source.name, count: source.count }));
-    return sources.slice(0, 6).map((source, index) => ({
+    const inferred = sources.slice(0, 6).map((source, index) => ({
       name: source.name,
       count: source.count || 0,
       tier: sourceTiers[source.name] || (index < 2 ? 'focus' : index < 4 ? 'normal' : 'explore')
     }));
-  }, [readingProfile.topSources, insightData.sourceQuality, sourceTiers]);
+    // 自定义信息源：始终展示（不截断）
+    const custom = (customSources || []).map(s => ({
+      name: s.name,
+      count: 0,
+      custom: true,
+      tier: sourceTiers[s.name] || 'normal',
+    }));
+    return [...inferred, ...custom.filter(c => !inferred.some(i => i.name === c.name))];
+  }, [readingProfile.topSources, insightData.sourceQuality, sourceTiers, customSources]);
 
   // profileLearningEngine: delegate to pure function (Phase 1.2 Task 10)
   const profileLearningEngine = useMemo(() => computeProfileLearningEngine({

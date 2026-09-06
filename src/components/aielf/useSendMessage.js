@@ -1,5 +1,6 @@
 import { selectToolSchemas } from '../../utils/agentTools.js';
 import { buildContext, shouldCompact, estimateMessages, localSummary } from '../../session/contextManager.js';
+import { saveDropSnapshot } from '../../utils/articleFetcher.js';
 
 // 普通模式（无工具）上下文预算：超预算时中段本地摘要压缩，替代整段发送
 const PLAIN_CONTEXT_BUDGET = 40_000;
@@ -41,6 +42,17 @@ export function useSendMessage({
     if (itemData) {
       setIsLoading(true);
       const pageContent = await fetchPageContent(itemData.url);
+      // 拖拽快照持久化：抓到全文就存下来，之后资讯池刷新/换会话都能稳定引用
+      if (itemData.url) {
+        saveDropSnapshot(itemData.url, {
+          title: itemData.title || '',
+          summary: itemData.summary || '',
+          source: itemData.source || '',
+          url: itemData.url,
+          content: itemData.summary || '',
+          fullContent: pageContent || itemData.fullContent || itemData.summary || '',
+        });
+      }
       messageText = buildAnalysisPrompt(itemData, pageContent);
     }
 

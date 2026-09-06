@@ -65,6 +65,7 @@ import CalendarPage from './components/CalendarPage.jsx';
 import MaterialsPage from './components/MaterialsPage.jsx';
 import ReadingListPage from './components/ReadingListPage.jsx';
 import Lightbox from './components/Lightbox.jsx';
+import NewsPreviewPanel from './components/NewsPreviewPanel.jsx';
 import AuthModal from './components/AuthModal.jsx';
 import InterestModal from './components/InterestModal.jsx';
 import RightPanel from './components/RightPanel.jsx';
@@ -336,6 +337,12 @@ function App() {
   const setDailyProfileSnapshots = useProfileStore(s => s.setDailyProfileSnapshots);
   const specialFollows = useProfileStore(s => s.specialFollows);
   const setSpecialFollows = useProfileStore(s => s.setSpecialFollows);
+  const profileCustomDomains = useProfileStore(s => s.customDomains);
+  const addProfileCustomDomain = useProfileStore(s => s.addCustomDomain);
+  const removeProfileCustomDomain = useProfileStore(s => s.removeCustomDomain);
+  const profileCustomSources = useProfileStore(s => s.customSources);
+  const addProfileCustomSource = useProfileStore(s => s.addCustomSource);
+  const removeProfileCustomSource = useProfileStore(s => s.removeCustomSource);
   const briefingConfig = useProfileStore(s => s.briefingConfig);
   const setBriefingConfig = useProfileStore(s => s.setBriefingConfig);
   const specialFollowForm = useProfileStore(s => s.specialFollowForm);
@@ -1433,6 +1440,8 @@ function App() {
     categories,
     domainTiers,
     sourceTiers,
+    customDomains: profileCustomDomains,
+    customSources: profileCustomSources,
     readingProfile,
     insightData,
     isBookmarked,
@@ -2491,6 +2500,20 @@ ${signals}
               createWorkflow={createWorkflow}
               switchTemplate={switchWorkflowTemplate}
               activeWorkflowId={activeWorkflowId}
+              onExportDeliverable={(title, content) => {
+                addManualMaterial({
+                  title: String(title || '画布模拟成果').slice(0, 80),
+                  content,
+                  fullContent: content,
+                  type: 'analysis',
+                  source: '无限画布',
+                  url: '',
+                  tags: '无限画布,模拟运行,工作流',
+                  note: '来自无限画布模拟运行的最终成果。',
+                  spaceId: null,
+                });
+                showToast('模拟成果已存入素材库');
+              }}
             />
           )}
 
@@ -2634,6 +2657,10 @@ ${signals}
               setDomainTiers={setDomainTiers}
               sourcePriorityItems={sourcePriorityItems}
               setSourceTiers={setSourceTiers}
+              addCustomDomain={addProfileCustomDomain}
+              removeCustomDomain={removeProfileCustomDomain}
+              addCustomSource={addProfileCustomSource}
+              removeCustomSource={removeProfileCustomSource}
               specialFollows={specialFollows}
               setSpecialFollows={setSpecialFollows}
               specialFollowForm={specialFollowForm}
@@ -2757,6 +2784,7 @@ ${signals}
       {/* Settings Modal */}
       {/* Lightbox */}
       <Lightbox lightbox={lightbox} setLightbox={setLightbox} />
+      <NewsPreviewPanel />
 
       {showSettings && (
         <SettingsModal

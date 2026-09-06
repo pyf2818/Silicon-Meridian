@@ -168,3 +168,37 @@ export function summarizeSimulation(plan) {
   }
   return `${plan.steps.length} 个节点全部执行完成`;
 }
+
+/**
+ * 生成「最终成果」全文（模拟）：把各节点产物串成一份可阅读、可复制的交付物。
+ * 供画布运行报告里的成果预览使用——模拟也要能像真实运行一样查看产出。
+ */
+export function buildDeliverableText(plan, workflowName = '未命名工作流') {
+  if (!plan?.steps?.length) return '';
+  const executed = plan.steps.filter(s => s.status === 'done');
+  const shortCircuited = plan.shortCircuitAt !== null;
+  const lines = [];
+  lines.push(`# ${workflowName} · 模拟成果`);
+  lines.push('');
+  lines.push(`> ${summarizeSimulation(plan)} ｜ 输入 ${plan.itemCount} 条 · 计划耗时 ${plan.totalDuration}ms（模拟，未调用大模型）`);
+  lines.push('');
+  lines.push('## 执行过程');
+  executed.forEach(step => {
+    lines.push(`- **${step.index + 1}. ${step.title}**（${step.type}）：${step.output}`);
+    if (step.note) lines.push(`  - ${step.note}`);
+  });
+  lines.push('');
+  if (shortCircuited) {
+    lines.push('## 最终结论');
+    lines.push(`链路在第 ${plan.shortCircuitAt + 1} 步（条件判断）被短路，未产出最终交付物。`);
+    lines.push('建议：降低条件阈值，或在条件不满足的分支上补充兜底节点（如 reply / output）。');
+  } else {
+    const last = executed[executed.length - 1];
+    lines.push('## 最终交付物');
+    lines.push(last.output);
+    lines.push('');
+    lines.push('### 组成');
+    executed.slice(-4).forEach(step => lines.push(`- ${step.title}：${step.output}`));
+  }
+  return lines.join('\n');
+}

@@ -9,6 +9,9 @@ import { useSendMessage } from './components/aielf/useSendMessage.js';
 import MessageList from './components/aielf/MessageList.jsx';
 import InputArea from './components/aielf/InputArea.jsx';
 import { ICONS } from './constants/appConstants.jsx';
+import { showToast } from './utils/toast.js';
+import { useElfStore } from './store/elfStore.js';
+import { fetchArticleContent, getDropSnapshotContent, saveDropSnapshot } from './utils/articleFetcher.js';
 
 const MESSAGES_KEY = 'ai-elf-agent-messages';
 const MAX_MESSAGES = 60;
@@ -57,6 +60,9 @@ export default function AiElf({
   const [isDragOver, setIsDragOver] = useState(false);
   const [messages, setMessages] = useState(loadMessages);
   const [quotedContext, setQuotedContext] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const elfChatHistory = useElfStore(s => s.elfChatHistory);
+  const setElfChatHistory = useElfStore(s => s.setElfChatHistory);
 
   const activeAgent = ELF_DEFAULT_AGENT;
   const dragRef = useRef({ startX: 0, startY: 0, initialX: 0, initialY: 0, moved: false });
@@ -141,15 +147,11 @@ export default function AiElf({
   }, [isDragging, handleMouseMove]);
 
   // 获取网页内容（拖拽链接卡片时补全原文）
+  // 三层稳定连接：内存缓存（fetchArticleContent）→ 历史拖拽快照 → null
   const fetchPageContent = async (url) => {
-    try {
-      const response = await fetch(`/api/fetch-page?url=${encodeURIComponent(url)}`);
-      if (!response.ok) return null;
-      const data = await response.json();
-      return data.content;
-    } catch {
-      return null;
-    }
+    const content = await fetchArticleContent(url);
+    if (content) return content;
+    return getDropSnapshotContent(url);
   };
 
   const runElfAgentLoop = useCallback(async ({ baseMessages, toolSchemas, systemPrompt: sp }) => {
@@ -182,11 +184,48 @@ export default function AiElf({
     if (!itemData) return;
     try {
       const item = JSON.parse(itemData);
+      // 落盘初始快照：即使本次全文抓取失败，快照也保证这条资讯有稳定引用
+      if (item?.url) {
+        saveDropSnapshot(item.url, {
+          title: item.title || '',
+          summary: item.summary || '',
+          source: item.source || '',
+          url: item.url,
+          content: item.summary || '',
+          fullContent: item.fullContent || item.summary || '',
+        });
+      }
       if (!isOpen) setIsOpen(true);
       sendMessage('', item);
     } catch (err) {
       console.error('解析拖拽数据失败:', err);
     }
+  };
+
+  /* ---- 聊天记录：保存当前对话 / 恢复 / 删除 ---- */
+  const saveChatSession = () => {
+    const meaningful = messages.filter(m => m.content || m.toolCalls?.length);
+    if (!meaningful.length) { showToast('当前没有可保存的对话'); return; }
+    const firstUser = meaningful.find(m => m.role === 'user');
+    const session = {
+      id: `elf-chat-${Date.now().toString(36)}`,
+      title: String(firstUser?.content || meaningful[0]?.content || '精灵对话').replace(/\s+/g, ' ').slice(0, 40),
+      savedAt: new Date().toISOString(),
+      messages: meaningful.slice(-60),
+    };
+    setElfChatHistory(prev => [session, ...prev.filter(s => s.id !== session.id)].slice(0, 30));
+    showToast('已保存到聊天记录');
+  };
+
+  const restoreChatSession = (session) => {
+    if (messages.length && !window.confirm('恢复该记录会覆盖当前对话，继续？')) return;
+    setMessages(Array.isArray(session.messages) ? session.messages : []);
+    setShowHistory(false);
+    showToast('已恢复聊天记录');
+  };
+
+  const deleteChatSession = (id) => {
+    setElfChatHistory(prev => prev.filter(s => s.id !== id));
   };
 
   // 分析结论沉淀：存素材库 / 交回工作站（基础交接能力，保留）
@@ -314,11 +353,33 @@ export default function AiElf({
               <small>问答 · 拖卡片分析</small>
             </div>
             <span className="ai-elf-header-space" style={{ flex: 1 }} />
+            <button type="button" className={`ai-elf-btn ${showHistory ? 'active' : ''}`} onClick={() => setShowHistory(v => !v)} title="聊天记录">{ICONS.clock || '◔'}</button>
             <button type="button" className="ai-elf-btn" onClick={clearConversation} title="清空对话，开始新话题">{ICONS.refresh || '⟲'}</button>
             <button type="button" className="ai-elf-btn" onClick={() => saveConversation('workbench')} title="保存到 AI 工作站继续研究">{ICONS.cpu || '⇱'}</button>
             <button type="button" className="ai-elf-btn" onClick={() => saveConversation('archive')} title="保存到素材库">{ICONS.bookmark || '★'}</button>
             <button type="button" className="ai-elf-btn" onClick={() => setIsOpen(false)} title="收起">{ICONS.x || '×'}</button>
           </header>
+
+          {showHistory && (
+            <div className="ai-elf-history">
+              <div className="ai-elf-history-head">
+                <span>聊天记录（{elfChatHistory.length}）</span>
+                <button type="button" onClick={saveChatSession}>＋ 保存当前对话</button>
+              </div>
+              <div className="ai-elf-history-list custom-scrollbar">
+                {elfChatHistory.length === 0 && <p className="ai-elf-history-empty">还没有保存过对话。聊完后点「保存当前对话」，记录会留在本地。</p>}
+                {elfChatHistory.map(session => (
+                  <div key={session.id} className="ai-elf-history-item">
+                    <button type="button" className="ai-elf-history-main" onClick={() => restoreChatSession(session)} title="点击恢复该对话">
+                      <b>{session.title}</b>
+                      <small>{new Date(session.savedAt).toLocaleString('zh-CN')} · {session.messages?.length || 0} 条</small>
+                    </button>
+                    <button type="button" className="ai-elf-history-del" onClick={() => deleteChatSession(session.id)} title="删除">×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="ai-elf-chat-body">
             <MessageList
               messages={messages}
