@@ -41,6 +41,17 @@ const CLOSE_SVG = (
 
 export default function WorkspacePanel() {
   const [rootHandle, setRootHandle] = useState(null);
+
+  // 预览类型判断（v12）：文本/图片/HTML 三类；extOf 取小写扩展名
+  const extOf = useCallback((name) => {
+    const lower = String(name || '').toLowerCase();
+    const dot = lower.lastIndexOf('.');
+    return dot === -1 ? '' : lower.slice(dot);
+  }, []);
+  const isMarkdownFile = useCallback((name) => ['.md', '.markdown'].includes(extOf(name)), [extOf]);
+  const isHtmlFile = useCallback((name) => ['.html', '.htm'].includes(extOf(name)), [extOf]);
+  const isImageFile = useCallback((name) => IMAGE_EXT.has(extOf(name)), [extOf]);
+  const isTextFile = useCallback((name) => TEXT_EXT.has(extOf(name)) || isMarkdownFile(name) || isHtmlFile(name), [extOf, isMarkdownFile, isHtmlFile]);
   const [rootName, setRootName] = useState('');
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -284,11 +295,6 @@ export default function WorkspacePanel() {
     return () => document.removeEventListener('keydown', onKey);
   }, [previewFile, closePreview]);
 
-  // 判断文件是否可 markdown 渲染
-  const isMarkdown = useCallback((name) => {
-    const lower = String(name || '').toLowerCase();
-    return PREVIEWABLE_EXT.has(lower.slice(lower.lastIndexOf('.')));
-  }, []);
 
   // 在预览 panel 内一键关联当前文件到空间（并进对话上下文）
   const addPreviewToContext = useCallback(async () => {
