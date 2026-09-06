@@ -44,6 +44,40 @@ async function readLimitedText(response, maxBytes = 1_000_000) {
   }
 }
 
+/**
+ * 从 HTML 提取正文配图 URL：绝对化 + 过滤图标/头像/广告类小图。
+ * 只在预览抽屉展示，最多返回 8 张；失败不阻断正文返回。
+ */
+const IMG_SRC_NOISE = /(logo|icon|sprite|avatar|emoji|favicon|spacer|\.svg)([?./]|$)/i;
+const IMG_SRC_LAZY = /^(data-src|data-original|data-lazy-src|data-src2?|data-actualsrc)$/;
+
+function extractImages(html, baseUrl) {
+  const found = [];
+  const seen = new Set();
+  const tagRe = /<img\b[^>]*>/gi;
+  const attrRe = /([a-zA-Z-]+)\s*=\s*["']([^"']+)["']/g;
+  let match;
+  while ((match = tagRe.exec(html)) && found.length < 24) {
+    const attrs = {};
+    let attr;
+    attrRe.lastIndex = 0;
+    while ((attr = attrRe.exec(match[0]))) attrs[attr[1].toLowerCase()] = attr[2];
+    const lazyKey = Object.keys(attrs).find(k => IMG_SRC_LAZY.test(k) && /^https?:\/\//.test(attrs[k]));
+    const raw = attrs.src || lazyKey && attrs[lazyKey];
+    if (!raw || /^data:/i.test(raw) || IMG_SRC_NOISE.test(raw)) continue;
+    try {
+      const abs = new URL(raw, baseUrl).href;
+      if (!/^https?:/i.test(abs) || seen.has(abs)) continue;
+      seen.add(abs);
+      // 明确声明为小尺寸（≤120px）的视为装饰图跳过
+      const w = parseInt(attrs.width || '', 10);
+      if (Number.isFinite(w) && w > 0 && w <= 120) continue;
+      found.push(abs);
+    } catch { /* 非法 URL 跳过 */ }
+  }
+  return found.slice(0, 8);
+}
+
 export async function handleFetchPageRequest(req, res) {
   if (String(req.method).toUpperCase() !== 'GET') return sendJsonResponse(res, 405, { ok: false, error: { code: 'METHOD_NOT_ALLOWED', message: '请求方法不支持' } });
   let timeout;
@@ -59,7 +93,8 @@ export async function handleFetchPageRequest(req, res) {
     if (!/(text|html|xml|json)/i.test(contentType)) throw Object.assign(new Error('目标不是可读取的文本页面'), { code: 'UNSUPPORTED_PAGE_TYPE', status: 415 });
     const html = await readLimitedText(response);
     const content = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 15_000);
-    return sendJsonResponse(res, 200, { ok: true, content });
+    const images = extractImages(html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ''), target);
+    return sendJsonResponse(res, 200, { ok: true, content, images });
   } catch (error) {
     if (error?.name === 'AbortError') return routeError(res, Object.assign(new Error('网页读取超时'), { code: 'UPSTREAM_TIMEOUT', status: 504 }));
     return routeError(res, error);
