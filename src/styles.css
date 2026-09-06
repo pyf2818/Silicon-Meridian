@@ -28471,3 +28471,121 @@ body {
 .material-card .material-header-actions { opacity: 0; transition: opacity .14s ease; }
 .material-card:hover .material-header-actions { opacity: 1; }
 .material-research { border: 1px solid var(--accent-cyan-border); background: transparent; }
+
+/* ===== v17 素材管理：左栏固定 + 选中态重设计 + 详情抽屉科技化 ===== */
+/* 布局：整页占满，左右两列各自独立滚动 —— 左栏筛选不再跟随内容滚动 */
+.repo-page { height: 100%; }
+.repo-rail {
+  position: static;
+  height: 100%;
+  max-height: none;
+  overflow-y: auto;
+}
+.repo-main {
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.repo-main::-webkit-scrollbar { width: 4px; }
+.repo-main::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+/* 选择框：单只、定制样式（原生 input 隐藏） */
+.material-checkbox-label { position: relative; width: 16px; height: 16px; flex: none; }
+.material-checkbox-label input {
+  position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer;
+}
+.material-checkbox-label .checkbox-custom {
+  display: block; width: 16px; height: 16px; border-radius: 5px;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-primary);
+  transition: all .15s ease;
+}
+.material-checkbox-label input:checked + .checkbox-custom {
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-cyan) 45%, transparent);
+}
+.material-checkbox-label input:checked + .checkbox-custom::after {
+  content: '✓'; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--bg-primary); font-size: 11px; font-weight: 800;
+}
+.material-checkbox-label input:focus-visible + .checkbox-custom {
+  outline: 2px solid color-mix(in srgb, var(--accent-cyan) 45%, transparent); outline-offset: 1px;
+}
+
+/* 选中卡片：科技感青色辉光 + 右上角对勾角标 */
+.material-card { position: relative; }
+.material-card.selected {
+  border-color: var(--accent-cyan);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 8%, transparent), transparent 55%),
+    var(--bg-card);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-cyan) 65%, transparent),
+    0 10px 32px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+}
+.material-card.selected .material-type-badge {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-cyan) 35%, transparent);
+}
+
+/* 类型徽标：发光胶囊 */
+.material-type-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+}
+
+/* ---- 详情抽屉：科技感/艺术感重设计 ---- */
+.repo-drawer {
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 30%, var(--border-color));
+  border-left: 1px solid color-mix(in srgb, var(--accent-cyan) 30%, var(--border-color));
+  box-shadow: -24px 0 64px rgba(0, 0, 0, .3), inset 1px 0 0 color-mix(in srgb, var(--accent-cyan) 22%, transparent);
+  animation: repoDrawerIn .22s cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes repoDrawerIn { from { transform: translateX(36px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.repo-drawer::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+  z-index: 1;
+}
+.repo-drawer-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-color);
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--accent-cyan) 7%, transparent), transparent 60%);
+}
+.repo-drawer-title { letter-spacing: .01em; }
+.repo-drawer-body {
+  padding: 16px 18px 22px;
+  background:
+    radial-gradient(90% 50% at 100% 0%, color-mix(in srgb, var(--accent-cyan) 4%, transparent), transparent 60%);
+}
+.repo-drawer-content {
+  font-size: 13px; line-height: 1.85;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-primary) 55%, transparent);
+}
+.repo-drawer-content.markdown-body h1,
+.repo-drawer-content.markdown-body h2,
+.repo-drawer-content.markdown-body h3 {
+  border-left: 2px solid var(--accent-cyan);
+  padding-left: 8px;
+}
+.repo-drawer-content.markdown-body img { max-width: 100%; border-radius: 8px; }
+.repo-drawer-content.markdown-body code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+.repo-drawer-section label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em;
+  color: var(--text-muted);
+}
+.repo-drawer-section label::before {
+  content: '◈'; color: var(--accent-cyan); font-size: 9px;
+}
+.repo-drawer { display: flex; flex-direction: column; }
+.repo-drawer-body { flex: 1; }

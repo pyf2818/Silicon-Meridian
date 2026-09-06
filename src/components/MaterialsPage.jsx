@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { ICONS, MATERIAL_TYPES } from '../constants/index.jsx';
 import MaterialGraph from './MaterialGraph.jsx';
 import { getSpaces, subscribeSpaces } from '../utils/workspaceStore.js';
+import { renderMarkdown } from '../utils/markdown.jsx';
 
 const TYPE_OPTIONS = [
   { id: 'quote', label: '金句' },
@@ -422,18 +423,16 @@ export default function MaterialsPage({
                 title="点击查看详情"
               >
                 <div className="material-header" onClick={e => e.stopPropagation()}>
+                  <label className="material-checkbox-label material-select" title="选择素材（可批量操作）">
+                    <input type="checkbox" checked={selectedMaterials.includes(m.id)} onChange={() => toggleMaterialSelection(m.id)} />
+                    <span className="checkbox-custom" />
+                  </label>
                   <span className={`material-type-badge type-${m.type}`}>{MATERIAL_TYPES[m.type] || m.type}</span>
                   <div className="material-header-actions">
                     <button className="material-research" onClick={() => continueMaterialInWorkbench(m)} title="发送到 AI 工作站继续研究">研究</button>
                     <button className="material-star" onClick={() => toggleMaterialStar(m.id)} title={m.starred ? '取消星标' : '添加星标'}>{m.starred ? '★' : '☆'}</button>
                     <button className="material-remove" onClick={() => removeMaterial(m.id)} title="删除（进回收站）">{ICONS.x}</button>
                   </div>
-                </div>
-                <div className="material-checkbox-row" onClick={e => e.stopPropagation()}>
-                  <label className="material-checkbox-label">
-                    <input type="checkbox" checked={selectedMaterials.includes(m.id)} onChange={() => toggleMaterialSelection(m.id)} />
-                    <span className="checkbox-custom" />
-                  </label>
                 </div>
                 {m.title && <p className="material-title">{m.title}</p>}
                 {m.imageUrl && (
@@ -490,7 +489,10 @@ export default function MaterialsPage({
                   {detail.insight.quality && <p><span>质量</span>{detail.insight.quality}</p>}
                 </div>
               )}
-              <div className="repo-drawer-content">{detail.fullContent || detail.content || '（无内容）'}</div>
+              <div
+                className="repo-drawer-content markdown-body"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(String(detail.fullContent || detail.content || '（无内容）')) }}
+              />
               {detail.note && <p className="material-note">{detail.note}</p>}
 
               {(materialFileLinks.get(detail.id) || []).length > 0 && (
