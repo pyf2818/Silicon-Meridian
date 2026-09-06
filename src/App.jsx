@@ -2482,7 +2482,7 @@ ${signals}
               saveAsTemplate={(payload) => saveWorkflowAsTemplate(payload)}
               resetDraft={resetWorkflowDraft}
             />
-          )}}
+          )}
 
           {/* ALL NEWS */}
           {nav === 'all' && (

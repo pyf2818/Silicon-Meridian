@@ -14,7 +14,7 @@
  *   贴底自动跟随；上翻阅读不吸底，底部浮出「有新消息」跳转浮标（带未读数）
  * - 失败可重试（v9）：失败/中止气泡带「重试」，按 runId 重建该成员的认领/产出任务
  * - 顶栏（v12）：居中群名 + 头像叠放 + 导出/清空/记录；群管理（建/名/删/切）移至左侧栏
- * - 两阶段广播流水线（v7）：每条消息全员收到 → Phase 1 角色认领 → Phase 2 协作产出
+ * - 两阶段广播流水线（v16 并行化）：全员同时认领 → 认领者并行独立产出（每个成员都是独立个体，互不等待）
  * - 执行核：复用 subagentRunner.runOneSubagent（独立工具白名单/预算/审批会话）
  */
 import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react';
@@ -120,13 +120,6 @@ function fmtDivider(ts) {
   if (sameDay(d, yest)) return `昨天 ${hm}`;
   return `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
 }
-
-/** 报告 → 引用块摘要（剥掉 Markdown 符号，压成一行可读文本） */
-const quoteSnippet = (t) => String(t || '')
-  .replace(/[#*`>|]/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .slice(0, 110);
 
 export default function AgentTeamChat({
   runtime = {},
@@ -381,7 +374,7 @@ export default function AgentTeamChat({
   ].join('\n'), []);
 
   /** 产出阶段任务书（含认领声明与前序成员产出） */
-  const buildWorkObjective = useCallback((preset, shared, userText, myClaim, priorRound) => [
+  const buildWorkObjective = useCallback((preset, shared, userText, myClaim) => [
     '【群聊共享上下文】（含本轮各成员的认领声明，彼此可见）',
     shared,
     '',
@@ -389,11 +382,9 @@ export default function AgentTeamChat({
     '',
     myClaim ? `【你已认领】${myClaim}` : '【你的认领】（被创始人点名参与，直接承担）',
     '',
-    priorRound
-      ? `【前序成员产出】（请引用/校对/深化，不要重复劳动；有不同意见可以直接在产出里回应队友）\n${priorRound}`
-      : '【前序成员产出】（你是本轮第一个执行者，负责打好第一棒）',
+    '【协作模式】成员并行独立执行：每人同时开工，各自完成自己认领的部分，不要等待或代替他人；全部产出会一起汇总展示。',
     '',
-    `请执行你认领的部分，直接给出结构化产出（这是发到群里的回复，不要寒暄）。保持你的性格与说话风格${priorRound ? '，并与前序成员的产出形成呼应或讨论' : ''}。`,
+    '请执行你认领的部分，直接给出结构化产出（这是发到群里的回复，不要寒暄）。保持你的性格与说话风格。',
   ].join('\n'), []);
 
   /** 执行核工厂：注入流式回调（节流刷新占位气泡），认领/产出/重试共用 */
@@ -447,10 +438,9 @@ export default function AgentTeamChat({
     const runMember = makeRunMember(controller);
 
     try {
-      /* ---- Phase 1：全员广播 · 角色认领（systemPrompt 已带性格灵魂） ---- */
-      const claims = new Map(); // presetId → { preset, claimText, kind }
-      for (const preset of ordered) {
-        if (controller.signal.aborted) break;
+      /* ---- Phase 1：全员广播 · 角色认领（v16 并行：每个成员都是独立个体，同时认领） ---- */
+      const claimResults = await Promise.allSettled(ordered.map(async (preset) => {
+        if (controller.signal.aborted) return null;
         const placeholder = addGroupMessage({
           role: 'agent', agentId: preset.id, agentName: preset.name,
           content: '', status: 'running', meta: { phase: 'claim', runId },
@@ -472,7 +462,11 @@ export default function AgentTeamChat({
           status: result.status === 'done' ? 'done' : result.status,
           meta: { phase: 'claim', kind, runId, turns: result.turns, tokens: result.usage?.total_tokens || 0 },
         });
-        claims.set(preset.id, { preset, claimText, kind });
+        return { preset, claimText, kind };
+      }));
+      const claims = new Map(); // presetId → { preset, claimText, kind }
+      for (const r of claimResults) {
+        if (r.status === 'fulfilled' && r.value) claims.set(r.value.preset.id, r.value);
       }
 
       /* ---- 流水线事件行：谁接下了任务（微信系统行的"事件流"语义） ---- */
@@ -489,33 +483,25 @@ export default function AgentTeamChat({
         addGroupMessage({ role: 'system', content: '本轮暂无成员认领——试试 @ 具体成员点名参与' });
       }
 
-      /* ---- Phase 2：认领成员协作产出（共享转写含彼此认领与前序产出） ---- */
-      let priorRound = '';
-      let lastDone = null; // { mid, name, report }：接力引用块的来源（上一位产出者）
-      for (const preset of contributors) {
-        if (controller.signal.aborted) break;
+      /* ---- Phase 2：认领成员并行产出（v16：每个成员都是独立个体，共享同一份白板，互不等待） ---- */
+      await Promise.allSettled(contributors.map(async (preset) => {
+        if (controller.signal.aborted) return;
         const placeholder = addGroupMessage({
           role: 'agent', agentId: preset.id, agentName: preset.name,
-          content: '', status: 'running',
-          meta: {
-            phase: 'work', runId,
-            quote: lastDone ? { from: lastDone.name, mid: lastDone.mid, text: quoteSnippet(lastDone.report) } : null,
-          },
+          content: '', status: 'running', meta: { phase: 'work', runId },
         });
         if (!placeholder?.id) throw new Error('占位消息创建失败');
         const shared = buildSharedTranscript(getActiveChat().messages.filter(m => m.id !== placeholder.id), 14, active.announcement);
         const myClaim = claims.get(preset.id)?.claimText || '';
-        const objective = buildWorkObjective(preset, shared, text, myClaim, priorRound);
+        const objective = buildWorkObjective(preset, shared, text, myClaim);
         const result = await runMember(preset, objective, placeholder);
         const ok = result.status === 'done' && result.report;
         updateGroupMessage(placeholder.id, {
           content: ok ? result.report : `⚠️ ${result.error || '未产出内容'}`,
           status: ok ? 'done' : result.status,
-          meta: { phase: 'work', runId, turns: result.turns, tokens: result.usage?.total_tokens || 0, quote: lastDone ? { from: lastDone.name, mid: lastDone.mid, text: quoteSnippet(lastDone.report) } : null },
+          meta: { phase: 'work', runId, turns: result.turns, tokens: result.usage?.total_tokens || 0 },
         });
-        if (ok) lastDone = { mid: placeholder.id, name: preset.name, report: result.report };
-        priorRound += `${priorRound ? '\n\n' : ''}### @${preset.name}（${result.status === 'done' ? '已完成' : result.status}）\n${String(result.report || result.error || '').slice(0, 2400)}`;
-      }
+      }));
     } catch (err) {
       // 防御：unexpected 异常也以系统行落进群聊，而不是无声消失
       addGroupMessage({ role: 'system', content: `⚠️ 团队协作异常中断：${err?.message || err}` });
@@ -546,15 +532,9 @@ export default function AgentTeamChat({
     const myClaim = phase === 'work'
       ? (sameRun.find(x => x.role === 'agent' && x.agentId === m.agentId && x.meta?.phase === 'claim' && x.status === 'done')?.content || '')
       : '';
-    const priorRound = phase === 'work'
-      ? sameRun
-        .filter(x => x.role === 'agent' && x.meta?.phase === 'work' && x.status === 'done' && x.at < m.at)
-        .map(x => `### @${x.agentName || x.agentId}（已完成）\n${String(x.content || '').slice(0, 2400)}`)
-        .join('\n\n')
-      : '';
     const objective = phase === 'claim'
       ? buildClaimObjective(preset, shared, text)
-      : buildWorkObjective(preset, shared, text, myClaim, priorRound);
+      : buildWorkObjective(preset, shared, text, myClaim);
 
     updateGroupMessage(m.id, { content: '', status: 'running' });
     setGroupRunning(true);

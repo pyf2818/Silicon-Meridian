@@ -28396,3 +28396,68 @@ body {
 .gtc-mention-pop b { font-size: 12px; color: var(--accent-cyan); }
 .gtc-mention-pop small { font-size: 10px; color: var(--text-muted); }
 .gtc-mention-empty { padding: 8px; font-size: 11px; color: var(--text-muted); text-align: center; }
+
+/* ===== v16 素材管理：侧栏占满 + 素材卡片重设计 ===== */
+.repo-page { align-items: stretch; }
+.repo-rail {
+  max-height: none;
+  gap: 18px;
+  padding: 14px 12px;
+}
+.repo-rail-label { font-size: 10.5px; letter-spacing: .08em; color: var(--text-muted); font-weight: 700; }
+.repo-rail-item { padding: 7px 10px; border-radius: 8px; font-size: 12.5px; }
+.repo-rail-item.active {
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  font-weight: 600;
+}
+.repo-rail-group + .repo-rail-group { border-top: 1px dashed var(--border-color); padding-top: 12px; }
+
+/* ---- 素材卡片：封面化头部 + 悬停浮起 + 三行钳制 + 分隔 meta ---- */
+.materials-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.material-card {
+  max-height: none;
+  padding: 12px 14px;
+  border-radius: 14px;
+  gap: 8px;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.material-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent-cyan) 45%, var(--border-color));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .16);
+}
+.material-card.starred {
+  border-color: color-mix(in srgb, #c9a961 55%, var(--border-color));
+  background: color-mix(in srgb, #c9a961 4%, var(--bg-card));
+}
+.material-card .material-content {
+  max-height: none;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  padding-right: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.material-card .material-title { font-size: 13.5px; font-weight: 700; line-height: 1.45; }
+.material-card .material-image { border-radius: 10px; }
+.material-card .material-meta {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+  gap: 8px;
+}
+.material-card .material-tags {
+  color: var(--accent-cyan);
+  font-size: 11px;
+}
+.material-card .material-note {
+  margin: 0;
+  font-size: 11.5px;
+}
+/* 卡片内操作按钮：hover 才浮现，减少常驻噪音 */
+.material-card .material-header-actions { opacity: 0; transition: opacity .14s ease; }
+.material-card:hover .material-header-actions { opacity: 1; }
+.material-research { border: 1px solid var(--accent-cyan-border); background: transparent; }

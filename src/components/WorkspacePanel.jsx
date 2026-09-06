@@ -532,7 +532,7 @@ export default function WorkspacePanel() {
                   {savingPreview ? '保存中…' : '保存到本地'}
                 </button>
               )}
-                {!isImageFile(previewFile.name) && (
+                {isTextFile(previewFile.name) && (
                   <button
                     type="button"
                     className="workspace-side-panel-action"
