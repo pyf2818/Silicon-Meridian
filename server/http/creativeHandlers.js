@@ -1,4 +1,4 @@
-import { createAuthService } from '../auth/authService.js';
+import { getAuthService } from '../auth/authService.js';
 import { createCreativeService } from '../creative/creativeService.js';
 import { parseCookies, readJsonBody, routeError, sendJsonResponse } from './httpUtils.js';
 
@@ -12,7 +12,7 @@ export async function handleCreativeRequest(req, res, { path = [], service, auth
   const method = String(req.method || 'GET').toUpperCase();
   const parts = Array.isArray(path) ? path.filter(Boolean) : String(path || '').split('/').filter(Boolean);
   try {
-    const auth = authService || createAuthService();
+    const auth = authService || await getAuthService();
     const creative = service || createCreativeService();
     const user = await requireViewer(req, auth);
 

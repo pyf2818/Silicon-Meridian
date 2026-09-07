@@ -69,6 +69,26 @@ export const useBehaviorStore = create(
         readingHistory: [{ ...item, readAt: item.readAt || new Date().toISOString() },
                           ...state.readingHistory].slice(0, READING_HISTORY_CAP)
       })),
+      /**
+       * v22 画像敏感度：统一的行为入账入口，带深度合并。
+       * depth: 'preview'（侧边预览）/ 'full'（点击阅读原文或预览停留≥8s）。
+       * 同一条目重复触发不产生重复行：保留最高深度 + 累计 previewCount，置顶并刷新 readAt。
+       */
+      upsertReadingEntry: (item, depth = 'full') => set(state => {
+        const prev = state.readingHistory.find(x => x.id === item.id);
+        const nextDepth = prev?.depth === 'full' || depth === 'full' ? 'full' : 'preview';
+        const now = new Date().toISOString();
+        const merged = {
+          ...item,
+          depth: nextDepth,
+          previewCount: (prev?.previewCount || 0) + (depth === 'preview' ? 1 : 0),
+          readAt: now,
+          ...(prev?.firstReadAt ? {} : { firstReadAt: now }),
+        };
+        return {
+          readingHistory: [merged, ...state.readingHistory.filter(x => x.id !== item.id)].slice(0, READING_HISTORY_CAP),
+        };
+      }),
       setReadingHistory: (updater) => {
         const cur = get().readingHistory;
         const next = typeof updater === 'function' ? updater(cur) : updater;

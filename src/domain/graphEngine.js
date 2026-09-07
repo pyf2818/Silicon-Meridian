@@ -80,7 +80,19 @@ export function buildGraphData(materials, { files = [], maxNodes = 120 } = {}) {
     for (const t of (Array.isArray(m.tags) ? m.tags : [])) {
       const tag = String(t).trim();
       if (!tag) continue;
-      links.push({ source: srcId, target: `tag:${tag}` });
+      links.push({ source: srcId, target: `tag:${tag}`, kind: 'tag' });
+    }
+  }
+
+  // v22 强关联边：素材 ↔ 素材（共享 ≥2 个标签 = 主题强相关），strength = 共享标签数
+  const tagSets = selected.map(m => new Set((Array.isArray(m.tags) ? m.tags : []).map(t => String(t).trim()).filter(Boolean)));
+  for (let i = 0; i < selected.length; i += 1) {
+    for (let j = i + 1; j < selected.length; j += 1) {
+      let shared = 0;
+      for (const t of tagSets[i]) if (tagSets[j].has(t)) shared += 1;
+      if (shared >= 2) {
+        links.push({ source: materialId(selected[i]), target: materialId(selected[j]), kind: 'strong', strength: shared });
+      }
     }
   }
 
@@ -102,10 +114,40 @@ export function buildGraphData(materials, { files = [], maxNodes = 120 } = {}) {
       if (title.length < 2) continue;
       const fileName = String(f.name || '');
       if ((content && content.includes(title)) || fileName.includes(title.slice(0, 12))) {
-        links.push({ source: materialId(m), target: fileId });
+        links.push({ source: materialId(m), target: fileId, kind: 'file' });
       }
     }
   }
 
+  // v22 关联度：节点度数（连接数）→ 素材/文件节点大小随关联度增长
+  const degree = new Map();
+  for (const l of links) {
+    degree.set(l.source, (degree.get(l.source) || 0) + 1);
+    degree.set(l.target, (degree.get(l.target) || 0) + 1);
+  }
+  for (const n of nodes) {
+    n.degree = degree.get(n.id) || 0;
+    if (n.kind === 'material') n.val = 2 + Math.min(n.degree, 20) * 0.9;
+  }
+
   return { nodes, links };
+}
+
+/**
+ * v22 枢纽节点排序：按度数取前 N 个（全局统筹视角的「最关键节点」）。
+ * @returns {Array<{id,kind,label,degree,group,node}>}
+ */
+export function topHubs(graphData, limit = 6) {
+  if (!graphData?.nodes) return [];
+  return [...graphData.nodes]
+    .sort((a, b) => (b.degree || 0) - (a.degree || 0))
+    .slice(0, limit)
+    .map(n => ({
+      id: n.id,
+      kind: n.kind,
+      group: n.group,
+      degree: n.degree || 0,
+      label: n.kind === 'tag' ? `#${n.tag}` : n.kind === 'file' ? (n.file?.name || '本地文件') : (n.material?.title || '素材'),
+      node: n,
+    }));
 }

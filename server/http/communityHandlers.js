@@ -1,5 +1,5 @@
-import { createAuthService } from '../auth/authService.js';
-import { createCommunityService } from '../community/communityService.js';
+import { getAuthService } from '../auth/authService.js';
+import { getCommunityService } from '../community/communityService.js';
 import { parseCookies, readJsonBody, routeError, sendJsonResponse } from './httpUtils.js';
 
 const writeWindows = new Map();
@@ -25,8 +25,8 @@ export async function handleCommunityRequest(req, res, { path = [], service, aut
   const method = String(req.method || 'GET').toUpperCase();
   const parts = Array.isArray(path) ? path.filter(Boolean) : String(path || '').split('/').filter(Boolean);
   try {
-    const community = service || createCommunityService();
-    const auth = authService || createAuthService();
+    const community = service || await getCommunityService();
+    const auth = authService || await getAuthService();
     if (parts[0] === 'posts' && parts.length === 1) {
       let user = await viewer(req, auth);
       if (method === 'GET') {

@@ -258,6 +258,10 @@ export default function ProfilePage({
                       <strong>{profileLearningEngine.confidence}%</strong>
                       <span>{profileLearningEngine.confidenceLabel} · {profileLearningEngine.behaviorDepth}</span>
                       <p>{profileLearningEngine.summary}</p>
+                      <div className="profile-reading-depth-stats">
+                        <span title="点击「阅读原文」或预览停留≥8秒">深读 {profileLearningEngine.fullReadCount ?? 0}</span>
+                        <span title="侧边预览打开即计入，权重为深读的一半">预览 {profileLearningEngine.previewCount ?? 0}</span>
+                      </div>
                     </div>
                   </div>
                   <div className="profile-learning-actions">

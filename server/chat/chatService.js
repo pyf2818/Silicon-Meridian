@@ -1,10 +1,13 @@
 ﻿import { createChatRepository } from './chatRepository.js';
+import { createMemoryChatRepository } from './memoryChatRepository.js';
+import { isDevMemoryMode } from '../db/devMemoryStore.js';
 import { randomBytes } from 'node:crypto';
+import { isDevMemoryModeResolved } from '../db/devMemoryStore.js';
 function fail(code, message, status = 400) { throw Object.assign(new Error(message), { code, status }); }
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const id = value => { if (!UUID_RE.test(String(value || ''))) fail('INVALID_ID', 'ID 无效'); return value; };
-export function createChatService(repository = createChatRepository()) {
-  return {
+/** v22：dev 未配置数据库时自动落内存仓储，群聊无需启动 PostgreSQL 也能调试 */
+export function createChatService(repository = (isDevMemoryMode() ? createMemoryChatRepository() : createChatRepository())) {  return {
     async listContacts({ userId, search }) { return repository.listContacts(userId, search); },
     async addContact({ userId, contactId, note }) { id(contactId); if (userId === contactId) fail('INVALID_CONTACT', '不能添加自己'); if (!await repository.findUser(contactId)) fail('USER_NOT_FOUND', '用户不存在', 404); return repository.addContact(userId, contactId, note); },
     async removeContact({ userId, contactId }) { return repository.removeContact(userId, id(contactId)); },
@@ -16,4 +19,18 @@ export function createChatService(repository = createChatRepository()) {
     async sendMessage({ userId, conversationId, body, kind = 'text', sharePayload = null }) { id(conversationId); if (!await repository.isMember(conversationId, userId)) fail('FORBIDDEN', '你不是会话成员', 403); const text = String(body || '').trim(); if (kind === 'text' && !text) fail('EMPTY_MESSAGE', '消息不能为空'); if (text.length > 4000) fail('MESSAGE_TOO_LONG', '消息过长'); if (!['text','share'].includes(kind)) fail('INVALID_KIND', '消息类型无效'); return repository.createMessage({ conversationId, senderId: userId, body: text, kind, sharePayload }); },
     async markRead({ userId, conversationId }) { id(conversationId); if (!await repository.isMember(conversationId, userId)) fail('FORBIDDEN', '你不是会话成员', 403); await repository.markRead(conversationId, userId); },
   };
+}
+
+// v22：默认服务实例异步解析（含 PG 连通性探测），每进程记忆化一次。
+
+let defaultChatPromise = null;
+export function getChatService() {
+  if (!defaultChatPromise) {
+    defaultChatPromise = (async () => (
+      (await isDevMemoryModeResolved())
+        ? createChatService(createMemoryChatRepository())
+        : createChatService()
+    ))();
+  }
+  return defaultChatPromise;
 }

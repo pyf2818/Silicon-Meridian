@@ -2,21 +2,30 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createAuthRepository } from './authRepository.js';
 import { createMemoryAuthRepository } from './memoryAuthRepository.js';
 import { hashPassword, verifyPassword } from './passwords.js';
+import { isDevMemoryMode, isDevMemoryModeResolved } from '../db/devMemoryStore.js';
 
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 
-/**
- * 开发态内存备用存储开关。
- * 仅当显式设置 DEV_MEMORY_AUTH=true 且非 production 时生效——用于本地无 PostgreSQL
- * 时仍能端到端跑通注册/登录/取当前用户。生产环境绝不会进入该分支，避免掩盖真实 DB 故障。
- */
-function devMemoryEnabled() {
-  return process.env.NODE_ENV !== 'production' && process.env.DEV_MEMORY_AUTH === 'true';
+function resolveAuthRepository() {
+  if (isDevMemoryMode()) return createMemoryAuthRepository();
+  return createAuthRepository();
 }
 
-function resolveAuthRepository() {
-  if (devMemoryEnabled()) return createMemoryAuthRepository();
-  return createAuthRepository();
+// v22：默认服务实例异步解析（含 PG 连通性探测），每进程记忆化一次。
+// 内存模式实例带 supportsGuest 标记（体验模式仅在内存仓储上开放，不向真实 DB 写游客行）。
+let defaultAuthPromise = null;
+export function getAuthService() {
+  if (!defaultAuthPromise) {
+    defaultAuthPromise = (async () => {
+      if (await isDevMemoryModeResolved()) {
+        const service = createAuthService(createMemoryAuthRepository());
+        service.supportsGuest = true;
+        return service;
+      }
+      return createAuthService();
+    })();
+  }
+  return defaultAuthPromise;
 }
 
 function serviceError(code, message, status = 400) {
@@ -72,6 +81,24 @@ export function createAuthService(repository = resolveAuthRepository()) {
         params: user.password_params,
       });
       if (!valid) throw serviceError('INVALID_CREDENTIALS', '用户名或密码错误', 401);
+      return issueSession(user);
+    },
+    /**
+     * v22 体验模式：免注册一键创建一次性体验账号并直接登录。
+     * 仅内存仓储实例（getAuthService 在 dev 无 PG 时返回的实例）开放该能力，
+     * 不会向真实数据库写入游客行；账号密码随机（不可复登），重启即废弃。
+     */
+    async guestLogin() {
+      if (this.supportsGuest !== true) {
+        throw serviceError('GUEST_DISABLED', '体验模式仅在开发环境（数据库不可用时）可用', 403);
+      }
+      const suffix = randomBytes(4).toString('hex');
+      const user = await repository.createUser({
+        username: `guest_${suffix}`,
+        email: '',
+        displayName: `体验用户 ${suffix.slice(0, 4).toUpperCase()}`,
+        password: await hashPassword(randomBytes(18).toString('base64url')),
+      });
       return issueSession(user);
     },
     async authenticate(rawToken) {

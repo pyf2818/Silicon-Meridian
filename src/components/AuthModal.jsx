@@ -20,7 +20,7 @@ export default function AuthModal({
   showAuthModal, setShowAuthModal,
   authMode, setAuthMode,
   authForm, setAuthForm,
-  handleLogin, handleRegister,
+  handleLogin, handleRegister, handleGuestLogin,
   authLoading, authError, setAuthError,
 }) {
   const { t } = useTranslation();
@@ -154,6 +154,20 @@ export default function AuthModal({
               <span>{authLoading ? t('common.loading') : (isLogin ? t('auth.login') : t('auth.register'))}</span>
             </button>
           </form>
+
+          {/* v22 体验模式：免注册一键进入，测试开发阶段免数据库调试群聊/广场/画像 */}
+          {handleGuestLogin && (
+            <button
+              type="button"
+              className="auth-guest-btn"
+              data-testid="auth-guest"
+              disabled={authLoading}
+              onClick={handleGuestLogin}
+              title="创建一次性体验账号直接进入，无需注册（开发态可用）"
+            >
+              {ICONS.sparkle} 体验模式 · 免注册直接进入
+            </button>
+          )}
 
           <p className="auth-switch">
             {isLogin ? t('auth.noAccount') : t('auth.hasAccount')}

@@ -1,5 +1,5 @@
-import { createAuthService } from '../auth/authService.js';
-import { createChatService } from '../chat/chatService.js';
+import { getAuthService } from '../auth/authService.js';
+import { getChatService } from '../chat/chatService.js';
 import { parseCookies, readJsonBody, routeError, sendJsonResponse } from './httpUtils.js';
 
 async function viewer(req, auth) {
@@ -13,8 +13,8 @@ export async function handleChatRequest(req, res, { path = [], service, authServ
   try {
     const parts = (Array.isArray(path) ? path : String(path).split('/')).filter(Boolean);
     const method = String(req.method || 'GET').toUpperCase();
-    const chat = service || createChatService();
-    const auth = authService || createAuthService();
+    const chat = service || await getChatService();
+    const auth = authService || await getAuthService();
     const user = await viewer(req, auth);
     const body = ['POST', 'PATCH', 'PUT'].includes(method) ? await readJsonBody(req) : {};
 

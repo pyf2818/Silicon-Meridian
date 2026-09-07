@@ -1,4 +1,4 @@
-import { createAuthService } from '../auth/authService.js';
+import { getAuthService } from '../auth/authService.js';
 import { createProfileService } from '../profile/profileService.js';
 import * as snapshotRepository from '../profile/snapshotRepository.js';
 import * as snapshotService from '../profile/snapshotService.js';
@@ -8,7 +8,7 @@ import { parseCookies, readJsonBody, routeError, sendJsonResponse } from './http
 
 export async function handleProfileRequest(req, res, { action = 'state', service, authService } = {}) {
   try {
-    const auth = authService || createAuthService();
+    const auth = authService || await getAuthService();
     const user = await auth.authenticate(parseCookies(req).meridian_session || '');
     if (!user) return sendJsonResponse(res, 401, { ok: false, error: { code: 'UNAUTHORIZED', message: '请先登录' } });
     const profile = service || createProfileService();

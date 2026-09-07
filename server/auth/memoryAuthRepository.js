@@ -57,7 +57,7 @@ export function createMemoryAuthRepository() {
       return user ? normalizeUser(user) : null;
     },
 
-    async createUser({ username, email, password }) {
+    async createUser({ username, email, password, displayName }) {
       const id = randomUUID();
       const now = new Date().toISOString();
       const user = {
@@ -67,7 +67,7 @@ export function createMemoryAuthRepository() {
         password_hash: password.hash,
         password_salt: password.salt,
         password_params: password.params,
-        display_name: username,
+        display_name: displayName || username,
         avatar_url: '',
         signature: '',
         interests: [],

@@ -1,4 +1,7 @@
 import { createCommunityRepository } from './communityRepository.js';
+import { createMemoryCommunityRepository } from './memoryCommunityRepository.js';
+import { isDevMemoryMode } from '../db/devMemoryStore.js';
+import { isDevMemoryModeResolved } from '../db/devMemoryStore.js';
 
 const TYPES = new Set(['article', 'briefing', 'work', 'workflow']);
 const VISIBILITIES = new Set(['public', 'followers', 'private']);
@@ -34,7 +37,8 @@ function validatePost(input, { partial = false } = {}) {
   return output;
 }
 
-export function createCommunityService(repository = createCommunityRepository()) {
+/** v22：dev 未配置数据库时自动落内存仓储，广场/作品集无需启动 PostgreSQL 也能调试 */
+export function createCommunityService(repository = (isDevMemoryMode() ? createMemoryCommunityRepository() : createCommunityRepository())) {
   async function visiblePost(postId, viewerId) {
     const post = await repository.getPost(postId, viewerId);
     if (!post || post.status === 'deleted' || (post.status !== 'published' && post.authorId !== viewerId)) fail('POST_NOT_FOUND', '内容不存在', 404);
@@ -104,4 +108,18 @@ export function createCommunityService(repository = createCommunityRepository())
       return { followedId, following: enabled };
     },
   };
+}
+
+// v22：默认服务实例异步解析（含 PG 连通性探测），每进程记忆化一次。
+
+let defaultCommunityPromise = null;
+export function getCommunityService() {
+  if (!defaultCommunityPromise) {
+    defaultCommunityPromise = (async () => (
+      (await isDevMemoryModeResolved())
+        ? createCommunityService(createMemoryCommunityRepository())
+        : createCommunityService()
+    ))();
+  }
+  return defaultCommunityPromise;
 }

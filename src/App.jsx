@@ -288,7 +288,7 @@ function App() {
     showInterestModal, selectedInterests, isLoggedIn,
     setUser, setToken, setShowAuthModal, setAuthMode, setAuthForm,
     setSelectedInterests, setShowInterestModal,
-    handleRegister, handleLogin, handleLogout, updateUserInterests, updateUserProfile,
+    handleRegister, handleLogin, handleLogout, handleGuestLogin, updateUserInterests, updateUserProfile,
   } = useAuth();
 
   const {
@@ -2165,6 +2165,7 @@ ${signals}
         imageUrl: item.imageUrl || '',
         videoUrl: item.videoUrl || '',
         sourceGradeLabel: item.sourceGradeLabel || item.grade || '',
+        depth: 'full',
         readAt: new Date().toISOString()
       }, ...filtered].slice(0, 100);
     });
@@ -3053,7 +3054,7 @@ ${signals}
       </div>
 
       {/* 登录/注册弹窗 */}
-<AuthModal showAuthModal={showAuthModal} setShowAuthModal={setShowAuthModal} authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} handleLogin={handleLogin} handleRegister={handleRegister} authLoading={authLoading} authError={authError} setAuthError={setAuthError} />
+<AuthModal showAuthModal={showAuthModal} setShowAuthModal={setShowAuthModal} authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} handleLogin={handleLogin} handleRegister={handleRegister} handleGuestLogin={handleGuestLogin} authLoading={authLoading} authError={authError} setAuthError={setAuthError} />
 
       {/* 个人资料弹窗 */}
       <ProfileModal showProfileModal={showProfileModal} setShowProfileModal={setShowProfileModal} user={user} setUser={setUser} profileForm={profileForm} setProfileForm={setProfileForm} selectedInterests={selectedInterests} categories={categories} updateUserProfile={updateUserProfile} setShowInterestModal={setShowInterestModal} setShowUserMenu={setShowUserMenu} handleLogout={handleLogout} showToast={showToast} />

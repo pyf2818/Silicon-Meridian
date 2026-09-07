@@ -10,10 +10,14 @@
  */
 import { Fragment, useEffect, useState } from 'react';
 import { useNewsPreviewStore } from '../store/newsPreviewStore.js';
+import { useBehaviorStore } from '../store/behaviorStore.js';
 import { ICONS } from '../constants/index.jsx';
 import { formatRelative } from '../utils/format.js';
 import { fetchArticleDetail } from '../utils/articleFetcher.js';
 import { renderMarkdown } from '../utils/markdown.jsx';
+
+/** 预览停留达到该时长即升级为「完整阅读」深度（画像行为敏感度 v22） */
+const FULL_READ_DWELL_MS = 8000;
 
 /** 粗判文本是否是 markdown（素材快照/工作空间文章是 md；纯抓取文本不是） */
 function looksLikeMarkdown(text) {
@@ -82,6 +86,26 @@ export default function NewsPreviewPanel() {
       }
     });
     return () => { cancelled = true; };
+  }, [item]);
+
+  // v22 画像行为敏感度：预览即计入阅读记录（depth=preview），停留≥8s 升级为 full
+  useEffect(() => {
+    if (!item) return undefined;
+    const upsert = useBehaviorStore.getState().upsertReadingEntry;
+    const entry = {
+      id: item.id,
+      title: item.title,
+      source: item.source,
+      category: item.category,
+      tags: item.tags || (item.insight?.entities || []).slice(0, 6),
+      summary: item.summary || '',
+      url: item.url || '',
+      imageUrl: item.imageUrl || '',
+      via: 'preview',
+    };
+    upsert(entry, 'preview');
+    const upgradeTimer = setTimeout(() => upsert(entry, 'full'), FULL_READ_DWELL_MS);
+    return () => clearTimeout(upgradeTimer);
   }, [item]);
 
   // Esc 关闭

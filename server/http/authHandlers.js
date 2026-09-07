@@ -1,4 +1,4 @@
-import { createAuthService } from '../auth/authService.js';
+import { createAuthService, getAuthService } from '../auth/authService.js';
 import { parseCookies, readJsonBody, routeError, sendJsonResponse, sessionCookie } from './httpUtils.js';
 
 const loginWindows = new Map();
@@ -56,7 +56,7 @@ export async function handleAuthRequest(req, res, { action, service } = {}) {
   const method = String(req.method || 'GET').toUpperCase();
   const token = parseCookies(req).meridian_session || '';
   try {
-    const auth = service || createAuthService();
+    const auth = service || await getAuthService();
     if (action === 'register' && method === 'POST') {
       const result = await auth.register(validateCredentials(await readJsonBody(req), { registration: true }));
       return sendJsonResponse(res, 201, { ok: true, data: { user: result.user } }, { 'Set-Cookie': sessionCookie(result.rawToken) });
@@ -65,6 +65,12 @@ export async function handleAuthRequest(req, res, { action, service } = {}) {
       limitLogin(req);
       const result = await auth.login(validateCredentials(await readJsonBody(req)));
       return sendJsonResponse(res, 200, { ok: true, data: { user: result.user } }, { 'Set-Cookie': sessionCookie(result.rawToken) });
+    }
+    // v22 体验模式：免注册一键登录（仅开发态内存模式可用，见 authService.guestLogin）
+    if (action === 'guest' && method === 'POST') {
+      limitLogin(req);
+      const result = await auth.guestLogin();
+      return sendJsonResponse(res, 201, { ok: true, data: { user: result.user } }, { 'Set-Cookie': sessionCookie(result.rawToken) });
     }
     if (action === 'logout' && method === 'POST') {
       await auth.logout(token);

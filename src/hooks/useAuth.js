@@ -83,6 +83,18 @@ export function useAuth() {
     setUser(null); setSelectedInterests([]); showToast('已退出登录');
   };
 
+  // v22 体验模式：免注册一键进入（服务端创建一次性体验账号，仅开发态可用）
+  const handleGuestLogin = async () => {
+    setAuthLoading(true); setAuthError('');
+    try {
+      const data = await requestJson('/api/auth/guest', { method: 'POST' });
+      const current = payloadUser(data); setUser(current);
+      if (Array.isArray(current?.interests)) setSelectedInterests(current.interests);
+      setShowAuthModal(false); setAuthForm({ ...EMPTY_FORM });
+      showToast(`欢迎，${current?.displayName || '体验用户'}！体验模式数据重启后重置`);
+    } catch (error) { setAuthError(error.message); } finally { setAuthLoading(false); }
+  };
+
   const updateUserInterests = async (interests) => {
     if (!user) return;
     try {
@@ -103,6 +115,6 @@ export function useAuth() {
     user, token: '', showAuthModal, authMode, authForm, authLoading, authError,
     showInterestModal, selectedInterests, isLoggedIn,
     setUser, setToken: () => {}, setShowAuthModal, setAuthMode, setAuthForm, setAuthError, setSelectedInterests, setShowInterestModal,
-    handleRegister, handleLogin, handleLogout, updateUserInterests, updateUserProfile,
+    handleRegister, handleLogin, handleLogout, handleGuestLogin, updateUserInterests, updateUserProfile,
   };
 }

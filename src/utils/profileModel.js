@@ -193,8 +193,12 @@ export function computeProfileLearningEngine({
   const categoryMap = new Map();
   const sourceMap = new Map();
   const tagMap = new Map();
+  // v22 画像敏感度：阅读深度分级权重——完整阅读 3、预览 1.5（历史无 depth 字段按完整阅读算）
+  const READING_WEIGHT = { full: 3, preview: 1.5 };
+  const fullReadCount = readingHistory.filter(item => item.depth !== 'preview').length;
+  const previewCount = readingHistory.length - fullReadCount;
   const allBehaviorItems = [
-    ...readingHistory.map(item => ({ ...item, weight: 3 })),
+    ...readingHistory.map(item => ({ ...item, weight: READING_WEIGHT[item.depth] ?? 3 })),
     ...bookmarks.map(item => ({ ...item, weight: 4 })),
     ...materials.map(item => ({ ...item, weight: 5 })),
   ];
@@ -260,9 +264,10 @@ export function computeProfileLearningEngine({
     + Object.values(recommendationFeedback.mutedSources || {}).reduce((sum, v) => sum + v, 0)
     + Object.values(recommendationFeedback.trackedTerms || {}).reduce((sum, v) => sum + v, 0);
 
-  // confidence
+  // confidence（v22：预览行为按 0.7 折算计入，画像对轻量浏览更敏感）
   const confidence = Math.min(96, Math.round(
-    Math.min(readingHistory.length, 30) * 1.4
+    Math.min(fullReadCount, 30) * 1.4
+    + Math.min(previewCount, 30) * 0.7
     + Math.min(bookmarks.length, 20) * 1.3
     + Math.min(materials.length, 20) * 1.8
     + selectedInterests.length * 3
@@ -335,6 +340,8 @@ export function computeProfileLearningEngine({
     multimediaReads,
     feedbackLearningCount,
     topAuthors,
+    fullReadCount,
+    previewCount,
   };
 }
 

@@ -5114,7 +5114,7 @@ body {
 .material-graph canvas { display: block; }
 .material-graph-legend {
   position: absolute;
-  top: 10px;
+  bottom: 10px;
   left: 10px;
   display: flex;
   gap: 12px;
@@ -5126,10 +5126,62 @@ body {
   color: var(--text-muted, #8b93a7);
   z-index: 2;
   backdrop-filter: blur(4px);
+  flex-wrap: wrap;
+  max-width: calc(100% - 20px);
 }
 .material-graph-legend-item { display: inline-flex; align-items: center; gap: 5px; }
 .material-graph-legend-item .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .material-graph-legend-item .dot.gray { background: rgba(148,163,184,.85); }
+.material-graph-legend-item .line { width: 16px; height: 2px; border-radius: 1px; display: inline-block; }
+
+/* v22 #2：知识图谱工具条 / 类型筛选 / 枢纽列表 */
+.material-graph-toolbar {
+  position: absolute; top: 10px; left: 10px; right: 10px; z-index: 3;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 7px 10px; border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated, rgba(0,0,0,.3)) 88%, transparent);
+  border: 1px solid var(--border-color, rgba(128,128,128,.2));
+  backdrop-filter: blur(6px);
+}
+.material-graph-stats { display: flex; gap: 8px; font-size: 10.5px; color: var(--text-muted); font-family: var(--font-mono, monospace); white-space: nowrap; }
+.material-graph-search { position: relative; flex: 1 1 180px; min-width: 150px; max-width: 280px; }
+.material-graph-search input {
+  width: 100%; padding: 5px 26px 5px 10px; border-radius: 8px; font-size: 11px;
+  border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); outline: none;
+}
+.material-graph-search input:focus { border-color: var(--accent-cyan); }
+.material-graph-search-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 0 4px; }
+.material-graph-actions { display: flex; gap: 6px; margin-left: auto; }
+.material-graph-actions button {
+  padding: 4px 10px; border-radius: 8px; font-size: 10.5px; cursor: pointer;
+  border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-secondary);
+  transition: border-color .15s ease, color .15s ease;
+}
+.material-graph-actions button:hover, .material-graph-actions button.active { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.material-graph-filters {
+  position: absolute; top: 52px; left: 10px; z-index: 3; display: flex; gap: 5px; flex-wrap: wrap; max-width: calc(100% - 20px);
+}
+.material-graph-filters button {
+  padding: 2.5px 10px; border-radius: 999px; font-size: 10px; cursor: pointer;
+  border: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-elevated) 88%, transparent); color: var(--text-muted);
+  backdrop-filter: blur(4px);
+}
+.material-graph-filters button.active { border-color: var(--accent-cyan); color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
+.material-graph-hubs {
+  position: absolute; right: 10px; bottom: 46px; z-index: 3; display: flex; flex-direction: column; gap: 4px; align-items: flex-end;
+}
+.material-graph-hubs-title { font-size: 9.5px; letter-spacing: .1em; color: var(--text-muted); margin-bottom: 2px; }
+.material-graph-hubs button {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 220px;
+  padding: 3.5px 10px; border-radius: 999px; font-size: 10.5px; cursor: pointer;
+  border: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  color: var(--text-secondary); backdrop-filter: blur(4px);
+  transition: border-color .15s ease, transform .15s ease;
+}
+.material-graph-hubs button:hover { border-color: var(--accent-cyan); transform: translateX(-2px); }
+.material-graph-hubs button i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.material-graph-hubs button em { font-style: normal; font-family: var(--font-mono, monospace); font-size: 9.5px; color: var(--accent-cyan); }
+.material-graph-hubs button span, .material-graph-hubs button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .materials-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-md); }
 .material-card { background: var(--bg-card); border: var(--panel-border); border-radius: var(--radius-card); padding: 12px; transition: all .2s; max-height: 240px; display: flex; flex-direction: column; overflow: hidden; }
 .material-card:hover { border-color: var(--accent-cyan); box-shadow: 0 2px 8px color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
@@ -29354,10 +29406,18 @@ body {
 .stock-scenario-rationale { margin-top: 9px; padding: 8px 10px; border-left: 2px solid var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 6%, var(--bg-elevated)); font-size: 10.5px; line-height: 1.65; color: var(--text-secondary); border-radius: 0 8px 8px 0; }
 .stock-checklist-notice.error { border-left-color: var(--signal-critical); background: color-mix(in srgb, var(--signal-critical) 8%, var(--bg-elevated)); color: var(--signal-critical); }
 
-/* v21 #21：监测条目 hover 反馈（卡片内 match + 抽屉条目） */
-.monitor-match { cursor: pointer; transition: background .15s ease, padding-left .15s ease, border-color .15s ease; border-radius: 6px; }
-.monitor-match:hover { background: color-mix(in srgb, var(--accent-cyan) 7%, transparent); padding-left: 6px; border-bottom-color: color-mix(in srgb, var(--accent-cyan) 40%, transparent); }
-.monitor-match:hover .monitor-match-title { color: var(--accent-cyan); }
-.monitor-drawer-item.clickable { cursor: pointer; transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease; }
-.monitor-drawer-item.clickable:hover { transform: translateX(4px); border-color: color-mix(in srgb, var(--accent-cyan) 55%, transparent); background: color-mix(in srgb, var(--accent-cyan) 6%, var(--bg-elevated)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-cyan) 25%, transparent); }
-.monitor-drawer-item.clickable:hover .monitor-drawer-item-title { color: var(--accent-cyan); }
+/* v22 #1：画像阅读深度统计 chips */
+.profile-reading-depth-stats { display: flex; gap: 8px; margin-top: 7px; }
+.profile-reading-depth-stats span { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border-color); font-size: 10px; color: var(--text-secondary); background: var(--bg-elevated); font-family: var(--font-mono, monospace); }
+
+/* v22 #3：登录弹窗「体验模式」按钮 */
+.auth-guest-btn {
+  width: 100%; margin-top: 10px; padding: 9px 14px; border-radius: 10px; cursor: pointer;
+  border: 1px dashed color-mix(in srgb, var(--accent-cyan) 55%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 7%, transparent);
+  color: var(--accent-cyan); font-size: 12px; font-weight: 600; letter-spacing: .02em;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  transition: background .15s ease, border-color .15s ease;
+}
+.auth-guest-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); border-color: var(--accent-cyan); }
+.auth-guest-btn:disabled { opacity: .5; cursor: not-allowed; }
