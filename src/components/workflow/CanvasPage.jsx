@@ -19,6 +19,7 @@ import {
   WORKFLOW_CONDITION_OPERATORS,
   WORKFLOW_ROUTER_OPERATORS,
   WORKFLOW_PARALLEL_MERGE_STRATEGIES,
+  WORKFLOW_PARALLEL_PERSPECTIVES,
   normalizeWorkflowEdges,
 } from '../../constants/workflowConstants.js';
 import { validateWorkflowDraft } from '../../utils/workflowValidation.js';
@@ -38,6 +39,20 @@ const ENV_CHECK_IDS = new Set(['context-items', 'profile-signal']);
 const NODE_CHECK_PREFIX = /^(node-(?:required|io|skill|condition|classifier|unique-output)-)/;
 
 const stripCheckPrefix = (id) => id.replace(NODE_CHECK_PREFIX, '');
+
+/** v24 #4 #b：节点类型导语——配置卡按类型差异化呈现的第一层 */
+const NODE_TYPE_GUIDE = {
+  input: '链路起点：载入当日资讯、画像与收藏/素材命中情况，产出统一上下文。',
+  llm: '智能体节点：结合角色与指令调用 LLM 产出分析结论，输入/输出变量决定数据流。',
+  classifier: '按标签把资讯分桶（必读/追踪/素材/创作/降噪），供下游按桶取用。',
+  condition: '指标闸门：不满足阈值时跳过后续节点，用于控制链路成本。',
+  skill: '结构化工具：本地规则离线可用，也可切换 AI 增强模式调用 LLM 深化。',
+  router: '按规则给输入打分支标记；命中分支会标注进输出，供下游差异化处理。',
+  parallel: '并发执行多个独立视角后按策略合并，适合多角度研判。',
+  subworkflow: '把另一条工作流作为子过程调用，上一节点输出即子工作流任务。',
+  reply: '固定回复模板，把上一节点输出原样带出。',
+  output: '链路终点：汇总任务结论、优先阅读与素材沉淀。',
+};
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -94,6 +109,23 @@ export default function CanvasPage({
     const hist = historyRef.current;
     setHistState({ canUndo: hist.index > 0, canRedo: hist.index >= 0 && hist.index < hist.stack.length - 1 });
   }, []);
+
+  // v24 #4 #b：路由规则行内编辑（差异化面板，支持全部算子）
+  const updateRouterRule = useCallback((index, patch) => {
+    if (!selectedNode) return;
+    const rules = [...(selectedNode.routerRules || [])];
+    rules[index] = { ...rules[index], ...patch };
+    updateNode(selectedNode.id, { routerRules: rules });
+  }, [selectedNode, updateNode]);
+  const addRouterRule = useCallback(() => {
+    if (!selectedNode) return;
+    const rules = selectedNode.routerRules || [];
+    updateNode(selectedNode.id, { routerRules: [...rules, { label: `分支 ${rules.length + 1}`, operator: 'contains', value: '' }] });
+  }, [selectedNode, updateNode]);
+  const removeRouterRule = useCallback((index) => {
+    if (!selectedNode) return;
+    updateNode(selectedNode.id, { routerRules: (selectedNode.routerRules || []).filter((_, i) => i !== index) });
+  }, [selectedNode, updateNode]);
 
   // 播种初始快照：栈里必须有「未修改前」的状态，首次操作才能撤销回去
   useEffect(() => {
@@ -700,6 +732,9 @@ export default function CanvasPage({
                 </select>
               </label>
             </div>
+            {NODE_TYPE_GUIDE[selectedNode.type] && (
+              <small className="canvas-node-guide">{NODE_TYPE_GUIDE[selectedNode.type]}</small>
+            )}
             <label>
               <span>职责说明</span>
               <textarea value={selectedNode.role} onChange={e => updateNode(selectedNode.id, { role: e.target.value })} rows={2} />
@@ -720,14 +755,29 @@ export default function CanvasPage({
             </div>
 
             {selectedNode.type === 'skill' && (
-              <label>
-                <span>内置 Skill 能力</span>
-                <select value={selectedNode.skillId || 'evidence-pack'} onChange={e => updateNode(selectedNode.id, { skillId: e.target.value })}>
+              <div className="canvas-skill-picker">
+                <span className="canvas-node-section-title">Skill 能力（点击卡片选择）</span>
+                <div className="canvas-skill-list">
                   {WORKFLOW_SKILL_CATALOG.map(skill => (
-                    <option key={skill.id} value={skill.id}>{skill.label}</option>
+                    <button
+                      type="button"
+                      key={skill.id}
+                      className={`canvas-skill-card ${(selectedNode.skillId || 'evidence-pack') === skill.id ? 'active' : ''}`}
+                      onClick={() => updateNode(selectedNode.id, { skillId: skill.id })}
+                    >
+                      <strong>{skill.label}</strong>
+                      <small>{skill.description}</small>
+                    </button>
                   ))}
-                </select>
-              </label>
+                </div>
+                <label>
+                  <span>执行模式</span>
+                  <select value={selectedNode.skillMode || 'local'} onChange={e => updateNode(selectedNode.id, { skillMode: e.target.value })}>
+                    <option value="local">本地规则（离线可用，秒出）</option>
+                    <option value="ai">AI 增强（本地结果 + LLM 深化）</option>
+                  </select>
+                </label>
+              </div>
             )}
 
             {selectedNode.type === 'condition' && (
@@ -771,21 +821,35 @@ export default function CanvasPage({
             )}
 
             {selectedNode.type === 'router' && (
-              <label>
-                <span>路由规则（每行：分支名 | 匹配值）</span>
-                <textarea
-                  rows={3}
-                  defaultValue={(selectedNode.routerRules || []).map(r => `${r.label} | ${r.value}`).join('\n')}
-                  onBlur={e => updateNode(selectedNode.id, {
-                    routerRules: String(e.target.value || '').split('\n').map(line => {
-                      const [label, value] = line.split('|').map(s => (s || '').trim());
-                      return { label: label || '默认分支', operator: 'contains', value: value || '' };
-                    }).filter(Boolean),
-                  })}
-                  placeholder={'高优 | 融资\n常规 | 产品'}
-                />
-                <small className="canvas-node-hint">支持算子：{WORKFLOW_ROUTER_OPERATORS.map(o => o.label).join(' / ')}（当前按「包含」匹配）</small>
-              </label>
+              <div className="canvas-router-rules">
+                <span className="canvas-node-section-title">路由规则（自上而下，首次命中即生效）</span>
+                {(selectedNode.routerRules || []).map((rule, i) => (
+                  <div key={i} className="canvas-router-rule">
+                    <input
+                      value={rule.label || ''}
+                      placeholder="分支名"
+                      onChange={e => updateRouterRule(i, { label: e.target.value })}
+                    />
+                    <select
+                      value={rule.operator || 'contains'}
+                      onChange={e => updateRouterRule(i, { operator: e.target.value })}
+                      title="匹配算子"
+                    >
+                      {WORKFLOW_ROUTER_OPERATORS.map(op => (
+                        <option key={op.id} value={op.id}>{op.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={rule.value || ''}
+                      placeholder="匹配值"
+                      onChange={e => updateRouterRule(i, { value: e.target.value })}
+                    />
+                    <button type="button" className="canvas-router-remove" onClick={() => removeRouterRule(i)} title="删除规则">✕</button>
+                  </div>
+                ))}
+                <button type="button" className="canvas-router-add" onClick={addRouterRule}>+ 添加规则</button>
+                <small className="canvas-node-hint">执行时命中分支会标注进输出（【路由分支：xx】），下游节点可差异化处理；无命中时输入原样透传。</small>
+              </div>
             )}
 
             {selectedNode.type === 'parallel' && (
@@ -808,6 +872,11 @@ export default function CanvasPage({
                     ))}
                   </select>
                 </label>
+                <small className="canvas-node-hint canvas-node-hint-wide">
+                  真实执行时并发调用 {selectedNode.parallelBranches ?? 3} 个独立视角：
+                  {WORKFLOW_PARALLEL_PERSPECTIVES.slice(0, selectedNode.parallelBranches ?? 3).map(p => p.name).join('、')}
+                  。
+                </small>
               </div>
             )}
 

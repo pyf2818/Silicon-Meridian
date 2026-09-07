@@ -114,6 +114,18 @@ export const WORKFLOW_PARALLEL_MERGE_STRATEGIES = [
   { id: 'summarize', label: '让 LLM 汇总（生成综述）' },
 ];
 
+/* v24 #4：并行节点的视角目录——画布只配分支数时，真实执行按此合成各分支的独立视角 */
+export const WORKFLOW_PARALLEL_PERSPECTIVES = [
+  { name: '事实核查', prompt: '核对输入中的事实性陈述：哪些有依据、哪些存疑、哪些缺失关键证据。' },
+  { name: '价值与机会', prompt: '评估输入中最值得利用的机会与价值点，并说明为什么值得。' },
+  { name: '风险与反驳', prompt: '站在对立面：找出输入结论的风险、漏洞与最有力的反驳理由。' },
+  { name: '用户影响', prompt: '分析对目标用户的实际影响，给出具体的行动建议。' },
+  { name: '数据与证据', prompt: '关注可量化的数据、指标与证据缺口，指出哪些结论需要数据支撑。' },
+  { name: '趋势外推', prompt: '基于输入推测后续 1-3 个月的可能走向，标注确定性高低。' },
+  { name: '执行方案', prompt: '给出可落地的下一步执行清单，按优先级排序。' },
+  { name: '反方钢人', prompt: '把输入观点最强的反对版本钢化到极致，再给出裁决：它最强时还站得住吗。' },
+];
+
 export const WORKFLOW_SKILL_CATALOG = [
   {
     id: 'evidence-pack',

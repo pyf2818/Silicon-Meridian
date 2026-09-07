@@ -5,6 +5,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ICONS } from '../constants/index.jsx';
+import { renderMarkdown } from '../utils/markdown.jsx';
 import { useStockWatchlist } from '../hooks/useStockWatchlist.js';
 import { useStockAi, ALERT_CONDITIONS } from '../hooks/useStockAi.js';
 import { DEFAULT_INVESTOR_POLICY, normalizeInvestorPolicy } from '../domain/stock/investorPolicy.js';
@@ -908,7 +909,12 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
             {experienceMode === 'pro' && ai.diagnosis.status === 'ready' && (
               <ProCharts klines={diagKlines.length ? diagKlines : (klineData?.klines || [])} diagnosis={ai.diagnosis} />
             )}
-            <div className="stock-ai-text">{ai.diagnosis.content}</div>
+            {/* v24 #1：AI 大师叙述 Markdown 渲染（标题/表格/列表排版），无 AI 时退化为算法摘要纯文本 */}
+            {ai.diagnosis.mode === 'ai' && ai.diagnosis.aiNarrative ? (
+              <div className="stock-ai-text stock-ai-master" dangerouslySetInnerHTML={{ __html: renderMarkdown(ai.diagnosis.content || ai.diagnosis.aiNarrative) }} />
+            ) : (
+              <div className="stock-ai-text">{ai.diagnosis.content}</div>
+            )}
             {ai.diagnosis.aiError && <div className="stock-analysis-fallback">AI 增强失败，当前保留算法结果：{ai.diagnosis.aiError}</div>}
             <div className="stock-analysis-evidence">
               {(ai.diagnosis.evidence || []).map(item => <span key={item.key}>{item.label}：{item.value}</span>)}

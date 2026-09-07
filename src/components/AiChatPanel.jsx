@@ -9,6 +9,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { renderMarkdown } from '../utils/markdown.jsx';
+import SafeBoundary from './SafeBoundary.jsx';
 import SessionSidebar from './SessionSidebar.jsx';
 import AgentPanel from './AgentPanel.jsx';
 import { retrieveRelevantMemories, rememberCompaction } from '../utils/sessionMemory.js';
@@ -1441,20 +1442,23 @@ export default function AiChatPanel({
             </button>
             <span className="team-center-crumb">AI 工作站 / 团队</span>
           </div>
-          <div className="team-center-scroll custom-scrollbar">
-            <AgentTeamChat
-              runtime={{
-                llmConfig,
-                selectedModel,
-                approvalMode: agentPermissionMode,
-              }}
-              onSaveMaterial={addManualMaterial}
-              onViewRecords={() => setCenterView('teamRecords')}
-              onNeedConfig={onOpenLlmConfig}
-              injection={teamInject}
-              onInjectConsumed={() => setTeamInject(null)}
-            />
-          </div>
+            <div className="team-center-scroll custom-scrollbar">
+              {/* v24 #3：SafeBoundary 兜底——存量群聊数据异常时只降级本区，不炸整个工作站 */}
+              <SafeBoundary name="团队群聊">
+                <AgentTeamChat
+                  runtime={{
+                    llmConfig,
+                    selectedModel,
+                    approvalMode: agentPermissionMode,
+                  }}
+                  onSaveMaterial={addManualMaterial}
+                  onViewRecords={() => setCenterView('teamRecords')}
+                  onNeedConfig={onOpenLlmConfig}
+                  injection={teamInject}
+                  onInjectConsumed={() => setTeamInject(null)}
+                />
+              </SafeBoundary>
+            </div>
         </div>
       ) : centerView === 'teamRecords' ? (
         <div className="chat-main-col team-center-col">

@@ -82,14 +82,15 @@ export const PRIMARY_NAV_ITEMS = [
 ];
 
 /**
- * 侧边导航分组 SIDEBAR_NAV_GROUPS：按「新用户视角」把 11 个入口归成 4 类，降低记忆成本。
+ * 侧边导航分组 SIDEBAR_NAV_GROUPS：按「新用户视角」把入口归组，降低记忆成本。
  * 顺序即展示顺序；侧边栏折叠时不渲染分组标题（保持紧凑图标列）。
+ * v24 #6：「创作与设计」+「个人后勤」合并为「用户与社区」——联系人（chat）、
+ * 素材管理（studio）、用户广场（square）、用户画像（profile-center）归入该组。
  */
 export const SIDEBAR_NAV_GROUPS = [
   { id: 'intel', label: '资讯情报', items: ['recommendations', 'all', 'stock', 'github', 'monitor'] },
-  { id: 'agent', label: '智能体工作', items: ['home', 'canvas', 'chat'] },
-  { id: 'create', label: '创作与社区', items: ['studio', 'square'] },
-  { id: 'base', label: '个人后勤', items: ['profile-center'] },
+  { id: 'agent', label: '智能体工作', items: ['home', 'canvas'] },
+  { id: 'community', label: '用户与社区', items: ['chat', 'studio', 'square', 'profile-center'] },
 ];
 
 export const NAV_CONTEXT_SECTIONS = {

@@ -1,10 +1,13 @@
 import {
   annualizedVolatility,
   averageTrueRange,
+  kdj,
+  macd,
   maxDrawdown,
   priceMomentum,
   pricePosition,
   relativePerformance,
+  rsi,
   simpleMovingAverage,
   supportResistance,
   volumeTrend,
@@ -46,6 +49,10 @@ export function analyzeStock({ stock = {}, realtime = null, klines = [], benchma
   const levels = supportResistance(bars, 20);
   const volume = volumeTrend(bars, 5);
   const momentum5 = priceMomentum(bars, 5);
+  // v24 #1：MACD / RSI / KDJ 技术面扩展（大师级 AI 分析的输入）
+  const macdResult = macd(bars);
+  const rsi14 = rsi(bars, 14);
+  const kdjResult = kdj(bars);
   const nearSupport = levels.support != null && price <= levels.support * 1.02;
   const bullishAlignment = ma5 > ma10 && ma10 > ma20 && price > ma5;
   const bearishAlignment = ma5 < ma10 && ma10 < ma20 && price < ma5;
@@ -73,6 +80,13 @@ export function analyzeStock({ stock = {}, realtime = null, klines = [], benchma
     resistance: round(levels.resistance),
     volumeTrend: volume,
     momentum5: round(momentum5),
+    macd: macdResult.macd,
+    macdSignal: macdResult.signal,
+    macdHist: macdResult.hist,
+    rsi14,
+    kdjK: kdjResult.k,
+    kdjD: kdjResult.d,
+    kdjJ: kdjResult.j,
   };
   const evidence = [
     { key: 'maAlignment', label: '均线排列', value: bullishAlignment ? '多头排列' : bearishAlignment ? '空头排列' : '交叉震荡' },
@@ -80,6 +94,9 @@ export function analyzeStock({ stock = {}, realtime = null, klines = [], benchma
     { key: 'supportResistance', label: '支撑 / 压力', value: `${metrics.support ?? '--'} / ${metrics.resistance ?? '--'}` },
     { key: 'volumeTrend', label: '量能趋势', value: volume },
     { key: 'volatility', label: '年化波动率', value: metrics.volatility == null ? '--' : `${metrics.volatility}%` },
+    { key: 'macd', label: 'MACD 柱', value: metrics.macdHist == null ? '--' : String(metrics.macdHist) },
+    { key: 'rsi14', label: 'RSI(14)', value: metrics.rsi14 == null ? '--' : String(metrics.rsi14) },
+    { key: 'kdj', label: 'KDJ', value: metrics.kdjK == null ? '--' : `${metrics.kdjK}/${metrics.kdjD}/${metrics.kdjJ}` },
   ];
 
   const bullCase = [];
@@ -90,10 +107,16 @@ export function analyzeStock({ stock = {}, realtime = null, klines = [], benchma
   if (momentum5 > 0) bullCase.push(`近 5 个周期动量为正（${metrics.momentum5}%）`);
   if (relative20?.excessReturn > 2) bullCase.push(`近 20 周期跑赢基准 ${round(relative20.excessReturn)} 个百分点`);
   if (volume === 'expanding' && momentum5 > 0) bullCase.push('上涨伴随量能放大，趋势确认度更高');
+  if (metrics.macdHist != null && metrics.macdHist > 0) bullCase.push(`MACD 红柱（${metrics.macdHist}），快线在慢线上方`);
+  if (metrics.rsi14 != null && metrics.rsi14 < 30) bullCase.push(`RSI(14) ${metrics.rsi14}，进入超卖区`);
+  if (metrics.kdjJ != null && metrics.kdjJ < 0) bullCase.push(`KDJ J 值 ${metrics.kdjJ}，短线超跌有修复需求`);
   if (bearishAlignment) bearCase.push('均线呈空头排列，短中期趋势一致');
   if (momentum5 < 0) bearCase.push(`近 5 个周期动量为负（${metrics.momentum5}%）`);
   if (relative20?.excessReturn < -2) bearCase.push(`近 20 周期跑输基准 ${Math.abs(round(relative20.excessReturn))} 个百分点`);
   if (volume === 'expanding' && momentum5 < 0) bearCase.push('下跌伴随量能放大，卖压需要重点观察');
+  if (metrics.macdHist != null && metrics.macdHist < 0) bearCase.push(`MACD 绿柱（${metrics.macdHist}），快线在慢线下方`);
+  if (metrics.rsi14 != null && metrics.rsi14 > 70) bearCase.push(`RSI(14) ${metrics.rsi14}，进入超买区，追高风险大`);
+  if (metrics.kdjJ != null && metrics.kdjJ > 100) bearCase.push(`KDJ J 值 ${metrics.kdjJ}，短线超买`);
   if (levels.support != null) invalidation.push(`收盘跌破近 20 周期支撑 ${metrics.support}，当前趋势判断需要重估`);
   if (levels.resistance != null) invalidation.push(`突破 ${metrics.resistance} 后无法站稳，强势判断可能失效`);
   if (volatility != null && volatility > 30) riskSignals.push(`年化波动率 ${metrics.volatility}%，价格波动不可忽略`);

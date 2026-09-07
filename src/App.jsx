@@ -2234,6 +2234,7 @@ ${signals}
     materials: 'studio',
     canvas: 'canvas',
     square: 'square',
+    chat: 'chat', // v24 #5 修复：此前缺 chat 键导致点联系人时侧边栏错误聚焦到 AI 工作站
     'profile-center': 'profile-center',
     github: 'github',
     monitor: 'monitor',
@@ -2645,7 +2646,7 @@ ${signals}
             </SafeBoundary>
           )}
 
-          {nav === 'square' && <CommunityPage user={user} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} onShareToChat={share => { setPendingChatShare(share); setNav('chat'); }} />}
+          {nav === 'square' && <CommunityPage user={user} materials={materials} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} onShareToChat={share => { setPendingChatShare(share); setNav('chat'); }} />}
 
           {nav === 'chat' && <ChatPage user={user} pendingShare={pendingChatShare} onConsumeShare={() => setPendingChatShare(null)} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} />}
 

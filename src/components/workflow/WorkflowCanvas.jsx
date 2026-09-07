@@ -135,10 +135,34 @@ export default function WorkflowCanvas({
   const tempEdgeRef = useRef(null);  // 拖拽中的临时连线路径（直写 DOM，不重渲染）
   const bendDragRef = useRef(null);  // 弧度手柄拖拽中：{ key, pointerId, startY, startBend }
   const bendPreviewRef = useRef(null); // finishBendDrag 读取最新预览值（避免闭包过期）
+  /** v24 #4：当前所有边的几何快照（每次 render 刷新），拖拽节点时据此直写边路径 */
+  const edgeGeometryRef = useRef([]);
   const [selectedEdgeKey, setSelectedEdgeKey] = useState(null);
   const [bendPreview, setBendPreview] = useState(null); // { key, bend } 拖拽中的弧度预览
   const [connecting, setConnecting] = useState(false);  // 连线拖拽中（光标提示）
   bendPreviewRef.current = bendPreview;
+
+  /* ---------- v24 #4：节点拖拽期间直写相连边的路径（边平滑跟随，不跳变） ---------- */
+  const updateEdgeDom = useCallback((nodeId, x, y) => {
+    const world = worldRef.current;
+    if (!world) return;
+    for (const edge of edgeGeometryRef.current) {
+      if (edge.fromId !== nodeId && edge.toId !== nodeId) continue;
+      const from = edge.fromId === nodeId ? { x, y } : edge.fromPos;
+      const to = edge.toId === nodeId ? { x, y } : edge.toPos;
+      const d = edgePath(from, to, edge.bend || 0);
+      world.querySelectorAll(`[data-edge-key="${edge.key}"]`).forEach(el => el.setAttribute('d', d));
+      // 选中边的弧度手柄/断开按钮跟随中点
+      const overlayGroup = world.querySelector(`.wf-edge-overlay g[data-edge-key="${edge.key}"]`);
+      if (overlayGroup) {
+        const mid = edgeMidpoint(from, to, edge.bend || 0);
+        const handle = overlayGroup.querySelector('.wf-edge-bend-handle');
+        if (handle) { handle.setAttribute('cx', mid.x); handle.setAttribute('cy', mid.y); }
+        const del = overlayGroup.querySelector('.wf-edge-del');
+        if (del) del.setAttribute('transform', `translate(${mid.x + 22}, ${mid.y - 22})`);
+      }
+    }
+  }, []);
 
   /** 从 out 端口按下：开始拖拽连线（捕获到视口，move/up 由视口统一处理） */
   const onPortPointerDown = useCallback((event, nodeId) => {
@@ -410,9 +434,12 @@ export default function WorkflowCanvas({
     if (Math.abs(nx - drag.origX) + Math.abs(ny - drag.origY) > 2) drag.moved = true;
     drag.cur = { x: nx, y: ny };
     const el = drag.el;
-    pendingRef.current = () => { if (el) { el.style.left = `${nx}px`; el.style.top = `${ny}px`; } };
+    pendingRef.current = () => {
+      if (el) { el.style.left = `${nx}px`; el.style.top = `${ny}px`; }
+      updateEdgeDom(drag.id, nx, ny); // v24 #4：边路径同步直写，平滑跟随
+    };
     scheduleApply();
-  }, [rect, scheduleApply, snap]);
+  }, [rect, scheduleApply, snap, updateEdgeDom]);
 
   const onNodePointerUp = useCallback((event) => {
     const drag = dragRef.current;
@@ -475,11 +502,18 @@ export default function WorkflowCanvas({
     const state = flowEdge < 0 ? '' : i < flowEdge ? 'done' : i === flowEdge ? 'flow' : '';
     edgesList.push({
       id: seqKey,
+      fromId: chain[i].id,
+      toId: chain[i + 1].id,
       d: edgePath(from, to),
       state,
       mid: { x: (from.x + WF_NODE_W + to.x) / 2, y: (from.y + to.y) / 2 + WF_NODE_H / 2 },
     });
   }
+  // v24 #4：几何快照（渲染期同步刷新），供节点拖拽时直写边路径
+  edgeGeometryRef.current = [
+    ...edgesList.map(edge => ({ key: edge.id, fromId: edge.fromId, toId: edge.toId, fromPos: normalizeNodePosition(nodeById.get(edge.fromId).position), toPos: normalizeNodePosition(nodeById.get(edge.toId).position), bend: 0 })),
+    ...explicitEdges.map(edge => ({ key: edge.key, fromId: edge.fromId, toId: edge.toId, fromPos: edge.from, toPos: edge.to, bend: edge.bend })),
+  ];
 
   const paletteTypes = Object.entries(nodeTypeMeta);
   const gridClass = `wf-grid-layer grid-${gridMode}${spaceDown ? ' grab' : ''}`;
@@ -520,6 +554,7 @@ export default function WorkflowCanvas({
               <path
                 className={`wf-edge ${edge.state}`}
                 d={edge.d}
+                data-edge-key={edge.id}
                 markerEnd={`url(#wf-arrow${edge.state === 'done' ? '-done' : edge.state === 'flow' ? '-flow' : ''})`}
               />
               {edge.state === 'flow' && animateEdges && (
@@ -544,10 +579,11 @@ export default function WorkflowCanvas({
                 <path
                   className="wf-edge-hit"
                   d={d}
+                  data-edge-key={edge.key}
                   onPointerDown={(e) => { e.stopPropagation(); setSelectedEdgeKey(isSelected ? null : edge.key); }}
                   onDoubleClick={(e) => { e.stopPropagation(); if (onDisconnectEdge) onDisconnectEdge(edge.fromId, edge.toId); }}
                 />
-                <path className="wf-edge wf-edge-explicit" d={d} markerEnd="url(#wf-arrow)" />
+                <path className="wf-edge wf-edge-explicit" d={d} data-edge-key={edge.key} markerEnd="url(#wf-arrow)" />
               </g>
             );
           })}
@@ -622,7 +658,7 @@ export default function WorkflowCanvas({
           {explicitEdges.filter(edge => selectedEdgeKey === edge.key).map(edge => {
             const mid = edgeMidpoint(edge.from, edge.to, edge.bend);
             return (
-              <g key={edge.key}>
+              <g key={edge.key} data-edge-key={edge.key}>
                 <circle
                   className="wf-edge-bend-handle"
                   cx={mid.x}

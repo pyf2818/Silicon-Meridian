@@ -5,6 +5,7 @@ import {
   WORKFLOW_NODE_TYPES,
   WORKFLOW_SKILL_CATALOG,
   WORKFLOW_CONDITION_METRICS,
+  WORKFLOW_PARALLEL_PERSPECTIVES,
   getWorkflowSkillMeta,
   isWorkflowSkillId,
   formatWorkflowNodeConfig
@@ -171,6 +172,23 @@ function compareMetric(left, operator, right) {
     case '>=':
     default: return left >= right;
   }
+}
+
+/** v24 #4：抽取本地节点上下文构造（skill AI 增强与普通本地节点共用） */
+function localCtxFrom(ctx) {
+  return {
+    scopedAgentItems: ctx.scopedAgentItems,
+    mediaItems: ctx.mediaItems,
+    materials: ctx.materials,
+    bookmarks: ctx.bookmarks,
+    intelligenceProfile: ctx.intelligenceProfile,
+    trackedTerms: ctx.trackedTerms,
+    selectedInterests: ctx.selectedInterests,
+    categories: ctx.categories,
+    selectedNewsDate: ctx.selectedNewsDate,
+    agentWorkflowScope: ctx.agentWorkflowScope,
+    selectedMission: ctx.selectedMission
+  };
 }
 
 function runLocalNode(node, previousOutput, ctx) {
@@ -426,20 +444,34 @@ export class WorkflowEngine {
           const data = await response.json();
           if (data.error) throw new Error(data.error);
           output = data.content || `${node.title} 暂无输出`;
-        } else {
-          const localResult = runLocalNode(node, previousOutput, {
-            scopedAgentItems: ctx.scopedAgentItems,
-            mediaItems: ctx.mediaItems,
-            materials: ctx.materials,
-            bookmarks: ctx.bookmarks,
-            intelligenceProfile: ctx.intelligenceProfile,
-            trackedTerms: ctx.trackedTerms,
-            selectedInterests: ctx.selectedInterests,
-            categories: ctx.categories,
-            selectedNewsDate: ctx.selectedNewsDate,
-            agentWorkflowScope: ctx.agentWorkflowScope,
-            selectedMission: ctx.selectedMission
+        } else if (node.type === 'skill' && node.skillMode === 'ai') {
+          // v24 #4：skill AI 增强模式——本地规则引擎产出结构化底座，再交 LLM 深化（真实调用，非空壳）
+          const localResult = runLocalNode(node, previousOutput, localCtxFrom(ctx));
+          const localOutput = typeof localResult === 'string' ? localResult : localResult.output;
+          structured = typeof localResult === 'string' ? null : localResult.structured;
+          const aiSkillMeta = getWorkflowSkillMeta(node.skillId || 'evidence-pack');
+          const skillAgent = (ctx.agents || []).find(a => a.id === node.agentId) || (ctx.agents || [])[0];
+          const skillResponse = await fetch('/api/ai-generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              baseUrl: ctx.llmConfig?.baseUrl,
+              apiKey: ctx.llmConfig?.apiKey,
+              model: ctx.llmConfig?.selectedModel,
+              action: 'chat',
+              systemPrompt: `${skillAgent?.systemPrompt || '你是个人情报智能体。'}\n\n你正在执行工作流 Skill「${aiSkillMeta.label}」：${aiSkillMeta.description}\n要求：结论先行、标注不确定项、输出可直接被下游节点使用的深化结果。`,
+              messages: [{
+                role: 'user',
+                content: `节点指令：${node.prompt || '(无)'}\n\n本地规则引擎的结构化结果：\n${String(localOutput).slice(-4000)}\n\n请基于以上结构化结果与输入上下文，输出该 Skill 的深化分析结论。`
+              }]
+            }),
+            signal: this.abortController?.signal
           });
+          const skillData = await skillResponse.json();
+          if (skillData.error) throw new Error(skillData.error);
+          output = `【本地规则结果】\n${localOutput}\n\n【AI 深化】\n${skillData.content || '(AI 无输出)'}`;
+        } else {
+          const localResult = runLocalNode(node, previousOutput, localCtxFrom(ctx));
           output = typeof localResult === 'string' ? localResult : localResult.output;
           structured = typeof localResult === 'string' ? null : localResult.structured;
           shouldContinue = typeof localResult === 'string' ? true : localResult.shouldContinue !== false;
@@ -548,12 +580,24 @@ export class WorkflowEngine {
    * config: { branches: [{ name, prompt, agentId? }], mergeStrategy: 'concat'|'first'|'last'|'summarize' }
    */
   async _runParallel(node, input, ctx, setTrace, onStep, parentTrace) {
-    const branches = Array.isArray(node.branches) ? node.branches : (node.config?.branches || []);
+    // v24 #4：兼容画布配置 parallelBranches（数量）——按视角目录合成真实分支，非空壳
+    const rawBranchCount = Number(node.parallelBranches) || 0;
+    const canvasCount = rawBranchCount ? Math.max(2, Math.min(8, rawBranchCount)) : 0;
+    let branches = Array.isArray(node.branches) && node.branches.length
+      ? node.branches
+      : (node.config?.branches || []);
+    if (!branches.length && canvasCount) {
+      branches = WORKFLOW_PARALLEL_PERSPECTIVES.slice(0, canvasCount).map(p => ({
+        name: p.name,
+        prompt: `你是并行分支「${p.name}」。${p.prompt}${node.prompt ? `\n\n节点指令：${node.prompt}` : ''}\n请基于输入给出 80-200 字的独立结论。`,
+      }));
+    }
     if (branches.length === 0) {
       setTrace(node.id, { status: 'failed', detail: '并行节点缺少 branches 配置' });
       return { output: '错误：并行节点未配置分支', structured: null };
     }
-    const mergeStrategy = node.mergeStrategy || node.config?.mergeStrategy || 'concat';
+    // v24 #4：画布写 parallelMerge，引擎兼容读取
+    const mergeStrategy = node.mergeStrategy || node.parallelMerge || node.config?.mergeStrategy || 'concat';
     setTrace(node.id, { status: 'running', detail: `并行执行 ${branches.length} 个分支` });
 
     // 并发执行每个分支
@@ -633,7 +677,16 @@ export class WorkflowEngine {
    * config: { routes: [{ match: { op, value }, target, targetName }], default?: { target, targetName } }
    */
   async _runRouter(node, input, ctx, setTrace, onStep, parentTrace) {
-    const routes = Array.isArray(node.routes) ? node.routes : (node.config?.routes || []);
+    // v24 #4：兼容画布 routerRules（{label, operator, value}）与引擎 routes（{match, target}）双格式
+    const canvasRules = Array.isArray(node.routerRules) ? node.routerRules : [];
+    const canvasRoutes = canvasRules
+      .filter(rule => rule && ((rule.value ?? '') !== '' || rule.label))
+      .map(rule => ({
+        match: { op: rule.operator || 'contains', value: rule.value ?? '' },
+        target: rule.target || null,
+        targetName: rule.label || '分支',
+      }));
+    const routes = Array.isArray(node.routes) && node.routes.length ? node.routes : canvasRoutes;
     if (routes.length === 0) {
       setTrace(node.id, { status: 'failed', detail: '路由节点缺少 routes 配置' });
       return { output: '错误：路由节点未配置 routes', structured: null };
@@ -645,9 +698,20 @@ export class WorkflowEngine {
     }
     if (!matchedRoute) matchedRoute = node.default || node.config?.default || null;
 
-    if (!matchedRoute || !matchedRoute.target) {
-      setTrace(node.id, { status: 'completed', detail: '无匹配路由，跳过' });
-      return { output: '(无匹配路由，跳过)', structured: { matched: false }, shouldContinue: true };
+    // v24 #4：画布模式（规则无 target）——命中时把分支标注进输出供下游感知；未命中时输入原样透传
+    if (matchedRoute && !matchedRoute.target) {
+      const branchLabel = matchedRoute.targetName || '分支';
+      const detail = `路由命中「${branchLabel}」（${matchedRoute.match?.op || 'contains'}）`;
+      setTrace(node.id, { status: 'completed', detail, output: `【路由分支：${branchLabel}】\n${input}` });
+      return {
+        output: `【路由分支：${branchLabel}】\n${input}`,
+        structured: { matched: true, branch: branchLabel, mode: 'canvas-route' },
+        detail,
+      };
+    }
+    if (!matchedRoute) {
+      setTrace(node.id, { status: 'completed', detail: '无路由命中，输入原样透传给后续节点', output: input });
+      return { output: input, structured: { matched: false, mode: 'passthrough' }, detail: '无路由命中，输入透传' };
     }
 
     const targetWorkflowId = matchedRoute.target;

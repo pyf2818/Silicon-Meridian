@@ -159,6 +159,25 @@ export function hueOfChat(id) {
 }
 
 
+/** v24 #3 修复：消息条目清洗——历史存量数据可能混入 null/非对象/缺字段的消息，
+ *  直接渲染会在 m.role 等访问处 TypeError（点击「团队」报错且无法显示的根因） */
+function sanitizeMessages(rawMessages) {
+  if (!Array.isArray(rawMessages)) return [];
+  return rawMessages
+    .filter(m => m && typeof m === 'object')
+    .map(m => ({
+      id: String(m.id || `gm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`),
+      role: m.role === 'agent' ? 'agent' : m.role === 'system' ? 'system' : 'user',
+      agentId: String(m.agentId || ''),
+      agentName: String(m.agentName || ''),
+      content: String(m.content || ''),
+      at: Number(m.at) || Date.now(),
+      status: m.status === 'running' ? 'done' : 'done', // 历史残留的 running 占位一律落定
+      meta: (m.meta && typeof m.meta === 'object') ? m.meta : null,
+    }))
+    .slice(-MAX_MESSAGES);
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -173,9 +192,9 @@ function load() {
           name: String(c.name || '新团队群聊').slice(0, 24),
           createdAt: Number(c.createdAt) || Date.now(),
           announcement: String(c.announcement || '').slice(0, 600),
-          roster: Array.isArray(c.roster) ? c.roster : [],
+          roster: Array.isArray(c.roster) ? c.roster.filter(x => typeof x === 'string' && x) : [],
           profiles: (c.profiles && typeof c.profiles === 'object' && !Array.isArray(c.profiles)) ? c.profiles : {},
-          messages: Array.isArray(c.messages) ? c.messages : [],
+          messages: sanitizeMessages(c.messages),
         }));
       if (chats.length) {
         const activeId = chats.some(c => c.id === parsed.activeId) ? parsed.activeId : chats[0].id;
@@ -185,7 +204,7 @@ function load() {
     }
     // v1 单群聊格式迁移
     if (Array.isArray(parsed.roster) || Array.isArray(parsed.messages)) {
-      const chat = makeChat('团队群聊', parsed.roster || [], parsed.messages || []);
+      const chat = makeChat('团队群聊', parsed.roster || [], sanitizeMessages(parsed.messages));
       return { chats: [chat], activeId: chat.id, running: false };
     }
     return null;
