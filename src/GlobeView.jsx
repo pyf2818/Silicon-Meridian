@@ -564,8 +564,8 @@ function GlobeStage({ markerData, ringsData, arcsData, width, height, onSelectCi
         width={width}
         height={height}
         onGlobeReady={onGlobeReady}
-        globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-        bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+        globeImageUrl="/textures/earth-blue-marble.jpg"
+        bumpImageUrl="/textures/earth-topology.png"
         backgroundColor="rgba(0,0,0,0)"
         showAtmosphere
         atmosphereColor="#22d3ee"

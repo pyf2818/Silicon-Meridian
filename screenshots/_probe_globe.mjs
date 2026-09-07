@@ -19,6 +19,8 @@ await ctx.addInitScript(() => {
 const page = await ctx.newPage();
 const errs = [];
 page.on('pageerror', e => errs.push(String(e.message).slice(0, 200)));
+const textureRequests = [];
+page.on('response', r => { if (r.url().includes('/textures/')) textureRequests.push({ url: r.url().split('/').pop(), status: r.status() }); });
 await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(2600);
 
@@ -104,5 +106,6 @@ await page.waitForTimeout(500);
 const afterZoom = await page.evaluate(() => !!document.querySelector('.gs-overlay'));
 
 console.log('交互后状态:', JSON.stringify({ ...afterDrag, overlayAfterZoom: afterZoom }));
+console.log('贴图加载:', JSON.stringify(textureRequests));
 console.log('PAGE_ERRORS:', JSON.stringify(errs));
 await b.close();
