@@ -19,18 +19,37 @@ SiliconStream 将公开 RSS/Atom 资讯、GitHub 趋势、A 股行情、用户�
 
 ## 界面预览
 
-| 情报工作台 | AI Copilot |
+| AI 工作站（首页） | 全球态势大屏（卫星地球） |
 | --- | --- |
-| ![情报工作台](public/screenshots/main-interface.png) | ![AI Copilot](public/screenshots/ai-elf-interface.png) |
+| ![AI 工作站](public/screenshots/main-interface.png) | ![全球态势大屏](public/screenshots/globe-view.png) |
 
-| 信源管理 | 智创素材 |
+| 大屏两级资讯弹窗 | 全部动态 |
 | --- | --- |
-| ![信源管理](public/screenshots/settings-sources.png) | ![智创素材](public/screenshots/materials.png) |
+| ![大屏弹窗](public/screenshots/globe-popup.png) | ![全部动态](public/screenshots/all-news.png) |
+
+| 股市动向（K线 + AI 大师） | GitHub 热门 |
+| --- | --- |
+| ![股市动向](public/screenshots/stock-analysis.png) | ![GitHub 热门](public/screenshots/github-trending.png) |
+
+| 无限画布（智能体工作流） | 用户广场 |
+| --- | --- |
+| ![无限画布](public/screenshots/creative-canvas.png) | ![用户广场](public/screenshots/community-square.png) |
+
+| 团队群聊 | AI Copilot |
+| --- | --- |
+| ![团队群聊](public/screenshots/team-chat.png) | ![AI Copilot](public/screenshots/ai-elf-interface.png) |
+
+### 全球态势大屏亮点
+
+- **卫星级真实地球**：MapLibre GL globe 投影 + ESRI World Imagery 流式瓦片，滚轮最高可放大到 z18 城市/街区级卫星影像
+- **内容级地理定位**：资讯按「标题 → 正文关键词」提取真实城市场景（40+ 科技城市中英文关键词库），未命中再回退来源→城市映射，热点分布精准到事件发生地
+- **两级资讯钻取**：点击地球点位弹出锚定小窗（实时跟随投影、转到背面自动隐藏），点击条目进入内联正文预览，访问不了才跳转原文
+- **指挥中心氛围**：星空粒子、大气辉光、雷达光环、扫描线、实时热点光带 ticker、七日趋势与赛道分布面板
 
 ## 技术架构
 
 - **前端**：React 19、Vite 7、原生 CSS 设计系统
-- **可视化**：KLineCharts、react-globe.gl、Three.js
+- **可视化**：KLineCharts、MapLibre GL（卫星地球大屏）、Three.js
 - **Node API**：统一的资讯、GitHub、股市、认证、画像、社区和 AI 网关
 - **数据层**：PostgreSQL 15，事务迁移、画像版本控制和社区持久化
 - **抓取增强**：可选 Scrapling Flask 服务，支持 basic、dynamic、stealth 模式

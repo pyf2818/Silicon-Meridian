@@ -86,31 +86,71 @@
 }
 .gs-brand-sub { font-size: 9px; letter-spacing: 0.34em; color: rgba(103, 232, 249, 0.6); font-family: var(--font-mono, monospace); }
 
-.gs-ticker { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
-.gs-ticker-label {
-  flex-shrink: 0; padding: 4px 10px; font-size: 11px; font-weight: 700; color: #fbbf24;
-  border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 999px; background: rgba(251, 191, 36, 0.08);
-  animation: gs-label-blink 2.4s ease-in-out infinite;
+.gs-ticker {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  position: relative; height: 34px; padding-bottom: 4px;
 }
-@keyframes gs-label-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
-.gs-ticker-track { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+/* 底部科技光带：青金双色渐变 + 呼吸辉光 */
+.gs-ticker::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.6) 15%, rgba(251, 191, 36, 0.55) 50%, rgba(34, 211, 238, 0.6) 85%, transparent);
+  filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.5));
+  animation: gs-ticker-beam 5s ease-in-out infinite;
+}
+@keyframes gs-ticker-beam { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+/* 周期性掠过的高光扫描 */
+.gs-ticker::before {
+  content: ''; position: absolute; top: 0; bottom: 4px; width: 90px; pointer-events: none; z-index: 1;
+  background: linear-gradient(105deg, transparent, rgba(103, 232, 249, 0.14) 45%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  animation: gs-ticker-sweep 7s linear infinite;
+}
+@keyframes gs-ticker-sweep { 0% { left: -12%; } 100% { left: 104%; } }
+.gs-ticker-label {
+  flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 3px 12px 3px 9px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.42); border-radius: 999px;
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.04));
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+}
+.gs-ticker-label::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%; background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.9); animation: gs-label-blink 2.4s ease-in-out infinite;
+}
+@keyframes gs-label-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.gs-ticker-track { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .gs-ticker-track::-webkit-scrollbar { display: none; }
 .gs-ticker-chip {
-  flex-shrink: 0; display: flex; align-items: center; gap: 7px; max-width: 380px;
-  padding: 5px 12px; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 999px;
-  background: rgba(15, 23, 42, 0.6); color: #cbd5e1; font-size: 11px; cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  flex-shrink: 0; display: flex; align-items: center; gap: 6px; max-width: 360px;
+  height: 21px; padding: 0 11px 0 9px; border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 999px;
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0.8), rgba(8, 15, 30, 0.55));
+  color: #b6c2d4; font-size: 10.5px; cursor: pointer; position: relative;
+  transition: border-color 0.2s, box-shadow 0.2s, color 0.2s, background 0.2s;
 }
-.gs-ticker-chip:hover { border-color: rgba(34, 211, 238, 0.55); box-shadow: 0 0 12px rgba(34, 211, 238, 0.18); }
-.gs-ticker-chip strong { color: #67e8f9; font-weight: 700; }
+/* 左缘热度光点：hover 点亮 */
+.gs-ticker-chip::before {
+  content: ''; position: absolute; left: 0; top: 50%; translate: -50% -50%;
+  width: 5px; height: 5px; border-radius: 50%; background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.85); opacity: 0; transition: opacity 0.2s;
+}
+.gs-ticker-chip:hover {
+  border-color: rgba(34, 211, 238, 0.6); color: #e2e8f0;
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.22), inset 0 0 10px rgba(34, 211, 238, 0.05);
+  background: linear-gradient(90deg, rgba(20, 34, 58, 0.9), rgba(10, 20, 38, 0.6));
+}
+.gs-ticker-chip:hover::before { opacity: 1; }
+.gs-ticker-chip i {
+  font-style: normal; font-family: var(--font-mono, monospace); font-size: 9px; font-weight: 800;
+  color: #22d3ee; opacity: 0.85; flex-shrink: 0; letter-spacing: 0.05em;
+}
+.gs-ticker-chip strong { color: #67e8f9; font-weight: 700; font-size: 10px; flex-shrink: 0; }
 .gs-ticker-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gs-ticker-chip em { font-style: normal; color: #64748b; font-size: 10px; flex-shrink: 0; }
 .gs-ticker-nav {
-  flex-shrink: 0; display: grid; place-items: center; width: 26px; height: 26px;
+  flex-shrink: 0; display: grid; place-items: center; width: 24px; height: 24px;
   border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 50%;
   background: rgba(15, 23, 42, 0.6); color: #94a3b8; cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
-.gs-ticker-nav:hover { color: #67e8f9; border-color: rgba(34, 211, 238, 0.5); }
+.gs-ticker-nav:hover { color: #67e8f9; border-color: rgba(34, 211, 238, 0.5); box-shadow: 0 0 10px rgba(34, 211, 238, 0.2); }
 
 .gs-top-stats { display: flex; align-items: center; gap: 20px; flex-shrink: 0; }
 .gs-top-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }

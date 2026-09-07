@@ -97,6 +97,82 @@ const SOURCE_CITY_MAP = {
   'default-global': { city: '新加坡', lat: 1.3521, lng: 103.8198 },
 };
 
+/* ============ v26.1 内容级地理提取：资讯正文里的城市场景 → 真实经纬度 ============
+ * 判定链：标题命中（最高优先）→ 正文前 400 字命中 → 来源→城市映射兜底（getCityFromSource）。
+ * 这样「36kr 报道成都的融资事件」会落在成都，而不是所有条目都堆在来源注册地。 */
+const CITY_COORDS = (() => {
+  const map = {};
+  Object.values(SOURCE_CITY_MAP).forEach(({ city, lat, lng }) => { if (city && !map[city]) map[city] = { lat, lng }; });
+  Object.assign(map, {
+    杭州: { lat: 30.2741, lng: 120.1551 }, 武汉: { lat: 30.5928, lng: 114.3055 },
+    成都: { lat: 30.5728, lng: 104.0668 }, 西安: { lat: 34.3416, lng: 108.9398 },
+    南京: { lat: 32.0603, lng: 118.7969 }, 合肥: { lat: 31.8206, lng: 117.2272 },
+    重庆: { lat: 29.5630, lng: 106.5516 }, 天津: { lat: 39.3434, lng: 117.3616 },
+    长沙: { lat: 28.2282, lng: 112.9388 }, 苏州: { lat: 31.2989, lng: 120.5853 },
+    香港: { lat: 22.3193, lng: 114.1694 }, 台北: { lat: 25.0330, lng: 121.5654 },
+    西雅图: { lat: 47.6062, lng: -122.3321 }, 奥斯汀: { lat: 30.2672, lng: -97.7431 },
+    巴黎: { lat: 48.8566, lng: 2.3522 }, 柏林: { lat: 52.5200, lng: 13.4050 },
+    慕尼黑: { lat: 48.1351, lng: 11.5820 }, 苏黎世: { lat: 47.3769, lng: 8.5417 },
+    阿姆斯特丹: { lat: 52.3676, lng: 4.9041 }, 斯德哥尔摩: { lat: 59.3293, lng: 18.0686 },
+    都柏林: { lat: 53.3498, lng: -6.2603 }, 特拉维夫: { lat: 32.0853, lng: 34.7818 },
+    班加罗尔: { lat: 12.9716, lng: 77.5946 }, 迪拜: { lat: 25.2048, lng: 55.2708 },
+    多伦多: { lat: 43.6532, lng: -79.3832 }, 悉尼: { lat: -33.8688, lng: 151.2093 },
+  });
+  return map;
+})();
+
+// 城市匹配关键词（中文/英文/别名/地标），数组顺序即标题扫描优先级
+const GEO_KEYWORDS = [
+  ['北京', ['北京', 'Beijing', '中关村', '亦庄']],
+  ['上海', ['上海', 'Shanghai', '陆家嘴', '张江']],
+  ['深圳', ['深圳', 'Shenzhen']],
+  ['杭州', ['杭州', 'Hangzhou', '云栖', '西溪园区']],
+  ['旧金山', ['旧金山', '三藩', 'San Francisco', '硅谷', 'Silicon Valley', '湾区', 'Bay Area', '帕罗奥图', 'Mountain View', '山景城']],
+  ['纽约', ['纽约', 'New York', '曼哈顿', '华尔街', 'Wall Street']],
+  ['伦敦', ['伦敦', 'London']],
+  ['东京', ['东京', 'Tokyo']],
+  ['首尔', ['首尔', 'Seoul']],
+  ['新加坡', ['新加坡', 'Singapore']],
+  ['香港', ['香港', 'Hong Kong']],
+  ['西雅图', ['西雅图', 'Seattle', '雷德蒙德', 'Redmond']],
+  ['奥斯汀', ['奥斯汀', 'Austin']],
+  ['成都', ['成都', 'Chengdu']], ['武汉', ['武汉', 'Wuhan', '光谷']],
+  ['西安', ['西安', "Xi'an"]], ['南京', ['南京', 'Nanjing']],
+  ['合肥', ['合肥', 'Hefei']], ['广州', ['广州', 'Guangzhou']],
+  ['重庆', ['重庆', 'Chongqing']], ['天津', ['天津', 'Tianjin']],
+  ['长沙', ['长沙', 'Changsha']], ['苏州', ['苏州', 'Suzhou']],
+  ['台北', ['台北', 'Taipei', '新竹']],
+  ['巴黎', ['巴黎', 'Paris']], ['柏林', ['柏林', 'Berlin']], ['慕尼黑', ['慕尼黑', 'Munich']],
+  ['苏黎世', ['苏黎世', 'Zurich']], ['阿姆斯特丹', ['阿姆斯特丹', 'Amsterdam']],
+  ['斯德哥尔摩', ['斯德哥尔摩', 'Stockholm']], ['都柏林', ['都柏林', 'Dublin']],
+  ['特拉维夫', ['特拉维夫', 'Tel Aviv']], ['班加罗尔', ['班加罗尔', 'Bangalore']],
+  ['迪拜', ['迪拜', 'Dubai']], ['多伦多', ['多伦多', 'Toronto']],
+  ['悉尼', ['悉尼', 'Sydney']], ['莫斯科', ['莫斯科', 'Moscow']],
+];
+
+/** 内容级定位：标题优先 → 正文前 400 字兜底；未命中返回 null（调用方回退来源映射） */
+function locateItemByContent(item) {
+  if (!item) return null;
+  const title = item.title || '';
+  if (title) {
+    for (const [city, kws] of GEO_KEYWORDS) {
+      if (kws.some((k) => title.includes(k))) return { city, ...CITY_COORDS[city] };
+    }
+  }
+  const body = `${item.summary || ''} ${item.content || item.fullContent || item.body || ''}`.slice(0, 400);
+  if (body) {
+    for (const [city, kws] of GEO_KEYWORDS) {
+      if (kws.some((k) => body.includes(k))) return { city, ...CITY_COORDS[city] };
+    }
+  }
+  return null;
+}
+
+/** 统一入口：内容级定位优先，未命中回退来源→城市映射 */
+function resolveItemCity(item) {
+  return locateItemByContent(item) || getCityFromSource(item.source, item.region);
+}
+
 function getCityFromSource(source, region) {
   if (!source) {
     const key = `default-${region || 'overseas'}`;
@@ -244,7 +320,7 @@ function useGlobeData(items) {
   const cityPoints = useMemo(() => {
     const groups = {};
     items.forEach(item => {
-      const cityInfo = getCityFromSource(item.source, item.region);
+      const cityInfo = resolveItemCity(item);
       const key = `${cityInfo.lat}-${cityInfo.lng}`;
       if (!groups[key]) groups[key] = { ...cityInfo, lat: cityInfo.lat, lng: cityInfo.lng, items: [], count: 0 };
       groups[key].items.push(item);
@@ -814,7 +890,7 @@ function GlobeDashboard({ items, onClose }) {
   const stats = useMemo(() => {
     const cityCounts = {};
     dashboardItems.forEach(item => {
-      const cityInfo = getCityFromSource(item.source, item.region);
+      const cityInfo = resolveItemCity(item);
       cityCounts[cityInfo.city] = (cityCounts[cityInfo.city] || 0) + 1;
     });
     const topCity = Object.entries(cityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '-';
@@ -898,9 +974,9 @@ function GlobeDashboard({ items, onClose }) {
           <div className="gs-ticker-track" ref={tickerTrackRef}>
             {tickerItems.map((item, idx) => (
               <button type="button" key={`${item.title}-${idx}`} className="gs-ticker-chip" onClick={() => item.url && window.open(item.url, '_blank')} title={item.title}>
+                <i>{String(idx + 1).padStart(2, '0')}</i>
                 <strong>{item.category}</strong>
                 <span>{item.title}</span>
-                <em>{item.source}</em>
               </button>
             ))}
           </div>
@@ -998,7 +1074,7 @@ function GlobeEmbed({ items, onExpand }) {
   const stats = useMemo(() => {
     const cityCounts = {};
     items.forEach(item => {
-      const cityInfo = getCityFromSource(item.source, item.region);
+      const cityInfo = resolveItemCity(item);
       cityCounts[cityInfo.city] = (cityCounts[cityInfo.city] || 0) + 1;
     });
     return {
