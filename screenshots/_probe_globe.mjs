@@ -19,8 +19,15 @@ await ctx.addInitScript(() => {
 const page = await ctx.newPage();
 const errs = [];
 page.on('pageerror', e => errs.push(String(e.message).slice(0, 200)));
+/* v26: 瓦片请求由 MapLibre Worker 发起，page.on('response') 看不到 → 用 CDP 网络层 */
+const cdp = await ctx.newCDPSession(page);
+await cdp.send('Network.enable');
 const textureRequests = [];
-page.on('response', r => { if (r.url().includes('/textures/')) textureRequests.push({ url: r.url().split('/').pop(), status: r.status() }); });
+cdp.on('Network.responseReceived', e => {
+  const u = e.response.url;
+  if (u.includes('/textures/')) textureRequests.push({ url: u.split('/').pop(), status: e.response.status });
+  if (u.includes('arcgisonline') && u.includes('/tile/')) textureRequests.push({ url: 'esri-tile', status: e.response.status });
+});
 await page.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(2600);
 
@@ -67,26 +74,42 @@ const globeReady = await page.evaluate(markerCount => ({
 }), markers);
 console.log('地球与点位:', JSON.stringify(globeReady));
 
-/* 点击点位 → 小弹窗 → 点资讯 → 内容预览窗 */
+/* 点击点位 → 小弹窗 → 点资讯 → 内容预览窗
+ * v26 关键改进：用【真实鼠标命中点击】（measure rect → mouse.move/down/up），
+ * 不再用 dispatchEvent 合成事件——合成事件绕过命中测试，测不出 pointer-events/遮挡问题 */
 let detail = { clicked: false };
 if (markers > 0) {
-  await page.evaluate(() => {
+  const mc = await page.evaluate(() => {
     const m = document.querySelector('.gs-marker');
-    m?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    if (!m) return null;
+    const r = m.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   });
-  await page.waitForTimeout(700);
-  detail = await page.evaluate(() => ({
-    clicked: true,
+  if (mc) {
+    await page.mouse.move(mc.x, mc.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(700);
+  }
+  detail = await page.evaluate(markerCenter => ({
+    clicked: !!markerCenter,
     popup: !!document.querySelector('.gs-popup'),
     popupCity: document.querySelector('.gs-popup-city')?.textContent || '',
     popupItems: document.querySelectorAll('.gs-popup-item').length,
-  }));
-  /* 点资讯 → 预览窗 */
-  await page.evaluate(() => {
+  }), mc);
+  /* 点资讯 → 预览窗（真实命中点击） */
+  const ic = await page.evaluate(() => {
     const item = document.querySelector('.gs-popup-item');
-    item?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    if (!item) return null;
+    const r = item.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   });
-  await page.waitForTimeout(600);
+  if (ic) {
+    await page.mouse.move(ic.x, ic.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+  }
   detail.preview = await page.evaluate(() => ({
     preview: !!document.querySelector('.gs-preview'),
     title: (document.querySelector('.gs-preview-title')?.textContent || '').slice(0, 40),
@@ -119,6 +142,18 @@ await page.waitForTimeout(500);
 const afterZoom = await page.evaluate(() => !!document.querySelector('.gs-overlay'));
 
 console.log('交互后状态:', JSON.stringify({ ...afterDrag, overlayAfterZoom: afterZoom }));
-console.log('贴图加载:', JSON.stringify(textureRequests));
+
+/* 深度放大到卫星级：连续滚轮 12 次推近（maxZoom 18），瓦片持续流式加载 */
+const tilesBefore = textureRequests.length;
+for (let i = 0; i < 12; i++) { await page.mouse.move(800, 470); await page.mouse.wheel(0, -400); await page.waitForTimeout(220); }
+await page.waitForTimeout(1500);
+const deepZoom = await page.evaluate(() => ({
+  overlayAlive: !!document.querySelector('.gs-overlay'),
+  markers: document.querySelectorAll('.gs-marker').length,
+}));
+console.log('卫星级深放大:', JSON.stringify({ ...deepZoom, tilesBefore, tilesAfter: textureRequests.length, tilesGrew: textureRequests.length > tilesBefore }));
+/* 等瓦片请求出现（Worker 发起，CDP 层捕获） */
+for (let i = 0; i < 20 && textureRequests.length === 0; i++) await page.waitForTimeout(500);
+console.log('贴图加载:', JSON.stringify(textureRequests.slice(0, 6)));
 console.log('PAGE_ERRORS:', JSON.stringify(errs));
 await b.close();

@@ -1,12 +1,15 @@
 /**
- * GlobeView — 全球科技资讯态势大屏（v25 完全重构）
+ * GlobeView — 全球科技资讯态势大屏（v26：MapLibre 卫星地球）
  *
  * 架构：
- * - 真实地球（react-globe.gl / three-globe）：拖拽旋转 + 滚轮缩放 + 闲置自动巡航
- * - 资讯点位：htmlElementsData 自定义光标（发光核心 + 双层扩散波纹 + 计数徽标 + 城市名），
- *   按真实经纬度标注，地球背面自动遮挡
- * - 表层动效：扩散波纹环（ringsData）+ 城市间传播弧线（arcsData，渐变流光）
- * - 氛围：星空粒子 canvas（闪烁、隐藏页暂停）、大气辉光、旋转雷达光环、扫描线、暗角、发光角框
+ * - 真实卫星地球（MapLibre GL globe 投影 + ESRI World Imagery 流式瓦片）：
+ *   拖拽旋转 + 滚轮缩放最高 z18（卫星/街区级）+ 闲置自动巡航（贴地暂停防晕）
+ * - 资讯点位：MapLibre 官方 DOM Marker（发光核心 + 双层扩散波纹 + 计数徽标 + 城市名），
+ *   按真实经纬度标注，命中测试原生可靠，地球背面由引擎自动遮挡
+ * - 点位点击 → 锚定式小弹窗（rAF 跟随 marker DOM 位置、背面自动隐藏、上下翻转）
+ *   → 点击资讯 → 内联内容预览窗（正文直读，访问不了才查看原文）
+ * - 氛围：星空粒子 canvas（闪烁、隐藏页暂停）、大气辉光（setSky）、旋转雷达光环、扫描线、
+ *   暗角、发光角框
  * - 布局：全屏指挥中心（顶部命令条/左右数据面板/底部时间轴/点击点位滑出详情）；
  *   嵌入模式为深色太空舱窗，与宿主页面主题解耦
  *
@@ -14,8 +17,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import Globe from 'react-globe.gl';
-import { TextureLoader, Color, Vector3 } from 'three';
+import { Map as MapLibreMap, Marker as MapLibreMarker, NavigationControl, LngLat } from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 /* ============ 地理数据：来源 → 城市（真实经纬度） ============ */
 
@@ -435,9 +438,7 @@ function RightPanel({ currentItems, onSelectItem }) {
   );
 }
 
-/* ============ 点位小弹窗（锚定地球坐标，随旋转实时追踪） ============ */
-
-const HORIZON_R2 = (100 * 1.02) ** 2; // 点可见性判据：dot(P, C) > r²（球面精确地平线）
+/* ============ 点位小弹窗（锚定 marker 位置，随视图实时追踪） ============ */
 
 function GlobePopup({ point, onClose, onSelectItem }) {
   useEffect(() => {
@@ -542,57 +543,119 @@ function Timeline({ dateRange, selectedDate, setSelectedDate, isPlaying, setIsPl
 
 /* ============ 地球主体 ============ */
 
-function GlobeStage({ markerData, ringsData, arcsData, width, height, onPreviewItem, interactive }) {
-  const globeRef = useRef(null);
+/* ============ 地球主体（v26：MapLibre globe 投影 + ESRI 卫星瓦片，可放大到卫星级） ============ */
+
+// ESRI World Imagery：免费无 key 卫星瓦片，最高 z19（城市街区级）
+const ESRI_IMAGERY_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+function GlobeStage({ markerData, width, height, onPreviewItem, interactive }) {
+  const hostRef = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef(new Map()); // city -> maplibregl.Marker
+  const spinningRef = useRef(false);    // 自动巡航开关（交互中暂停）
   const idleTimerRef = useRef(0);
+  const [mapReady, setMapReady] = useState(false);
   const [popupPoint, setPopupPoint] = useState(null);
   const popupWrapRef = useRef(null);
 
-  // 就绪后配置 controls：拖拽/滚轮（OrbitControls 原生支持）+ 闲置自动巡航
-  // v25.1 逼真化：海洋镜面反射（earth-water 镜面图）+ 地形凹凸增强 + 深度拉近（可放大到地区级）
-  const onGlobeReady = useCallback(() => {
-    const globe = globeRef.current;
-    const controls = globe?.controls?.();
-    if (!controls) return;
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.55;
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.12;
-    controls.minDistance = 106;  // 贴地放大（半径100），可看清地区轮廓
-    controls.maxDistance = 620;
-    controls.zoomSpeed = 1.4;
-    controls.addEventListener('start', () => {
-      controls.autoRotate = false;
-      clearTimeout(idleTimerRef.current);
+  // 初始化 MapLibre（globe 投影 + 卫星瓦片；无 background 层 → 画布透明，星空氛围透出）
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || mapRef.current) return undefined;
+    const map = new MapLibreMap({
+      container: host,
+      style: {
+        version: 8,
+        sources: {
+          esri: {
+            type: 'raster',
+            tiles: [ESRI_IMAGERY_URL],
+            tileSize: 256,
+            maxzoom: 19,
+            attribution: 'Imagery © Esri',
+          },
+        },
+        layers: [{ id: 'satellite', type: 'raster', source: 'esri' }],
+      },
+      center: [106, 26],
+      zoom: 1.35,
+      minZoom: 0.4,
+      maxZoom: 18, // 卫星级贴地
+      attributionControl: false,
+      renderWorldCopies: false,
+      dragRotate: true,
+      pitchWithRotate: false,
+      touchPitch: false,
     });
-    controls.addEventListener('end', () => {
-      clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = setTimeout(() => {
-        // 贴地观察时恢复自转会晕 → 只在较远距离恢复巡航
-        if (controls.getDistance() > 240) controls.autoRotate = true;
-      }, 6000);
-    });
-    globe.pointOfView({ lat: 26, lng: 106, altitude: 2.35 }, 0);
-    const material = globe.globeMaterial?.();
-    if (material) {
-      material.bumpScale = 12;
-      new TextureLoader().load('/textures/earth-water.png', (texture) => {
-        material.specularMap = texture;
-        material.specular = new Color('#3d6f9e');
-        material.shininess = 16;
-        material.needsUpdate = true;
-      });
+    mapRef.current = map;
+
+    if (!interactive) {
+      map.dragPan.disable();
+      map.dragRotate.disable();
+      map.scrollZoom.disable();
+      map.doubleClickZoom.disable();
+      map.keyboard.disable();
+    } else {
+      map.addControl(new NavigationControl({ showCompass: false }), 'bottom-right');
     }
+
+    map.on('style.load', () => {
+      try {
+        if (map.setProjection) map.setProjection({ type: 'globe' });
+        if (map.setSky) {
+          map.setSky({
+            'sky-color': '#04070f',
+            'horizon-color': '#0e2f4e',
+            'fog-color': '#02040a',
+            'sky-horizon-blend': 0.6,
+            'horizon-fog-blend': 0.7,
+            'fog-ground-blend': 0.2,
+            'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.7, 5, 0.35, 10, 0],
+          });
+        }
+      } catch { /* 投影/天空降级：平面瓦片图仍可用 */ }
+      setMapReady(true);
+    });
+
+    // 闲置自动巡航：交互即停，闲置 6s 且低倍率（<4）才恢复，防贴地自转眩晕
+    const spinGlobe = () => {
+      const m = mapRef.current;
+      if (!m || spinningRef.current || m.getZoom() >= 4) return;
+      const c = m.getCenter();
+      c.lng -= 0.055;
+      m.easeTo({ center: c, duration: 66, easing: (t) => t });
+    };
+    const pauseSpin = () => { spinningRef.current = true; clearTimeout(idleTimerRef.current); };
+    map.on('mousedown', pauseSpin);
+    map.on('dragstart', pauseSpin);
+    map.on('wheel', pauseSpin);
+    map.on('touchstart', pauseSpin);
+    map.on('mouseup', () => {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => { spinningRef.current = false; spinGlobe(); }, 6000);
+    });
+    map.on('moveend', () => { if (!spinningRef.current) spinGlobe(); });
+    map.once('load', spinGlobe);
+
+    return () => {
+      clearTimeout(idleTimerRef.current);
+      map.remove();
+      mapRef.current = null;
+      markersRef.current.clear();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => () => clearTimeout(idleTimerRef.current), []);
 
   // 点位 DOM：发光核心 + 双层扩散波纹 + 计数徽标 + 城市名（待机点位无 badge）
+  // MapLibre 官方 DOM Marker：真实鼠标命中测试可靠，且 globe 投影下背面点位由引擎自动隐藏
   const buildMarkerElement = useCallback((d) => {
     const el = document.createElement('div');
     el.className = `gs-marker ${d.level}`;
     el.innerHTML = `
       <span class="gs-marker-anchor">
+        <span class="gs-marker-hit"></span>
         <span class="gs-marker-ripple"></span>
         <span class="gs-marker-ripple delay"></span>
         <span class="gs-marker-core"></span>
@@ -607,38 +670,58 @@ function GlobeStage({ markerData, ringsData, arcsData, width, height, onPreviewI
     return el;
   }, []);
 
-  // rAF 追踪：弹窗钉在点的屏幕投影上；转到背面（地平线以下）自动隐藏
+  // markerData → MapLibre Marker（按 city 增量同步）
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const store = markersRef.current;
+    const keys = new Set(markerData.map((d) => d.city));
+    store.forEach((marker, key) => {
+      if (!keys.has(key)) { marker.remove(); store.delete(key); }
+    });
+    markerData.forEach((d) => {
+      if (store.has(d.city)) return;
+      const marker = new MapLibreMarker({ element: buildMarkerElement(d), anchor: 'center' })
+        .setLngLat([d.lng, d.lat])
+        .addTo(map);
+      store.set(d.city, marker);
+    });
+  }, [markerData, mapReady, buildMarkerElement]);
+
+  // rAF 追踪：弹窗钉在对应 marker 的实际 DOM 位置（投影与背面遮挡交给 MapLibre，本地双保险）
   useEffect(() => {
     if (!popupPoint) return undefined;
     let raf = 0;
     const update = () => {
-      const globe = globeRef.current;
       const el = popupWrapRef.current;
-      if (globe && el) {
-        const { lat, lng } = popupPoint;
-        const world = globe.getCoords(lat, lng, 0.015);
-        const camera = globe.camera?.();
-        const camPos = camera?.position;
-        if (world && camPos) {
-          const visible = world.x * camPos.x + world.y * camPos.y + world.z * camPos.z > HORIZON_R2;
-          if (!visible) {
-            el.style.opacity = '0';
-            el.style.pointerEvents = 'none';
-          } else {
-            // react-globe.gl ref 未透传 getScreenCoordinates → 手动投影：世界坐标 → NDC → 画布像素
-            // （getCoords 返回普通 {x,y,z}，需包一层 THREE.Vector3；project() 必须传相机本体而非 position）
-            const ndc = new Vector3(world.x, world.y, world.z).project(camera);
-            const sc = { x: (ndc.x + 1) / 2 * width, y: (1 - (ndc.y + 1) / 2) * height };
-            if (Number.isFinite(sc.x)) {
-              const x = Math.max(170, Math.min(width - 170, sc.x));
-              const flipBelow = sc.y < 260;
-              const y = Math.max(120, Math.min(height - 110, sc.y));
-              el.style.opacity = '1';
-              el.style.pointerEvents = 'none';
-              el.dataset.flip = flipBelow ? 'below' : 'above';
-              el.style.transform = `translate(${x}px, ${y}px)`;
-            }
-          }
+      const marker = mapRef.current && markersRef.current.get(popupPoint.city);
+      const markerEl = marker?.getElement();
+      const host = hostRef.current;
+      if (el && markerEl && host) {
+        // marker 根元素是 0×0 原点锚，命中热区（.gs-marker-hit，48×48）才是定位参照
+        const padEl = markerEl.querySelector('.gs-marker-hit') || markerEl;
+        const mr = padEl.getBoundingClientRect();
+        const hr = host.getBoundingClientRect();
+        let occluded = false;
+        try {
+          const tr = mapRef.current?.transform;
+          if (tr?.isLocationOccluded) occluded = tr.isLocationOccluded(new LngLat(popupPoint.lng, popupPoint.lat));
+        } catch { /* 内部 API 缺失时靠 DOM 隐藏判据兜底 */ }
+        const hidden = occluded || markerEl.style.display === 'none' || mr.width === 0
+          || mr.right < hr.left || mr.left > hr.right || mr.bottom < hr.top || mr.top > hr.bottom;
+        if (hidden) {
+          el.style.opacity = '0';
+          el.style.pointerEvents = 'none';
+        } else {
+          const cx = mr.left - hr.left + mr.width / 2;
+          const cy = mr.top - hr.top + mr.height / 2;
+          const x = Math.max(170, Math.min(width - 170, cx));
+          const flipBelow = cy < 260;
+          const y = Math.max(120, Math.min(height - 110, cy));
+          el.style.opacity = '1';
+          el.style.pointerEvents = 'none';
+          el.dataset.flip = flipBelow ? 'below' : 'above';
+          el.style.transform = `translate(${x}px, ${y}px)`;
         }
       }
       raf = requestAnimationFrame(update);
@@ -649,42 +732,11 @@ function GlobeStage({ markerData, ringsData, arcsData, width, height, onPreviewI
 
   return (
     <div className="gs-stage" style={{ width, height }}>
+      <div ref={hostRef} className="gs-map-host" />
       <div className="gs-halo" aria-hidden="true" />
       <div className="gs-halo inner" aria-hidden="true" />
-      <Globe
-        ref={globeRef}
-        width={width}
-        height={height}
-        onGlobeReady={onGlobeReady}
-        globeImageUrl="/textures/earth-blue-marble.jpg"
-        bumpImageUrl="/textures/earth-topology.png"
-        backgroundColor="rgba(0,0,0,0)"
-        showAtmosphere
-        atmosphereColor="#22d3ee"
-        atmosphereAltitude={0.22}
-        showGraticules
-        htmlElementsData={markerData}
-        htmlLat="lat"
-        htmlLng="lng"
-        htmlAltitude={0.015}
-        htmlElement={buildMarkerElement}
-        ringsData={ringsData}
-        ringColor="color"
-        ringMaxRadius="maxR"
-        ringPropagationSpeed="propagationSpeed"
-        ringRepeatPeriod="repeatPeriod"
-        ringsAutoTransitionDuration={800}
-        arcsData={arcsData}
-        arcColor="color"
-        arcStroke={0.55}
-        arcDashLength="dashLength"
-        arcDashGap="dashGap"
-        arcDashAnimateTime="dashAnimateTime"
-        arcAltitudeAutoScale={0.42}
-        enablePointerInteraction={Boolean(interactive)}
-      />
 
-      {/* 点位小弹窗：锚定地球坐标，随旋转实时追踪，背面隐藏 */}
+      {/* 点位小弹窗：锚定 marker 实时位置，转到背面自动隐藏 */}
       {popupPoint && (
         <div className="gs-popup-wrap" ref={popupWrapRef}>
           <GlobePopup point={popupPoint} onClose={() => setPopupPoint(null)} onSelectItem={onPreviewItem} />

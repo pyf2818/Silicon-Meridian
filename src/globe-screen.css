@@ -163,32 +163,40 @@
 }
 .gs-stage-caption-dot { width: 6px; height: 6px; border-radius: 50%; background: #22d3ee; box-shadow: 0 0 8px #22d3ee; animation: gs-label-blink 2s ease-in-out infinite; }
 
-/* ---------- 点位光标（html elements） ---------- */
-.gs-marker { position: relative; cursor: pointer; z-index: 2; }
-.gs-marker-anchor { position: relative; display: grid; place-items: center; width: 0; height: 0; }
+/* ---------- 点位光标（MapLibre DOM Marker）----------
+ * v26 改造：marker 根元素即 maplibre 定位元素（0×0 原点锚在经纬度上），
+ * 所有视觉件以原点为中心绝对定位；新增 48×48 隐形热区保证真实鼠标命中。 */
+.gs-map-host .maplibregl-marker { position: absolute; width: 0; height: 0; cursor: pointer; z-index: 2; }
+.gs-marker-anchor { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.gs-marker-hit {
+  position: absolute; left: 0; top: 0; width: 48px; height: 48px;
+  translate: -50% -50%; border-radius: 50%;
+}
 
 .gs-marker-core {
-  position: absolute; width: 10px; height: 10px; border-radius: 50%;
+  position: absolute; left: 0; top: 0; translate: -50% -50%;
+  width: 10px; height: 10px; border-radius: 50%;
   background: #a5f3fc; border: 1.5px solid rgba(255, 255, 255, 0.9);
   box-shadow: 0 0 10px rgba(34, 211, 238, 0.9), 0 0 26px rgba(34, 211, 238, 0.45);
   animation: gs-core-pulse 2.2s ease-in-out infinite;
 }
-@keyframes gs-core-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+@keyframes gs-core-pulse { 0%, 100% { scale: 1; } 50% { scale: 1.25; } }
 
 .gs-marker-ripple {
-  position: absolute; width: 14px; height: 14px; border-radius: 50%;
+  position: absolute; left: 0; top: 0; translate: -50% -50%;
+  width: 14px; height: 14px; border-radius: 50%;
   border: 1.5px solid rgba(34, 211, 238, 0.75);
   animation: gs-ripple 2.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
 }
 .gs-marker-ripple.delay { animation-delay: 1.2s; }
 @keyframes gs-ripple {
-  0% { transform: scale(0.6); opacity: 0.95; }
-  70% { transform: scale(3.4); opacity: 0; }
-  100% { transform: scale(3.4); opacity: 0; }
+  0% { scale: 0.6; opacity: 0.95; }
+  70% { scale: 3.4; opacity: 0; }
+  100% { scale: 3.4; opacity: 0; }
 }
 
 .gs-marker-badge {
-  position: absolute; top: -16px; left: 12px;
+  position: absolute; left: 10px; top: -20px;
   min-width: 20px; padding: 1px 6px; border-radius: 999px;
   font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 800; color: #041018;
   background: linear-gradient(135deg, #67e8f9, #22d3ee);
@@ -196,7 +204,7 @@
   pointer-events: none;
 }
 .gs-marker-name {
-  position: absolute; top: 8px; left: 14px; white-space: nowrap;
+  position: absolute; left: 0; top: 11px; translate: -50% 0; white-space: nowrap;
   font-size: 10px; font-weight: 600; letter-spacing: 0.06em; color: #cbd5e1;
   text-shadow: 0 0 8px rgba(2, 8, 20, 0.9), 0 0 4px rgba(2, 8, 20, 0.9);
   pointer-events: none;
@@ -526,3 +534,23 @@
 
 /* 嵌入模式预览窗尺寸 */
 .gs-embed .gs-preview { width: min(620px, 94%); max-height: 88%; }
+
+/* ============ v26 MapLibre 卫星地球宿主 ============ */
+/* 双类名提升特异性：maplibre-gl.css 给容器加 .maplibregl-map{position:relative}，
+ * 其 CSS 在 GlobeView 内部导入、级联晚于本文件，必须用更高特异性压回 absolute */
+.gs-stage .gs-map-host { position: absolute; inset: 0; }
+.gs-map-host canvas { outline: none; }
+/* 缩放控件融入 HUD 暗色风格 */
+.gs-map-host .maplibregl-ctrl-group {
+  background: rgba(6, 12, 24, 0.85);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 18px rgba(2, 8, 20, 0.6);
+  backdrop-filter: blur(8px);
+}
+.gs-map-host .maplibregl-ctrl-group button + button { border-top: 1px solid rgba(34, 211, 238, 0.2); }
+.gs-map-host .maplibregl-ctrl-group button span { filter: invert(1) hue-rotate(180deg) brightness(1.6); }
+.gs-map-host .maplibregl-ctrl-group button:hover { background: rgba(34, 211, 238, 0.12); }
+/* MapLibre 会把 maplibregl-marker 类加到点位元素本体（非包装层），直接可点 */
+.gs-map-host .maplibregl-marker { pointer-events: auto; cursor: pointer; }

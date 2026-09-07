@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
   return {
     root: projectRoot,
     plugins: [newsPlugin(), react()],
+    // maplibre-gl v6 的 worker 是独立 mjs 文件，预打包会丢失 worker chunk（ERR_FAILED）→ 排除预打包
+    optimizeDeps: { exclude: ['maplibre-gl'] },
     server: {
       port: 5175,
       allowedHosts: ['.monkeycode-ai.online', 'localhost', '127.0.0.1'],
