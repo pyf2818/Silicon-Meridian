@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNewsPreviewStore } from '../store/newsPreviewStore.js';
 
 // 竞争情报监测面板（调研报告 M5 · 轻量 B 端）
 // 让用户维护一组「监测词」（竞品 / 赛道 / 技术 / 政策），从当前资讯池中
@@ -27,6 +28,7 @@ function matchItems(items, keyword) {
 }
 
 export default function MonitorPage({ items = [] }) {
+  const openNewsPreview = useNewsPreviewStore(s => s.open);
   const [monitors, setMonitors] = useState(loadMonitors);
   const [keyword, setKeyword] = useState('');
   const [category, setCategory] = useState('竞品');
@@ -142,7 +144,12 @@ export default function MonitorPage({ items = [] }) {
               ) : (
                 <ul className="monitor-matches">
                   {m.matched.map(it => (
-                    <li key={it.id} className="monitor-match">
+                    <li
+                      key={it.id}
+                      className="monitor-match clickable"
+                      onClick={e => { e.stopPropagation(); openNewsPreview({ id: it.id, title: it.title, summary: it.summary, source: it.source, url: it.url, publishedAt: it.publishedAt, imageUrl: it.imageUrl }); }}
+                      title="点击侧边预览全文"
+                    >
                       <span className="monitor-match-title">{it.title}</span>
                       <span className="monitor-match-meta">
                         {it.source || '未知来源'}
@@ -177,13 +184,21 @@ export default function MonitorPage({ items = [] }) {
               {detail.all.length === 0 ? (
                 <p className="monitor-card-empty">当前资讯池中暂无命中报道。</p>
               ) : detail.all.map(it => (
-                <article key={it.id} className="monitor-drawer-item">
+                <article
+                  key={it.id}
+                  className="monitor-drawer-item clickable"
+                  onClick={() => openNewsPreview({ id: it.id, title: it.title, summary: it.summary, source: it.source, url: it.url, publishedAt: it.publishedAt, imageUrl: it.imageUrl })}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter') openNewsPreview({ id: it.id, title: it.title, summary: it.summary, source: it.source, url: it.url, publishedAt: it.publishedAt, imageUrl: it.imageUrl }); }}
+                  title="点击侧边预览全文"
+                >
                   <h4 className="monitor-drawer-item-title">{it.title}</h4>
                   {it.summary && <p className="monitor-drawer-item-summary">{it.summary}</p>}
                   <div className="monitor-drawer-item-meta">
                     <span>{it.source || '未知来源'}</span>
                     {it.publishedAt && <span> · {new Date(it.publishedAt).toLocaleDateString('zh-CN')}</span>}
-                    {it.url && <a href={it.url} target="_blank" rel="noreferrer">阅读原文 ↗</a>}
+                    <span className="monitor-drawer-item-hint">侧边预览全文 →</span>
                   </div>
                 </article>
               ))}

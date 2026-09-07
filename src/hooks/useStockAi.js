@@ -80,8 +80,8 @@ export async function runStockAnalysis({ input, llmConfig, experienceMode = 'beg
 
   const metrics = algorithm.metrics;
   const modeGuidance = experienceMode === 'pro'
-    ? '\u9762\u5411\u4e13\u4e1a\u7528\u6237\uff1a\u4f18\u5148\u62a5\u544a\u8bc1\u636e\u94fe\u3001\u76f8\u5bf9\u5f3a\u5f31\u3001\u6ce2\u52a8/\u56de\u64a4\u3001\u5931\u6548\u6761\u4ef6\u4e0e\u6570\u636e\u7f3a\u53e3\uff0c\u4f7f\u7528\u6807\u51c6\u672f\u8bed\u4f46\u4e0d\u8981\u5806\u780c\u6307\u6807\u3002'
-    : '\u9762\u5411\u65b0\u624b\u7528\u6237\uff1a\u5148\u7528\u4e00\u53e5\u8bdd\u89e3\u91ca\u7ed3\u8bba\uff0c\u518d\u89e3\u91ca\u6700\u591a 3 \u4e2a\u5173\u952e\u6307\u6807\uff0c\u6240\u6709\u672f\u8bed\u9644\u5e26\u767d\u8bdd\u89e3\u91ca\uff0c\u7ed9\u51fa\u53ef\u89c2\u5bdf\u7684\u4e0b\u4e00\u6b65\uff0c\u4e0d\u4f7f\u7528\u4ea4\u6613\u9ed1\u8bdd\u3002';
+    ? '面向专业用户：按「关键位 → 驱动逻辑 → 证据权重 → 失效条件 → 数据边界」输出，可用 Markdown 表格汇总指标；定量表述（百分比、价位区间），区分已确认事实与推断，给出可操作的复核清单，不堆砌指标。'
+    : '面向新手用户：循序渐进地讲解，按以下结构输出——【一句话结论】用大白话说当前处境；【为什么会这样】解释背后逻辑，把每个术语（如均线、波动率、支撑/压力）都用生活化比喻讲清；【接下来怎么观察】给出 2-3 个具体可执行的观察动作；【新手学习点】今天能从这只股票学到的一个知识点。语气友好鼓励，引导成长，不制造焦虑，不使用交易黑话。';
   const policyGuidance = investorPolicy ? `\u7528\u6237\u7b56\u7565\uff1a${investorPolicy.horizon || '\u672a\u8bbe\u7f6e'}\u5468\u671f\u3001${investorPolicy.riskTolerance || '\u672a\u8bbe\u7f6e'}\u98ce\u9669\u504f\u597d\u3001\u5355\u7b14\u98ce\u9669\u4e0a\u9650 ${investorPolicy.riskPerTrade || '--'}%\u3002` : '';
   const systemPrompt = `\u4f60\u662f\u4e13\u4e1a\u4e14\u5ba1\u614e\u7684\u80a1\u5e02\u5206\u6790\u5e08\u3002\u53ea\u80fd\u57fa\u4e8e\u7ed9\u5b9a\u7684\u786e\u5b9a\u6027\u6307\u6807\u589e\u5f3a\u8868\u8ff0\uff0c\u4e0d\u5f97\u6539\u53d8\u7b97\u6cd5\u8bc4\u7ea7\u6216\u865a\u6784\u6570\u636e\u3002\u5fc5\u987b\u533a\u5206\u201c\u5df2\u786e\u8ba4\u201d\u3001\u201c\u5f85\u9a8c\u8bc1\u201d\u548c\u201c\u4e0d\u80fd\u5224\u65ad\u201d\uff1b\u8bc1\u636e\u8986\u76d6\u6709\u9650\u65f6\u4e0d\u5f97\u5347\u7ea7\u4e3a\u786e\u5b9a\u6027\u7ed3\u8bba\u3002\u7981\u6b62\u7ed9\u51fa\u4e70\u5356\u5efa\u8bae\uff0c220\u5b57\u5185\u3002${modeGuidance}${policyGuidance}`;
   const userPrompt = `股票：${algorithm.stock.name}（${algorithm.stock.code}）
@@ -150,7 +150,9 @@ export function useStockAi(llmConfig) {
       const down = stockRows.filter(item => item.changePct < 0).length;
       const generatedAt = new Date().toISOString();
 
-      const modeGuidance = experienceMode === 'pro' ? '\u9762\u5411\u4e13\u4e1a\u7528\u6237\uff0c\u5f3a\u8c03\u8bc1\u636e\u6743\u91cd\u3001\u76f8\u5bf9\u5f3a\u5f31\u3001\u98ce\u9669\u9884\u7b97\u3001\u5931\u6548\u6761\u4ef6\u4e0e\u6570\u636e\u8fb9\u754c\u3002' : '\u9762\u5411\u65b0\u624b\u7528\u6237\uff0c\u5148\u7ed9\u767d\u8bdd\u6458\u8981\uff0c\u518d\u89e3\u91ca\u672f\u8bed\uff0c\u907f\u514d\u628a\u6da8\u8dcc\u76f4\u63a5\u7b49\u540c\u4e8e\u4e70\u5356\u4fe1\u53f7\u3002';
+      const modeGuidance = experienceMode === 'pro'
+        ? '面向专业用户：结构化、可复核。执行摘要给量化判断；指数与板块部分标注驱动与风险预算；个股观察附关键位与失效条件；风险清单按概率×影响排序。可用 Markdown 表格。避免套话，每个判断都要能追溯到给定数据。'
+        : '面向新手用户：先给 3 句话以内的白话总评（今天市场怎么样、为什么、该注意什么），正文每个小节先用一句白话概括再展开；出现术语时用括号补一句比喻解释；结尾给出「本周观察练习」：一个新手今天就能做的小动作。语气友好鼓励，不制造焦虑，不把涨跌等同于买卖信号。';
       const policyGuidance = investorPolicy ? `\u7528\u6237\u7b56\u7565\uff1a${investorPolicy.horizon || '\u672a\u8bbe\u7f6e'}\u5468\u671f\u3001${investorPolicy.riskTolerance || '\u672a\u8bbe\u7f6e'}\u98ce\u9669\u504f\u597d\u3001\u6700\u5927\u4ed3\u4f4d ${investorPolicy.maxPosition || '--'}%\u3002` : '';
       const systemPrompt = `你是审慎、专业的中国股票市场研究员。只能使用用户提供的行情样本，生成 700-1200 字中文结构化早报。
 必须按以下标题输出：

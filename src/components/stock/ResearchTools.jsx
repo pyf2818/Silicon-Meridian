@@ -3,7 +3,7 @@ import { ICONS } from '../../constants/index.jsx';
 
 const EMPTY_RESEARCH_NOTE = { thesis: '', counterEvidence: '', invalidation: '', horizon: '20d', status: 'watching' };
 
-function ResearchJournal({ code, name, realtime, diagnosis }) {
+function ResearchJournal({ code, name, realtime, diagnosis, aiFill }) {
   const [draft, setDraft] = useState(EMPTY_RESEARCH_NOTE);
   const [savedAt, setSavedAt] = useState(null);
   const [history, setHistory] = useState([]);
@@ -89,6 +89,17 @@ function ResearchJournal({ code, name, realtime, diagnosis }) {
           <strong>{name} · {code}</strong>
         </div>
         <div className="stock-research-actions">
+          {aiFill?.llmReady && (
+            <button
+              type="button"
+              className="stock-ai-fill-btn"
+              disabled={Boolean(aiFill.generating) || !diagnosis}
+              onClick={() => aiFill.generate({ tool: 'journal', name, code, realtime, diagnosis, setters: { setDraft } })}
+              title="基于当前算法诊断起草假设/反证/失效条件"
+            >
+              {aiFill.generating === 'journal' ? '生成中…' : '✦ AI 起草'}
+            </button>
+          )}
           <button type="button" onClick={importAnalysis} disabled={!diagnosis} title="引用当前分析">{ICONS.sparkle}<span>引用分析</span></button>
           <button type="button" onClick={clear} disabled={history.length === 0} title="删除全部研究快照">{ICONS.trash}</button>
         </div>
@@ -98,6 +109,7 @@ function ResearchJournal({ code, name, realtime, diagnosis }) {
         <label>研究状态<select value={draft.status} onChange={event => update('status', event.target.value)}><option value="watching">观察中</option><option value="confirmed">已确认</option><option value="conflicted">证据冲突</option><option value="invalidated">已失效</option></select></label>
         <span>{savedAt ? `更新于 ${new Date(savedAt).toLocaleString('zh-CN')}` : '尚未保存'}</span>
       </div>
+      {aiFill?.error && aiFill.errorTool === 'journal' && <div className="stock-checklist-notice error">{aiFill.error}</div>}
       <div className="stock-research-fields">
         <label><span>核心假设</span><textarea value={draft.thesis} onChange={event => update('thesis', event.target.value)} placeholder="哪些事实必须成立，当前判断才有效？" /></label>
         <label><span>反向证据</span><textarea value={draft.counterEvidence} onChange={event => update('counterEvidence', event.target.value)} placeholder="什么证据正在反驳当前判断？" /></label>
@@ -132,7 +144,7 @@ const RESEARCH_CHECKLIST_ITEMS = [
   { id: 'liquidity', group: '执行', label: '仓位、流动性、退出条件与最坏损失均可承受' },
 ];
 
-function ResearchChecklist({ code, name }) {
+function ResearchChecklist({ code, name, realtime, diagnosis, aiFill }) {
   const [record, setRecord] = useState({ statuses: {}, note: '', updatedAt: null });
   const [saveStatus, setSaveStatus] = useState('');
   useEffect(() => {
@@ -159,9 +171,23 @@ function ResearchChecklist({ code, name }) {
     <section className="stock3-panel stock-research-checklist">
       <div className="stock-research-head">
         <div><span>研究清单</span><strong>{name} · 已验证 {verified}/{RESEARCH_CHECKLIST_ITEMS.length}</strong></div>
-        <span className={`stock-checklist-risk ${failed > 0 ? 'failed' : ''}`}>{failed > 0 ? `${failed} 项不通过` : '尚未发现否决项'}</span>
+        <div className="stock-tool-actions">
+          {aiFill?.llmReady && (
+            <button
+              type="button"
+              className="stock-ai-fill-btn"
+              disabled={Boolean(aiFill.generating) || !diagnosis}
+              onClick={() => aiFill.generate({ tool: 'checklist', name, code, realtime, diagnosis, setters: { setRecord } })}
+              title="AI 生成各维度的核验要点与数据来源建议"
+            >
+              {aiFill.generating === 'checklist' ? '生成中…' : '✦ AI 核验建议'}
+            </button>
+          )}
+          <span className={`stock-checklist-risk ${failed > 0 ? 'failed' : ''}`}>{failed > 0 ? `${failed} 项不通过` : '尚未发现否决项'}</span>
+        </div>
       </div>
       <div className="stock-checklist-notice">平台不会自动把缺失数据判为通过。财务、估值、公告和治理信息需要从原始资料核验。</div>
+      {aiFill?.error && aiFill.errorTool === 'checklist' && <div className="stock-checklist-notice error">{aiFill.error}</div>}
       <div className="stock-checklist-list">
         {RESEARCH_CHECKLIST_ITEMS.map(item => (
           <div key={item.id} className={`stock-checklist-row ${record.statuses[item.id] || 'unverified'}`}>

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNewsPreviewStore } from '../store/newsPreviewStore.js';
 
 function formatScore(value) {
   const score = Number(value || 0);
@@ -19,18 +20,56 @@ function formatRelativeTime(value, t) {
   return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(new Date(time));
 }
 
+/** 由事件数据合成确定性「情报解读」——不依赖 LLM，点击预览时随 item 传入抽屉展示 */
+export function buildIntelInsight(event) {
+  if (!event) return null;
+  const impact = formatScore(event.impactScore);
+  const heat = formatScore(event.heatScore);
+  const score = formatScore(event.intelligenceScore);
+  const sourceCount = Number(event.independentSourceCount || (event.sources || []).length || 0);
+  const confidence = formatScore(event.confidence);
+  const lines = [];
+  // 维度解读：影响 vs 热度的关系是判断「实质 vs 炒作」的核心线索
+  if (impact && heat) {
+    if (impact >= heat) lines.push(`影响力 ${impact} 高于热度 ${heat}：属于实质导向的信号，市场注意力尚未饱和，值得优先跟进。`);
+    else lines.push(`热度 ${heat} 高于影响力 ${impact}：话题性强但实质含量待甄别，建议先看多源报道再下判断。`);
+  }
+  // 信源结构
+  if (sourceCount >= 3) lines.push(`已有 ${sourceCount} 家独立信源报道，交叉验证充分（置信度约 ${confidence}%），事实基础较扎实。`);
+  else if (sourceCount === 2) lines.push(`目前 ${sourceCount} 家信源，初步互证；关键细节仍以官方公告为准。`);
+  else if (sourceCount === 1) lines.push(`仅单一信源，早期信号；持续观察是否有跟进报道。`);
+  // 关注理由
+  (event.reasons || []).slice(0, 2).forEach(r => lines.push(String(r)));
+  // 实体
+  const entities = (event.entities || []).filter(Boolean).slice(0, 5);
+  return {
+    headline: `综合评分 ${score} ｜ 影响 ${impact || '--'} · 热度 ${heat || '--'}`,
+    lines,
+    entities,
+  };
+}
+
+/** 事件 → 资讯预览 payload（复用 NewsPreviewPanel 抽屉，抓取原文 + 附带情报解读） */
+function eventToPreview(event) {
+  const citation = (event.citations || [])[0] || {};
+  return {
+    id: event.id,
+    title: event.title,
+    summary: event.summary,
+    source: citation.source || (event.sources || [])[0] || '',
+    url: citation.url || event.url || '',
+    publishedAt: citation.publishedAt || event.lastSeenAt,
+    imageUrl: '',
+    insight: buildIntelInsight(event),
+  };
+}
+
 /**
- * IntelligenceFeedPanel - 精准推荐顶部「最热门情报」Hero 卡片
+ * IntelligenceFeedPanel - 精准推荐顶部「今日行业情报雷达」
  *
- * 设计原则：只显示一个最显眼的关键信息（综合评分最高的那条），不堆砌。
- * 详细资讯由下方的 RecommendationFeed 卡片流承载。
- *
- * Hero 卡片包含：
- * - 综合评分徽章 + 分类标签
- * - 大字号标题
- * - 摘要（2-3 行）
- * - 来源 + 时间 + 原文链接
- * - 右侧紧凑指标条：影响 / 热度 / 综合三个数字
+ * v21 重设计：从单条 Hero 改为「榜首主卡 + 值得关注信号列表」，
+ * 每条都可点击 → 右侧预览抽屉（原文全文 + 情报解读）。
+ * 视觉与项目 HUD 语言对齐：青色 accent、扫描线、评分环、条形指标。
  */
 export default function IntelligenceFeedPanel({
   items = [],
@@ -43,15 +82,15 @@ export default function IntelligenceFeedPanel({
   onRefresh,
 }) {
   const { t } = useTranslation();
-  // 选出综合评分最高的作为 Hero（无评分时取第一条）
-  const hero = useMemo(() => {
-    if (!items.length) return null;
-    return items.reduce((best, cur) => {
-      const bestScore = Number(best.intelligenceScore || 0);
-      const curScore = Number(cur.intelligenceScore || 0);
-      return curScore > bestScore ? cur : best;
-    }, items[0]);
+  const openNewsPreview = useNewsPreviewStore(s => s.open);
+
+  // 按综合评分排序取前 5：榜首为主卡，2-5 名进「值得关注」列表
+  const ranked = useMemo(() => {
+    if (!items.length) return [];
+    return [...items].sort((a, b) => Number(b.intelligenceScore || 0) - Number(a.intelligenceScore || 0)).slice(0, 5);
   }, [items]);
+  const hero = ranked[0] || null;
+  const rest = ranked.slice(1);
 
   // 关键提醒条：仅展示优先级最高的 1 条（避免视觉噪声）
   const topAlert = useMemo(() => {
@@ -104,45 +143,53 @@ export default function IntelligenceFeedPanel({
         </div>
       )}
 
-      {/* Hero 卡片：最热门的那条情报，最显眼 */}
+      {/* 雷达榜首：最值得关注的主卡，点击打开预览 + 情报解读 */}
       {hero && (
-        <article className="intelligence-hero-card">
-          <div className="intelligence-hero-main">
-            <div className="intelligence-hero-meta">
-              <span className="intelligence-hero-category">{hero.categoryLabel || hero.category || 'Industry'}</span>
-              <span className="intelligence-hero-score" title={t('intelligence.score')}>
-                <strong>{formatScore(hero.intelligenceScore)}</strong>
-                <em>{t('intelligence.comprehensive')}</em>
-              </span>
+        <article className="intel-radar-lead" onClick={() => openNewsPreview(eventToPreview(hero))} role="button" tabIndex={0}
+          onKeyDown={e => { if (e.key === 'Enter') openNewsPreview(eventToPreview(hero)); }} title="点击查看全文与情报解读">
+          <div className="intel-radar-lead-score" aria-hidden="true" style={{ '--score': Math.min(100, formatScore(hero.intelligenceScore)) }}>
+            <span>{formatScore(hero.intelligenceScore)}</span>
+            <small>综合</small>
+          </div>
+          <div className="intel-radar-lead-main">
+            <div className="intel-radar-chips">
+              <span className="intel-radar-chip rank">{formatScore(hero.impactScore)} 影响 · {formatScore(hero.heatScore)} 热度</span>
+              {hero.categoryLabel && <span className="intel-radar-chip">{hero.categoryLabel}</span>}
+              {hero.independentSourceCount > 1 && <span className="intel-radar-chip">{hero.independentSourceCount} 源互证</span>}
             </div>
-            <h3 className="intelligence-hero-title">{hero.title}</h3>
-            <p className="intelligence-hero-summary">{hero.summary || t('common.empty')}</p>
-            <footer className="intelligence-hero-footer">
-              <span className="intelligence-hero-source">{hero.source || t('common.unknown')} · {formatRelativeTime(hero.publishedAt, t)}</span>
-              {hero.url && (
-                <a href={hero.url} target="_blank" rel="noreferrer" className="intelligence-hero-link">
-                  {t('intelligence.viewOriginal')}
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
-                </a>
-              )}
+            <h3 className="intel-radar-lead-title">{hero.title}</h3>
+            <p className="intel-radar-lead-summary">{hero.summary || t('common.empty')}</p>
+            <footer className="intel-radar-lead-foot">
+              <span>{hero.source || t('common.unknown')} · {formatRelativeTime(hero.publishedAt, t)}</span>
+              <em>查看全文与解读 →</em>
             </footer>
           </div>
-          {/* 右侧紧凑指标条：3 个核心数字 */}
-          <div className="intelligence-hero-metrics">
-            <div className="intelligence-hero-metric" title={t('intelligence.impact')}>
-              <span className="intelligence-hero-metric-label">{t('intelligence.impact')}</span>
-              <strong className="intelligence-hero-metric-value">{formatScore(hero.impactScore)}</strong>
-            </div>
-            <div className="intelligence-hero-metric" title={t('intelligence.heat')}>
-              <span className="intelligence-hero-metric-label">{t('intelligence.heat')}</span>
-              <strong className="intelligence-hero-metric-value">{formatScore(hero.heatScore)}</strong>
-            </div>
-            <div className="intelligence-hero-metric intelligence-hero-metric-primary" title={t('intelligence.score')}>
-              <span className="intelligence-hero-metric-label">{t('intelligence.comprehensive')}</span>
-              <strong className="intelligence-hero-metric-value">{formatScore(hero.intelligenceScore)}</strong>
-            </div>
-          </div>
         </article>
+      )}
+
+      {/* 雷达榜单：2-5 名值得关注的信号，点击同样进预览 */}
+      {rest.length > 0 && (
+        <div className="intel-radar-list">
+          <div className="intel-radar-list-title">今日值得关注 · TOP {ranked.length}</div>
+          {rest.map((event, index) => (
+            <button type="button" key={event.id} className="intel-radar-row" onClick={() => openNewsPreview(eventToPreview(event))} title="点击查看全文与情报解读">
+              <span className="intel-radar-row-rank">{String(index + 2).padStart(2, '0')}</span>
+              <span className="intel-radar-row-main">
+                <span className="intel-radar-row-title">{event.title}</span>
+                <span className="intel-radar-row-meta">
+                  {event.categoryLabel && <i>{event.categoryLabel}</i>}
+                  {event.independentSourceCount > 1 && <i>{event.independentSourceCount} 源</i>}
+                  <i>{event.source || ''}</i>
+                </span>
+              </span>
+              <span className="intel-radar-row-bars" aria-hidden="true">
+                <span className="intel-radar-bar"><i style={{ width: `${Math.min(100, formatScore(event.impactScore))}%` }} data-kind="impact" /></span>
+                <span className="intel-radar-bar"><i style={{ width: `${Math.min(100, formatScore(event.heatScore))}%` }} data-kind="heat" /></span>
+              </span>
+              <span className="intel-radar-row-score">{formatScore(event.intelligenceScore)}</span>
+            </button>
+          ))}
+        </div>
       )}
     </section>
   );

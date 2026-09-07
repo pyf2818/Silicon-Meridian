@@ -99,6 +99,8 @@ export default function NewsPreviewPanel() {
   // 图片穿插：首图作 hero，其余每 5 段插一张
   const extraImages = images.slice(1);
   const heroImage = images[0] || null;
+  /** 第 i 段后应插入的图片（第 5、10、15…段之后依次取后续图） */
+  const imgAfter = (i) => ((i + 1) % 5 === 0 ? (extraImages[Math.floor(i / 5)] || null) : null);
 
   const renderBody = () => {
     if (status === 'loading') {
@@ -123,12 +125,10 @@ export default function NewsPreviewPanel() {
     return (
       <>
         {paragraphs.map((p, i) => (
-          <figure-free key={i} index={i}>
-            <p className="news-preview-para">{p}</p>
-            {(i + 1) % 5 === 0 && extraImages[Math.floor(i / 5) - (heroImage ? 0 : 1)] && (
-              <PreviewImage src={extraImages[Math.floor(i / 5) - (heroImage ? 0 : 1)]} />
-            )}
-          </figure-free>
+          <Fragment key={i}>
+            <p className={`news-preview-para${i === 0 ? ' lede' : ''}`}>{p}</p>
+            {imgAfter(i) && <PreviewImage src={imgAfter(i)} />}
+          </Fragment>
         ))}
       </>
     );
@@ -155,6 +155,19 @@ export default function NewsPreviewPanel() {
         </header>
 
         <div className="news-preview-body custom-scrollbar">
+          {/* 情报解读：雷达/情报入口传入的确定性分析（评分维度 + 信源结构 + 实体） */}
+          {item.insight && (
+            <aside className="news-preview-insight">
+              <div className="news-preview-insight-head">◈ 情报解读</div>
+              <strong className="news-preview-insight-score">{item.insight.headline}</strong>
+              {item.insight.lines?.filter(Boolean).map((line, i) => <p key={i}>{line}</p>)}
+              {item.insight.entities?.length > 0 && (
+                <div className="news-preview-insight-entities">
+                  {item.insight.entities.map(e => <span key={e}>{e}</span>)}
+                </div>
+              )}
+            </aside>
+          )}
           {heroImage && status !== 'loading' && <PreviewImage src={heroImage} hero />}
           {renderBody()}
         </div>

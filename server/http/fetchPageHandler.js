@@ -45,10 +45,12 @@ async function readLimitedText(response, maxBytes = 1_000_000) {
 }
 
 /**
- * 从 HTML 提取正文配图 URL：绝对化 + 过滤图标/头像/广告类小图。
+ * 从 HTML 提取正文配图 URL：绝对化 + 过滤图标/头像/广告/二维码等噪声图。
  * 只在预览抽屉展示，最多返回 8 张；失败不阻断正文返回。
  */
 const IMG_SRC_NOISE = /(logo|icon|sprite|avatar|emoji|favicon|spacer|\.svg)([?./]|$)/i;
+// 二维码 / 推广关注 / 统计像素 / 分享按钮 / 广告横幅——影响观感的一律过滤
+const IMG_SRC_ADS = /(qr[-_]?code|qrcode|[\b/.]qr[\b./_]|weixin|wechat|wxoffi|mp\.weixin|follow[-_]?us|subscribe|shangcheng|donate|reward|alipay|pay[-_]?code|advert|\/ads?\/|\/ads?[._-]|[._-]ads?[._-]|banner|sponsor|promo|promotion|coupon|tracking|pixel|beacon|analytics|share[-_]?icon|share[-_]?btn|gongzhonghao|公众号|二维码)/i;
 const IMG_SRC_LAZY = /^(data-src|data-original|data-lazy-src|data-src2?|data-actualsrc)$/;
 
 function extractImages(html, baseUrl) {
@@ -64,14 +66,17 @@ function extractImages(html, baseUrl) {
     while ((attr = attrRe.exec(match[0]))) attrs[attr[1].toLowerCase()] = attr[2];
     const lazyKey = Object.keys(attrs).find(k => IMG_SRC_LAZY.test(k) && /^https?:\/\//.test(attrs[k]));
     const raw = attrs.src || lazyKey && attrs[lazyKey];
-    if (!raw || /^data:/i.test(raw) || IMG_SRC_NOISE.test(raw)) continue;
+    if (!raw || /^data:/i.test(raw) || IMG_SRC_NOISE.test(raw) || IMG_SRC_ADS.test(raw)) continue;
     try {
       const abs = new URL(raw, baseUrl).href;
       if (!/^https?:/i.test(abs) || seen.has(abs)) continue;
       seen.add(abs);
-      // 明确声明为小尺寸（≤120px）的视为装饰图跳过
+      // 明确声明为小尺寸（≤200px）的视为装饰图/图标跳过（二维码常为 150-260px，配合关键词双保险）
       const w = parseInt(attrs.width || '', 10);
-      if (Number.isFinite(w) && w > 0 && w <= 120) continue;
+      if (Number.isFinite(w) && w > 0 && w <= 200) continue;
+      // class/alt 里的广告信号
+      const cls = `${attrs.class || ''} ${attrs.alt || ''} ${attrs.id || ''}`;
+      if (IMG_SRC_ADS.test(cls)) continue;
       found.push(abs);
     } catch { /* 非法 URL 跳过 */ }
   }

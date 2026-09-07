@@ -13,6 +13,8 @@ import { TimelineChart, OrderBook } from './stock/Charts.jsx';
 import { ResearchJournal, ResearchChecklist, BriefingContent } from './stock/ResearchTools.jsx';
 import { PositionRiskTool, ScenarioAnalysisTool } from './stock/RiskTools.jsx';
 import { IntelligenceRadar, InvestorPolicyTool, DecisionEvidenceTool } from './stock/IntelligenceTools.jsx';
+import ProCharts from './stock/ProCharts.jsx';
+import { useStockAiToolFill } from '../hooks/useStockAiToolFill.js';
 
 const UP_COLOR = '#ef4444';
 const DOWN_COLOR = '#22c55e';
@@ -39,12 +41,14 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
   const analysisRef = useRef(null);
   const { watchlist, inWatchlist, toggleStock, moveStock } = useStockWatchlist();
   const aiState = useStockAi(llmConfig);
+  const aiFill = useStockAiToolFill(llmConfig);
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCode, setSelectedCode] = useState('sh000001');
   const ai = { ...aiState, diagnosis: aiState.diagnosis?.stock?.code === selectedCode ? aiState.diagnosis : null };
   const [selectedName, setSelectedName] = useState('上证指数');
   const [klineData, setKlineData] = useState(null);
+  const [diagKlines, setDiagKlines] = useState([]); // 诊断用的日K序列（分时周期下也能让专业图表有数据）
   const [klineLoading, setKlineLoading] = useState(false);
   const [klineError, setKlineError] = useState('');
   const [klineReloadKey, setKlineReloadKey] = useState(0);
@@ -144,6 +148,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
         klineForDiag = await res.json();
       } catch { /* ignore */ }
     }
+    setDiagKlines(Array.isArray(klineForDiag?.klines) ? klineForDiag.klines.filter(k => Number.isFinite(k?.close)) : []);
     try {
       const benchmarkResponse = await fetch(`/api/stock/kline?code=${benchmarkCode}&period=101&count=60&adjust=${adjust}`);
       benchmarkKline = await benchmarkResponse.json();
@@ -899,6 +904,10 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
                 </section>
               </div>
             )}
+            {/* 专业模式：确定性数据图表区（走势/多空/基准对比） */}
+            {experienceMode === 'pro' && ai.diagnosis.status === 'ready' && (
+              <ProCharts klines={diagKlines.length ? diagKlines : (klineData?.klines || [])} diagnosis={ai.diagnosis} />
+            )}
             <div className="stock-ai-text">{ai.diagnosis.content}</div>
             {ai.diagnosis.aiError && <div className="stock-analysis-fallback">AI 增强失败，当前保留算法结果：{ai.diagnosis.aiError}</div>}
             <div className="stock-analysis-evidence">
@@ -933,11 +942,11 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
               ) : researchToolTab === 'risk' ? (
                 <PositionRiskTool code={selectedCode} realtime={realtime} diagnosis={ai.diagnosis} />
               ) : researchToolTab === 'scenario' ? (
-                <ScenarioAnalysisTool code={selectedCode} name={selectedName} realtime={realtime} diagnosis={ai.diagnosis} />
+                <ScenarioAnalysisTool code={selectedCode} name={selectedName} realtime={realtime} diagnosis={ai.diagnosis} aiFill={aiFill} />
               ) : researchToolTab === 'checklist' ? (
-                <ResearchChecklist code={selectedCode} name={selectedName} />
+                <ResearchChecklist code={selectedCode} name={selectedName} realtime={realtime} diagnosis={ai.diagnosis} aiFill={aiFill} />
               ) : (
-                <ResearchJournal code={selectedCode} name={selectedName} realtime={realtime} diagnosis={ai.diagnosis} />
+                <ResearchJournal code={selectedCode} name={selectedName} realtime={realtime} diagnosis={ai.diagnosis} aiFill={aiFill} />
               )}
             </div>
           </div>

@@ -36,7 +36,8 @@ it('adapts AI guidance for beginner mode and investor policy', async () => {
   });
   const [, systemPrompt] = callLlm.mock.calls[0];
   expect(systemPrompt).toContain('面向新手用户');
-  expect(systemPrompt).toContain('白话解释');
+  expect(systemPrompt).toContain('一句话结论');
+  expect(systemPrompt).toContain('新手学习点');
   expect(systemPrompt).toContain('稳健');
   expect(systemPrompt).toContain('1%');
 });
@@ -51,6 +52,6 @@ it('adapts AI guidance for professional evidence review', async () => {
   });
   const [, systemPrompt] = callLlm.mock.calls[0];
   expect(systemPrompt).toContain('面向专业用户');
-  expect(systemPrompt).toContain('证据链');
+  expect(systemPrompt).toContain('证据权重');
   expect(systemPrompt).toContain('失效条件');
 });

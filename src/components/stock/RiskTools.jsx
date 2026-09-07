@@ -50,8 +50,9 @@ const EMPTY_SCENARIO_PLAN = {
   bearProbability: '25', baseProbability: '50', bullProbability: '25',
 };
 
-function ScenarioAnalysisTool({ code, name, realtime, diagnosis }) {
+function ScenarioAnalysisTool({ code, name, realtime, diagnosis, aiFill }) {
   const [plan, setPlan] = useState(EMPTY_SCENARIO_PLAN);
+  const [aiRationale, setAiRationale] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
   const entry = Number(realtime?.price) || 0;
 
@@ -97,8 +98,22 @@ function ScenarioAnalysisTool({ code, name, realtime, diagnosis }) {
     <section className="stock3-panel stock-scenario-tool">
       <div className="stock-research-head">
         <div><span>情景推演</span><strong>{name} · 参考价 {entry || '--'}</strong></div>
-        <span className="stock-tool-note">概率之和必须为 100%</span>
+        <div className="stock-tool-actions">
+          {aiFill?.llmReady && (
+            <button
+              type="button"
+              className="stock-ai-fill-btn"
+              disabled={Boolean(aiFill.generating) || !diagnosis}
+              onClick={() => aiFill.generate({ tool: 'scenario', name, code, realtime, diagnosis, setters: { setPlan, setRationale: setAiRationale } })}
+              title="基于当前算法诊断生成三情景初稿，可修改后保存"
+            >
+              {aiFill.generating === 'scenario' ? '生成中…' : '✦ AI 生成初稿'}
+            </button>
+          )}
+          <span className="stock-tool-note">概率之和必须为 100%</span>
+        </div>
       </div>
+      {aiFill?.error && aiFill.errorTool === 'scenario' && <div className="stock-risk-warning">{aiFill.error}<button type="button" onClick={aiFill.clearError}>×</button></div>}
       <div className="stock-scenario-grid">
         {[
           ['bear', '悲观情景', 'bearTarget', 'bearProbability'],
@@ -112,6 +127,7 @@ function ScenarioAnalysisTool({ code, name, realtime, diagnosis }) {
           </div>
         ))}
       </div>
+      {aiRationale && <div className="stock-scenario-rationale">{aiRationale}</div>}
       {!valid && <div className="stock-risk-warning">请填写三个有效目标价，并确保概率合计为 100%。当前合计 {probabilityTotal}% 。</div>}
       {valid && (
         <div className="stock-scenario-results">
