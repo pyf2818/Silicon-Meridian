@@ -95,6 +95,7 @@ import { saveDocumentVersion } from './domain/creative/versionStore.js';
 import SafeBoundary from './components/SafeBoundary.jsx';
 const GlobeView = lazy(() => import('./GlobeView.jsx'));
 const AiElf = lazy(() => import('./AiElf.jsx'));
+const SelectionTranslate = lazy(() => import('./components/aielf/SelectionTranslate.jsx'));
 const StockPage = lazy(() => import('./components/StockPage.jsx'));
 
 import {
@@ -3052,6 +3053,13 @@ ${signals}
       </Suspense>
       </SafeBoundary>
       </div>
+
+      {/* v23 #1：划词翻译（全局选区监听，气泡返回翻译+解释，可转交精灵） */}
+      <SafeBoundary name="划词翻译" icon={ICONS.globe}>
+        <Suspense fallback={null}>
+          <SelectionTranslate llmConfig={llmConfig} />
+        </Suspense>
+      </SafeBoundary>
 
       {/* 登录/注册弹窗 */}
 <AuthModal showAuthModal={showAuthModal} setShowAuthModal={setShowAuthModal} authMode={authMode} setAuthMode={setAuthMode} authForm={authForm} setAuthForm={setAuthForm} handleLogin={handleLogin} handleRegister={handleRegister} handleGuestLogin={handleGuestLogin} authLoading={authLoading} authError={authError} setAuthError={setAuthError} />

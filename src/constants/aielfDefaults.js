@@ -15,20 +15,46 @@
 import { buildToolCapabilitiesText } from '../utils/toolCapabilities.js';
 
 /** 精灵单例 agent 配置：固定 id，不再来自 agents 生态。 */
+export const ELF_BASE_TOOLS = [
+  'search_news',
+  'web_search',
+  'fetch_page',
+  'read_workspace_file',
+  'get_stock_quote',
+  'get_stock_kline',
+  'create_skill',
+];
+
+/**
+ * v23 #1 精灵协作工具：对接 AI 工作站的多智能体引擎。
+ * - spawn_subagent：并行派发子代理（explorer/researcher/writer/critic）收集报告
+ * - spawn_agent_team：组建团队群聊（共享任务列表 + 邮箱协作）
+ * 两个工具均无审批需求（team 只写本地任务板；subagent 子代理的写操作仍会被
+ * 精灵的 approvalPolicy='deny' 闸门拦截），所以在精灵侧可安全启用。
+ */
+export const ELF_COLLAB_TOOLS = {
+  subagent: 'spawn_subagent',
+  team: 'spawn_agent_team',
+};
+
+/**
+ * 按协作配置构造精灵工具白名单。
+ * @param {{subagent?: boolean, team?: boolean}} [collab]
+ * @returns {string[]}
+ */
+export function getElfTools(collab = { subagent: true, team: true }) {
+  const tools = [...ELF_BASE_TOOLS];
+  if (collab?.subagent) tools.push(ELF_COLLAB_TOOLS.subagent);
+  if (collab?.team) tools.push(ELF_COLLAB_TOOLS.team);
+  return tools;
+}
+
+/** 向后兼容：默认配置的单例 agent（工具为全开协作态）。 */
 export const ELF_DEFAULT_AGENT = {
   id: 'ai-elf',
   name: 'AI精灵',
   description: '全站 AI 助理：快速问答、拖拽分析资讯/股票/代码/GitHub、联网搜索',
-  // 精灵侧重"分析/查证"类工具，不含 set_plan 等多步编排（那是工作站的活）
-  tools: [
-    'search_news',
-    'web_search',
-    'fetch_page',
-    'read_workspace_file',
-    'get_stock_quote',
-    'get_stock_kline',
-    'create_skill',
-  ],
+  tools: getElfTools(),
   systemPrompt: '', // 实际由 buildElfSystemPrompt 动态构造（注入画像/工具能力）
 };
 
@@ -41,14 +67,22 @@ export const ELF_DEFAULT_AGENT = {
  * @param {object}  context       可选，今日情报摘要等（欠佳时留空）
  * @returns {string}
  */
-export function buildElfSystemPrompt(profile = {}, context = '') {
+export function buildElfSystemPrompt(profile = {}, context = '', tools = ELF_DEFAULT_AGENT.tools) {
   const focus = Array.isArray(profile?.focusLabels) && profile.focusLabels.length
     ? profile.focusLabels.join('、')
     : '未设置';
   const tracked = Array.isArray(profile?.tracked) && profile.tracked.length
     ? profile.tracked.join('、')
     : '';
-  const toolsText = buildToolCapabilitiesText(ELF_DEFAULT_AGENT.tools);
+  const toolsText = buildToolCapabilitiesText(tools);
+  const hasCollab = tools.includes(ELF_COLLAB_TOOLS.subagent) || tools.includes(ELF_COLLAB_TOOLS.team);
+
+  const collabGuide = hasCollab ? [
+    '【多智能体协作】你已接入 AI 工作站的多智能体引擎：',
+    '- 遇到「多个独立可并行的子工作」（多信源并行侦察、多课题调研、起草→审校分工）时，用 spawn_subagent 把子任务派给专业化子代理并行执行；objective 必须自包含，背景写进 context。',
+    '- 需要多人分工推进的复杂任务（成员间共享任务列表、互通消息）时，用 spawn_agent_team 组建团队。',
+    '- 单个小问题不要派子代理/团队——直接回答更快。派发后等报告回来，综合各视角给出你的最终判断。',
+  ].join('\n') : '';
 
   const recognition = [
     '【内容自识别】你收到的输入可能是以下任意类型，请先判断属于哪一类，再按对应策略分析：',
@@ -76,6 +110,7 @@ export function buildElfSystemPrompt(profile = {}, context = '') {
     `- 输出目标：${profile?.outputGoal || '阅读判断'}`,
     '',
     recognition,
+    collabGuide,
     context ? `\n【今日情报上下文】\n${context}` : '',
     toolsText ? `\n${toolsText}` : '',
     '',

@@ -459,8 +459,34 @@ export function normalizeWorkflowTemplate(workflow, fallback = DEFAULT_AGENT_WOR
     ...base,
     name: base.name || fallback.name,
     description: base.description || fallback.description,
-    nodes
+    nodes,
+    // v23 #3：显式连线（用户拖拽建立的边，作为顺序派生边的覆盖层持久化）
+    edges: normalizeWorkflowEdges(base.edges, nodes),
   };
+}
+
+/**
+ * v23 #3 规范化显式边：{ from, to, bend? }。
+ * 只保留两端节点都存在的边（节点删除后悬空边自动清理）；自环与重复边去重；
+ * bend 为弧度偏移（像素），限制在 ±160。
+ */
+export function normalizeWorkflowEdges(rawEdges, nodes) {
+  if (!Array.isArray(rawEdges) || rawEdges.length === 0) return [];
+  const nodeIds = new Set((nodes || []).map(n => n.id));
+  const seen = new Set();
+  const out = [];
+  for (const edge of rawEdges) {
+    const from = String(edge?.from || '');
+    const to = String(edge?.to || '');
+    if (!from || !to || from === to) continue;
+    if (!nodeIds.has(from) || !nodeIds.has(to)) continue; // 悬空边清理
+    const key = `${from}->${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const bend = Number(edge?.bend);
+    out.push({ from, to, bend: Number.isFinite(bend) ? Math.max(-160, Math.min(160, bend)) : 0 });
+  }
+  return out;
 }
 
 /** 画布坐标规范化：非法/缺失时按索引排成一列（x=90, y=60+idx*190） */

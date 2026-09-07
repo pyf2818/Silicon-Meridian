@@ -3,7 +3,13 @@ import {
   buildElfSystemPrompt,
   buildElfDropPrompt,
   ELF_DEFAULT_AGENT,
+  getElfTools,
 } from './constants/aielfDefaults.js';
+// v23 #1：精灵对接工作站多智能体引擎——import 即注册 spawn_subagent / spawn_agent_team。
+// 此前只有打开 AI 工作站才会触发注册；现在精灵自身保证注册，未进过工作站也能用。
+// registerTool 内部是 registry.set，重复注册幂等安全。
+import './utils/agentSubagentTool.js';
+import './utils/agentTeamTools.js';
 import { runElfAgentLoop as runElfAgentLoopImpl } from './components/aielf/runElfAgentLoop.js';
 import { useSendMessage } from './components/aielf/useSendMessage.js';
 import MessageList from './components/aielf/MessageList.jsx';
@@ -63,14 +69,23 @@ export default function AiElf({
   const [showHistory, setShowHistory] = useState(false);
   const elfChatHistory = useElfStore(s => s.elfChatHistory);
   const setElfChatHistory = useElfStore(s => s.setElfChatHistory);
+  const elfCollab = useElfStore(s => s.elfCollab);
 
-  const activeAgent = ELF_DEFAULT_AGENT;
+  // v23 #1：工具白名单按协作配置动态构造（对接工作站 spawn 引擎）
+  const activeAgent = useMemo(
+    () => ({ ...ELF_DEFAULT_AGENT, tools: getElfTools(elfCollab) }),
+    [elfCollab]
+  );
   const dragRef = useRef({ startX: 0, startY: 0, initialX: 0, initialY: 0, moved: false });
   const messagesEndRef = useRef(null);
   const AVATAR_SIZE = 56;
 
   // 精灵 system prompt：产品使用指南 + 用户画像 + 工具能力（纯函数构造）
-  const systemPrompt = useMemo(() => buildElfSystemPrompt(intelligenceProfile || {}), [intelligenceProfile]);
+  // v23 #1：注入动态工具列表，协作工具启用时附多智能体协作指引
+  const systemPrompt = useMemo(
+    () => buildElfSystemPrompt(intelligenceProfile || {}, '', activeAgent.tools),
+    [intelligenceProfile, activeAgent.tools]
+  );
 
   useEffect(() => {
     if (!externalQuotedContext) return;

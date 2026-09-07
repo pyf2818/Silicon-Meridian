@@ -995,3 +995,9 @@ html, html *, html *::before, html *::after {
   --graph-node-chart: #0E7A6A;       /* 暖青绿（替冷青） */
   --graph-node-project: #A81B3C;     /* 深玫 */
 }
+/* v23 #2：新增 3 类素材的知识图谱节点浅色固定值（各调色板未覆盖，plain light 块生效） */
+:root[data-mode="light"] {
+  --graph-node-tutorial: #5C8A0F;  /* 青柠加深 */
+  --graph-node-paper: #4C51BF;     /* 靛蓝加深 */
+  --graph-node-news: #C2410C;      /* 橙加深 */
+}

@@ -21,11 +21,37 @@ export const useElfStore = create(
         catch { return ''; }
       })(),
       setElfAvatar: (v) => {
+        const prev = get().elfAvatar;
         set({ elfAvatar: v });
         try {
           if (v) localStorage.setItem('elfAvatar', v);
           else localStorage.removeItem('elfAvatar');
-        } catch {}
+          return true;
+        } catch {
+          // v23 #1 修复：写入失败（配额满）不再静默吞掉——回滚内存态并告知调用方，
+          // 避免"看着成功、刷新即丢"的假成功
+          set({ elfAvatar: prev });
+          return false;
+        }
+      },
+
+      // ===== 划词翻译（v23 #1）：选中文字后自动显示翻译和解释 =====
+      selectionTranslateEnabled: (() => {
+        try { return localStorage.getItem('elfSelectionTranslate') !== 'off'; }
+        catch { return true; }
+      })(),
+      setSelectionTranslateEnabled: (v) => {
+        set({ selectionTranslateEnabled: !!v });
+        try { localStorage.setItem('elfSelectionTranslate', v ? 'on' : 'off'); } catch {}
+      },
+
+      // ===== 精灵协作能力（v23 #1）：对接 AI 工作站的多智能体引擎 =====
+      // subagent = spawn_subagent（并行子代理派活收报告）
+      // team     = spawn_agent_team（共享任务列表 + 邮箱的团队群聊）
+      // 两者均无审批需求（team 只写本地任务板；subagent 子代理写操作仍被精灵 deny 政策拦截）
+      elfCollab: { subagent: true, team: true },
+      setElfCollab: (patch) => {
+        set((s) => ({ elfCollab: { ...s.elfCollab, ...patch } }));
       },
 
       // ===== 头像历史 =====
@@ -70,6 +96,7 @@ export const useElfStore = create(
         elfAvatarHistory: state.elfAvatarHistory,
         elfName: state.elfName,
         elfChatHistory: state.elfChatHistory,
+        elfCollab: state.elfCollab,
       }),
     }
   )

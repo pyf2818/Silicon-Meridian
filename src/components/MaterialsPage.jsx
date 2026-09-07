@@ -4,13 +4,8 @@ import MaterialGraph from './MaterialGraph.jsx';
 import { getSpaces, subscribeSpaces } from '../utils/workspaceStore.js';
 import { renderMarkdown } from '../utils/markdown.jsx';
 
-const TYPE_OPTIONS = [
-  { id: 'quote', label: '金句' },
-  { id: 'data', label: '数据' },
-  { id: 'case', label: '案例' },
-  { id: 'viewpoint', label: '观点' },
-  { id: 'chart', label: '图表' },
-];
+// v23：类型筛选直接派生自 MATERIAL_TYPES，避免再漏类型（此前漏过 project）
+const TYPE_OPTIONS = Object.entries(MATERIAL_TYPES).map(([id, label]) => ({ id, label }));
 
 const SORT_OPTIONS = [
   { id: 'newest', label: '最新优先' },

@@ -19,6 +19,7 @@ import {
   WORKFLOW_CONDITION_OPERATORS,
   WORKFLOW_ROUTER_OPERATORS,
   WORKFLOW_PARALLEL_MERGE_STRATEGIES,
+  normalizeWorkflowEdges,
 } from '../../constants/workflowConstants.js';
 import { validateWorkflowDraft } from '../../utils/workflowValidation.js';
 import { planSimulation, summarizeSimulation, buildDeliverableText } from '../../utils/workflowSimulator.js';
@@ -80,10 +81,11 @@ export default function CanvasPage({
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState([]); // {role, content, parsed?, note?}
   const undoRef = useRef(null);                     // 上一次 AI 变更前的画布快照
-  // 撤销/重做：监听 draft.nodes 变化记录历史（输入连击 600ms 内合并为一条）
+  // 撤销/重做：监听 draft.nodes / draft.edges 变化记录历史（输入连击 600ms 内合并为一条）
+  // v23 #3：快照从 nodes 扩展为 {nodes, edges}，连线操作同样可撤销
   const historyRef = useRef({ stack: [], index: -1, lastPush: 0 });
   const suppressHistoryRef = useRef(false);
-  const lastNodesRef = useRef(draft.nodes);
+  const lastSnapRef = useRef({ nodes: draft.nodes, edges: draft.edges });
   const [showDeliverable, setShowDeliverable] = useState(false);
   // canUndo/canRedo 必须是 React 态：入栈发生在 render 后的 effect 里，
   // 若直接读 ref，变化当次渲染算出的仍是旧值，之后无人触发重渲染 → 按钮永不解禁。
@@ -97,7 +99,7 @@ export default function CanvasPage({
   useEffect(() => {
     const hist = historyRef.current;
     if (hist.index === -1) {
-      hist.stack = [draft.nodes];
+      hist.stack = [{ nodes: draft.nodes, edges: draft.edges }];
       hist.index = 0;
       syncHistState();
     }
@@ -105,27 +107,28 @@ export default function CanvasPage({
   }, []);
 
   useEffect(() => {
-    if (draft.nodes === lastNodesRef.current) return;
+    if (draft.nodes === lastSnapRef.current.nodes && draft.edges === lastSnapRef.current.edges) return;
     const hist = historyRef.current;
     if (suppressHistoryRef.current) {
       // 该次变化来自 undo/redo 本身：只同步游标，不入栈
       suppressHistoryRef.current = false;
-      lastNodesRef.current = draft.nodes;
+      lastSnapRef.current = { nodes: draft.nodes, edges: draft.edges };
       return;
     }
     const now = Date.now();
+    const snap = { nodes: draft.nodes, edges: draft.edges };
     if (now - hist.lastPush < 600 && hist.stack.length) {
-      hist.stack[hist.index] = draft.nodes; // 连续小编辑合并
+      hist.stack[hist.index] = snap; // 连续小编辑合并
     } else {
       hist.stack = hist.stack.slice(0, hist.index + 1);
-      hist.stack.push(draft.nodes);
+      hist.stack.push(snap);
       if (hist.stack.length > 60) hist.stack.shift();
       hist.index = hist.stack.length - 1;
     }
     hist.lastPush = now;
-    lastNodesRef.current = draft.nodes;
+    lastSnapRef.current = snap;
     syncHistState();
-  }, [draft.nodes, syncHistState]);
+  }, [draft.nodes, draft.edges, syncHistState]);
 
   const canUndo = histState.canUndo;
   const canRedo = histState.canRedo;
@@ -137,7 +140,8 @@ export default function CanvasPage({
     suppressHistoryRef.current = true;
     hist.lastPush = 0; // 撤销后的小编辑必须走「截断 redo + 新栈」而非合并进已恢复的栈位
     syncHistState();
-    updateDraft({ nodes: hist.stack[hist.index] });
+    const snap = hist.stack[hist.index];
+    updateDraft({ nodes: snap.nodes, edges: snap.edges });
   }, [updateDraft, syncHistState]);
 
   const redoNodes = useCallback(() => {
@@ -146,7 +150,8 @@ export default function CanvasPage({
     hist.index += 1;
     suppressHistoryRef.current = true;
     syncHistState();
-    updateDraft({ nodes: hist.stack[hist.index] });
+    const snap = hist.stack[hist.index];
+    updateDraft({ nodes: snap.nodes, edges: snap.edges });
   }, [updateDraft, syncHistState]);
 
   useEffect(() => subscribeCanvasPrefs(setPrefs), []);
@@ -295,6 +300,26 @@ export default function CanvasPage({
     setSelectedNodeId(copy.id);
   }, [draft.nodes, updateDraft, setSelectedNodeId]);
 
+  /* ---- v23 #3：显式连线的建立 / 断开 / 调整弧度（经 normalize 去重与清理） ---- */
+  const connectEdge = useCallback((fromId, toId) => {
+    const next = normalizeWorkflowEdges(
+      [...(draft.edges || []), { from: fromId, to: toId, bend: 0 }],
+      draft.nodes
+    );
+    if (next.length === (draft.edges || []).length) return; // 重复/自环边：静默忽略
+    updateDraft({ edges: next });
+  }, [draft.edges, draft.nodes, updateDraft]);
+
+  const disconnectEdge = useCallback((fromId, toId) => {
+    updateDraft({ edges: (draft.edges || []).filter(e => !(e.from === fromId && e.to === toId)) });
+  }, [draft.edges, updateDraft]);
+
+  const bendEdge = useCallback((fromId, toId, bend) => {
+    updateDraft({
+      edges: (draft.edges || []).map(e => (e.from === fromId && e.to === toId ? { ...e, bend } : e)),
+    });
+  }, [draft.edges, updateDraft]);
+
   /* ---- AI 搭建：对话生成/修改节点 ---- */
   const applyAiPlan = useCallback((plan, mode) => {
     if (!plan?.nodes?.length) return;
@@ -415,6 +440,10 @@ export default function CanvasPage({
         onRemoveNode={(id) => { removeNode(id); setSelectedNodeId(null); }}
         paletteOpen={paletteOpen}
         onSetPaletteOpen={setPaletteOpen}
+        edges={draft.edges || []}
+        onConnectEdge={connectEdge}
+        onDisconnectEdge={disconnectEdge}
+        onBendEdge={bendEdge}
       >
         {/* 画布内浮动：工作流切换器 + 名称（左上） */}
         <div className="canvas-float canvas-float-name" onMouseDown={e => e.stopPropagation()}>

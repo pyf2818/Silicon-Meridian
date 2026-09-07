@@ -2,6 +2,61 @@ import React, { useState, useEffect } from 'react';
 import { ICONS, AGENT_CATEGORIES } from '../../constants/index.jsx';
 import { showToast } from '../../utils/toast.js';
 import { getAllTools, subscribeTools } from '../../utils/toolRegistry.js';
+import { compressImageFile } from '../../utils/imageCompress.js';
+import { useElfStore } from '../../store/elfStore.js';
+
+/* v23 #1：精灵协作能力 + 划词翻译开关（直读 elfStore，避免层层透传 props） */
+function ElfCapabilityPanel() {
+  const elfCollab = useElfStore(s => s.elfCollab);
+  const setElfCollab = useElfStore(s => s.setElfCollab);
+  const selTranslate = useElfStore(s => s.selectionTranslateEnabled);
+  const setSelTranslate = useElfStore(s => s.setSelectionTranslateEnabled);
+
+  return (
+    <div className="setting-item">
+      <label>精灵协作能力（对接 AI 工作站）</label>
+      <p className="setting-desc">
+        让 AI 精灵调用工作站的智能体引擎：多智能体协作会把子任务派给 explorer / researcher / writer / critic
+        等子代理并行执行；团队群聊会组建成员团队，通过共享任务列表与邮箱协作推进。子代理的写操作仍受审批闸门约束，不会绕过安全策略。
+      </p>
+      <div className="elf-collab-list">
+        <label className="elf-collab-item">
+          <input
+            type="checkbox"
+            checked={!!elfCollab.subagent}
+            onChange={(e) => setElfCollab({ subagent: e.target.checked })}
+          />
+          <div className="elf-collab-info">
+            <b>多智能体协作（spawn_subagent）</b>
+            <small>多个独立子任务并行派发并收集报告，适合多信源侦察、多课题调研</small>
+          </div>
+        </label>
+        <label className="elf-collab-item">
+          <input
+            type="checkbox"
+            checked={!!elfCollab.team}
+            onChange={(e) => setElfCollab({ team: e.target.checked })}
+          />
+          <div className="elf-collab-info">
+            <b>团队群聊（spawn_agent_team）</b>
+            <small>组建多成员团队，共享任务列表 + 互通消息协作完成复杂任务</small>
+          </div>
+        </label>
+        <label className="elf-collab-item">
+          <input
+            type="checkbox"
+            checked={selTranslate}
+            onChange={(e) => setSelTranslate(e.target.checked)}
+          />
+          <div className="elf-collab-info">
+            <b>划词翻译与解释</b>
+            <small>在任意页面选中文字后自动弹出翻译与解释气泡，可一键转交 AI 精灵追问</small>
+          </div>
+        </label>
+      </div>
+    </div>
+  );
+}
 
 /* 工具勾选区块：在新建/编辑 Agent 表单中复用。
  * 动态从 toolRegistry 取值（含自定义工具），subscribeTools 自动同步。 */
@@ -91,16 +146,20 @@ export default function AgentsTab({
                             id="elf-avatar-upload"
                             type="file"
                             accept="image/*"
-                            onChange={(e) => {
+                            onChange={async (e) => {
                               const file = e.target.files[0];
+                              e.target.value = ''; // 允许连续选择同一文件
                               if (!file) return;
-                              const reader = new FileReader();
-                              reader.onload = (ev) => {
-                                const base64 = ev.target.result;
-                                setElfAvatar(base64);
-                                showToast('头像已更新');
-                              };
-                              reader.readAsDataURL(file);
+                              try {
+                                // v23 #1 修复头像报错：先压缩（192px JPEG），再落 localStorage；
+                                // 写入失败（配额满）时 setElfAvatar 会回滚并返回 false
+                                const base64 = await compressImageFile(file, { maxSize: 192, quality: 0.85 });
+                                const ok = setElfAvatar(base64);
+                                if (ok) showToast('头像已更新');
+                                else showToast('头像保存失败：本地存储空间不足，请清理浏览器存储后重试');
+                              } catch (err) {
+                                showToast(`头像处理失败: ${err?.message || err}`);
+                              }
                             }}
                             style={{ display: 'none' }}
                           />
@@ -118,6 +177,7 @@ export default function AgentsTab({
                         </div>
                       </div>
                     </div>
+                    <ElfCapabilityPanel />
                     <div className="setting-item">
                       <label>工作站角色</label>
                       <p className="setting-desc">管理 AI 工作站对话的角色（每个角色有独立的专长与提示词；AI 精灵为固定单例，不在此列）</p>
@@ -197,12 +257,16 @@ export default function AgentsTab({
                                   accept="image/*"
                                   id="agent-avatar-upload-new"
                                   className="elf-avatar-file-input"
-                                  onChange={(e) => {
+                                  onChange={async (e) => {
                                     const file = e.target.files[0];
+                                    e.target.value = '';
                                     if (!file) return;
-                                    const reader = new FileReader();
-                                    reader.onload = (ev) => setNewAgent(prev => ({ ...prev, avatar: ev.target.result }));
-                                    reader.readAsDataURL(file);
+                                    try {
+                                      const base64 = await compressImageFile(file, { maxSize: 192, quality: 0.85 });
+                                      setNewAgent(prev => ({ ...prev, avatar: base64 }));
+                                    } catch (err) {
+                                      showToast(`头像处理失败: ${err?.message || err}`);
+                                    }
                                   }}
                                 />
                                 <label htmlFor="agent-avatar-upload-new" className="elf-avatar-upload-btn">选择图片</label>
@@ -337,12 +401,16 @@ export default function AgentsTab({
                                   accept="image/*"
                                   id="agent-avatar-upload-edit"
                                   className="elf-avatar-file-input"
-                                  onChange={(e) => {
+                                  onChange={async (e) => {
                                     const file = e.target.files[0];
+                                    e.target.value = '';
                                     if (!file) return;
-                                    const reader = new FileReader();
-                                    reader.onload = (ev) => setEditingAgent(prev => ({ ...prev, avatar: ev.target.result }));
-                                    reader.readAsDataURL(file);
+                                    try {
+                                      const base64 = await compressImageFile(file, { maxSize: 192, quality: 0.85 });
+                                      setEditingAgent(prev => ({ ...prev, avatar: base64 }));
+                                    } catch (err) {
+                                      showToast(`头像处理失败: ${err?.message || err}`);
+                                    }
                                   }}
                                 />
                                 <label htmlFor="agent-avatar-upload-edit" className="elf-avatar-upload-btn">选择图片</label>

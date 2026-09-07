@@ -16,12 +16,15 @@
  * 全部回退到 default 色（全图同灰）。
  */
 export const TYPE_COLORS = {
-  viewpoint: '#60a5fa',   // 观点 — 蓝
-  case:     '#22c55e',    // 案例 — 绿
-  quote:    '#f59e0b',    // 金句 — 琥珀
-  data:     '#a855f7',    // 数据 — 紫
-  chart:    '#06b6d4',    // 图表 — 青
-  project:  '#f43f5e',    // 项目 — 玫瑰
+  viewpoint: '#60a5fa',   // 观点洞察 — 蓝
+  case:     '#22c55e',    // 案例拆解 — 绿
+  quote:    '#f59e0b',    // 金句语录 — 琥珀
+  data:     '#a855f7',    // 数据指标 — 紫
+  chart:    '#06b6d4',    // 图表可视化 — 青
+  project:  '#f43f5e',    // 项目仓库 — 玫瑰
+  tutorial: '#a3e635',    // 方法教程 — 青柠
+  paper:    '#818cf8',    // 论文研究 — 靛蓝
+  news:     '#f97316',    // 资讯事件 — 橙
   default:  '#64748b',    // 兜底 — 石板灰
 };
 

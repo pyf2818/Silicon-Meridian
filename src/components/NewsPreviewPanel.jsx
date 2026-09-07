@@ -72,6 +72,13 @@ export default function NewsPreviewPanel() {
       setStatus('done');
       return () => { cancelled = true; };
     }
+    // v23 #5：无 URL 可抓（本地快照/粘贴内容）且为纯文本时，直接按段落渲染，不走抓取
+    if (!item.url && local && !looksLikeMarkdown(local)) {
+      setContent(local);
+      setImages(item.imageUrl ? [item.imageUrl] : []);
+      setStatus('done');
+      return () => { cancelled = true; };
+    }
     fetchArticleDetail(item.url).then(({ text, images: imgs }) => {
       if (cancelled) return;
       const finalImgs = [...imgs];
@@ -136,11 +143,25 @@ export default function NewsPreviewPanel() {
       );
     }
     if (status === 'failed') {
+      // v23 #5：抓取失败也按段落排版——优先渲染本地快照正文（缩进阅读体验），摘要作兜底
+      const localText = String(item.fullContent || item.content || '');
+      const localParas = toParagraphs(localText).filter(p => p.trim());
       return (
-        <div className="news-preview-state">
-          原文抓取失败（站点反爬或超时），以下为卡片摘要。
-          {item.summary && <p className="news-preview-fallback">{item.summary}</p>}
-        </div>
+        <>
+          <div className="news-preview-state">
+            原文抓取失败（站点反爬或超时），以下为已保存的内容。
+          </div>
+          {localParas.length > 0 ? (
+            localParas.map((p, i) => (
+              <Fragment key={i}>
+                <p className={`news-preview-para${i === 0 ? ' lede' : ''}`}>{p}</p>
+                {imgAfter(i) && <PreviewImage src={imgAfter(i)} />}
+              </Fragment>
+            ))
+          ) : (
+            item.summary && <p className="news-preview-para lede">{item.summary}</p>
+          )}
+        </>
       );
     }
     if (isMd) {

@@ -205,7 +205,9 @@ export function useWorkflowOps({
       if (selectedWorkflowNodeId === nodeId) {
         setSelectedWorkflowNodeId(nodes[0]?.id || '');
       }
-      return { ...prev, nodes };
+      // v23 #3：同步清理与该节点相连的显式连线
+      const edges = (prev.edges || []).filter(e => e.from !== nodeId && e.to !== nodeId);
+      return { ...prev, nodes, edges };
     });
   }, [selectedWorkflowNodeId]);
 

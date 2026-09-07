@@ -102,9 +102,9 @@ export function useBookmarkMaterial({
         'industry-trends': 'viewpoint', 'emerging-tech': 'viewpoint',
         'product-launch': 'case', 'partnership': 'case',
       };
-      return catMap[item.category] || 'quote';
+      return catMap[item.category] || 'news';
     }
-    return 'quote';
+    return 'news';
   }, []);
 
   // 素材库操作

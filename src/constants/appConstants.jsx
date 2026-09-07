@@ -443,7 +443,23 @@ export const GITHUB_PERIODS = [
 
 export const REGION_MAP = { domestic: '国内', overseas: '海外', global: '全球' };
 export const MODE_MAP = { flash: '快讯', deep: '深度', technical: '干货' };
-export const MATERIAL_TYPES = { quote: '金句', data: '数据', case: '案例', viewpoint: '观点', chart: '图表', project: '项目' };
+/**
+ * v23 素材类型专业化分类（id 保持向后兼容，存量数据无需迁移）：
+ * - viewpoint 观点洞察 / data 数据指标 / case 案例拆解 / quote 金句语录（原 4 类精化命名）
+ * - chart 图表可视化 / project 项目仓库（原 2 类语义收窄，project 明确指向开源仓库）
+ * - tutorial 方法教程 / paper 论文研究 / news 资讯事件（新增 3 类高频需求，收藏兜底类型改为 news）
+ */
+export const MATERIAL_TYPES = {
+  viewpoint: '观点洞察',
+  data: '数据指标',
+  case: '案例拆解',
+  quote: '金句语录',
+  chart: '图表可视化',
+  project: '项目仓库',
+  tutorial: '方法教程',
+  paper: '论文研究',
+  news: '资讯事件',
+};
 export const ARTICLE_STATUS = { draft: '草稿', published: '已发布', archived: '已归档' };
 export const ARTICLE_TEMPLATES = { blank: '空白', briefing: '每日简报', analysis: '深度分析', tech: '技术解读' };
 export const ARTICLE_TEMPLATE_CONTENT = {

@@ -117,9 +117,7 @@ export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileM
                         aria-expanded={showContext ? contextGroupOpen : undefined}
                       >
                         <span className="nav-icon">{ICONS[item.icon]}</span>
-                        {sidebarCollapsed && item.short && (
-                          <span className="nav-short-label">{item.short}</span>
-                        )}
+                        {/* v23 #4：收起态仅显示图标（悬停有 title 提示），不再显示短文字 */}
                         {!sidebarCollapsed && (
                           <span className="nav-label-wrap">
                             <span className="nav-label">{item.label}</span>
