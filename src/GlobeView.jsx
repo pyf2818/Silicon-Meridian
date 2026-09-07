@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Globe from 'react-globe.gl';
+import { TextureLoader, Color, Vector3 } from 'three';
 
 /* ============ 地理数据：来源 → 城市（真实经纬度） ============ */
 
@@ -434,49 +435,83 @@ function RightPanel({ currentItems, onSelectItem }) {
   );
 }
 
-/* ============ 详情面板（点击点位滑出） ============ */
+/* ============ 点位小弹窗（锚定地球坐标，随旋转实时追踪） ============ */
 
-function DetailPanel({ detail, onClose, onSelectItem }) {
+const HORIZON_R2 = (100 * 1.02) ** 2; // 点可见性判据：dot(P, C) > r²（球面精确地平线）
+
+function GlobePopup({ point, onClose, onSelectItem }) {
   useEffect(() => {
-    if (!detail) return undefined;
+    if (!point) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [detail, onClose]);
+  }, [point, onClose]);
 
-  if (!detail) return null;
+  if (!point) return null;
   return (
-    <aside className="gs-detail" role="dialog" aria-label={`${detail.city} 资讯详情`}>
-      <header className="gs-detail-head">
-        <div className="gs-detail-heading">
-          <span className="gs-detail-dot" style={{ background: detail.color, boxShadow: `0 0 12px ${detail.glow}` }} />
-          <div>
-            <h3 className="gs-detail-city">{detail.city}</h3>
-            <span className="gs-detail-sub">{detail.count} 条资讯 · {detail.lat.toFixed(1)}°, {detail.lng.toFixed(1)}°</span>
-          </div>
+    <div className={`gs-popup ${point.level}`} data-city={point.city}>
+        <header className="gs-popup-head">
+          <span className="gs-detail-dot" style={{ background: point.color, boxShadow: `0 0 10px ${point.glow}` }} />
+          <strong className="gs-popup-city">{point.city}</strong>
+          <span className="gs-popup-count">{point.count} 条</span>
+          <button type="button" className="gs-detail-close" onClick={onClose} aria-label="关闭弹窗">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </header>
+        <div className="gs-popup-list">
+          {point.items.length === 0 && <div className="gs-panel-empty">该点位暂无资讯</div>}
+          {point.items.slice(0, 30).map((item, idx) => (
+            <button key={`${item.id || idx}`} type="button" className="gs-popup-item" onClick={() => onSelectItem(item)}>
+              <span className="gs-popup-item-title">{item.title}</span>
+              <span className="gs-popup-item-meta">{item.source} · {formatTime(item.publishedAt)}</span>
+            </button>
+          ))}
         </div>
-        <button type="button" className="gs-detail-close" onClick={onClose} aria-label="关闭详情">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-        </button>
-      </header>
-      <div className="gs-detail-list custom-scrollbar">
-        {detail.items.length === 0 && <div className="gs-panel-empty">该点位暂无资讯，等待下一波信号抵达…</div>}
-        {detail.items.map((item, idx) => (
-          <article key={`${item.id || idx}`} className="gs-detail-card" onClick={() => onSelectItem(item)}>
-            <div className="gs-detail-card-top">
-              <span className="gs-detail-source">{item.source || '未知来源'}</span>
-              <span className="gs-detail-time">{formatTime(item.publishedAt)}</span>
-            </div>
-            <h4 className="gs-detail-title">{item.title}</h4>
-            {item.summary && <p className="gs-detail-desc">{item.summary}</p>}
-            <div className="gs-detail-card-foot">
-              {item.category && <span className="gs-detail-tag">{CATEGORY_LABELS[item.category] || item.category}</span>}
-              {item.url && <span className="gs-detail-link">查看原文 →</span>}
-            </div>
-          </article>
-        ))}
-      </div>
-    </aside>
+        <footer className="gs-popup-foot">点击资讯查看内容预览</footer>
+    </div>
+  );
+}
+
+/* ============ 资讯内容预览窗（内联阅读，看不了才去原文） ============ */
+
+function NewsPreview({ item, onClose }) {
+  useEffect(() => {
+    if (!item) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [item, onClose]);
+
+  if (!item) return null;
+  const body = item.fullContent || item.content || item.body || item.summary || '';
+  const paragraphs = String(body).split(/\n+/).map(s => s.trim()).filter(Boolean);
+  const dateLabel = item.publishedAt ? new Date(item.publishedAt).toLocaleString('zh-CN', { hour12: false }) : '未知时间';
+
+  return (
+    <div className="gs-preview-mask" onClick={onClose} role="dialog" aria-label="资讯内容预览">
+      <article className="gs-preview" onClick={e => e.stopPropagation()}>
+        <header className="gs-preview-head">
+          <div className="gs-preview-meta">
+            <span className="gs-preview-source">{item.source || '未知来源'}</span>
+            <span className="gs-preview-time">{dateLabel}</span>
+            {item.category && <span className="gs-detail-tag">{CATEGORY_LABELS[item.category] || item.category}</span>}
+          </div>
+          <button type="button" className="gs-detail-close" onClick={onClose} aria-label="关闭预览">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </header>
+        <h2 className="gs-preview-title">{item.title || '（无标题）'}</h2>
+        <div className="gs-preview-body custom-scrollbar">
+          {paragraphs.length === 0 && <p className="gs-preview-empty">暂无正文内容，可点击下方「查看原文」访问来源页面。</p>}
+          {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+        </div>
+        {item.url && (
+          <footer className="gs-preview-foot">
+            <a className="gs-preview-link" href={item.url} target="_blank" rel="noreferrer">在浏览器查看原文 →</a>
+          </footer>
+        )}
+      </article>
+    </div>
   );
 }
 
@@ -507,11 +542,14 @@ function Timeline({ dateRange, selectedDate, setSelectedDate, isPlaying, setIsPl
 
 /* ============ 地球主体 ============ */
 
-function GlobeStage({ markerData, ringsData, arcsData, width, height, onSelectCity, interactive }) {
+function GlobeStage({ markerData, ringsData, arcsData, width, height, onPreviewItem, interactive }) {
   const globeRef = useRef(null);
   const idleTimerRef = useRef(0);
+  const [popupPoint, setPopupPoint] = useState(null);
+  const popupWrapRef = useRef(null);
 
   // 就绪后配置 controls：拖拽/滚轮（OrbitControls 原生支持）+ 闲置自动巡航
+  // v25.1 逼真化：海洋镜面反射（earth-water 镜面图）+ 地形凹凸增强 + 深度拉近（可放大到地区级）
   const onGlobeReady = useCallback(() => {
     const globe = globeRef.current;
     const controls = globe?.controls?.();
@@ -520,17 +558,31 @@ function GlobeStage({ markerData, ringsData, arcsData, width, height, onSelectCi
     controls.autoRotateSpeed = 0.55;
     controls.enableDamping = true;
     controls.dampingFactor = 0.12;
-    controls.minDistance = 150;  // 防止穿模
-    controls.maxDistance = 620;  // 防止拉太远
+    controls.minDistance = 106;  // 贴地放大（半径100），可看清地区轮廓
+    controls.maxDistance = 620;
+    controls.zoomSpeed = 1.4;
     controls.addEventListener('start', () => {
       controls.autoRotate = false;
       clearTimeout(idleTimerRef.current);
     });
     controls.addEventListener('end', () => {
       clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = setTimeout(() => { controls.autoRotate = true; }, 6000);
+      idleTimerRef.current = setTimeout(() => {
+        // 贴地观察时恢复自转会晕 → 只在较远距离恢复巡航
+        if (controls.getDistance() > 240) controls.autoRotate = true;
+      }, 6000);
     });
     globe.pointOfView({ lat: 26, lng: 106, altitude: 2.35 }, 0);
+    const material = globe.globeMaterial?.();
+    if (material) {
+      material.bumpScale = 12;
+      new TextureLoader().load('/textures/earth-water.png', (texture) => {
+        material.specularMap = texture;
+        material.specular = new Color('#3d6f9e');
+        material.shininess = 16;
+        material.needsUpdate = true;
+      });
+    }
   }, []);
 
   useEffect(() => () => clearTimeout(idleTimerRef.current), []);
@@ -550,10 +602,50 @@ function GlobeStage({ markerData, ringsData, arcsData, width, height, onSelectCi
     el.title = `${d.city} · ${d.count} 条资讯`;
     el.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      onSelectCity(d);
+      setPopupPoint(d);
     });
     return el;
-  }, [onSelectCity]);
+  }, []);
+
+  // rAF 追踪：弹窗钉在点的屏幕投影上；转到背面（地平线以下）自动隐藏
+  useEffect(() => {
+    if (!popupPoint) return undefined;
+    let raf = 0;
+    const update = () => {
+      const globe = globeRef.current;
+      const el = popupWrapRef.current;
+      if (globe && el) {
+        const { lat, lng } = popupPoint;
+        const world = globe.getCoords(lat, lng, 0.015);
+        const camera = globe.camera?.();
+        const camPos = camera?.position;
+        if (world && camPos) {
+          const visible = world.x * camPos.x + world.y * camPos.y + world.z * camPos.z > HORIZON_R2;
+          if (!visible) {
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+          } else {
+            // react-globe.gl ref 未透传 getScreenCoordinates → 手动投影：世界坐标 → NDC → 画布像素
+            // （getCoords 返回普通 {x,y,z}，需包一层 THREE.Vector3；project() 必须传相机本体而非 position）
+            const ndc = new Vector3(world.x, world.y, world.z).project(camera);
+            const sc = { x: (ndc.x + 1) / 2 * width, y: (1 - (ndc.y + 1) / 2) * height };
+            if (Number.isFinite(sc.x)) {
+              const x = Math.max(170, Math.min(width - 170, sc.x));
+              const flipBelow = sc.y < 260;
+              const y = Math.max(120, Math.min(height - 110, sc.y));
+              el.style.opacity = '1';
+              el.style.pointerEvents = 'none';
+              el.dataset.flip = flipBelow ? 'below' : 'above';
+              el.style.transform = `translate(${x}px, ${y}px)`;
+            }
+          }
+        }
+      }
+      raf = requestAnimationFrame(update);
+    };
+    raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
+  }, [popupPoint, width, height]);
 
   return (
     <div className="gs-stage" style={{ width, height }}>
@@ -591,6 +683,13 @@ function GlobeStage({ markerData, ringsData, arcsData, width, height, onSelectCi
         arcAltitudeAutoScale={0.42}
         enablePointerInteraction={Boolean(interactive)}
       />
+
+      {/* 点位小弹窗：锚定地球坐标，随旋转实时追踪，背面隐藏 */}
+      {popupPoint && (
+        <div className="gs-popup-wrap" ref={popupWrapRef}>
+          <GlobePopup point={popupPoint} onClose={() => setPopupPoint(null)} onSelectItem={onPreviewItem} />
+        </div>
+      )}
     </div>
   );
 }
@@ -606,7 +705,7 @@ function GlobeDashboard({ items, onClose }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterRegion, setFilterRegion] = useState('all');
-  const [selectedCity, setSelectedCity] = useState(null);
+  const [previewItem, setPreviewItem] = useState(null);
   const tickerTrackRef = useRef(null);
 
   const followedKeywords = useMemo(() => {
@@ -714,7 +813,6 @@ function GlobeDashboard({ items, onClose }) {
   const globeHeight = Math.max(320, h - topHeight - bottomHeight - 40);
 
   const showSidePanels = sideWidth > 0;
-  const openCity = useCallback(city => setSelectedCity(city), []);
 
   return (
     <div className="gs-dashboard" role="application" aria-label="全球科技资讯态势大屏">
@@ -779,7 +877,7 @@ function GlobeDashboard({ items, onClose }) {
           arcsData={arcsData}
           width={globeWidth}
           height={globeHeight}
-          onSelectCity={openCity}
+          onPreviewItem={setPreviewItem}
           interactive
         />
         <div className="gs-stage-caption">
@@ -831,8 +929,8 @@ function GlobeDashboard({ items, onClose }) {
         </div>
       </footer>
 
-      {/* 点击点位 → 详情面板 */}
-      <DetailPanel detail={selectedCity} onClose={() => setSelectedCity(null)} onSelectItem={onSelectItem} />
+      {/* 点击资讯 → 内容预览窗 */}
+      <NewsPreview item={previewItem} onClose={() => setPreviewItem(null)} />
     </div>
   );
 }
@@ -841,7 +939,7 @@ function GlobeDashboard({ items, onClose }) {
 
 function GlobeEmbed({ items, onExpand }) {
   const { w } = useViewportSize();
-  const [selectedCity, setSelectedCity] = useState(null);
+  const [previewItem, setPreviewItem] = useState(null);
   const { markerData, ringsData, arcsData } = useGlobeData(items);
   const width = Math.max(320, Math.min(w - 60, 920));
   const height = 400;
@@ -881,12 +979,10 @@ function GlobeEmbed({ items, onExpand }) {
           arcsData={arcsData}
           width={width}
           height={height}
-          onSelectCity={setSelectedCity}
+          onPreviewItem={setPreviewItem}
           interactive
         />
-        {selectedCity && (
-          <DetailPanel detail={selectedCity} onClose={() => setSelectedCity(null)} onSelectItem={item => { if (item?.url) window.open(item.url, '_blank'); }} />
-        )}
+        {previewItem && <NewsPreview item={previewItem} onClose={() => setPreviewItem(null)} />}
       </div>
       <button type="button" className="gs-expand" onClick={onExpand} title="进入全屏指挥大屏">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></svg>

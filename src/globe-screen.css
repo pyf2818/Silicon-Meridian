@@ -401,3 +401,128 @@
   .gs-top-stats { display: none; }
   .gs-embed { min-height: 460px; }
 }
+
+/* ============================================================
+   v25.1 追加：点位小弹窗 / 资讯预览窗 / 滚动条隐藏 / 卫星级细节
+   ============================================================ */
+
+/* 全局隐藏滚动条（保留滚动能力） */
+.gs-panel,
+.gs-popup-list,
+.gs-preview-body,
+.gs-ticker-track {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.gs-panel::-webkit-scrollbar,
+.gs-popup-list::-webkit-scrollbar,
+.gs-preview-body::-webkit-scrollbar,
+.gs-ticker-track::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* ---------- 点位小弹窗 ---------- */
+.gs-popup-wrap {
+  position: absolute; left: 0; top: 0; z-index: 15;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.gs-popup {
+  pointer-events: auto;
+  display: flex; flex-direction: column;
+  width: 264px; max-height: 340px;
+  transform: translate(-50%, calc(-100% - 18px));
+  background: linear-gradient(165deg, rgba(10, 22, 40, 0.95), rgba(6, 12, 24, 0.92));
+  border: 1px solid rgba(34, 211, 238, 0.4); border-radius: 12px;
+  box-shadow: 0 10px 36px rgba(2, 8, 20, 0.7), 0 0 22px rgba(34, 211, 238, 0.12);
+  backdrop-filter: blur(12px);
+  animation: gs-popup-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  cursor: default;
+}
+.gs-popup-wrap[data-flip="below"] .gs-popup { transform: translate(-50%, 18px); }
+@keyframes gs-popup-in { from { opacity: 0; scale: 0.92; } to { opacity: 1; scale: 1; } }
+
+/* 弹窗小箭头 */
+.gs-popup::after {
+  content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px;
+  translate: -50% 0; rotate: 45deg;
+  background: rgba(8, 16, 30, 0.95);
+  border-right: 1px solid rgba(34, 211, 238, 0.4);
+  border-bottom: 1px solid rgba(34, 211, 238, 0.4);
+}
+.gs-popup-wrap[data-flip="below"] .gs-popup::after {
+  bottom: auto; top: -6px;
+  border: 0; border-left: 1px solid rgba(34, 211, 238, 0.4);
+  border-top: 1px solid rgba(34, 211, 238, 0.4);
+}
+
+.gs-popup-head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border-bottom: 1px solid rgba(34, 211, 238, 0.18);
+}
+.gs-popup-city { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 800; color: #f1f5f9; }
+.gs-popup-count { font-family: var(--font-mono, monospace); font-size: 10px; color: #67e8f9; white-space: nowrap; }
+.gs-popup .gs-detail-close { width: 22px; height: 22px; flex-shrink: 0; }
+.gs-popup-list { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; overflow-y: auto; }
+.gs-popup-item {
+  display: flex; flex-direction: column; gap: 3px; width: 100%;
+  padding: 7px 9px; border: 0; border-radius: 8px;
+  background: transparent; text-align: left; cursor: pointer;
+  transition: background 0.15s;
+}
+.gs-popup-item:hover { background: rgba(34, 211, 238, 0.12); }
+.gs-popup-item-title {
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  font-size: 11.5px; font-weight: 600; line-height: 1.4; color: #e2e8f0;
+}
+.gs-popup-item:hover .gs-popup-item-title { color: #a5f3fc; }
+.gs-popup-item-meta { font-size: 9.5px; color: #64748b; }
+.gs-popup-foot { padding: 7px 12px; border-top: 1px solid rgba(34, 211, 238, 0.14); font-size: 9.5px; letter-spacing: 0.06em; color: #475569; text-align: center; }
+
+/* ---------- 资讯内容预览窗 ---------- */
+.gs-preview-mask {
+  position: absolute; inset: 0; z-index: 40;
+  display: grid; place-items: center;
+  background: rgba(2, 6, 14, 0.62);
+  backdrop-filter: blur(4px);
+  animation: gs-fade-in 0.25s ease both;
+}
+.gs-preview {
+  display: flex; flex-direction: column;
+  width: min(680px, 92vw); max-height: min(78vh, 720px);
+  padding: 0;
+  background: linear-gradient(168deg, rgba(12, 24, 44, 0.98), rgba(7, 13, 26, 0.97));
+  border: 1px solid rgba(34, 211, 238, 0.35); border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(2, 8, 20, 0.8), 0 0 40px rgba(34, 211, 238, 0.12), inset 0 1px 0 rgba(103, 232, 249, 0.3);
+  overflow: hidden;
+  animation: gs-preview-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes gs-preview-in { from { opacity: 0; translate: 0 22px; scale: 0.97; } to { opacity: 1; translate: 0 0; scale: 1; } }
+
+.gs-preview-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid rgba(34, 211, 238, 0.16);
+}
+.gs-preview-meta { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.gs-preview-source { font-size: 12px; font-weight: 800; color: #67e8f9; }
+.gs-preview-time { font-family: var(--font-mono, monospace); font-size: 10.5px; color: #64748b; }
+
+.gs-preview-title {
+  margin: 0; padding: 16px 20px 6px;
+  font-size: 19px; font-weight: 800; line-height: 1.45; color: #f1f5f9;
+  text-shadow: 0 0 20px rgba(103, 232, 249, 0.15);
+}
+.gs-preview-body {
+  flex: 1; padding: 10px 20px 18px; overflow-y: auto;
+  font-size: 13px; line-height: 1.85; color: #cbd5e1;
+}
+.gs-preview-body p { margin: 0 0 10px; }
+.gs-preview-empty { color: #64748b; font-size: 12px; font-style: italic; }
+.gs-preview-foot { padding: 12px 20px; border-top: 1px solid rgba(34, 211, 238, 0.14); text-align: right; }
+.gs-preview-link {
+  font-size: 12px; font-weight: 700; color: #67e8f9; text-decoration: none;
+  padding: 6px 14px; border: 1px solid rgba(34, 211, 238, 0.35); border-radius: 999px;
+  transition: all 0.2s;
+}
+.gs-preview-link:hover { background: rgba(34, 211, 238, 0.12); box-shadow: 0 0 14px rgba(34, 211, 238, 0.25); }
+
+/* 嵌入模式预览窗尺寸 */
+.gs-embed .gs-preview { width: min(620px, 94%); max-height: 88%; }

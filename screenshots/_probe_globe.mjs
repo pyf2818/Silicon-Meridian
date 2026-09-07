@@ -67,25 +67,38 @@ const globeReady = await page.evaluate(markerCount => ({
 }), markers);
 console.log('地球与点位:', JSON.stringify(globeReady));
 
-/* 点击点位 → 详情面板 */
+/* 点击点位 → 小弹窗 → 点资讯 → 内容预览窗 */
 let detail = { clicked: false };
 if (markers > 0) {
   await page.evaluate(() => {
     const m = document.querySelector('.gs-marker');
     m?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(700);
   detail = await page.evaluate(() => ({
     clicked: true,
-    panel: !!document.querySelector('.gs-detail'),
-    city: document.querySelector('.gs-detail-city')?.textContent || '',
-    cards: document.querySelectorAll('.gs-detail-card').length,
-    emptyHint: (document.querySelector('.gs-detail .gs-panel-empty')?.textContent || '').includes('暂无资讯'),
+    popup: !!document.querySelector('.gs-popup'),
+    popupCity: document.querySelector('.gs-popup-city')?.textContent || '',
+    popupItems: document.querySelectorAll('.gs-popup-item').length,
   }));
-  /* Esc 关闭 */
+  /* 点资讯 → 预览窗 */
+  await page.evaluate(() => {
+    const item = document.querySelector('.gs-popup-item');
+    item?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await page.waitForTimeout(600);
+  detail.preview = await page.evaluate(() => ({
+    preview: !!document.querySelector('.gs-preview'),
+    title: (document.querySelector('.gs-preview-title')?.textContent || '').slice(0, 40),
+    hasBody: document.querySelectorAll('.gs-preview-body p').length > 0,
+    hasLink: !!document.querySelector('.gs-preview-link'),
+  }));
+  /* Esc 关闭预览 → Esc 关闭弹窗 */
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(300);
-  detail.closedByEsc = !(await page.evaluate(() => !!document.querySelector('.gs-detail')));
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+  detail.closedByEsc = !(await page.evaluate(() => !!document.querySelector('.gs-preview') || !!document.querySelector('.gs-popup')));
 }
 console.log('点位详情面板:', JSON.stringify(detail));
 
