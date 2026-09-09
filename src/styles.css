@@ -30132,3 +30132,182 @@ body {
   .ofc-name, .ofc-chip { font-size: 8px; }
   .ofc-floor { height: 180px; }
 }
+
+/* ===== v26 #17 像素养成模拟游戏（OfficeGame 大屏覆盖层） ===== */
+.team-office-game {
+  flex: none; padding: 2px 8px; border-radius: 5px; margin-left: 4px;
+  border: 1px solid color-mix(in srgb, var(--accent-amber, #c9a961) 55%, transparent);
+  background: color-mix(in srgb, var(--accent-amber, #c9a961) 10%, transparent);
+  color: var(--accent-amber, #c9a961); font-size: 9px; font-weight: 700; cursor: pointer;
+}
+.team-office-game:hover { background: color-mix(in srgb, var(--accent-amber, #c9a961) 20%, transparent); }
+
+.ogame-overlay {
+  position: fixed; inset: 0; z-index: 9500;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--bg-primary) 62%, transparent);
+  animation: ofcFadeIn 0.2s ease;
+}
+@keyframes ofcFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.ogame {
+  width: min(920px, 94vw); height: min(640px, 90vh);
+  display: flex; flex-direction: column;
+  border: 2px solid var(--border-color); border-radius: 14px;
+  background: var(--bg-primary);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.ogame-topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
+}
+.ogame-title { font-size: 14px; font-weight: 800; letter-spacing: 0.06em; color: var(--text-primary); }
+.ogame-coins {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 800;
+  border: 1px solid color-mix(in srgb, var(--accent-amber, #c9a961) 55%, transparent);
+  color: var(--accent-amber, #c9a961);
+  background: color-mix(in srgb, var(--accent-amber, #c9a961) 10%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.ogame-coins i {
+  width: 10px; height: 10px; border-radius: 2px;
+  background: linear-gradient(135deg, #ffd76b, #c9a961);
+  border: 1px solid #8a7136;
+}
+.ogame-scene-tabs { display: flex; gap: 4px; margin-left: auto; }
+.ogame-scene-tabs button {
+  padding: 4px 14px; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 700;
+  border: 1px solid var(--border-color); background: transparent; color: var(--text-muted);
+}
+.ogame-scene-tabs button.active { border-color: var(--accent-cyan); color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
+.ogame-scene-tabs button:disabled { opacity: 0.45; cursor: not-allowed; }
+.ogame-close {
+  flex: none; width: 26px; height: 26px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); font-size: 12px;
+}
+.ogame-close:hover { color: var(--status-critical); border-color: var(--status-critical); }
+
+.ogame-toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+.ogame-mode {
+  padding: 4px 12px; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 700;
+  border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-muted);
+}
+.ogame-mode.active { border-color: var(--accent-cyan); color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
+.ogame-mode.is-salary.active { border-color: var(--accent-amber, #c9a961); color: var(--accent-amber, #c9a961); background: color-mix(in srgb, var(--accent-amber, #c9a961) 10%, transparent); }
+.ogame-foods { display: inline-flex; gap: 4px; }
+.ogame-food {
+  padding: 4px 10px; border-radius: 7px; cursor: pointer; font-size: 11px;
+  border: 1px dashed var(--border-color); background: var(--bg-primary); color: var(--text-muted);
+}
+.ogame-food.active { border-style: solid; border-color: var(--status-ok); color: var(--status-ok); }
+.ogame-food em { font-style: normal; font-size: 9.5px; color: var(--accent-amber, #c9a961); font-weight: 700; }
+.ogame-hint { margin-left: auto; font-size: 10.5px; color: var(--text-muted); }
+
+/* 场景大屏（复用 ofc-wall/ofc-floor，放大） */
+.ogame-scene { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ofc-wall-big { height: 84px; }
+.ofc-floor-big { flex: 1; height: auto; }
+.ogame-lounge-sign {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+  padding: 3px 16px; border: 2px solid var(--border-color); border-radius: 2px;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.3em; color: var(--text-muted);
+  background: color-mix(in srgb, var(--bg-primary) 84%, var(--border-color));
+}
+.ogame-desk-only { position: absolute; margin: -12px 0 0 -20px; opacity: 0.75; }
+
+/* 休息区物件：沙发 / 电视 / 饮水机 */
+.ogame-sofa { position: absolute; width: 74px; height: 34px; }
+.ogame-sofa-a { left: 8%; top: 46%; }
+.ogame-sofa-b { right: 10%; top: 60%; }
+.ogame-sofa i {
+  position: absolute; left: 0; bottom: 0; width: 74px; height: 22px;
+  background: linear-gradient(180deg, #5a7db0 0 60%, #48648c 60% 100%);
+  border: 2px solid var(--border-color); border-radius: 4px;
+}
+.ogame-sofa b {
+  position: absolute; left: -4px; bottom: 14px; width: 10px; height: 24px;
+  background: #48648c; border: 2px solid var(--border-color); border-radius: 3px;
+}
+.ogame-tv {
+  position: absolute; left: 44%; top: 8%; width: 64px; height: 40px;
+  border: 3px solid #1c2230; border-radius: 3px; background: #0e1520;
+}
+.ogame-tv i {
+  display: block; width: 100%; height: 100%;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 35%, #0e1520), #0e1520);
+}
+.ogame-cooler-l { left: auto; right: 4%; top: 40%; }
+
+/* 成员单元（游戏版：更大 + 可拖拽） */
+.ogame-unit {
+  position: absolute; width: 96px; margin: -30px 0 0 -48px;
+  display: flex; flex-direction: column; align-items: center;
+  cursor: grab; touch-action: none;
+  transition: left 1.2s cubic-bezier(0.45, 0, 0.55, 1), top 1.2s cubic-bezier(0.45, 0, 0.55, 1);
+}
+.ogame-unit.is-dragging { cursor: grabbing; transition: none; z-index: 99 !important; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.3)); }
+.ogame-unit:active { cursor: grabbing; }
+.ogame-unit .ofc-person { animation: none; }
+.ogame-unit.is-working .ofc-person { animation: ofcType 0.55s steps(2) infinite; }
+.ogame-unit.is-claiming .ofc-person { animation: ofcThink 1.6s steps(2) infinite; }
+.ogame-unit.is-done .ofc-person { animation: ofcJump 0.6s steps(4) 2; }
+.ogame-unit.is-idle .ofc-person { animation: ofcSway 2.8s steps(2) infinite; }
+.ogame-unit.is-lunch .ofc-person { animation: ofcBob 0.8s steps(2) infinite; }
+.ogame-name {
+  margin-top: 2px; font-size: 10.5px; font-weight: 700; color: var(--text-primary);
+  max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 三维属性条：饱食/精力/心情 */
+.ogame-stats { display: flex; flex-direction: column; gap: 2px; margin-top: 3px; width: 74px; }
+.ogame-bar {
+  position: relative; display: block; height: 6px; border-radius: 2px;
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-color) 80%, transparent);
+  overflow: hidden;
+}
+.ogame-bar i {
+  position: absolute; left: 0; top: 0; bottom: 0; min-width: 2px;
+  transition: width 0.6s ease;
+}
+.ogame-bar.is-hunger i { background: linear-gradient(90deg, #d98a3d, #f2b25c); }
+.ogame-bar.is-energy i { background: linear-gradient(90deg, #3d8ad9, #5cc8f2); }
+.ogame-bar.is-mood i { background: linear-gradient(90deg, #d95c9a, #f28ab8); }
+.ogame-bar.is-low i { background: var(--status-critical); animation: ofcBlink 1.2s steps(2) infinite; }
+.ogame-chip {
+  margin-top: 3px; padding: 1px 8px; border-radius: 3px;
+  font-size: 9px; font-weight: 700;
+  border: 1px solid var(--border-color); color: var(--text-muted); background: var(--bg-primary);
+}
+.ogame-chip.is-busy { border-color: var(--status-info); color: var(--status-info); }
+
+/* 粒子：爱心/金币/食物/烟花 */
+.ogame-pt {
+  position: absolute; z-index: 50; width: 8px; height: 8px;
+  pointer-events: none;
+  animation: ofcParticle 1.3s ease-out forwards;
+}
+.ogame-pt.is-heart { background: #f26d9d; box-shadow: -4px 0 0 #f26d9d, 4px 0 0 #f26d9d, 0 -4px 0 #f26d9d, -2px -6px 0 #f26d9d, 2px -6px 0 #f26d9d, -6px -2px 0 #f26d9d, 6px -2px 0 #f26d9d; }
+.ogame-pt.is-coin { background: #ffd76b; border: 1px solid #8a7136; border-radius: 2px; }
+.ogame-pt.is-food { background: #7ec97e; border-radius: 2px; }
+.ogame-pt.is-firework {
+  width: 6px; height: 6px;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 6px var(--accent-cyan);
+}
+.ogame-pt.is-firework:nth-child(3n) { background: var(--accent-amber, #c9a961); box-shadow: 0 0 6px var(--accent-amber, #c9a961); }
+.ogame-pt.is-firework:nth-child(3n+1) { background: var(--accent-rose, #ff6b8a); box-shadow: 0 0 6px var(--accent-rose, #ff6b8a); }
+@keyframes ofcParticle {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--pt-dx, 0px), var(--pt-dy, -40px)) scale(0.4); opacity: 0; }
+}
+
+.ogame-foot {
+  padding: 8px 14px; border-top: 1px solid var(--border-color);
+  font-size: 10.5px; color: var(--text-muted); background: var(--bg-secondary);
+}
