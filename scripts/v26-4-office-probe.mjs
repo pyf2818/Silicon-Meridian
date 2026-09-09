@@ -65,10 +65,20 @@ try {
     }));
     const wall = !!document.querySelector('.ofc-wall');
     const floor = !!document.querySelector('.ofc-floor');
+    const decor = {
+      window: !!document.querySelector('.ofc-window'),
+      clock: !!document.querySelector('.ofc-clock'),
+      door: !!document.querySelector('.ofc-door'),
+      board: !!document.querySelector('.ofc-board'),
+      poster: !!document.querySelector('.ofc-poster'),
+      rug: !!document.querySelector('.ofc-rug'),
+      cooler: !!document.querySelector('.ofc-cooler'),
+      plants: document.querySelectorAll('.ofc-plant').length,
+    };
     return {
       hasPanel: !!panel,
       live: panel?.querySelector('.team-office-live')?.textContent?.trim() || '',
-      wall, floor, units,
+      wall, floor, decor, units,
     };
   });
   console.log('[probe] office:', JSON.stringify(state, null, 1));
@@ -88,7 +98,9 @@ try {
   // 故探针预置的「running」必然显示为已交付——执行中/思考中等真实运行态由 officeScene 单测覆盖。
   const hasDelivered = units.some(u => u.chip === '已交付');
   const hasName = units.some(u => u.name === '撰写者'); // preset 解析链路（resolveMemberPreset）
-  ok = state.hasPanel && state.wall && state.floor
+  const d = state.decor || {};
+  const decorOk = d.window && d.clock && d.door && d.board && d.poster && d.rug && d.cooler && d.plants === 2;
+  ok = state.hasPanel && state.wall && state.floor && decorOk
     && units.length === 2
     && units.every(u => u.hasPerson && u.hasDesk)
     && hasDelivered && hasName
