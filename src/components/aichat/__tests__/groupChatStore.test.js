@@ -61,22 +61,22 @@ describe('groupChatStore v9：system 系统行', () => {
   });
 });
 
-describe('groupChatStore v9：群公告', () => {
-  it('setChatAnnouncement 写入 + 公告内容以系统行发进群（成员注意）', async () => {
+describe('groupChatStore v26：目标（Goal，原群公告）', () => {
+  it('setChatAnnouncement 写入 + 目标内容以系统行发进群（成员注意）', async () => {
     const s = await freshStore();
     expect(s.setChatAnnouncement('  用 AI 放大一个人的产出  ')).toBe(true);
     const chat = s.getActiveChat();
     expect(chat.announcement).toBe('用 AI 放大一个人的产出');
-    // 公告是环境设定：保存后把内容发进群里让成员注意
+    // 目标是环境设定：保存后把内容发进群里让成员注意（v26 群公告已改造为 Goal）
     expect(chat.messages.at(-1).role).toBe('system');
     expect(chat.messages.at(-1).content).toContain('用 AI 放大一个人的产出');
-    expect(chat.messages.at(-1).content).toContain('群公告');
+    expect(chat.messages.at(-1).content).toContain('团队目标');
     // 内容未变化时返回 false，不再刷事件
     expect(s.setChatAnnouncement('用 AI 放大一个人的产出')).toBe(false);
     // 空白串 = 清空公告（相对当前非空公告是一次变更）
     expect(s.setChatAnnouncement('   ')).toBe(true);
     expect(s.getActiveChat().announcement).toBe('');
-    expect(s.getActiveChat().messages.at(-1).content).toBe('清空了群公告');
+    expect(s.getActiveChat().messages.at(-1).content).toBe('清空了团队目标（Goal）');
     // 已是空时再传空：无变化
     expect(s.setChatAnnouncement('')).toBe(false);
   });

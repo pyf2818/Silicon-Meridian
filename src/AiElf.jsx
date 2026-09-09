@@ -96,7 +96,9 @@ export default function AiElf({
     });
     if (externalQuotedContext.suggestedPrompt) setInputText(externalQuotedContext.suggestedPrompt);
     setIsOpen(true);
-  }, [externalQuotedContext?.id]);
+    // 依赖对象本身（每次 set 都是新对象）：只依赖 ?.id 的话，不带 id 的引用
+    // （如划词「问精灵」）id 恒为 undefined → 副作用不触发 → 窗口不弹出
+  }, [externalQuotedContext]);
 
   // 初始化位置 - 右下角
   useEffect(() => {

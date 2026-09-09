@@ -237,3 +237,22 @@
   padding-top: 0;
   margin-top: 0;
 }
+
+/* ---------- 9. 背景粒子透出（v26）：全屏级面板改半透明毛玻璃 ----------
+   粒子画布 ParticleField 在 z-index:-1 持续运行，但默认落地页（AI 工作站）
+   整屏不透明面板把背景盖死 → 动态背景完全不可见。
+   这里只降「全屏级容器」的底色不透明度并加毛玻璃保文字可读；
+   卡片 / 弹层 / 局部面板一律不动。颜色走 color-mix(变量)，深浅主题自适应。 */
+.sidebar,
+.sidebar-footer {
+  background: color-mix(in srgb, var(--bg-secondary) 64%, transparent);
+}
+.ai-chat-panel-main {
+  background: color-mix(in srgb, var(--surface-workbench) 56%, transparent);
+}
+.agent-tabs {
+  background: color-mix(in srgb, var(--bg-base, var(--bg-secondary)) 52%, transparent);
+}
+.chat-messages {
+  background: transparent;
+}

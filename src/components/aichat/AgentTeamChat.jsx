@@ -25,13 +25,15 @@ import { downloadMarkdown } from '../../utils/workspace.js';
 import {
   getGroupState, getActiveChat, subscribeGroup, inviteMember, removeMember,
   addGroupMessage, updateGroupMessage, setGroupRunning, clearGroupChat,
-  setChatAnnouncement,
+  setChatAnnouncement, setChatGoal, getChatGoal,
   resolveMemberPreset, getAllRolePresets, subscribeCustomRoles, hueOfMemberId,
 } from './groupChatStore.js';
 import { showToast } from '../../utils/toast.js';
 
 /** 认领语义 → 标签文案（Phase 1 气泡角标） */
 const KIND_LABEL = { claim: '认领', watch: '关注', bystander: '旁观' };
+/** Goal 状态 → 面板徽标文案（v26 #12） */
+const GOAL_STATUS_LABEL = { idle: '待启动', running: '推进中', done: '已达成', stopped: '已暂停', failed: '异常退出' };
 /** 时间分隔线阈值：相邻消息间隔超过 5 分钟才插（微信同款节奏） */
 const DIVIDER_GAP_MS = 5 * 60 * 1000;
 
@@ -56,10 +58,10 @@ function parseMentions(text, memberPresets) {
 
 /** 群聊消息 → 共享上下文转写（全员可见的同一份"会议室白板"）。
  *  system 系统行是界面事件（邀请/接力等），不进 LLM 白板；
- *  群公告是环境设定，作为转写头注入每一轮（全员始终可见）。 */
+ *  团队目标（Goal）是环境设定，作为转写头注入每一轮（全员始终可见）。 */
 function buildSharedTranscript(messages, limit = 14, announcement = '') {
   const head = announcement
-    ? `【群公告 · 环境设定】（既定目标与约束，全员始终遵守）\n${announcement}\n\n`
+    ? `【团队目标 · Goal】（环境设定：既定目标与约束，全员始终遵守）\n${announcement}\n\n`
     : '';
   const recent = messages
     .filter(m => m.role !== 'system' && m.status !== 'running' && m.content)
@@ -142,6 +144,10 @@ export default function AgentTeamChat({
   const roster = active.roster || [];
   const messages = active.messages || [];
   const running = Boolean(snap.running);
+  // v26 #12：Goal 运行状态（旧群聊数据无 goal 字段时给默认值）
+  const goalStatus = active.goal?.status || 'idle';
+  const goalRound = Number(active.goal?.round) || 0;
+  const goalMaxRounds = Number(active.goal?.maxRounds) || 8;
 
   const [input, setInput] = useState('');
   const [mentionQuery, setMentionQuery] = useState(null); // null | string（@后的过滤词）
@@ -157,6 +163,7 @@ export default function AgentTeamChat({
   const [atBottom, setAtBottom] = useState(true);
   const [unread, setUnread] = useState(0);
   const abortRef = useRef(null);
+  const goalAbortRef = useRef(null); // Goal 自主循环的中止控制器（独立于单轮消息）
   const inputRef = useRef(null);
   const streamElRef = useRef(null);
   const panelRef = useRef(null);
@@ -193,6 +200,21 @@ export default function AgentTeamChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
+  // 流式贴底锚定：合并到 rAF 下一帧执行，避免在布局中段强制写 scrollTop 引发抖动；
+  // pending 标记防止同一帧堆积多个锚定任务。
+  // ⚠️ 必须声明在所有引用它的 useEffect 之前：依赖数组在渲染阶段就会求值，
+  //    声明靠后会命中 TDZ —— Cannot access 'anchorToBottom' before initialization。
+  const anchorRafRef = useRef(0);
+  const anchorToBottom = useCallback(() => {
+    if (anchorRafRef.current) return;
+    anchorRafRef.current = requestAnimationFrame(() => {
+      anchorRafRef.current = 0;
+      if (!atBottomRef.current) return;
+      const el = streamElRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  }, []);
+
   useEffect(() => {
     const grew = messages.length > prevCountRef.current;
     prevCountRef.current = messages.length;
@@ -205,18 +227,6 @@ export default function AgentTeamChat({
   }, [messages.length, anchorToBottom]);
 
   const lastLen = messages.length ? String(messages[messages.length - 1]?.content || '').length : 0;
-  // 流式贴底锚定：合并到 rAF 下一帧执行，避免在布局中段强制写 scrollTop 引发抖动；
-  // pending 标记防止同一帧堆积多个锚定任务。
-  const anchorRafRef = useRef(0);
-  const anchorToBottom = useCallback(() => {
-    if (anchorRafRef.current) return;
-    anchorRafRef.current = requestAnimationFrame(() => {
-      anchorRafRef.current = 0;
-      if (!atBottomRef.current) return;
-      const el = streamElRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
-    });
-  }, []);
   useEffect(() => {
     if (atBottomRef.current) anchorToBottom(); // 流式增长用瞬时锚定，避免 smooth 动画互相打架
   }, [lastLen, running, panelOpen, anchorToBottom]);
@@ -295,7 +305,7 @@ export default function AgentTeamChat({
     setEditingAnn(true);
   }, [active.announcement]);
   const saveAnnouncement = useCallback(() => {
-    if (setChatAnnouncement(annDraft)) showToast('群公告已更新');
+    if (setChatAnnouncement(annDraft)) showToast('团队目标（Goal）已更新');
     setEditingAnn(false);
   }, [annDraft]);
 
@@ -423,6 +433,76 @@ export default function AgentTeamChat({
     );
   }, [runtime]);
 
+  /** 两阶段广播流水线（认领 → 产出）：普通消息与 Goal 自动循环共用。
+   *  返回 claims Map（presetId → { preset, claimText, kind }）。 */
+  const runRoundPhases = useCallback(async ({ controller, runMember, ordered, mentionedIds, userText, runId }) => {
+    /* ---- Phase 1：全员广播 · 角色认领（v16 并行：每个成员都是独立个体，同时认领） ---- */
+    const claimResults = await Promise.allSettled(ordered.map(async (preset) => {
+      if (controller.signal.aborted) return null;
+      const placeholder = addGroupMessage({
+        role: 'agent', agentId: preset.id, agentName: preset.name,
+        content: '', status: 'running', meta: { phase: 'claim', runId },
+      });
+      if (!placeholder?.id) throw new Error('占位消息创建失败');
+      const shared = buildSharedTranscript(getActiveChat().messages.filter(m => m.id !== placeholder.id), 14, active.announcement);
+      const objective = buildClaimObjective(preset, shared, userText);
+      const result = await runMember(preset, objective, placeholder);
+      const claimText = result.status === 'done' && result.report
+        ? String(result.report).trim()
+        : `⚠️ ${result.error || '认领未产出'}`;
+      // 认领语义解析：标记优先；无标记时被 @ 者视为认领、其余视为关注
+      const kind = claimText.startsWith('【认领】') ? 'claim'
+        : claimText.startsWith('【关注】') ? 'watch'
+          : claimText.startsWith('【旁观】') ? 'bystander'
+            : (mentionedIds.has(preset.id) ? 'claim' : 'watch');
+      updateGroupMessage(placeholder.id, {
+        content: claimText,
+        status: result.status === 'done' ? 'done' : result.status,
+        meta: { phase: 'claim', kind, runId, turns: result.turns, tokens: result.usage?.total_tokens || 0 },
+      });
+      return { preset, claimText, kind };
+    }));
+    const claims = new Map(); // presetId → { preset, claimText, kind }
+    for (const r of claimResults) {
+      if (r.status === 'fulfilled' && r.value) claims.set(r.value.preset.id, r.value);
+    }
+
+    /* ---- 流水线事件行：谁接下了任务（微信系统行的"事件流"语义） ---- */
+    const contributors = ordered.filter(p => {
+      const c = claims.get(p.id);
+      return c && (c.kind === 'claim' || mentionedIds.has(p.id)); // 被 @ 点名者必然参与
+    });
+    if (contributors.length) {
+      addGroupMessage({
+        role: 'system',
+        content: `${contributors.map(p => p.name).join('、')} 接下了任务，开始接力产出`,
+      });
+    } else if (!controller.signal.aborted) {
+      addGroupMessage({ role: 'system', content: '本轮暂无成员认领——试试 @ 具体成员点名参与' });
+    }
+
+    /* ---- Phase 2：认领成员并行产出（v16：每个成员都是独立个体，共享同一份白板，互不等待） ---- */
+    await Promise.allSettled(contributors.map(async (preset) => {
+      if (controller.signal.aborted) return;
+      const placeholder = addGroupMessage({
+        role: 'agent', agentId: preset.id, agentName: preset.name,
+        content: '', status: 'running', meta: { phase: 'work', runId },
+      });
+      if (!placeholder?.id) throw new Error('占位消息创建失败');
+      const shared = buildSharedTranscript(getActiveChat().messages.filter(m => m.id !== placeholder.id), 14, active.announcement);
+      const myClaim = claims.get(preset.id)?.claimText || '';
+      const objective = buildWorkObjective(preset, shared, userText, myClaim);
+      const result = await runMember(preset, objective, placeholder);
+      const ok = result.status === 'done' && result.report;
+      updateGroupMessage(placeholder.id, {
+        content: ok ? result.report : `⚠️ ${result.error || '未产出内容'}`,
+        status: ok ? 'done' : result.status,
+        meta: { phase: 'work', runId, turns: result.turns, tokens: result.usage?.total_tokens || 0 },
+      });
+    }));
+    return claims;
+  }, [active, buildClaimObjective, buildWorkObjective]);
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || running) return;
@@ -447,70 +527,7 @@ export default function AgentTeamChat({
     const runMember = makeRunMember(controller);
 
     try {
-      /* ---- Phase 1：全员广播 · 角色认领（v16 并行：每个成员都是独立个体，同时认领） ---- */
-      const claimResults = await Promise.allSettled(ordered.map(async (preset) => {
-        if (controller.signal.aborted) return null;
-        const placeholder = addGroupMessage({
-          role: 'agent', agentId: preset.id, agentName: preset.name,
-          content: '', status: 'running', meta: { phase: 'claim', runId },
-        });
-        if (!placeholder?.id) throw new Error('占位消息创建失败');
-        const shared = buildSharedTranscript(getActiveChat().messages.filter(m => m.id !== placeholder.id), 14, active.announcement);
-        const objective = buildClaimObjective(preset, shared, text);
-        const result = await runMember(preset, objective, placeholder);
-        const claimText = result.status === 'done' && result.report
-          ? String(result.report).trim()
-          : `⚠️ ${result.error || '认领未产出'}`;
-        // 认领语义解析：标记优先；无标记时被 @ 者视为认领、其余视为关注
-        const kind = claimText.startsWith('【认领】') ? 'claim'
-          : claimText.startsWith('【关注】') ? 'watch'
-            : claimText.startsWith('【旁观】') ? 'bystander'
-              : (mentionedIds.has(preset.id) ? 'claim' : 'watch');
-        updateGroupMessage(placeholder.id, {
-          content: claimText,
-          status: result.status === 'done' ? 'done' : result.status,
-          meta: { phase: 'claim', kind, runId, turns: result.turns, tokens: result.usage?.total_tokens || 0 },
-        });
-        return { preset, claimText, kind };
-      }));
-      const claims = new Map(); // presetId → { preset, claimText, kind }
-      for (const r of claimResults) {
-        if (r.status === 'fulfilled' && r.value) claims.set(r.value.preset.id, r.value);
-      }
-
-      /* ---- 流水线事件行：谁接下了任务（微信系统行的"事件流"语义） ---- */
-      const contributors = ordered.filter(p => {
-        const c = claims.get(p.id);
-        return c && (c.kind === 'claim' || mentionedIds.has(p.id)); // 被 @ 点名者必然参与
-      });
-      if (contributors.length) {
-        addGroupMessage({
-          role: 'system',
-          content: `${contributors.map(p => p.name).join('、')} 接下了任务，开始接力产出`,
-        });
-      } else if (!controller.signal.aborted) {
-        addGroupMessage({ role: 'system', content: '本轮暂无成员认领——试试 @ 具体成员点名参与' });
-      }
-
-      /* ---- Phase 2：认领成员并行产出（v16：每个成员都是独立个体，共享同一份白板，互不等待） ---- */
-      await Promise.allSettled(contributors.map(async (preset) => {
-        if (controller.signal.aborted) return;
-        const placeholder = addGroupMessage({
-          role: 'agent', agentId: preset.id, agentName: preset.name,
-          content: '', status: 'running', meta: { phase: 'work', runId },
-        });
-        if (!placeholder?.id) throw new Error('占位消息创建失败');
-        const shared = buildSharedTranscript(getActiveChat().messages.filter(m => m.id !== placeholder.id), 14, active.announcement);
-        const myClaim = claims.get(preset.id)?.claimText || '';
-        const objective = buildWorkObjective(preset, shared, text, myClaim);
-        const result = await runMember(preset, objective, placeholder);
-        const ok = result.status === 'done' && result.report;
-        updateGroupMessage(placeholder.id, {
-          content: ok ? result.report : `⚠️ ${result.error || '未产出内容'}`,
-          status: ok ? 'done' : result.status,
-          meta: { phase: 'work', runId, turns: result.turns, tokens: result.usage?.total_tokens || 0 },
-        });
-      }));
+      await runRoundPhases({ controller, runMember, ordered, mentionedIds, userText: text, runId });
     } catch (err) {
       // 防御：unexpected 异常也以系统行落进群聊，而不是无声消失
       addGroupMessage({ role: 'system', content: `⚠️ 团队协作异常中断：${err?.message || err}` });
@@ -521,9 +538,130 @@ export default function AgentTeamChat({
       setGroupRunning(false);
       abortRef.current = null;
     }
-  }, [input, running, roster, rosterPresets, active, runtime, onNeedConfig, makeRunMember, buildClaimObjective, buildWorkObjective]);
+  }, [input, running, roster, rosterPresets, active, runtime, onNeedConfig, makeRunMember, runRoundPhases]);
 
-  const handleStop = () => { abortRef.current?.abort(); };
+  const handleStop = () => {
+    abortRef.current?.abort();
+    goalAbortRef.current?.abort(); // Goal 循环与普通消息共用「停止」按钮
+  };
+
+  /* ================= Goal 目标机制（v26 #12） =================
+   * 设定目标 → 团队自主多轮推进（每轮 = 认领 + 产出）→ 每轮结束由评估器判定
+   * 是否达成 → 达成即停 / 达到轮数上限即停 / 创始人随时安全退出（进度保留可续跑）。
+   * 卸载兜底：组件卸载时 abort，store 加载时残留 running 自动落为 stopped。 */
+
+  /** Goal 评估器：读最近产出，判定目标是否达成（独立轻量调用，不产生聊天气泡） */
+  const evaluateGoalProgress = useCallback(async (goalText, round, signal) => {
+    const recent = getActiveChat().messages
+      .filter(m => m.role === 'agent' && m.meta?.phase === 'work' && m.status === 'done')
+      .slice(-6)
+      .map(m => `[${m.agentName || m.agentId}]: ${String(m.content || '').slice(0, 800)}`)
+      .join('\n\n');
+    const systemPrompt = [
+      '你是团队目标评估器（中立裁判）。给定「团队目标」与最近一轮的「团队产出」，判定目标是否已经达成。',
+      '判定标准：产出是否覆盖了目标的核心要求；形式上未完成但实质内容已达标的，也算达成。',
+      '只输出两行，不要任何多余内容：',
+      '第一行：仅输出「【达成】」或「【未达成】」',
+      '第二行：不超过 80 字的判定理由；若未达成，附一句下一轮的推进建议',
+    ].join('\n');
+    const prompt = `【团队目标】\n${goalText}\n\n【第 ${round} 轮团队产出】\n${recent || '（本轮无有效产出）'}`;
+    try {
+      const res = await fetch('/api/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+        body: JSON.stringify({
+          baseUrl: runtime.llmConfig.baseUrl,
+          apiKey: runtime.llmConfig.apiKey,
+          model: runtime.selectedModel,
+          action: 'chat',
+          content: prompt,
+          systemPrompt,
+          messages: [],
+        }),
+      });
+      const data = await res.json();
+      const text = String(data.content || '');
+      const achieved = text.includes('【达成】') && !text.includes('【未达成】');
+      const reason = text.replace(/【未?达成】/g, '').trim().slice(0, 200) || '（无判定理由）';
+      return { achieved, reason };
+    } catch (e) {
+      if (e?.name === 'AbortError') return { achieved: false, reason: '', aborted: true };
+      return { achieved: false, reason: `评估器调用失败：${e?.message || e}` };
+    }
+  }, [runtime]);
+
+  /** Goal 主循环：自主多轮推进直至达成/上限/安全退出 */
+  const runGoal = useCallback(async ({ resume = false } = {}) => {
+    const goalText = String(active.announcement || '').trim();
+    if (!goalText) { showToast('先在目标区写下目标内容，再启动 Goal'); return; }
+    if (running || goalAbortRef.current) return;
+    if (roster.length === 0) { showToast('先邀请成员进群，团队才能推进目标'); return; }
+    if (!runtime.llmConfig?.baseUrl || !runtime.selectedModel) { onNeedConfig?.(); return; }
+
+    const maxRounds = getChatGoal().maxRounds || 8;
+    const startRound = resume ? (getChatGoal().round || 0) : 0;
+    setChatGoal({ status: 'running', round: startRound });
+    addGroupMessage({ role: 'system', content: resume
+      ? `🎯 Goal 继续推进（已完成 ${startRound} 轮，从第 ${startRound + 1} 轮继续）`
+      : `🎯 Goal 启动：团队将围绕目标自主多轮推进（上限 ${maxRounds} 轮），每轮结束自动评估是否达成，可随时安全退出` });
+    setGroupRunning(true);
+    const controller = new AbortController();
+    goalAbortRef.current = controller;
+    const runMember = makeRunMember(controller);
+
+    try {
+      let achieved = false;
+      let aborted = false;
+      for (let round = startRound + 1; round <= maxRounds; round += 1) {
+        if (controller.signal.aborted) { aborted = true; break; }
+        addGroupMessage({ role: 'system', content: `▶️ Goal 第 ${round}/${maxRounds} 轮开始自主推进` });
+        const roundText = [
+          `【Goal 目标推进 · 第 ${round}/${maxRounds} 轮】（Goal 自动循环发起，非创始人消息）`,
+          `团队目标：${goalText}`,
+          round === 1
+            ? '这是目标模式第一轮，请从你的职责出发，认领本轮可执行的一步。'
+            : '请结合此前各轮产出继续推进；如果你的部分已完成且本轮无新贡献点，可输出【旁观】。',
+        ].join('\n');
+        await runRoundPhases({
+          controller, runMember,
+          ordered: rosterPresets, mentionedIds: new Set(),
+          userText: roundText,
+          runId: `goal_${round}_${Date.now().toString(36)}`,
+        });
+        if (controller.signal.aborted) { aborted = true; break; }
+        const verdict = await evaluateGoalProgress(goalText, round, controller.signal);
+        if (verdict.aborted) { aborted = true; break; }
+        addGroupMessage({ role: 'system', content: verdict.achieved
+          ? `🎯 第 ${round} 轮评估：目标已达成 —— ${verdict.reason}`
+          : `🔁 第 ${round} 轮评估：未达成 —— ${verdict.reason}` });
+        setChatGoal({ round });
+        if (verdict.achieved) { achieved = true; break; }
+      }
+      if (aborted) {
+        const kept = getChatGoal().round;
+        setChatGoal({ status: 'stopped' });
+        addGroupMessage({ role: 'system', content: `⏹ Goal 已安全退出（已完成 ${kept}/${maxRounds} 轮，进度保留，可随时继续推进）` });
+      } else if (achieved) {
+        setChatGoal({ status: 'done' });
+        addGroupMessage({ role: 'system', content: '🏁 Goal 达成！团队目标已完成' });
+      } else {
+        setChatGoal({ status: 'stopped' });
+        addGroupMessage({ role: 'system', content: `⚠️ Goal 已达最大轮数（${maxRounds} 轮）自动停止——可继续推进，或调整目标后重新启动` });
+      }
+    } catch (err) {
+      setChatGoal({ status: 'failed' });
+      addGroupMessage({ role: 'system', content: `⚠️ Goal 执行异常终止：${err?.message || err}（可重试）` });
+    } finally {
+      goalAbortRef.current = null;
+      setGroupRunning(false);
+    }
+  }, [active, running, roster, rosterPresets, runtime, onNeedConfig, makeRunMember, runRoundPhases, evaluateGoalProgress]);
+
+  const handleGoalStop = useCallback(() => { goalAbortRef.current?.abort(); }, []);
+
+  // 卸载兜底：Goal 循环随组件卸载安全退出（store 侧 sanitizeGoal 也会把残留 running 落为 stopped）
+  useEffect(() => () => { goalAbortRef.current?.abort(); }, []);
 
   /* ---------- 失败重试：按 runId 重建该成员的认领/产出任务 ---------- */
   const retryMessage = useCallback(async (m) => {
@@ -624,7 +762,7 @@ export default function AgentTeamChat({
                 <p className="gtc-empty-title">建立你的第一个团队</p>
                 <p className="gtc-empty-desc">
                   ① 点右上角 ⓘ 打开群信息面板，「＋ 邀请」拉成员进群；点成员可编辑角色卡<br />
-                  ② 在群里先写一句「群公告」，让成员知道这个团队为什么而战<br />
+                  ② 在「目标 · Goal」里写下目标，点「启动 Goal」，团队将自主多轮推进直到达成<br />
                   ③ 直接发消息；@ 某位成员可指定 TA 优先响应，全员认领协作<br />
                   ④ 气泡上可复制 / 保存到素材库，顶栏「导出」沉淀整群记录
                 </p>
@@ -745,7 +883,7 @@ export default function AgentTeamChat({
           <aside className="gtc-panel custom-scrollbar" ref={panelRef}>
             <section className="gtc-panel-sec">
               <div className="gtc-panel-cap">
-                群公告 · 团队目标
+                目标 · Goal
                 <button type="button" className="gtc-panel-cap-act" onClick={editingAnn ? () => setEditingAnn(false) : startEditAnn}>
                   {editingAnn ? '收起' : '编辑'}
                 </button>
@@ -757,21 +895,55 @@ export default function AgentTeamChat({
                     onChange={e => setAnnDraft(e.target.value)}
                     rows={4}
                     maxLength={600}
-                    placeholder="这个团队为什么而战？给成员一句共同的使命（≤600 字）"
+                    placeholder="设定团队目标（Goal）：启动后成员将自主多轮推进，直到评估达成（≤600 字）"
                     autoFocus
                   />
                   <div className="gtc-ann-actions">
-                    <button type="button" className="gtc-panel-entry is-primary" onClick={saveAnnouncement}>保存公告</button>
+                    <button type="button" className="gtc-panel-entry is-primary" onClick={saveAnnouncement}>保存目标</button>
                   </div>
                 </div>
               ) : (
-                <p
-                  className={`gtc-ann-body ${active.announcement ? '' : 'is-empty'}`}
-                  onDoubleClick={startEditAnn}
-                  title="双击编辑"
-                >
-                  {active.announcement || '未设定——写下一句团队目标，让成员知道为什么而战'}
-                </p>
+                <>
+                  <p
+                    className={`gtc-ann-body ${active.announcement ? '' : 'is-empty'}`}
+                    onDoubleClick={startEditAnn}
+                    title="双击编辑"
+                  >
+                    {active.announcement || '未设定——写下目标后启动 Goal，团队将自主多轮推进直到达成'}
+                  </p>
+                  {active.announcement && (
+                    <div className="gtc-goal-bar">
+                      <span className={`gtc-goal-status is-${goalStatus}`}>{GOAL_STATUS_LABEL[goalStatus] || goalStatus}</span>
+                      <span className="gtc-goal-round">
+                        第 {Math.min(goalRound + (goalStatus === 'running' ? 1 : 0), goalMaxRounds)} / {goalMaxRounds} 轮
+                      </span>
+                      {goalStatus === 'running' ? (
+                        <button type="button" className="gtc-panel-entry" onClick={handleGoalStop} title="中止自主循环，保留当前进度">安全退出</button>
+                      ) : goalStatus === 'done' || goalRound >= goalMaxRounds ? (
+                        <button
+                          type="button"
+                          className="gtc-panel-entry is-primary"
+                          disabled={running}
+                          onClick={() => runGoal({ resume: false })}
+                          title="重置轮数，从头推进目标"
+                        >重新启动</button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="gtc-panel-entry is-primary"
+                          disabled={running}
+                          onClick={() => runGoal({ resume: goalRound > 0 })}
+                          title={goalRound > 0 ? '从已完成轮数之后继续推进' : '启动自主循环'}
+                        >
+                          {goalStatus === 'failed' ? '重试' : goalRound > 0 ? '继续推进' : '启动 Goal'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {goalStatus === 'running' && (
+                    <div className="gtc-goal-hint">成员正在自主多轮推进目标；「停止」或「安全退出」都会保留进度。</div>
+                  )}
+                </>
               )}
             </section>
 

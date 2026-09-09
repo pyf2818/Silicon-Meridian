@@ -13,6 +13,7 @@ import { ICONS } from '../constants/appConstants.jsx';
 import { SUBAGENT_PRESETS } from '../domain/agent/subagentCore.js';
 import { listTeams, subscribeTeams } from '../store/teamStore.js';
 import { getGroupState, getActiveChat, subscribeGroup, switchChat, createChat, renameChat, deleteChat, getAllRolePresets, hueOfMemberId, hueOfChat } from './aichat/groupChatStore.js';
+import TeamOfficePanel from './aichat/TeamOfficePanel.jsx';
 import { showToast } from '../utils/toast.js';
 
 /** 稳定的群头像：群名前 4 字拼 2×2（成员变动不影响，仅重命名才变），底色按群 id 哈希 */
@@ -576,6 +577,9 @@ export default function SessionSidebar({
       {tab === 'agents' && (
         <AgentsTab teams={teams} onOpenTeamCenter={onOpenTeamCenter} onOpenRecords={onOpenRecords} />
       )}
+
+      {/* v26 #15 像素办公室：实时协作监测面板（左侧栏底部空白区，可折叠，不干扰既有功能） */}
+      <TeamOfficePanel />
 
       {onOpenNewspaper && (
         <div className="session-sidebar-bottom">

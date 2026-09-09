@@ -22,7 +22,15 @@
  */
 import { useEffect, useRef } from 'react';
 
-const VALID_SHAPES = new Set(['dot', 'bubble', 'leaf', 'petal', 'hex', 'stardust', 'aurora', 'halo']);
+const VALID_SHAPES = new Set(['dot', 'bubble', 'leaf', 'petal', 'hex', 'stardust', 'aurora', 'halo', 'network']);
+
+// 连线层适用形态：几何/光点类形态配星座连线；有机形态（叶/瓣/极光）不适合
+const LINKED_SHAPES = new Set(['dot', 'bubble', 'hex', 'stardust', 'halo', 'network']);
+
+function readLinkDistance() {
+  const raw = parseFloat(readCssVar('--particle-link-distance', '140'));
+  return Number.isFinite(raw) && raw >= 0 ? raw : 140;
+}
 
 function readCssVar(name, fallback) {
   if (typeof window === 'undefined') return fallback;
@@ -36,9 +44,11 @@ function readParticleShape() {
 }
 
 function readParticleCount() {
-  const raw = parseInt(readCssVar('--particle-count', '40'), 10);
-  let n = (Number.isFinite(raw) && raw > 0) ? raw : 40;
-  if (window.innerWidth < 768) n = Math.max(12, Math.floor(n * 0.6));
+  const raw = parseInt(readCssVar('--particle-count', '60'), 10);
+  let n = (Number.isFinite(raw) && raw > 0) ? raw : 60;
+  // v26 可见性增强：粒子要透过半透明毛玻璃面板仍可感知，整体提量 20%
+  n = Math.round(n * 1.2);
+  if (window.innerWidth < 768) n = Math.max(16, Math.floor(n * 0.6));
   return n;
 }
 
@@ -68,17 +78,31 @@ function readParticleSizeRange(shape) {
     : shape === 'halo' ? { min: 8, max: 22 }
     : shape === 'aurora' ? { min: 18, max: 48 }
     : shape === 'stardust' ? { min: 0.4, max: 1.6 }
+    : shape === 'network' ? { min: 0.8, max: 2.4 }
     : { min: 0.5, max: 2.2 };
   const min = parseFloat(readCssVar(minName, String(fallback.min)));
   const max = parseFloat(readCssVar(maxName, String(fallback.max)));
+  const mi = Number.isFinite(min) ? min : fallback.min;
+  const ma = Number.isFinite(max) ? max : fallback.max;
+  // v26 可见性增强：粒子要透过半透明面板仍可感知，整体放大——
+  // 小形态（≤4px）×1.45+0.4，大形态（>4px）×1.15（保持各形态体量比例）
+  const boostMin = mi > 4 ? mi * 1.15 : mi * 1.45 + 0.4;
+  const boostMax = ma > 10 ? ma * 1.15 + 1.5 : ma * 1.45 + 0.8;
   return {
-    min: Number.isFinite(min) ? min : fallback.min,
-    max: Number.isFinite(max) ? max : fallback.max,
+    min: boostMin,
+    max: boostMax,
   };
 }
 
 function readParticleSpeed() {
   const raw = parseFloat(readCssVar('--particle-speed-mul', '1'));
+  return Number.isFinite(raw) && raw > 0 ? raw : 1;
+}
+
+// 深浅模式动效差异系数：深色更迅捷（有能量感），浅色更舒缓（优雅克制）。
+// 由 :root[data-mode="light"] 覆盖 --particle-mode-speed，与调色板的 --particle-speed-mul 相乘。
+function readModeSpeed() {
+  const raw = parseFloat(readCssVar('--particle-mode-speed', '1'));
   return Number.isFinite(raw) && raw > 0 ? raw : 1;
 }
 
@@ -123,17 +147,21 @@ export default function ParticleField({ enableMouseInfluence = true }) {
       const w = window.innerWidth;
       const h = window.innerHeight;
       particlesRef.current = Array.from({ length: count }, () => {
-        const baseVy = -(0.15 + Math.random() * 0.45);
+        // 上浮基础速度整体提速（约 2 倍）：0.3 ~ 1.1 px/frame，动起来才有生命感
+        const baseVy = -(0.3 + Math.random() * 0.8);
+        // 深度视差：depth 大 = 近景 = 更快更亮更有辉光
+        const depth = 0.45 + Math.random() * 0.55;
         return {
           x: Math.random() * w,
           y: Math.random() * h,
           r: min + Math.random() * (max - min),
           // 按 shape 给一点差异化速度（泡泡略慢、星尘略快）
-          vy: baseVy * (cfg.shape === 'bubble' ? 0.75 : cfg.shape === 'stardust' ? 1.4 : 1) * cfg.speedMul,
-          vx: (Math.random() - 0.5) * 0.2,
+          vy: baseVy * (cfg.shape === 'bubble' ? 0.75 : cfg.shape === 'stardust' ? 1.4 : 1) * cfg.speedMul * depth,
+          vx: (Math.random() - 0.5) * 0.4,
           phase: Math.random() * Math.PI * 2,
-          phaseSpeed: (cfg.shape === 'leaf' || cfg.shape === 'petal' ? 0.012 : 0.006) + Math.random() * 0.01,
-          alpha: cfg.shape === 'halo' ? 0.12 + Math.random() * 0.22 : 0.35 + Math.random() * 0.4,
+          phaseSpeed: (cfg.shape === 'leaf' || cfg.shape === 'petal' ? 0.018 : 0.01) + Math.random() * 0.014,
+          alpha: cfg.shape === 'halo' ? 0.2 + Math.random() * 0.28 : 0.55 + Math.random() * 0.4,
+          depth,
           colorIdx: Math.random() > 0.5 ? 0 : 1,
           // 额外 per-particle 属性：花瓣/叶片用的旋转方向、尺寸抖动等
           rotDir: Math.random() > 0.5 ? 1 : -1,
@@ -148,7 +176,7 @@ export default function ParticleField({ enableMouseInfluence = true }) {
       const cfg = configRef.current;
       cfg.shape = readParticleShape();
       cfg.colors = readParticleColors();
-      cfg.speedMul = readParticleSpeed();
+      cfg.speedMul = readParticleSpeed() * readModeSpeed();
       initParticles();
     }
 
@@ -320,6 +348,62 @@ export default function ParticleField({ enableMouseInfluence = true }) {
       ctx.fill();
     }
 
+    // 辉光底光：径向渐变大光晕（3.2 倍半径），近景粒子更亮 —— 一次性每帧绘制，不叠加
+    function drawGlow(p) {
+      const c = p.colorIdx === 0 ? configRef.current.colors.c1 : configRef.current.colors.c2;
+      const r = Math.max(p.r * 3.2, 8);
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+      g.addColorStop(0, c);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.globalAlpha = 0.5 * p.depth;
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 星座连线：距离小于阈值的两点间画一条随距离衰减的细线 —— 神经网络/星图氛围
+    function drawConnections(particles, maxDist) {
+      const { c1 } = configRef.current.colors;
+      ctx.lineWidth = 0.6;
+      ctx.strokeStyle = c1;
+      const maxD2 = maxDist * maxDist;
+      for (let i = 0; i < particles.length; i++) {
+        const a = particles[i];
+        for (let j = i + 1; j < particles.length; j++) {
+          const b = particles[j];
+          const dx = a.x - b.x;
+          const dy = a.y - b.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > maxD2) continue;
+          const d = Math.sqrt(d2);
+          // 两颗粒子深度都浅时线更淡（远景连线弱化，制造层次）
+          ctx.globalAlpha = (1 - d / maxDist) * 0.3 * Math.min(a.depth, b.depth);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // network 形态：发光点 + 加密连线（连线阈值 ×1.35），科技感最强的默认选项
+    function drawNetwork(p) {
+      drawGlow(p);
+      const c = p.colorIdx === 0 ? configRef.current.colors.c1 : configRef.current.colors.c2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = c;
+      ctx.globalAlpha = Math.min(0.95, p.alpha + 0.15);
+      ctx.fill();
+      // 中心高光小点
+      ctx.beginPath();
+      ctx.arc(p.x - p.r * 0.2, p.y - p.r * 0.25, Math.max(0.5, p.r * 0.4), 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,.8)';
+      ctx.globalAlpha = Math.min(1, p.alpha + 0.25);
+      ctx.fill();
+    }
+
     const DRAW = {
       dot: drawDot,
       bubble: drawBubble,
@@ -329,6 +413,7 @@ export default function ParticleField({ enableMouseInfluence = true }) {
       stardust: drawStardust,
       aurora: drawAurora,
       halo: drawHalo,
+      network: drawNetwork,
     };
 
     function tick() {
@@ -340,6 +425,10 @@ export default function ParticleField({ enableMouseInfluence = true }) {
       const shape = configRef.current.shape;
       const draw = DRAW[shape] || drawDot;
       const wobShape = shape === 'leaf' || shape === 'petal' || shape === 'hex';
+      // 连线层先画（垫在粒子下层），dot/bubble/hex/stardust/halo/network 启用
+      if (LINKED_SHAPES.has(shape)) {
+        drawConnections(particles, readLinkDistance() * (shape === 'network' ? 1.5 : 1));
+      }
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
         p.phase += p.phaseSpeed;
@@ -364,6 +453,8 @@ export default function ParticleField({ enableMouseInfluence = true }) {
         if (p.x < -p.r - 10) p.x = w + p.r + 10;
         if (p.x > w + p.r + 10) p.x = -p.r - 10;
 
+        // 发光点类形态带辉光底光；有机形态保持纯净
+        if (shape === 'dot' || shape === 'stardust' || shape === 'network') drawGlow(p);
         draw(p);
       }
       ctx.globalAlpha = 1;

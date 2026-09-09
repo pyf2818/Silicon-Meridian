@@ -1043,20 +1043,31 @@ function App() {
     fetch('/api/stock/dashboard').catch(() => {});
   }, []);
 
-  // P5: 自动刷新轮询 —— 在「全部动态」页每 60s 静默拉取新资讯（命中后端 SWR 缓存，不重新抓源）
-  // 仅当用户停留在 all 页且非搜索/非加载中时触发；新资讯到达后通过 newSinceLastVisit 徽标提示
+  // P5-r2（v26）：自动刷新降级 —— 不再自动替换列表（旧版每 60s loadNews 会把
+  // 用户正在阅读的消息顶走）。改为每 5 分钟静默探测一次：只对比 ID、绝不触碰
+  // items；发现新增时仅在刷新按钮上累加角标，由用户手动点击刷新获取。
   useEffect(() => {
     if (nav !== 'all') return;
     let cancelled = false;
-    const timer = setInterval(() => {
-      if (cancelled) return;
-      // 仅在非搜索、非流式加载时静默刷新（避免打断用户操作）
-      if (!debouncedQuery && !loading && !loadingMore) {
-        loadNews(blocked, false, debouncedQuery, { forceRefresh: false });
-      }
-    }, 60 * 1000);  // 60s
+    const checkNew = () => {
+      if (cancelled || debouncedQuery || loading || loadingMore) return;
+      const customParams = customSources.map(s => `custom=${encodeURIComponent(JSON.stringify(s))}`).join('&');
+      const disabledParam = disabledSources.length > 0 ? `&disabledSources=${encodeURIComponent(disabledSources.join(','))}` : '';
+      // 与 loadNews 同参但不带 forceRefresh：命中后端 SWR 缓存，开销极低
+      const url = `/api/news?blocked=${encodeURIComponent(blocked)}&page=0&pageSize=200${disabledParam}${customParams ? '&' + customParams : ''}`;
+      fetch(url)
+        .then(r => r.json())
+        .then(d => {
+          if (cancelled) return;
+          const known = new Set(useNewsStore.getState().items.map(i => i.id));
+          const fresh = (d.items || []).filter(i => i?.id && !known.has(i.id)).length;
+          if (fresh > 0) setNewSinceLastVisit(prev => Math.min(99, prev + fresh));
+        })
+        .catch(() => { /* 探测失败静默，不打扰用户 */ });
+    };
+    const timer = setInterval(checkNew, 5 * 60 * 1000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [nav, blocked, debouncedQuery, loading, loadingMore]);
+  }, [nav, blocked, debouncedQuery, loading, loadingMore, customSources, disabledSources]);
 
   // 趋势分析数据
   const trendData = useMemo(() => {
@@ -2423,6 +2434,13 @@ ${signals}
           setTrendingPlatform={setTrendingPlatform}
           loadTrending={loadTrending}
           newSinceLastVisit={newSinceLastVisit}
+          onRefreshAll={() => {
+            // v26：手动刷新 = 用户主动获取，清掉角标并把「已读基线」推到当前时刻，
+            // 防止 items 更新后 1175 行的徽标重算副作用把角标又加回来
+            try { localStorage.setItem('lastVisitLatestNewsAt', String(Date.now())); } catch { /* ignore */ }
+            setNewSinceLastVisit(0);
+            loadNews(blocked, false, debouncedQuery, { forceRefresh: true });
+          }}
           profileSection={profileSection}
           setProfileSection={setProfileSection}
           telemetryStats={nav === 'profile-center' ? [

@@ -130,10 +130,32 @@ function makeChat(name, roster = [], messages = []) {
     id: `gc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
     name: String(name || '').slice(0, 24) || '新团队群聊',
     createdAt: Date.now(),
-    announcement: '', // 群公告（团队目标），右侧群信息面板编辑
+    announcement: '', // 团队目标文本（Goal），右侧群信息面板编辑；每轮注入成员上下文
+    goal: makeGoal(), // v26 #12：Goal 运行状态（round/maxRounds/status），公告文本即目标内容
     roster,
     profiles: {}, // 成员性格档案：agentId → { name?, description?, style? }
     messages,
+  };
+}
+
+/* ============ Goal 目标机制（v26 #12） ============ */
+
+export const GOAL_STATUSES = ['idle', 'running', 'done', 'stopped', 'failed'];
+export const GOAL_MAX_ROUNDS_LIMIT = 20;
+
+function makeGoal() {
+  return { status: 'idle', round: 0, maxRounds: 8, updatedAt: 0 };
+}
+
+/** Goal 状态清洗：历史数据兜底 + 崩溃恢复（持久化里残留 running → stopped） */
+function sanitizeGoal(raw) {
+  const g = (raw && typeof raw === 'object') ? raw : {};
+  const status = g.status === 'running' ? 'stopped' : (GOAL_STATUSES.includes(g.status) ? g.status : 'idle');
+  return {
+    status,
+    round: Math.max(0, Math.min(999, Number(g.round) || 0)),
+    maxRounds: Math.max(1, Math.min(GOAL_MAX_ROUNDS_LIMIT, Number(g.maxRounds) || 8)),
+    updatedAt: Number(g.updatedAt) || 0,
   };
 }
 
@@ -192,6 +214,7 @@ function load() {
           name: String(c.name || '新团队群聊').slice(0, 24),
           createdAt: Number(c.createdAt) || Date.now(),
           announcement: String(c.announcement || '').slice(0, 600),
+          goal: sanitizeGoal(c.goal),
           roster: Array.isArray(c.roster) ? c.roster.filter(x => typeof x === 'string' && x) : [],
           profiles: (c.profiles && typeof c.profiles === 'object' && !Array.isArray(c.profiles)) ? c.profiles : {},
           messages: sanitizeMessages(c.messages),
@@ -362,11 +385,24 @@ export function setChatAnnouncement(text) {
   if (next === (chat.announcement || '')) return false;
   chat.announcement = next;
   pushEvent(chat.id, next
-    ? `📌 更新了群公告，请各位成员注意：\n${next}`
-    : '清空了群公告');
+    ? `🎯 更新了团队目标（Goal），请各位成员注意：\n${next}`
+    : '清空了团队目标（Goal）');
   persist();
   notify();
   return true;
+}
+
+/** 读写当前群聊的 Goal 运行状态（status/round/maxRounds）。目标文本走 setChatAnnouncement。 */
+export function setChatGoal(patch) {
+  const chat = activeChat();
+  chat.goal = { ...sanitizeGoal(chat.goal), ...(patch || {}), updatedAt: Date.now() };
+  persist();
+  notify();
+  return chat.goal;
+}
+
+export function getChatGoal() {
+  return sanitizeGoal(activeChat().goal);
 }
 
 /* ============ 成员性格档案（灵魂设定） ============ */

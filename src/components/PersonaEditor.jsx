@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 import { ICONS } from '../constants/appConstants.jsx';
+import EvolutionProfile from './aichat/EvolutionProfile.jsx';
 
 export default function PersonaEditor({ value, onChange, agentName }) {
   const persona = value?.persona || { traits: [], background: '', values: [] };
@@ -200,6 +201,16 @@ export function PersonaDrawer({ open, onClose, agent, onChange }) {
               onChange={(patch) => setDraft(prev => ({ ...prev, ...patch }))}
               agentName={agent.name}
             />
+          )}
+          {/* v26 #13 进化档案：等级 / 进化树 / 工作经验沉淀（只读 + 单条清理） */}
+          {agent?.id && (
+            <section className="persona-section evo-section">
+              <div className="persona-section-title">
+                <span className="persona-section-icon">{ICONS.sparkles}</span>
+                <span>进化档案（越来越懂你）</span>
+              </div>
+              <EvolutionProfile agentId={agent.id} agentName={agent.name} />
+            </section>
           )}
         </div>
         <div className="persona-drawer-footer">

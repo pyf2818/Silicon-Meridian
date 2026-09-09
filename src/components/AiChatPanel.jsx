@@ -44,6 +44,7 @@ import { ICONS } from '../constants/appConstants.jsx';
 import { buildContext, shouldCompact, estimateMessages, localSummary } from '../session/contextManager.js';
 import { forkLinearSession } from '../session/trailStore.js';
 import { useMultiAgentOrchestrator } from '../hooks/useMultiAgentOrchestrator.js';
+import { recordAgentRun, depositExperience } from '../domain/agent/agentEvolution.js';
 import MaterialGraph from './MaterialGraph.jsx';
 // spawn_subagent 工具注册（import 即注册进 toolRegistry，供 orchestrator 等白名单使用）
 import '../utils/agentSubagentTool.js';
@@ -300,7 +301,18 @@ export default function AiChatPanel({
     messageQueueMapRef.current[sid] = q.filter((_, i) => i !== idx);
     syncQueueUI();
   }, [syncQueueUI]);
+  // v26 #13：拖拽排序支持——把 from 位置的消息移动到 to 位置
+  const reorderQueued = useCallback((sid, from, to) => {
+    const q = messageQueueMapRef.current[sid] || [];
+    if (from === to || from < 0 || to < 0 || from >= q.length || to >= q.length) return;
+    const next = [...q];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    messageQueueMapRef.current[sid] = next;
+    syncQueueUI();
+  }, [syncQueueUI]);
   const activeQueue = messageQueueMap[activeSessionId] || [];
+  const dragQueueIdxRef = useRef(null); // v26 #13：排队消息拖拽中的源索引（拖拽过程无需重渲染）
   const abortControllerRef = useRef(null);
 
   const currentSession = sessions.find(s => s.id === activeSessionId);
@@ -1161,6 +1173,15 @@ export default function AiChatPanel({
       // 画像学习：观测 AI 回复格式与深度
       observeReply(finalContent);
       setLearnedVersion(v => v + 1);
+      // v26 #13 Agent 进化：真实工作统计 + 工作经验沉淀（失败静默，不影响主流程）
+      try {
+        recordAgentRun(agent?.id || 'orchestrator', {});
+        depositExperience(agent?.id || 'orchestrator', {
+          topic: String(userMessage?.content || '').replace(/\s+/g, ' ').slice(0, 40),
+          lesson: String(finalContent || '').replace(/\s+/g, ' ').slice(0, 200),
+          source: 'chat',
+        });
+      } catch { /* 进化统计失败不影响主流程 */ }
       // 自动提取行动项
       const extracted = extractTodos(finalContent);
       if (extracted.length > 0) setAutoTodos(extracted);
@@ -1787,9 +1808,30 @@ export default function AiChatPanel({
                 </button>
                 {showQueueMenu && (
                   <div className="chat-queue-pop">
-                    <div className="chat-queue-pop-label">排队消息（按顺序自动发送）</div>
+                    <div className="chat-queue-pop-label">排队消息（按顺序自动发送，可拖拽排序）</div>
                     {activeQueue.map((q, i) => (
-                      <div key={i} className="chat-queue-item">
+                      <div
+                        key={i}
+                        className={`chat-queue-item ${dragQueueIdxRef.current === i ? 'is-dragging' : ''}`}
+                        draggable={editingQueueIdx !== i}
+                        onDragStart={(e) => {
+                          dragQueueIdxRef.current = i;
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', String(i));
+                        }}
+                        onDragOver={(e) => {
+                          if (dragQueueIdxRef.current == null) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const from = dragQueueIdxRef.current;
+                          dragQueueIdxRef.current = null;
+                          if (from != null && from !== i) reorderQueued(activeSessionId, from, i);
+                        }}
+                        onDragEnd={() => { dragQueueIdxRef.current = null; }}
+                      >
                         {editingQueueIdx === i ? (
                           <textarea
                             autoFocus

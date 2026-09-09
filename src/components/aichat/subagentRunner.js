@@ -130,14 +130,15 @@ async function runOneSubagent(task, { llmConfig, selectedModel, parentCtx, onPro
           try { return buildSystemSuffix(task) || ''; } catch { return ''; }
         }
       : undefined;
-    // 流式通道：把 runToolLoop 的逐字 delta 累积成"已流出的全文"再上抛，
-    // 调用方（群聊气泡）无需自己区分增量/全量语义
+    // 流式通道：runToolLoop 的 onContentDelta 传的是「已流出的累积全文」（见 agentLoopCore
+    // onChunk(content)），这里直接替换透传，绝不能再 += 累加——否则群聊气泡会把每帧
+    // 全量快照拼在一起，出现「一行行重复输出」。
     let streamed = '';
     const handleDelta = typeof onContentDelta === 'function'
-      ? (delta) => {
-          streamed += String(delta || '');
-          emit({ status: 'running', contentDelta: String(delta || ''), content: streamed });
-          try { onContentDelta({ delta: String(delta || ''), content: streamed }); } catch { /* ignore */ }
+      ? (text) => {
+          streamed = String(text || '');
+          emit({ status: 'running', content: streamed });
+          try { onContentDelta({ delta: streamed, content: streamed }); } catch { /* ignore */ }
         }
       : undefined;
     const result = await runToolLoop({

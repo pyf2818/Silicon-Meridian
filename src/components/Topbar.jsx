@@ -85,6 +85,8 @@ export default function Topbar({
   setTrendingPlatform,
   loadTrending,
   newSinceLastVisit = 0,
+  // v26：全部动态手动刷新（App 内清角标 + 更新已读基线后强制刷新）
+  onRefreshAll,
   // 用户画像页遥测数据（由 App 注入，仅 profile-center 使用）
   telemetryStats,
   profileSection,
@@ -289,7 +291,7 @@ export default function Topbar({
                   全球大屏
                 </button>
               )}
-              <button className={`btn-refresh ${nav === 'all' ? 'btn-refresh-all' : ''}`} onClick={() => { if (nav === 'all') loadNews(blocked, false, debouncedQuery, { forceRefresh: true }); else if (nav === 'trending') loadTrending(false, trendingPlatform, trendingType); else if (nav === 'github') loadGithub(); }}>
+              <button className={`btn-refresh ${nav === 'all' ? 'btn-refresh-all' : ''}`} onClick={() => { if (nav === 'all') { if (onRefreshAll) onRefreshAll(); else loadNews(blocked, false, debouncedQuery, { forceRefresh: true }); } else if (nav === 'trending') loadTrending(false, trendingPlatform, trendingType); else if (nav === 'github') loadGithub(); }}>
                 {ICONS.refresh}
                 {nav === 'all' && newSinceLastVisit > 0 && <span className="new-news-badge" title={`自上次访问以来新增 ${newSinceLastVisit} 条`}>{newSinceLastVisit > 99 ? '99+' : newSinceLastVisit}</span>}
               </button>

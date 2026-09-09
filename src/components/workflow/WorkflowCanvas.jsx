@@ -300,6 +300,21 @@ export default function WorkflowCanvas({
     const el = viewportRef.current;
     if (!el) return undefined;
     const onWheel = (event) => {
+      // 放行规则：事件目标位于「可滚动卡片」内（节点编辑卡 / 输出报告 / AI 助手消息等）
+      // 且当前滚动方向卡片还没滚到尽头 → 让浏览器默认滚动卡片，不劫持给画布缩放。
+      // 通用向上探测最近的 overflow:auto|scroll 祖先，未来新增卡片自动适用。
+      let node = event.target;
+      while (node && node !== el) {
+        if (node.nodeType === 1) {
+          const oy = window.getComputedStyle(node).overflowY;
+          if ((oy === 'auto' || oy === 'scroll') && node.scrollHeight > node.clientHeight) {
+            const atTop = node.scrollTop <= 0;
+            const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
+            if (!(event.deltaY < 0 ? atTop : atBottom)) return; // 卡片消费滚轮
+          }
+        }
+        node = node.parentNode;
+      }
       event.preventDefault();
       const { deltaX, deltaY } = event;
       const isPinch = event.ctrlKey || event.metaKey;

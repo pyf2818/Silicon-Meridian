@@ -56,6 +56,9 @@ function readThemeColors() {
 }
 
 const NODE_RADIUS = 5;
+// v26 Bug#11：默认参数 `files = []` 每次渲染都生成新数组引用 → data useMemo 每次重建
+// → ForceGraph2D 拿到新 graphData 即重新加热模拟 → 悬停节点乱跑。改用模块级常量稳定引用。
+const EMPTY_FILES = [];
 
 /**
  * 知识图谱组件。
@@ -66,7 +69,7 @@ const NODE_RADIUS = 5;
  * @param {Function} props.onOpenMaterial (material) => void  点击素材回调
  * @param {number} [props.height] 渲染高度
  */
-export default function MaterialGraph({ materials, files = [], onOpenMaterial, height = 520 }) {
+export default function MaterialGraph({ materials, files = EMPTY_FILES, onOpenMaterial, height = 520 }) {
   const [hovered, setHovered] = useState(null);
   const [focused, setFocused] = useState(null);
   const [query, setQuery] = useState('');
@@ -167,6 +170,11 @@ export default function MaterialGraph({ materials, files = [], onOpenMaterial, h
     const t = setTimeout(() => fgRef.current?.zoomToFit(400, 40), 900);
     return () => clearTimeout(t);
   }, [typeFilter]);
+
+  // v26 Bug#11：数据变化后只在引擎首次停下时适配视图一次；
+  // 旧写法 onEngineStop 每次都 zoomToFit，与重加热循环叠加导致镜头乱滚。
+  const fittedRef = useRef(false);
+  useEffect(() => { fittedRef.current = false; }, [data]);
 
   const handleNodeClick = useCallback((n) => {
     setFocused(n ? n.id : null);
@@ -315,7 +323,12 @@ export default function MaterialGraph({ materials, files = [], onOpenMaterial, h
         cooldownTicks={120}
         onNodeHover={(n) => setHovered(n ? n.id : null)}
         onNodeClick={handleNodeClick}
-        onEngineStop={() => fgRef.current?.zoomToFit(400, 40)}
+        onEngineStop={() => {
+          if (!fittedRef.current) {
+            fittedRef.current = true;
+            fgRef.current?.zoomToFit(400, 40);
+          }
+        }}
       />
 
       {/* v22 枢纽节点：全局统筹视角的「最关键节点」，点击定位 */}

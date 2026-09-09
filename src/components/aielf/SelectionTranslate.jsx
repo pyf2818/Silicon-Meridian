@@ -2,14 +2,14 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useElfStore } from '../../store/elfStore.js';
 import { useAiStore } from '../../store/aiStore.js';
 import { ICONS } from '../../constants/appConstants.jsx';
-import { showToast } from '../../utils/toast.js';
 
 /**
- * SelectionTranslate - 划词翻译与解释（v23 #1）
+ * SelectionTranslate - 划词翻译与解释（v23 #1 / v26 手动触发改造）
  *
- * 全局监听鼠标选区：选中文字后自动弹出气泡，调用当前配置的大模型
- * （走 /api/ai-generate，与 AI 精灵普通模式同链路）返回「翻译 + 解释」，
- * 可一键复制或转交 AI 精灵继续追问。
+ * 全局监听鼠标选区：选中文字后弹出轻量气泡，但【不再自动请求翻译】——
+ * 由用户点击「翻译」或「解释」按钮才调用当前配置的大模型（走 /api/ai-generate，
+ * 与 AI 精灵普通模式同链路），避免任意划词都打模型接口浪费资源。
+ * 「解释」输出通俗中文释义；结果可转交 AI 精灵继续追问。
  *
  * 边界处理：
  * - 输入框/textarea/contenteditable 内的选区不触发（避免干扰编辑）
@@ -36,12 +36,22 @@ const TRANSLATE_SYSTEM_PROMPT = [
   '禁止输出其他开场白或结尾语。',
 ].join('\n');
 
+const EXPLAIN_SYSTEM_PROMPT = [
+  '你是划词解释助手。用户会给你一段选中的文字，请直接输出解释，不要翻译。',
+  '要求：',
+  '- 用不超过 150 字、通俗的中文解释这段文字的含义、背景或意图；',
+  '- 若是术语/缩写/代码，说明它是什么、用来做什么；',
+  '- 若是长句/段落，提炼核心观点与值得注意的点；',
+  '- 直接输出解释正文，禁止任何开场白、结尾语或标题。',
+].join('\n');
+
 export default function SelectionTranslate({ llmConfig }) {
   const enabled = useElfStore(s => s.selectionTranslateEnabled);
   const setElfQuotedContext = useAiStore(s => s.setElfQuotedContext);
   const [bubble, setBubble] = useState(null); // { x, y, text }
   const [result, setResult] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState('');
+  const [mode, setMode] = useState('translate'); // 'translate' | 'explain'
   const [error, setError] = useState('');
   const bubbleRef = useRef(null);
   const seqRef = useRef(0);          // 请求序号：只应用最新一次
@@ -57,18 +67,19 @@ export default function SelectionTranslate({ llmConfig }) {
     setLoading(false);
   }, []);
 
-  const requestTranslate = useCallback(async (text) => {
+  const requestAi = useCallback(async (text, kind = 'translate') => {
     const seq = ++seqRef.current;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setLoading(true);
+    setMode(kind);
+    setLoading(kind);
     setError('');
     setResult('');
     try {
       if (!llmConfig?.baseUrl || !llmConfig?.selectedModel) {
         setError('未配置大模型 API，请先到设置中配置。');
-        setLoading(false);
+        setLoading('');
         return;
       }
       const response = await fetch('/api/ai-generate', {
@@ -81,19 +92,19 @@ export default function SelectionTranslate({ llmConfig }) {
           model: llmConfig.selectedModel,
           action: 'chat',
           content: text,
-          systemPrompt: TRANSLATE_SYSTEM_PROMPT,
+          systemPrompt: kind === 'explain' ? EXPLAIN_SYSTEM_PROMPT : TRANSLATE_SYSTEM_PROMPT,
           messages: [],
         }),
       });
       const data = await response.json();
       if (seq !== seqRef.current) return; // 已有更新请求，丢弃过期结果
-      if (data.error) setError(`翻译失败: ${data.error}`);
+      if (data.error) setError(`请求失败: ${data.error}`);
       else setResult(data.content || '暂无结果');
     } catch (e) {
       if (e?.name === 'AbortError') return;
-      if (seq === seqRef.current) setError(`翻译失败: ${e?.message || e}`);
+      if (seq === seqRef.current) setError(`请求失败: ${e?.message || e}`);
     } finally {
-      if (seq === seqRef.current) setLoading(false);
+      if (seq === seqRef.current) setLoading('');
     }
   }, [llmConfig]);
 
@@ -130,12 +141,7 @@ export default function SelectionTranslate({ llmConfig }) {
     return () => document.removeEventListener('mouseup', onMouseUp);
   }, [enabled, bubble, close]);
 
-  // 选中后自动发起翻译
-  useEffect(() => {
-    if (bubble?.text) requestTranslate(bubble.text);
-  }, [bubble?.text, requestTranslate]);
-
-  // Esc / 滚动 / 缩放关闭
+  // 手动触发：选中后只弹气泡，用户点「翻译」才发请求（不自动消耗模型资源）  // Esc / 滚动 / 缩放关闭
   useEffect(() => {
     if (!bubble) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') close(); };
@@ -157,17 +163,12 @@ export default function SelectionTranslate({ llmConfig }) {
   // 卸载时兜底 abort
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const copyResult = () => {
-    const text = result || bubble?.text || '';
-    if (!text) return;
-    navigator.clipboard?.writeText(text)
-      .then(() => showToast('已复制'))
-      .catch(() => showToast('复制失败'));
-  };
-
   const askElf = () => {
     if (!bubble?.text) return;
     setElfQuotedContext({
+      // 带 id：AiElf 的副作用依赖 externalQuotedContext?.id，
+      // 不带 id 时两次引用都是 undefined → 副作用不触发 → 精灵窗口不弹出
+      id: Date.now(),
       title: `划词：${bubble.text.slice(0, 40)}`,
       content: bubble.text,
       fullContent: bubble.text,
@@ -186,17 +187,39 @@ export default function SelectionTranslate({ llmConfig }) {
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="sel-translate-head">
-        <span className="sel-translate-title">划词翻译</span>
+        <span className="sel-translate-title">划词助手</span>
         <span className="sel-translate-text" title={bubble.text}>{bubble.text}</span>
         <button type="button" className="sel-translate-close" onClick={close} title="关闭 (Esc)">{ICONS.x || '×'}</button>
       </div>
       <div className="sel-translate-body custom-scrollbar">
-        {loading && <div className="sel-translate-loading"><span className="sel-translate-spinner" />正在翻译与解释…</div>}
+        {loading && (
+          <div className="sel-translate-loading">
+            <span className="sel-translate-spinner" />
+            {loading === 'explain' ? '正在解释…' : '正在翻译与解释…'}
+          </div>
+        )}
         {!loading && error && <div className="sel-translate-error">{error}</div>}
         {!loading && !error && result && <div className="sel-translate-result">{result}</div>}
+        {!loading && !error && !result && (
+          <div className="sel-translate-idle">已捕获选区，点击下方「翻译」或「解释」开始（不自动请求，避免浪费资源）。</div>
+        )}
       </div>
       <div className="sel-translate-actions">
-        <button type="button" onClick={copyResult} disabled={!result && !bubble.text}>复制</button>
+        <button
+          type="button"
+          className="sel-translate-go"
+          onClick={() => requestAi(bubble.text, 'translate')}
+          disabled={!!loading || !bubble.text}
+        >
+          {loading === 'translate' ? '翻译中…' : result && mode === 'translate' ? '重新翻译' : '翻译'}
+        </button>
+        <button
+          type="button"
+          onClick={() => requestAi(bubble.text, 'explain')}
+          disabled={!!loading || !bubble.text}
+        >
+          {loading === 'explain' ? '解释中…' : result && mode === 'explain' ? '重新解释' : '解释'}
+        </button>
         <button type="button" onClick={askElf}>问精灵</button>
       </div>
     </div>

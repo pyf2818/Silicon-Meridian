@@ -16,6 +16,15 @@ const LockIcon = () => (
   </svg>
 );
 
+/* 动态核心环 logo：外环虚线旋转 + 中环反向 + 内核呼吸（纯 CSS 动画，transform/opacity） */
+const CoreRingLogo = () => (
+  <svg className="auth-core-ring" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+    <circle className="auth-core-ring-outer" cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="1.4" strokeDasharray="10 5" />
+    <circle className="auth-core-ring-mid" cx="24" cy="24" r="13" stroke="currentColor" strokeWidth="1.2" strokeDasharray="4 3" opacity="0.7" />
+    <circle className="auth-core-ring-core" cx="24" cy="24" r="4.5" fill="currentColor" />
+  </svg>
+);
+
 export default function AuthModal({
   showAuthModal, setShowAuthModal,
   authMode, setAuthMode,
@@ -36,13 +45,20 @@ export default function AuthModal({
     <div className="auth-shell-overlay" data-testid="auth-modal" onClick={() => setShowAuthModal(false)}>
       <div className="auth-shell" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
         <button className="auth-close" type="button" onClick={() => setShowAuthModal(false)} aria-label="关闭">{ICONS.x}</button>
-        {/* 品牌侧 */}
+        {/* 品牌侧（恒深色深空 + 网格 + 扫描线 + HUD 角标） */}
         <aside className="auth-aside">
           <div className="auth-aside-glow" aria-hidden="true" />
+          <div className="auth-aside-grid" aria-hidden="true" />
+          <div className="auth-aside-scan" aria-hidden="true" />
+          <span className="auth-hud-corner auth-hud-corner--tl" aria-hidden="true" />
+          <span className="auth-hud-corner auth-hud-corner--tr" aria-hidden="true" />
+          <span className="auth-hud-corner auth-hud-corner--bl" aria-hidden="true" />
+          <span className="auth-hud-corner auth-hud-corner--br" aria-hidden="true" />
           <div className="auth-brand">
-            <div className="auth-logo">{ICONS.target}</div>
+            <div className="auth-logo"><CoreRingLogo /></div>
             <h1 className="auth-product">{PRODUCT_NAME}</h1>
             <p className="auth-tagline">{PRODUCT_TAGLINE}</p>
+            <p className="auth-telemetry" aria-hidden="true">SYS ONLINE · INTELLIGENCE LINK READY</p>
           </div>
           <ul className="auth-feats">
             <li><span className="auth-feat-ico">{ICONS.sparkle}</span>多领域 AI 科技资讯实时聚合</li>

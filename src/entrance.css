@@ -1,396 +1,310 @@
 /* ============================================================
-   entrance.css — 进场动画「墨染宣纸 · 落笔成川」（覆盖层）
-   引入顺序：onboarding.css → entrance.css → motion.css
-
-   丝滑三原则：
-   1) 全程只动 transform / opacity（合成器驱动）；品牌 clip-path 圆扩为局部重绘
-   2) .is-run 由组件在品牌字体就绪后添加（JSX 内 document.fonts.load），
-      纸面先行渐显、墨戏随后起跑——杜绝字体中途 swap 造成的虚化
-   3) 深浅分治：深色纸纹/暗角更克制（安静不噪），浅色保持宣纸质感
-
-   设计：宣纸画卷 → 浓墨自顶而落、沉入纸面 → 墨点晕开 + 涟漪荡漾（明显）
-   → 品牌书法由中心化开（锐利）→ 朱印 → 墨线 → 帷幕化开（~3.25s）
-   ============================================================ */
+ * EntranceSplash v4「万川归一 · The Confluence」
+ * 品牌叙事：万千数据之流汇成光河，百川归一，破幕入境。
+ *
+ * 四幕时间轴（与 EntranceSplash.jsx 常量一致）：
+ *   A 起·一线   0–950ms        canvas 光脉
+ *   B 流·万川   950–2400ms     canvas 支流汇河
+ *   C 汇·归一   2400–3400ms    canvas 螺旋汇核 + DOM 品牌浮现
+ *   D 入·入境   3400ms–        clip-path 圆形揭幕 + 爆发
+ *
+ * 丝滑原则：只动 transform / opacity / clip-path（合成器友好）；
+ * 全部动画由 .is-run 门控；深浅主题经 --en-* 令牌分治。
+ * ============================================================ */
 
 .entrance {
+  /* 深空令牌 */
+  --en-cy: 46%;
+  --en-bg: #04070d;
+  --en-glow-a: rgba(20, 110, 138, 0.30);
+  --en-glow-b: rgba(66, 48, 14, 0.24);
+  --en-ink: #eaf6ff;
+  --en-gold: #ffc46b;
+  --en-cyan: #5fe8ff;
+  --en-char-shadow: 0 0 34px rgba(95, 232, 255, 0.35);
+  --en-line: rgba(95, 232, 255, 0.45);
+  --en-seal: #c53a2e;
+  --en-seal-bg: rgba(197, 58, 46, 0.12);
+  --en-bar: rgba(8, 14, 22, 0.62);
+  --en-border: rgba(95, 232, 255, 0.22);
+  --en-muted: rgba(190, 214, 230, 0.66);
+  --en-vignette: rgba(0, 0, 0, 0.55);
+  --en-flash: rgba(210, 240, 255, 0.9);
+
   position: fixed;
   inset: 0;
   z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(120% 120% at 50% 40%, #1a1710 0%, #15130c 58%, #100e08 100%);  /* 暖墨宣纸（深）：中心受光微提亮，更显质感 */
   overflow: hidden;
   cursor: pointer;
+  background: var(--en-bg);
+  font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   user-select: none;
-  transition: opacity var(--dur-slower, 0.5s) var(--ease-in-out, ease-in-out);
-  will-change: opacity;
-}
-:root[data-mode="light"] .entrance {
-  background: radial-gradient(120% 120% at 50% 38%, #f8f0e2 0%, #f2e8d3 56%, #ebe0c6 100%);  /* 米白宣纸（浅）：中心受光、边缘微沉，平滑淡雅 */
-}
-/* 点击 / Esc 跳过：立即进入离场（opacity 过渡由 .entrance 统一处理） */
-.entrance--leaving {
-  opacity: 0;
-  pointer-events: none;
 }
 
-/* ============================================================
-   宣纸画卷（背景层，挂载即渐显，不依赖字体）
-   ============================================================ */
-.entrance__bg {
+.entrance--light {
+  /* 宣纸令牌 */
+  --en-bg: #f6f1e8;
+  --en-glow-a: rgba(196, 154, 60, 0.16);
+  --en-glow-b: rgba(118, 128, 142, 0.15);
+  --en-ink: #22262b;
+  --en-gold: #8a6a2f;
+  --en-cyan: #3c6474;
+  --en-char-shadow: 0 2px 18px rgba(90, 70, 30, 0.18);
+  --en-line: rgba(70, 90, 100, 0.4);
+  --en-seal: #b03a2e;
+  --en-seal-bg: rgba(176, 58, 46, 0.1);
+  --en-bar: rgba(250, 246, 238, 0.72);
+  --en-border: rgba(70, 90, 100, 0.25);
+  --en-muted: rgba(70, 76, 84, 0.62);
+  --en-vignette: rgba(120, 100, 60, 0.14);
+  --en-flash: rgba(255, 250, 238, 0.95);
+}
+
+/* ---------- 光河画布 ---------- */
+.entrance__river {
   position: absolute;
   inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-/* 淡墨晕染：两大团化开的湿墨，营造纸面墨韵 */
-.entrance__stain {
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(circle,
-    color-mix(in srgb, var(--text-primary, #2b2b2b) 12%, transparent) 0%,
-    transparent 68%);
-  filter: blur(34px);
-  opacity: 0;
-  animation: entranceFade 1.4s var(--ease-out, ease-out) both;
-}
-.entrance__stain--a { top: -12%; left: -9%;  width: 62vmin; height: 62vmin; animation-delay: 0.1s; }
-.entrance__stain--b { bottom: -16%; right: -11%; width: 54vmin; height: 54vmin; animation-delay: 0.28s; }
-
-/* 淡月：右上若有若无的一枚 */
-.entrance__moon {
-  position: absolute;
-  top: 12%;
-  right: 15%;
-  width: 12vmin;
-  height: 12vmin;
-  border-radius: 50%;
-  background: radial-gradient(circle at 38% 36%,
-    color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 26%, transparent) 0%,
-    transparent 66%);
-  opacity: 0;
-  animation: entranceFade 1.6s var(--ease-out, ease-out) 0.25s both;
-}
-
-/* 远山：两层水墨山脊剪影（极淡，软模糊成墨韵） */
-.entrance__mountains {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
   width: 100%;
-  height: 32vh;
-  display: block;
-  filter: blur(1.2px);
-  opacity: 0;
-  animation: entranceFade 1.8s var(--ease-out, ease-out) 0.18s both;
+  height: 100%;
+  pointer-events: none;
 }
-.entrance__ridge--far  { fill: color-mix(in srgb, var(--text-primary, #2b2b2b) 9%,  transparent); }
-.entrance__ridge--near { fill: color-mix(in srgb, var(--text-primary, #2b2b2b) 16%, transparent); }
 
-/* 纸纹：SVG 分形噪点做宣纸纤维（soft-light 叠加；降频+揉糊+极低透明度 → 平滑淡雅，无刺眼盐粒） */
-.entrance__grain {
+/* ---------- 氛围层：辉光呼吸 + 暗角 ---------- */
+.entrance__glow {
   position: absolute;
-  inset: 0;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='320' height='320' filter='url(%23g)'/></svg>");
-  background-size: 320px 320px;
-  mix-blend-mode: soft-light;
-  filter: blur(0.35px);                 /* 把盐粒噪点揉成柔软纸纤维 */
-  opacity: 0;                           /* 深色底：彻底关掉（避免 soft-light 亮斑） */
-  display: none;                        /* 深色底：从合成树移除 */
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
 }
-:root[data-mode="light"] .entrance .entrance__grain {
-  opacity: 0.12;                        /* 浅色宣纸：一缕极淡纸纤维，不抢戏 */
-  display: block;
+.entrance__glow--a {
+  width: 72vw; height: 72vw;
+  left: -18vw; top: -28vw;
+  background: radial-gradient(circle, var(--en-glow-a) 0%, transparent 62%);
+}
+.entrance__glow--b {
+  width: 80vw; height: 80vw;
+  right: -24vw; bottom: -34vw;
+  background: radial-gradient(circle, var(--en-glow-b) 0%, transparent 62%);
+}
+.entrance.is-run .entrance__glow {
+  animation: enGlow 4.6s ease-in-out both;
+}
+.entrance.is-run .entrance__glow--b { animation-delay: .5s; }
+@keyframes enGlow {
+  0%   { opacity: 0; transform: scale(.85); }
+  45%  { opacity: 1; transform: scale(1); }
+  100% { opacity: .8; transform: scale(1.06); }
 }
 
-/* 暗角：边缘压暗，卷轴装裱的纵深（深色更轻，避免发闷） */
 .entrance__vignette {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 50% 46%, transparent 52%, rgba(0, 0, 0, 0.24) 100%);
-}
-:root[data-mode="light"] .entrance .entrance__vignette {
-  background: radial-gradient(ellipse at 50% 46%, transparent 52%, rgba(0, 0, 0, 0.36) 100%);
-}
-
-/* 装裱边框：册页/立轴的双线框（外细内更细），古风收边 */
-.entrance__frame {
-  position: absolute;
-  inset: 4.2vmin;
-  border: 1px solid color-mix(in srgb, var(--text-primary, #2b2b2b) 24%, transparent);
-  outline: 1px solid color-mix(in srgb, var(--text-primary, #2b2b2b) 13%, transparent);
-  outline-offset: 7px;
-  opacity: 0;
-  animation: entranceFade 1.3s var(--ease-out, ease-out) 0.4s both;
-}
-
-/* ============================================================
-   墨戏（is-run 起跑后才动；静止态全部隐形，绝不抢戏）
-   ============================================================ */
-.entrance__ink {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
   pointer-events: none;
-}
-
-/* 墨滴：自顶而落、沉入纸面（只动 transform/opacity，重力加速） */
-.entrance__drop {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 22px;
-  height: 30px;
-  margin: -15px 0 0 -11px;
-  border-radius: 50% 50% 56% 56% / 64% 64% 42% 42%;   /* 水滴形 */
-  background: radial-gradient(circle at 42% 34%,
-    color-mix(in srgb, var(--text-primary, #2b2b2b) 96%, transparent) 0%,
-    color-mix(in srgb, var(--text-primary, #2b2b2b) 80%, transparent) 58%,
-    color-mix(in srgb, var(--text-primary, #2b2b2b) 48%, transparent) 100%);
+  background: radial-gradient(ellipse at 50% var(--en-cy), transparent 46%, var(--en-vignette) 100%);
   opacity: 0;
-  will-change: transform, opacity;
 }
-.entrance.is-run .entrance__drop {
-  animation: entranceDrop 0.95s cubic-bezier(0.5, 0.04, 0.74, 0.38) both;
-}
+.entrance.is-run .entrance__vignette { animation: enFadeIn 1.2s ease .2s both; }
+@keyframes enFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* 墨点：落点晕开的一小团湿墨（墨滴沉入后接棒） */
-.entrance__blot {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 9vmin;
-  height: 9vmin;
-  margin: -4.5vmin 0 0 -4.5vmin;
-  border-radius: 50%;
-  background: radial-gradient(circle,
-    color-mix(in srgb, var(--text-primary, #2b2b2b) 52%, transparent) 0%,
-    color-mix(in srgb, var(--text-primary, #2b2b2b) 28%, transparent) 45%,
-    transparent 72%);
-  opacity: 0;
-  transform: scale(0.15);
-  will-change: transform, opacity;
-}
-.entrance.is-run .entrance__blot {
-  animation: entranceBlot 1.5s var(--ease-out, ease-out) 0.72s both;
-}
-
-/* 涟漪：4 圈同心圆由落点荡开（定宽描边，只动 transform/opacity） */
-.entrance__ripples { position: absolute; inset: 0; }
-.entrance__ripple {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 96vmin;
-  height: 96vmin;
-  margin: -48vmin 0 0 -48vmin;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--text-primary, #2b2b2b) 70%, transparent);
-  opacity: 0;
-  transform: scale(0.03);
-  will-change: transform, opacity;
-}
-.entrance.is-run .entrance__ripple {
-  animation: entranceRipple 2.05s cubic-bezier(0.12, 0.55, 0.25, 1) both;
-}
-.entrance.is-run .entrance__ripple:nth-child(1) { animation-delay: 0.74s; }
-.entrance.is-run .entrance__ripple:nth-child(2) { animation-delay: 0.90s; border-color: color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 64%, transparent); }
-.entrance.is-run .entrance__ripple:nth-child(3) { animation-delay: 1.06s; }
-.entrance.is-run .entrance__ripple:nth-child(4) { animation-delay: 1.22s; border-color: color-mix(in srgb, var(--ink-glow-2, var(--text-primary, #2b2b2b)) 60%, transparent); }
-
-/* ============================================================
-   品牌化开 + 朱印 + 副题（is-run 起跑）
-   ============================================================ */
+/* ---------- 归一核心与品牌区 ---------- */
 .entrance__center {
-  position: relative;
-  z-index: 2;
+  position: absolute;
+  left: 50%; top: var(--en-cy);
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  text-align: center;
+  pointer-events: none;
 }
 
-/* 墨韵光晕：品牌化开时身后的一团湿墨光（静态 blur，一次性光栅） */
-.entrance__halo {
+.entrance__core {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 0;
-  width: 76vmin;
-  height: 76vmin;
-  margin: -38vmin 0 0 -38vmin;
+  left: 50%; top: 34px;
+  width: 14px; height: 14px;
+  margin: -7px 0 0 -7px;
   border-radius: 50%;
-  background: radial-gradient(circle,
-    color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 30%, transparent) 0%,
-    color-mix(in srgb, var(--ink-glow-1, var(--text-primary, #2b2b2b)) 11%, transparent) 42%,
-    transparent 66%);
-  filter: blur(14px);
+  background: radial-gradient(circle, var(--en-flash) 0%, var(--en-cyan) 46%, transparent 74%);
+  box-shadow: 0 0 26px 6px color-mix(in srgb, var(--en-cyan) 42%, transparent);
   opacity: 0;
-  transform: scale(0.15);
   will-change: transform, opacity;
 }
-.entrance.is-run .entrance__halo {
-  animation: entranceHalo 1.6s var(--ease-out, ease-out) 0.8s both;
+.entrance.is-run .entrance__core { animation: enCore 1s cubic-bezier(.2,.9,.3,1.2) 2.3s both; }
+@keyframes enCore {
+  0%   { opacity: 0; transform: scale(.2); }
+  55%  { opacity: 1; }
+  100% { opacity: .92; transform: scale(1); }
 }
 
-/* —— 品牌书法：逐字浮现（一字一顿、墨韵上浮），全程锐利无虚化 —— */
+.entrance__ring {
+  position: absolute;
+  left: 50%; top: 34px;
+  width: 130px; height: 130px;
+  margin: -65px 0 0 -65px;
+  border-radius: 50%;
+  border: 1px solid var(--en-line);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.entrance__ring--2 { border-style: dashed; border-color: color-mix(in srgb, var(--en-gold) 55%, transparent); }
+.entrance.is-run .entrance__ring--1 { animation: enRing 1.7s cubic-bezier(.16,1,.3,1) 2.45s both; }
+.entrance.is-run .entrance__ring--2 { animation: enRing 1.9s cubic-bezier(.16,1,.3,1) 2.6s both; }
+@keyframes enRing {
+  0%   { opacity: 0; transform: scale(.25); }
+  28%  { opacity: .9; }
+  100% { opacity: 0; transform: scale(2.3); }
+}
+
 .entrance__brand {
   position: relative;
-  z-index: 1;
   display: flex;
-  justify-content: center;
-  gap: clamp(4px, 1.4vmin, 18px);
+  gap: clamp(8px, 1.6vw, 18px);
+  margin-top: -6px;
 }
 .entrance__brand-char {
-  display: inline-block;
-  font-family: 'Ma Shan Zheng', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
-  font-weight: 400;
-  font-size: clamp(58px, 13.5vmin, 134px);
-  line-height: 1.06;
-  background: linear-gradient(180deg,
-    var(--text-primary, #2b2b2b) 0%,
-    color-mix(in srgb, var(--text-primary, #2b2b2b) 92%, var(--ink-glow-1, var(--text-primary, #2b2b2b))) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  font-family: 'Ma Shan Zheng', 'Noto Serif SC', serif;
+  font-size: clamp(56px, 9vw, 92px);
+  line-height: 1.16;
+  color: var(--en-ink);
+  text-shadow: var(--en-char-shadow);
   opacity: 0;
   will-change: transform, opacity;
 }
 .entrance.is-run .entrance__brand-char {
-  animation: entranceCharIn 0.7s cubic-bezier(0.19, 1, 0.22, 1) calc(1.15s + var(--idx) * 0.2s) both;
+  animation: enChar .64s cubic-bezier(.16,1,.3,1) both;
+  animation-delay: calc(2.38s + var(--idx) * .1s);
 }
-
-/* —— 墨线 + 朱印 一行 —— */
-.entrance__rule {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  width: min(440px, 72vw);
-}
-.entrance__line {
-  flex: 1;
-  height: 1px;
-  transform-origin: left center;
-  transform: scaleX(0);
-  background: color-mix(in srgb, var(--text-primary, #2b2b2b) 46%, transparent);
-}
-.entrance.is-run .entrance__line {
-  animation: entranceLine 0.55s var(--ease-out, ease-out) 2.62s both;
-}
-.entrance__seal {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Noto Serif SC', 'Songti SC', serif;
-  font-weight: 900;
-  font-size: 24px;
-  color: #fff;
-  background: var(--status-critical, #F85149);
-  border-radius: 6px;
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
-  opacity: 0;
-  transform: scale(0.6) rotate(-9deg);
-  will-change: transform, opacity;
-}
-.entrance.is-run .entrance__seal {
-  animation: entranceSeal 0.5s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) 2.5s both;
-}
-
-/* —— 英文副题（极淡、宽字距） —— */
-.entrance__sub {
-  position: relative;
-  z-index: 1;
-  font-family: 'Rajdhani', 'Orbitron', system-ui, sans-serif;
-  font-weight: 500;
-  font-size: clamp(11px, 2.4vmin, 15px);
-  letter-spacing: 0.52em;
-  text-indent: 0.52em;
-  color: color-mix(in srgb, var(--text-muted, #7a7a7a) 92%, transparent);
-  opacity: 0;
-}
-.entrance.is-run .entrance__sub {
-  animation: entranceSub 0.55s var(--ease-out, ease-out) 2.9s both;
-}
-
-/* ============================================================
-   keyframes（全部只插值 transform / opacity / clip-path）
-   ============================================================ */
-@keyframes entranceFade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes entranceDrop {
-  0%   { opacity: 0; transform: translateY(-50vh); }
-  12%  { opacity: 1; }
-  80%  { opacity: 1; }
-  100% { opacity: 0; transform: translateY(0); }
-}
-@keyframes entranceBlot {
-  0%   { opacity: 0;    transform: scale(0.15); }
-  22%  { opacity: 0.95; }
-  60%  { opacity: 0.8; }
-  100% { opacity: 0;    transform: scale(1.15); }
-}
-@keyframes entranceRipple {
-  0%   { opacity: 0;    transform: scale(0.03); }
-  12%  { opacity: 0.9; }
-  55%  { opacity: 0.55; }
-  100% { opacity: 0;    transform: scale(1); }
-}
-@keyframes entranceHalo {
-  0%   { transform: scale(0.15); opacity: 0; }
-  25%  { opacity: 0.85; }
-  100% { transform: scale(1.05); opacity: 0; }
-}
-@keyframes entranceCharIn {
-  0%   { opacity: 0; transform: translateY(0.42em) scale(1.14); }
-  55%  { opacity: 1; }
+@keyframes enChar {
+  0%   { opacity: 0; transform: translateY(30px) scale(.92); }
+  60%  { opacity: 1; }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
-@keyframes entranceLine {
-  from { transform: scaleX(0); }
-  to   { transform: scaleX(1); }
+
+.entrance__rule {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  opacity: 0;
+  will-change: transform, opacity;
 }
-@keyframes entranceSeal {
-  from { opacity: 0; transform: scale(0.6) rotate(-9deg); }
-  to   { opacity: 1; transform: scale(1) rotate(0); }
+.entrance.is-run .entrance__rule { animation: enRise .6s ease-out 2.82s both; }
+@keyframes enRise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes entranceSub {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+.entrance__line {
+  width: clamp(40px, 7vw, 84px);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--en-line));
+}
+.entrance__line:last-child { transform: scaleX(-1); }
+.entrance__seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px; height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--en-seal);
+  color: var(--en-seal);
+  background: var(--en-seal-bg);
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 900;
+  font-size: 15px;
 }
 
-/* ============================================================
-   内容随帷幕升起：splash 开始离场时（App 加 .is-entered），
-   .sidebar / .main 错落淡入上浮，与 curtain 化开同步
-   ============================================================ */
-.app.is-entered .sidebar,
-.app.is-entered .main {
-  animation: fadeUp var(--dur-slower, 0.5s) var(--ease-out, ease-out) both;
+.entrance__sub {
+  margin-top: 16px;
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: .58em;
+  text-indent: .58em;
+  color: var(--en-cyan);
+  opacity: 0;
+  will-change: transform, opacity;
 }
-.app.is-entered .main {
-  animation-delay: 0.04s;
+.entrance__sub-cn {
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: .34em;
+  text-indent: .34em;
+  color: var(--en-muted);
+  opacity: 0;
+  will-change: transform, opacity;
 }
+.entrance.is-run .entrance__sub { animation: enRise .6s ease-out 2.94s both; }
+.entrance.is-run .entrance__sub-cn { animation: enRise .6s ease-out 3.04s both; }
 
-/* ============================================================
-   减少动态：组件直接 return null（无 splash），内容静态呈现
-   ============================================================ */
-@media (prefers-reduced-motion: reduce) {
-  .app.is-entered .sidebar,
-  .app.is-entered .main {
-    animation: none;
-  }
-  .entrance, .entrance * {
-    animation: none !important;
-  }
+/* ---------- 底部遥测条 ---------- */
+.entrance__bar {
+  position: absolute;
+  left: 50%; bottom: 26px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--en-border);
+  background: var(--en-bar);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: var(--en-muted);
+  white-space: nowrap;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.entrance.is-run .entrance__bar { animation: enBar .7s ease .4s both; }
+@keyframes enBar {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.entrance__bar-brand { color: var(--en-cyan); letter-spacing: .12em; }
+.entrance__meter {
+  width: 110px; height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--en-line) 26%, transparent);
+  overflow: hidden;
+}
+.entrance__meter-fill {
+  display: block;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, var(--en-cyan), var(--en-gold));
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+.entrance__pct { min-width: 38px; color: var(--en-ink); }
+.entrance__bar-phase { color: var(--en-gold); }
+.entrance__hint { opacity: .55; font-size: 10px; }
+
+/* ---------- D 幕「入境」：圆幕收拢揭出应用 + 闪光 ---------- */
+.entrance--leaving {
+  pointer-events: none;
+  animation: enReveal .88s cubic-bezier(.66, 0, .8, .4) both;
+}
+@keyframes enReveal {
+  from { clip-path: circle(150% at 50% var(--en-cy)); opacity: 1; }
+  72%  { opacity: 1; }
+  to   { clip-path: circle(0% at 50% var(--en-cy)); opacity: 1; }
+}
+.entrance--leaving .entrance__center { animation: enCenterOut .82s ease both; }
+@keyframes enCenterOut {
+  to { transform: translate(-50%, -50%) scale(1.07); }
+}
+.entrance--leaving .entrance__flash {
+  position: absolute;
+  left: 50%; top: var(--en-cy);
+  width: 12vw; height: 12vw;
+  margin: -6vw 0 0 -6vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--en-flash) 0%, transparent 66%);
+  opacity: 0;
+  animation: enFlash .5s ease-out both;
+}
+@keyframes enFlash {
+  0%   { opacity: 0; transform: scale(.4); }
+  30%  { opacity: .85; }
+  100% { opacity: 0; transform: scale(2.4); }
 }
