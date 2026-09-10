@@ -19,6 +19,11 @@ import { buildSessionContextText, appendHistory } from '../../utils/sessionStore
 import { rememberCompaction } from '../../utils/sessionMemory.js';
 import { runToolLoop } from './agentLoopCore.js';
 import { createLlmSummarizer } from '../../session/llmSummarizer.js';
+import {
+  WORKSTATION_MAX_ITERATIONS,
+  COMPLETION_MAX_TOKENS,
+  AUX_COMPLETION_MAX_TOKENS,
+} from '../../constants/agentLoop.js';
 
 export { mergeToolCallDeltas } from './agentLoopCore.js';
 
@@ -72,7 +77,7 @@ async function selfVerifyRepair({ content, issues, llmConfig, selectedModel, sys
       action: 'chat',
       systemPrompt: systemPrompt || '',
       messages: repairMessages,
-      max_tokens: 4000,
+      max_tokens: COMPLETION_MAX_TOKENS,
     }, signal);
     if (!response.ok) return null;
     const data = await response.json();
@@ -127,7 +132,6 @@ export async function runAgentLoop({
   onSkillCreated,
   onSaveKnowledge,
 }) {
-  const MAX_ITERATIONS = 12; // 防止无限循环；末轮会注入收敛指令强制收尾
   const toolCtx = {
     rootHandle: getRootHandle(),
     sessionId: targetId,
@@ -184,7 +188,7 @@ export async function runAgentLoop({
     llmConfig,
     selectedModel,
     toolCtx,
-    maxIterations: MAX_ITERATIONS,
+    maxIterations: WORKSTATION_MAX_ITERATIONS,
     onProgress: updateAssistantMsg,
     // 会话状态注入：执行计划 / 变量 / 黑板 / 最近工具调用，让 LLM 看到接力上下文
     buildSystemSuffix: () => {
@@ -338,7 +342,7 @@ export async function runAgentLoop({
         action: 'chat',
         systemPrompt: `${systemPrompt}\n\n【技能沉淀模式】你正在进行工作反思。你的任务是把刚才完成的工作过程、方法论、经验教训沉淀为一个可复用的 Skill。重点描述过程和方法，而不是重复输出结果。`,
         messages: precipitationMessages,
-        max_tokens: 3000,
+        max_tokens: AUX_COMPLETION_MAX_TOKENS,
         tools: toolSchemas.filter(s => s.function?.name === 'create_skill'),
         tool_choice: 'auto',
       }, controller?.signal);

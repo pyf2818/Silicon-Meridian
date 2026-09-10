@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { computeReadingProfile, withInterestLabels } from '../utils/profileModel.js';
 
 // Extracted from App.jsx - intelligence-related useMemo computations.
 // Logic is unchanged; only moved into a hook for maintainability.
@@ -273,113 +274,14 @@ export function useIntelligenceMemos({
   }, [items]);
 
   // 阅读行为分析
-  const readingProfile = useMemo(() => {
-    const now = new Date();
-    const buildDayKeys = (days) => Array.from({ length: days }).map((_, idx) => {
-      const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (days - 1 - idx));
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    });
-
-    // 连续阅读天数
-    let streak = 0;
-    const sorted = [...bookmarks].sort((a, b) => new Date(b.readAt || 0) - new Date(a.readAt || 0));
-    const readDates = new Set(sorted.filter(b => b.readAt).map(b => b.readAt.slice(0, 10)));
-    let checkDate = new Date(now);
-    if (!readDates.has(`${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`)) {
-      checkDate = new Date(checkDate.getTime() - 86400000);
-    }
-    while (true) {
-      const ds = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
-      if (readDates.has(ds)) { streak++; checkDate = new Date(checkDate.getTime() - 86400000); } else break;
-    }
-
-    // 阅读时段分布（24小时）
-    const hourDist = Array(24).fill(0);
-    sorted.filter(b => b.readAt).forEach(b => {
-      const h = new Date(b.readAt).getHours();
-      hourDist[h]++;
-    });
-    const peakHour = hourDist.indexOf(Math.max(...hourDist));
-
-    // 兴趣画像
-    const interestDist = {};
-    bookmarks.forEach(b => {
-      const cat = b.category || 'unknown';
-      interestDist[cat] = (interestDist[cat] || 0) + 1;
-    });
-    const topInterests = Object.entries(interestDist).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, count]) => ({
-      id, label: categories.find(c => c.id === id)?.label || id, count,
-      pct: bookmarks.length ? Math.round(count / bookmarks.length * 100) : 0
-    }));
-
-    // 阅读速度（近7天平均每日阅读数）
-    const day7 = buildDayKeys(7);
-    const weekReads = day7.map(d => sorted.filter(b => (b.readAt || '').slice(0, 10) === d).length);
-    const avgDailyRead = Math.round(weekReads.reduce((a, b) => a + b, 0) / 7 * 10) / 10;
-
-    // 收藏转阅读率
-    const readRate = bookmarks.length ? Math.round(bookmarks.filter(b => b.isRead).length / bookmarks.length * 100) : 0;
-
-    // 7天阅读热力图数据
-    const heatData = day7.map(d => sorted.filter(b => (b.readAt || '').slice(0, 10) === d).length);
-    const maxHeat = Math.max(...heatData, 1);
-
-    // 来源偏好分析
-    const sourceDist = {};
-    bookmarks.forEach(b => {
-      const source = b.source || '未知来源';
-      sourceDist[source] = (sourceDist[source] || 0) + 1;
-    });
-    const topSources = Object.entries(sourceDist).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({
-      name, count,
-      pct: bookmarks.length ? Math.round(count / bookmarks.length * 100) : 0
-    }));
-
-    // 近30天阅读趋势
-    const day30 = buildDayKeys(30);
-    const trendData = day30.map(d => sorted.filter(b => (b.readAt || '').slice(0, 10) === d).length);
-    const maxTrend = Math.max(...trendData, 1);
-
-    // 阅读深度分析（基于摘要长度估算）
-    const avgSummaryLength = bookmarks.length
-      ? Math.round(bookmarks.reduce((sum, b) => sum + (b.summary?.length || 0), 0) / bookmarks.length)
-      : 0;
-    const deepReads = bookmarks.filter(b => (b.summary?.length || 0) > 200).length;
-    const shallowReads = bookmarks.filter(b => (b.summary?.length || 0) <= 100).length;
-
-    // 标签偏好
-    const tagDist = {};
-    bookmarks.forEach(b => {
-      (b.tags || []).forEach(tag => {
-        tagDist[tag] = (tagDist[tag] || 0) + 1;
-      });
-    });
-    const topTags = Object.entries(tagDist).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({
-      name, count,
-      pct: Object.values(tagDist).reduce((a, b) => a + b, 0) ? Math.round(count / Object.values(tagDist).reduce((a, b) => a + b, 0) * 100) : 0
-    }));
-
-    return {
-      streak,
-      peakHour,
-      hourDist,
-      topInterests,
-      avgDailyRead,
-      readRate,
-      heatData,
-      maxHeat,
-      day7,
-      topSources,
-      trendData,
-      maxTrend,
-      day30,
-      avgSummaryLength,
-      deepReads,
-      shallowReads,
-      topTags,
-      totalBookmarks: bookmarks.length
-    };
-  }, [bookmarks]);
+  // 计算逻辑统一在 utils/profileModel.computeReadingProfile（原来此处有一份 105 行的
+  // 逐行复制版，与 profileModel 各演化一份：唯一差异是本处 topInterests 多一个 label 字段、
+  // 且 topTags 的 pct 每项都重算一次 reduce。已在纯函数里补齐 day7/heatData/maxHeat；
+  // label 这类需要外部赛道字典的展示字段，由 withInterestLabels 单独叠一层）。
+  const readingProfile = useMemo(
+    () => withInterestLabels(computeReadingProfile(bookmarks), categories),
+    [bookmarks, categories],
+  );
 
   return { dailyBriefing, trackerData, insightData, readingProfile };
 }

@@ -14,6 +14,7 @@ import { getRootHandle } from '../../utils/workspaceHandleStore.js';
 import { rememberCompaction } from '../../utils/sessionMemory.js';
 import { runToolLoop } from '../aichat/agentLoopCore.js';
 import { createLlmSummarizer } from '../../session/llmSummarizer.js';
+import { ELF_MAX_ITERATIONS } from '../../constants/agentLoop.js';
 
 /**
  * @param {Object} params
@@ -27,7 +28,6 @@ import { createLlmSummarizer } from '../../session/llmSummarizer.js';
  * @returns {Promise<{role:string,content:string,toolCalls:Array,toolCallCount:number,loading:boolean,timestamp:number,usage:Object}>}
  */
 export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas, systemPrompt, llmConfig, setAgentMessages, controller }) {
-  const MAX_ITERATIONS = 6;
   // 未提供 controller 时内部兜底创建一个（保持"永不 abort"的旧外部行为，同时让内核签名完整）
   const abortController = controller || new AbortController();
   const toolCtx = {
@@ -82,7 +82,7 @@ export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas
       llmConfig,
       selectedModel: llmConfig?.selectedModel,
       toolCtx,
-      maxIterations: MAX_ITERATIONS,
+      maxIterations: ELF_MAX_ITERATIONS,
       onProgress: patchLast,
       generateSummary,
     });

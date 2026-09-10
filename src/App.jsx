@@ -36,7 +36,9 @@ import { useExternalIntelligence } from './hooks/useExternalIntelligence.js';
 import { useIntelligenceMemos } from './hooks/useIntelligenceMemos.js';
 import { useRecommendationMemos } from './hooks/useRecommendationMemos.js';
 import { selectBriefingLanes } from './domain/intelligence/recommendationEngine.js';
-import { buildDiscoverFeed } from './domain/intelligence/discoverFeed.js';import { useIntelligenceBriefing } from './hooks/useIntelligenceBriefing.js';
+import { buildDiscoverFeed } from './domain/intelligence/discoverFeed.js';
+import { computeNewsTrends } from './domain/intelligence/trendAnalytics.js';
+import { useIntelligenceBriefing } from './hooks/useIntelligenceBriefing.js';
 import { useBookmarkMaterial } from './hooks/useBookmarkMaterial.js';
 import { useArticleEditor } from './hooks/useArticleEditor.js';
 import { useBriefingOps } from './hooks/useBriefingOps.js';
@@ -1071,64 +1073,8 @@ function App() {
     return () => { cancelled = true; clearInterval(timer); };
   }, [nav, blocked, debouncedQuery, loading, loadingMore, customSources, disabledSources]);
 
-  // 趋势分析数据
-  const trendData = useMemo(() => {
-    // 按赛道统计
-    const categoryStats = new Map();
-    items.forEach(item => {
-      const cat = categoryStats.get(item.category) || { count: 0, sources: new Set() };
-      cat.count++;
-      cat.sources.add(item.source);
-      categoryStats.set(item.category, cat);
-    });
-
-    // 按来源统计
-    const sourceStats = new Map();
-    items.forEach(item => {
-      const src = sourceStats.get(item.source) || { count: 0, categories: new Set() };
-      src.count++;
-      src.categories.add(item.category);
-      sourceStats.set(item.source, src);
-    });
-
-    // 关键词频率
-    const keywordMap = new Map();
-    items.forEach(item => {
-      item.tags?.forEach(tag => {
-        keywordMap.set(tag, (keywordMap.get(tag) || 0) + 1);
-      });
-    });
-
-    const days = Array.from({ length: 7 }).map((_, idx) => {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() - (6 - idx));
-      return d;
-    });
-    const dayKeys = days.map(d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-
-    const topCategoryIds = [...categoryStats.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 3).map(([id]) => id);
-    const categorySeries = topCategoryIds.map((catId) => {
-      const values = dayKeys.map((dayKey) => items.filter(i => i.category === catId && i.publishedAt?.slice(0, 10) === dayKey).length);
-      return { id: catId, values };
-    });
-
-    const topSources = [...sourceStats.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 3).map(([name]) => name);
-    const sourceSeries = topSources.map((name) => {
-      const values = dayKeys.map((dayKey) => items.filter(i => i.source === name && i.publishedAt?.slice(0, 10) === dayKey).length);
-      return { name, values };
-    });
-
-    return {
-      categoryStats: [...categoryStats.entries()].sort((a, b) => b[1].count - a[1].count),
-      sourceStats: [...sourceStats.entries()].sort((a, b) => b[1].count - a[1].count),
-      topKeywords: [...keywordMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30),
-      emergingKeywords: [...keywordMap.entries()].filter(([, count]) => count >= 3 && count <= 8).slice(0, 10),
-      dayLabels: dayKeys.map(d => d.slice(5)),
-      categorySeries,
-      sourceSeries
-    };
-  }, [items]);
+  // 趋势分析数据（纯计算已抽到 domain/intelligence/trendAnalytics.js，可就地单测）
+  const trendData = useMemo(() => computeNewsTrends(items), [items]);
 
   const filtered = useMemo(() => {
     // 本地文本搜索：当有搜索词时，在前端做标题/摘要/标签全文匹配

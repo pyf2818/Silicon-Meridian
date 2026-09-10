@@ -143,6 +143,7 @@ export function computeReadingProfile(bookmarks = []) {
   });
   const weekReads = day7.map(d => sorted.filter(b => (b.readAt || '').slice(0, 10) === d).length);
   const avgDailyRead = Math.round(weekReads.reduce((a, b) => a + b, 0) / 7 * 10) / 10;
+  const maxHeat = Math.max(...weekReads, 1);
   const readRate = bookmarks.length ? Math.round(bookmarks.filter(b => b.isRead).length / bookmarks.length * 100) : 0;
 
   // 30-day trend
@@ -169,6 +170,35 @@ export function computeReadingProfile(bookmarks = []) {
     shallowReads,
     topTags,
     totalBookmarks,
+    // 7 天热力图（原来只算不导出；useIntelligenceMemos 曾为此整段重算一遍）
+    day7,
+    heatData: weekReads,
+    maxHeat,
+  };
+}
+
+/**
+ * 把阅读画像里 topInterests[].id 映射为赛道展示名（label）。
+ *
+ * 为什么不并进 computeReadingProfile：label 依赖外部赛道字典（categories 来自 store），
+ * 而 computeReadingProfile 是零依赖纯函数——混进来会让它无法脱离 store 单测。
+ * 这里单独留一层纯函数做映射，既保住 computeReadingProfile 的纯度，又让映射本身可被单测
+ * （此前这段逻辑只存在于 useIntelligenceMemos 的 useMemo 里，无任何测试覆盖）。
+ *
+ * @param {Object} readingProfile - computeReadingProfile 的返回值
+ * @param {Array<{id:string,label:string}>} categories - 赛道字典
+ * @returns {Object} 同结构对象，topInterests 每项多了 label 字段
+ */
+export function withInterestLabels(readingProfile, categories = []) {
+  if (!readingProfile || typeof readingProfile !== 'object') return readingProfile;
+  const list = Array.isArray(categories) ? categories : [];
+  const interests = Array.isArray(readingProfile.topInterests) ? readingProfile.topInterests : [];
+  return {
+    ...readingProfile,
+    topInterests: interests.map(t => ({
+      ...t,
+      label: list.find(c => c?.id === t?.id)?.label || t?.id,
+    })),
   };
 }
 

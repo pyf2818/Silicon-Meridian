@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   computeIntelligenceProfile,
   computeReadingProfile,
+  withInterestLabels,
   computeProfileLearningEngine,
   computeTodayProfileSnapshot,
   computeCalibrationSignals,
@@ -930,3 +931,124 @@ describe('computeCalibrationSignals', () => {
     expect(r.needsCalibration).toBe(true); // confidence defaults to 0 < 45
   });
 });
+
+// ---------------------------------------------------------------------------
+// computeReadingProfile —— 输出契约（useIntelligenceMemos 的阅读画像直接由它派生）
+// 背景：useIntelligenceMemos 里曾有一份 108 行的逐行复制版，两者各自演化。
+// 现已统一到本函数；这些断言锁死「消费方依赖的字段一个都不能少」，
+// 防止将来有人精简返回值时把 hook / InsightDashboardPage 打空。
+// ---------------------------------------------------------------------------
+describe('computeReadingProfile 输出契约', () => {
+  // 固定 readAt 到「今天/昨天」，使 streak 与热力图断言不随系统时钟漂移
+  const dayKey = (offset) => {
+    const d = new Date();
+    d.setHours(10, 0, 0, 0);
+    d.setDate(d.getDate() - offset);
+    return d.toISOString();
+  };
+  const fixture = [
+    { id: 'a', category: 'ai', source: 'OpenAI Blog', tags: ['gpu', 'llm'], summary: 'x'.repeat(260), isRead: true, readAt: dayKey(0) },
+    { id: 'b', category: 'ai', source: 'OpenAI Blog', tags: ['gpu'], summary: 'x'.repeat(80), isRead: false, readAt: dayKey(1) },
+    { id: 'c', category: 'dev', source: 'Rust Blog', tags: [], summary: 'x'.repeat(150), isRead: true, readAt: dayKey(1) },
+    { id: 'd', category: 'unknown-cat', source: undefined, tags: undefined, summary: undefined, isRead: false, readAt: dayKey(3) },
+  ];
+
+  it('字段齐备（含 useIntelligenceMemos / InsightDashboardPage 依赖的全部键）', () => {
+    const r = computeReadingProfile(fixture);
+    const required = [
+      'streak', 'peakHour', 'hourDist', 'topInterests', 'avgDailyRead', 'readRate',
+      'topSources', 'trendData', 'maxTrend', 'day30', 'avgSummaryLength', 'deepReads',
+      'shallowReads', 'topTags', 'totalBookmarks', 'day7', 'heatData', 'maxHeat',
+    ];
+    for (const k of required) expect(r, `缺少字段 ${k}`).toHaveProperty(k);
+    // day7 与 heatData 必须等长（InsightDashboardPage 的 7 天热力图按索引对齐）
+    expect(r.day7).toHaveLength(7);
+    expect(r.heatData).toHaveLength(7);
+  });
+
+  it('新增导出的 7 天热力图口径正确', () => {
+    const r = computeReadingProfile(fixture);
+    expect(r.heatData.reduce((a, b) => a + b, 0)).toBe(4); // 4 条都有 readAt 且都在 7 天内
+    expect(r.maxHeat).toBe(Math.max(...r.heatData, 1));
+    expect(r.heatData[r.heatData.length - 1]).toBe(1); // 今天 1 条
+  });
+
+  it('avgDailyRead 与 heatData 自洽', () => {
+    const r = computeReadingProfile(fixture);
+    const expected = Math.round(r.heatData.reduce((a, b) => a + b, 0) / 7 * 10) / 10;
+    expect(r.avgDailyRead).toBe(expected);
+  });
+
+  it('topInterests 只给 id（label 由展示层映射），且 pct 基于全部 bookmarks', () => {
+    const r = computeReadingProfile(fixture);
+    expect(r.topInterests[0]).toEqual({ id: 'ai', count: 2, pct: 50 });
+    // 纯函数不应引入展示层概念
+    expect(r.topInterests[0]).not.toHaveProperty('label');
+  });
+
+  it('空输入不抛异常且热力图为零', () => {
+    const r = computeReadingProfile([]);
+    expect(r.totalBookmarks).toBe(0);
+    expect(r.heatData).toEqual(Array(7).fill(0));
+    expect(r.maxHeat).toBe(1); // 分母保护，避免 UI 除零
+    expect(r.topInterests).toEqual([]);
+  });
+
+  it('缺字段的脏数据不抛异常（readAt/summary/tags/source 均可缺失）', () => {
+    expect(() => computeReadingProfile([{ id: 'x' }, { id: 'y', readAt: null }])).not.toThrow();
+    const r = computeReadingProfile([{ id: 'x' }]);
+    expect(r.totalBookmarks).toBe(1);
+    expect(r.topSources[0].name).toBe('未知来源');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// withInterestLabels —— 阅读画像的展示层映射
+// 原为 useIntelligenceMemos 的 useMemo 内联逻辑。拆出来的理由：label 依赖外部赛道字典，
+// 并进 computeReadingProfile 会让纯函数沾上 store；留在 hook 里则完全无法单测。
+// 现在它是独立纯函数，下面锁死四条契约。
+// ---------------------------------------------------------------------------
+describe('withInterestLabels', () => {
+  const base = () => ({
+    streak: 3,
+    totalBookmarks: 2,
+    topInterests: [
+      { id: 'ai', count: 2, pct: 100 },
+      { id: 'dev', count: 1, pct: 50 },
+    ],
+  });
+  const dict = [
+    { id: 'ai', label: '人工智能' },
+    { id: 'dev', label: '开发工程' },
+  ];
+
+  it('命中字典时注入 label，非 topInterests 字段原样透传', () => {
+    const r = withInterestLabels(base(), dict);
+    expect(r.topInterests[0]).toEqual({ id: 'ai', count: 2, pct: 100, label: '人工智能' });
+    expect(r.topInterests[1].label).toBe('开发工程');
+    // 消费方按 key 取值，透传时丢一个键就是白屏（streak 在遥测带、totalBookmarks 在深度区）
+    expect(r.streak).toBe(3);
+    expect(r.totalBookmarks).toBe(2);
+  });
+
+  it('字典缺该 id 时回退为 id 本身，绝不产出 undefined（InsightDashboardPage 直接渲染该字段）', () => {
+    const r = withInterestLabels(base(), [dict[0]]);
+    expect(r.topInterests[1].label).toBe('dev');
+    expect(r.topInterests.every(t => typeof t.label === 'string' && t.label)).toBe(true);
+  });
+
+  it('categories 为空 / 非数组 / 含脏项时不抛异常', () => {
+    expect(() => withInterestLabels(base(), undefined)).not.toThrow();
+    expect(() => withInterestLabels(base(), null)).not.toThrow();
+    expect(() => withInterestLabels(base(), 'oops')).not.toThrow();
+    expect(withInterestLabels(base()).topInterests[0].label).toBe('ai');
+    // 字典里混入 null 项也不能炸（find 回调里用的是可选链）
+    expect(withInterestLabels(base(), [null, dict[0]]).topInterests[0].label).toBe('人工智能');
+  });
+
+  it('画像本身为空时原样返回（调用方尚未取到数据，不应崩溃）', () => {
+    expect(withInterestLabels(null, dict)).toBeNull();
+    expect(withInterestLabels(undefined, dict)).toBeUndefined();
+  });
+});
+

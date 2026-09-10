@@ -43,6 +43,7 @@ import { showToast } from '../utils/toast.js';
 import { useProfileStore, useUiStore } from '../store';
 import { ICONS } from '../constants/appConstants.jsx';
 import { packConversation, estimateMessages } from '../session/contextManager.js';
+import { COMPLETION_MAX_TOKENS } from '../constants/agentLoop.js';
 import { forkLinearSession } from '../session/trailStore.js';
 import { useMultiAgentOrchestrator } from '../hooks/useMultiAgentOrchestrator.js';
 import { recordAgentRun, depositExperience } from '../domain/agent/agentEvolution.js';
@@ -1140,7 +1141,7 @@ export default function AiChatPanel({
               action: 'chat',
               systemPrompt,
               messages: sendMessages.map(m => ({ role: m.role, content: m.content })),
-              max_tokens: 4000,
+              max_tokens: COMPLETION_MAX_TOKENS,
               stream: true,
             }),
           });

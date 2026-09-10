@@ -9,6 +9,7 @@ import { executeAgentTool } from '../../utils/agentTools.js';
 import { getTool, resolveApprovalDecision } from '../../utils/toolRegistry.js';
 import { mergeToolCallDeltas } from '../../utils/toolCallMerge.js';
 import { validateToolArgs } from '../../utils/toolArgsValidator.js';
+import { AGENT_DEFAULT_MAX_ITERATIONS, COMPLETION_MAX_TOKENS } from '../../constants/agentLoop.js';
 import { wrapUntrusted } from '../../session/untrusted.js';
 import { packConversation } from '../../session/contextManager.js';
 import { persistLongResult } from '../../session/outputSink.js';
@@ -156,7 +157,7 @@ export async function streamAgentResponse({ controller, baseUrl, apiKey, model, 
  * @param {Object} opts.llmConfig { baseUrl, apiKey, ... }
  * @param {string} opts.selectedModel 模型名
  * @param {Object} opts.toolCtx 工具执行上下文（透传给 executeAgentTool）
- * @param {number} [opts.maxIterations=12] 最大轮数；末轮撤走工具强制收敛
+ * @param {number} [opts.maxIterations] 最大轮数；末轮撤走工具强制收敛（默认见 constants/agentLoop.js）
  * @param {number} [opts.contextBudget=48000]
  * @param {number} [opts.keepRecent=25]
  * @param {(iter:number, maxIterations:number, isFinal:boolean) => string} [opts.buildSystemSuffix]
@@ -174,7 +175,7 @@ export async function runToolLoop({
   llmConfig,
   selectedModel,
   toolCtx,
-  maxIterations = 12,
+  maxIterations = AGENT_DEFAULT_MAX_ITERATIONS,
   contextBudget = CONTEXT_BUDGET,
   keepRecent = KEEP_RECENT,
   buildSystemSuffix,
@@ -260,7 +261,7 @@ export async function runToolLoop({
             model: selectedModel,
             systemPrompt: fullSystemPrompt,
             messages: sendMessages,
-            maxTokens: 4000,
+            maxTokens: COMPLETION_MAX_TOKENS,
             tools: iterTools,
             toolChoice: isFinalIteration ? undefined : 'auto',
             onChunk: (c) => {
