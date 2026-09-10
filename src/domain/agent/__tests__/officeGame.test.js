@@ -8,6 +8,7 @@ import {
   accrueStipend, STIPEND_AMOUNT, STIPEND_INTERVAL_MS,
   pickWanderTarget, WANDER_BOUNDS, SCENE_POIS,
   sceneComfort, FURNITURE, MAX_FURNITURE_PER_SCENE,
+  resolveActorScene, REST_SPOTS, pickRestSpot, walkDurationMs,
 } from '../officeGame.js';
 
 const NOW = 1_000_000_000;
@@ -177,5 +178,41 @@ describe('v26.6 家具舒适度', () => {
     const costs = Object.values(FURNITURE).map(f => f.cost);
     expect(costs.every(c => c > 0)).toBe(true);
     expect(MAX_FURNITURE_PER_SCENE).toBeGreaterThan(0);
+  });
+});
+
+describe('v26.7 休息逻辑：场景随状态驱动', () => {
+  it('在岗/认领/刚交付 → 办公室；空闲 → 休息区', () => {
+    expect(resolveActorScene('working')).toBe('office');
+    expect(resolveActorScene('claiming')).toBe('office');
+    expect(resolveActorScene('claimed')).toBe('office');
+    expect(resolveActorScene('done')).toBe('office');
+    expect(resolveActorScene('idle')).toBe('lounge');
+    expect(resolveActorScene(undefined)).toBe('lounge');
+  });
+
+  it('休息位：按序号循环分配，落在边界内且围绕锚点抖动', () => {
+    expect(REST_SPOTS.length).toBeGreaterThanOrEqual(2);
+    const a = pickRestSpot(0, () => 0.5);
+    expect(a.x).toBeCloseTo(REST_SPOTS[0].x, 1);
+    for (let i = 0; i < 50; i++) {
+      const s = pickRestSpot(i);
+      expect(s.x).toBeGreaterThanOrEqual(WANDER_BOUNDS.minX);
+      expect(s.x).toBeLessThanOrEqual(WANDER_BOUNDS.maxX);
+      expect(s.y).toBeGreaterThanOrEqual(WANDER_BOUNDS.minY);
+      expect(s.y).toBeLessThanOrEqual(WANDER_BOUNDS.maxY);
+    }
+  });
+});
+
+describe('v26.7 平滑步行：恒定步速时长', () => {
+  it('时长随距离伸缩，短步 0.9s 下限、长步 4s 封顶', () => {
+    expect(walkDurationMs(0, 0, 5, 0)).toBe(900);      // 5% → 500ms → 下限 900
+    expect(walkDurationMs(0, 0, 20, 0)).toBe(2000);    // 20% @10%/s
+    expect(walkDurationMs(0, 0, 90, 60)).toBe(4000);   // 108% → 封顶
+  });
+
+  it('长距离耗时严格大于短距离（连续移动，无瞬移）', () => {
+    expect(walkDurationMs(10, 40, 80, 40)).toBeGreaterThan(walkDurationMs(10, 40, 30, 40));
   });
 });

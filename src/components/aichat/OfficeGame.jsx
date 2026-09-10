@@ -1,22 +1,24 @@
 /**
- * OfficeGame - 像素养成模拟游戏（v26 #17 大屏覆盖层，v26.6 自主行动+家具布置）
+ * OfficeGame - 像素养成模拟游戏（v26 #17 大屏覆盖层，v26.6 自主行动+家具，v26.7 休息逻辑+平滑步行+紧凑布局）
  *
  * 玩法：
  * - 点击小人 = 抚摸（心情+，爱心粒子）；冷却中再点 = 逗趣（小心情-微精力）
- * - 按住拖动 = 挪位置（落点按场景持久化，拖完停留 20s 再恢复自主漫步）
- * - 自主行动：空闲小人会自己去饮水机/绿植/沙发/门口逛，到达兴趣点偶尔冒摸鱼气泡
- * - 食物栏选中 → 点小人投喂（扣经费）；「发工资」模式 → 点小人发钱
+ * - 按住拖动 = 挪位置（落点按场景持久化，拖完停留 20s 再恢复自主行动）
+ * - 自主行动：恒定步速平滑走位（严禁瞬移）；空闲员工自动去休息区躺沙发/地毯睡觉（Zzz），
+ *   在岗/交付回办公室工位；午休（11:30–13:30）全员回办公室水吧
+ * - 食物栏选中 → 点小人投喂（扣经费）；「工资」模式 → 点小人发钱
  * - 「布置」模式 → 家具目录选购 → 点地板摆放；拖动挪位；点家具收回（返一半）
  *   家具提升场景舒适度（心情基础值 +2/件，封顶 +12）
  * - 属性：饱食/精力/心情随时间衰减（离线补账），产出交付 +经费、补贴 +25/15min
- * - 场景：办公室 / 休息区；团队协作开始时全员自动汇聚办公室
- * - 彩蛋：午休时间（11:30–13:30）全员聚集水吧干饭；交付时像素烟花庆祝
+ * - 彩蛋：交付时像素烟花庆祝
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { getGroupState, getActiveChat, subscribeGroup, resolveMemberPreset, hueOfMemberId } from './groupChatStore.js';
 import { deriveOfficeActivity } from '../../domain/agent/officeScene.js';
 import {
-  isLunchTime, pickWanderTarget, AMBIENT_LINES, WANDER_WALK_MS, FURNITURE,
+  isLunchTime, pickWanderTarget, pickRestSpot, resolveActorScene, walkDurationMs,
+  AMBIENT_LINES, REST_LINES, FURNITURE,
 } from '../../domain/agent/officeGame.js';
 import {
   getGameState, subscribeGame, feedActor, paySalary, petActor, playWithActor,
@@ -42,7 +44,7 @@ const FURNITURE_MENU = Object.values(FURNITURE);
 const MODES = [
   { id: 'pet', label: '互动' },
   { id: 'feed', label: '投喂' },
-  { id: 'salary', label: '发工资' },
+  { id: 'salary', label: '工资' },
   { id: 'decorate', label: '布置' },
 ];
 
@@ -59,7 +61,7 @@ function deskSlot(i) {
 function lunchSlot(i) {
   return { x: 10 + (i % 3) * 12, y: 52 + Math.floor(i / 3) * 22 };
 }
-/** 休息区散点 */
+/** 休息区散点（非休息态兜底位） */
 function loungeSlot(i) {
   return { x: 14 + (i % 3) * 26, y: 52 + Math.floor(i / 3) * 28 };
 }
@@ -127,9 +129,14 @@ export default function OfficeGame({ onClose }) {
     return m;
   }, [activity]);
   activityLiveRef.current = activityMap;
-  liveRef.current = { roster: snap.roster, activityMap, game, scene };
+  liveRef.current = {
+    roster: snap.roster,
+    activityMap,
+    game,
+    scene,
+    idx: Object.fromEntries(snap.roster.map((id, i) => [id, i])),
+  };
   const presets = useMemo(() => snap.roster.map(id => resolveMemberPreset(id)), [snap.roster]);
-  const anyWorking = activity.some(a => a.status === 'working' || a.status === 'claiming');
 
   // 5s 一个时间片：驱动属性衰减可视化与午休窗口检测（不额外加 state 依赖）
   const [now5, setNow5] = useState(Date.now());
@@ -138,28 +145,47 @@ export default function OfficeGame({ onClose }) {
     return () => clearInterval(t);
   }, []);
 
-  /* ---------- 自主行动：空闲小人自己逛街（1.5s 决策一拍） ---------- */
+  /* ---------- 自主行动：空闲小人自己逛街/去休息区（1.5s 决策一拍） ---------- */
   useEffect(() => {
     const t = setInterval(() => {
       const now = Date.now();
-      const { roster, activityMap: acts, game: g } = liveRef.current;
+      const { roster, activityMap: acts, game: g, idx } = liveRef.current;
       const lunch = isLunchTime(now);
       let changed = false;
       const nextW = { ...wanderRef.current };
       for (const id of roster || []) {
+        const i = idx?.[id] ?? 0;
         const act = acts?.[id];
-        const working = act && (act.status === 'working' || act.status === 'claiming');
+        const status = act?.status || 'idle';
+        const working = status === 'working' || status === 'claiming';
         if (working) { if (nextW[id]) { delete nextW[id]; changed = true; } continue; }
         if (dragRef.current?.id === id) continue; // 手里拖着的不动
-        const actorScene = g.actors?.[id]?.scene || 'office';
-        if (lunch && actorScene === 'office') { if (nextW[id]) { delete nextW[id]; changed = true; } continue; } // 午休强制水吧
+        // 午休彩蛋：非在岗全员去办公室水吧（位置强制，不漫步）
+        if (lunch) { if (nextW[id]) { delete nextW[id]; changed = true; } continue; }
+        const effScene = resolveActorScene(status);
         const w = nextW[id];
         if (!w || now >= w.until) {
-          const target = pickWanderTarget(actorScene);
-          nextW[id] = { x: target.x, y: target.y, until: now + WANDER_WALK_MS + target.stayMs, movingUntil: now + WANDER_WALK_MS };
+          // 休息者：85% 回休息位长驻睡觉，15% 起身溜达一下再回去
+          const strolling = w?.kind === 'stroll';
+          const restBias = status === 'idle' && !strolling ? 0.85 : status === 'idle' ? 1 : 0.55;
+          const goingRest = status === 'idle' && Math.random() < restBias;
+          const target = goingRest ? pickRestSpot(i) : pickWanderTarget(effScene);
+          // 当前位置（上次目标或场景默认位）→ 恒定步速算时长，严禁瞬移
+          const from = w || (effScene === 'office' ? deskSlot(i) : loungeSlot(i));
+          const walkMs = walkDurationMs(from.x, from.y, target.x, target.y);
+          const stayMs = goingRest ? 18000 + Math.round(Math.random() * 17000) : target.stayMs;
+          nextW[id] = {
+            x: target.x, y: target.y,
+            kind: goingRest ? 'rest' : 'stroll',
+            until: now + walkMs + stayMs,
+            movingUntil: now + walkMs,
+            walkMs,
+          };
           changed = true;
-          if (w && Math.random() < 0.22) {
-            showBubble(id, AMBIENT_LINES[Math.floor(Math.random() * AMBIENT_LINES.length)]);
+          if (w && Math.random() < 0.2) {
+            showBubble(id, goingRest
+              ? REST_LINES[Math.floor(Math.random() * REST_LINES.length)]
+              : AMBIENT_LINES[Math.floor(Math.random() * AMBIENT_LINES.length)]);
           }
         }
       }
@@ -257,22 +283,17 @@ export default function OfficeGame({ onClose }) {
   const resolvePos = useCallback((agentId, i) => {
     const act = activityMap[agentId];
     const actorState = game.actors[agentId] || {};
-    const working = act && (act.status === 'working' || act.status === 'claiming');
-    // 午休彩蛋：办公室全员去水吧
-    if (scene === 'office' && isLunchTime(now5) && !working) return lunchSlot(i);
-    // 工作时间：强制汇聚办公室工位（需求 3）
-    if (anyWorking) {
-      if (scene !== 'office') return null; // 干活时休息区不显示人（都在办公室）
-      if (working) return deskSlot(i);
-      return actorState.pos?.office || lunchSlot(i);
-    }
-    // 非工作：按员工所在场景渲染
-    const actorScene = actorState.scene || 'office';
-    if (actorScene !== scene) return null;
+    const status = act?.status || 'idle';
+    const working = status === 'working' || status === 'claiming';
+    // 午休彩蛋：非在岗全员去办公室水吧
+    if (isLunchTime(now5) && !working) return scene === 'office' ? lunchSlot(i) : null;
+    // 场景随状态驱动：在岗/认领/刚交付 → 办公室；空闲 → 休息区（睡觉/躺沙发）
+    const effScene = resolveActorScene(status);
+    if (effScene !== scene) return null;
     const custom = actorState.pos?.[scene];
     if (custom) return custom;
     return scene === 'office' ? deskSlot(i) : loungeSlot(i);
-  }, [scene, activityMap, game.actors, anyWorking, now5]);
+  }, [scene, activityMap, game.actors, now5]);
 
   /* ---------- 交互：拖拽 + 点击 ---------- */
   const onUnitPointerDown = (agentId, i, e) => {
@@ -418,7 +439,7 @@ export default function OfficeGame({ onClose }) {
     .map((id, i) => ({ id, i, pos: resolvePos(id, i) }))
     .filter(u => u.pos);
 
-  return (
+  return createPortal(
     <div className="ogame-overlay" role="dialog" aria-label="像素养成模拟游戏">
       <div className="ogame">
         {/* 顶栏 */}
@@ -434,8 +455,6 @@ export default function OfficeGame({ onClose }) {
                 type="button"
                 className={scene === s.id ? 'active' : ''}
                 onClick={() => setScene(s.id)}
-                disabled={anyWorking && s.id !== 'office'}
-                title={anyWorking && s.id !== 'office' ? '团队协作中，全员都在办公室' : undefined}
               >{s.label}</button>
             ))}
           </div>
@@ -450,7 +469,7 @@ export default function OfficeGame({ onClose }) {
               type="button"
               className={`ogame-mode ${mode === m.id ? 'active' : ''} ${m.id === 'salary' ? 'is-salary' : ''}`}
               onClick={() => setMode(m.id)}
-            >{m.label}{m.id === 'salary' ? `（${80}）` : ''}</button>
+            >{m.label}{m.id === 'salary' ? ' 80' : ''}</button>
           ))}
           {mode === 'feed' && (
             <span className="ogame-foods">
@@ -460,7 +479,7 @@ export default function OfficeGame({ onClose }) {
                   type="button"
                   className={`ogame-food ${selectedFood === f.id ? 'active' : ''}`}
                   onClick={() => setSelectedFood(f.id)}
-                >{f.label} <em>{f.cost}</em></button>
+                >{f.label}<em>{f.cost}</em></button>
               ))}
             </span>
           )}
@@ -473,15 +492,10 @@ export default function OfficeGame({ onClose }) {
                   className={`ogame-food ${selectedFurniture === f.id ? 'active' : ''}`}
                   onClick={() => setSelectedFurniture(f.id)}
                   title={`舒适度 +2（封顶 +12）`}
-                >{f.label} <em>{f.cost}</em></button>
+                >{f.label}<em>{f.cost}</em></button>
               ))}
             </span>
           )}
-          <span className="ogame-hint">
-            {mode === 'decorate'
-              ? '选家具 → 点地板摆放 · 拖动挪位 · 点已摆的家具收回（返一半）'
-              : anyWorking ? '团队协作中：全员已汇聚办公室' : isLunchTime() ? '午休时间：大家在水吧干饭' : '点击=抚摸 · 按住拖动=挪位置 · 小人会自己逛'}
-          </span>
         </div>
 
         {/* 场景 */}
@@ -549,7 +563,7 @@ export default function OfficeGame({ onClose }) {
 
             {/* 成员 */}
             {visible.length === 0 && (
-              <div className="ofc-empty">{scene === 'office' ? '办公室空荡荡——邀请成员进群吧' : '休息区没人，大家都上班去了'}</div>
+              <div className="ofc-empty">{scene === 'office' ? '办公室没人——大家都去休息区充电啦' : '休息区空着——大家都精神着呢'}</div>
             )}
             {visible.map(({ id, i, pos }) => {
               const preset = presets[i] || { name: id };
@@ -560,21 +574,27 @@ export default function OfficeGame({ onClose }) {
               const workForced = status === 'working' || status === 'claiming';
               const lunch = scene === 'office' && isLunchTime(now5) && !workForced;
               const w = wander[id];
-              // 位置优先级：拖拽 > 自主漫步（工作/午休强制位除外）> 槽位/自定义
+              // 位置优先级：拖拽 > 自主漫步/休息位（工作/午休强制位除外）> 槽位/自定义
               const wanderActive = w && !workForced && !lunch;
-              const p = (drag && drag.id === id) ? drag : wanderActive ? w : pos;
               const walking = wanderActive && Date.now() < (w.movingUntil || 0);
+              const resting = wanderActive && !walking && w.kind === 'rest' && status === 'idle';
+              const p = (drag && drag.id === id) ? drag : wanderActive ? w : pos;
               return (
                 <div
                   key={id}
                   data-ogame-id={id}
-                  className={`ogame-unit is-${status} ${walking ? 'is-walking' : ''} ${drag && drag.id === id ? 'is-dragging' : ''} ${lunch ? 'is-lunch' : ''}`}
-                  style={{ left: `${p.x}%`, top: `${p.y}%`, zIndex: Math.round(p.y) + 2 }}
+                  className={`ogame-unit is-${status} ${walking ? 'is-walking' : ''} ${resting ? 'is-resting' : ''} ${drag && drag.id === id ? 'is-dragging' : ''} ${lunch ? 'is-lunch' : ''}`}
+                  style={{
+                    left: `${p.x}%`, top: `${p.y}%`, zIndex: Math.round(p.y) + 2,
+                    // 步行时长随距离伸缩（经 --ogame-walk-ms 注入，themes.css !important 只能让位给 CSS 变量）
+                    ...(walking ? { '--ogame-walk-ms': `${w.walkMs || 1200}ms` } : {}),
+                  }}
                   onPointerDown={(e) => onUnitPointerDown(id, i, e)}
                   onPointerMove={onUnitPointerMove}
                   onPointerUp={() => onUnitPointerUp(id)}
                 >
                   {bubbles[id] && <span className="ofc-bubble">{bubbles[id]}</span>}
+                  {resting && <span className="ogame-zzz" aria-hidden="true"><i>Z</i><i>Z</i><i>Z</i></span>}
                   {(status === 'working' || status === 'claiming') && !bubbles[id] && (
                     <span className="ogame-think" title={status === 'working' ? '执行中' : '思考中'}><i /><i /><i /></span>
                   )}
@@ -605,10 +625,11 @@ export default function OfficeGame({ onClose }) {
 
           {/* 底部说明 */}
           <div className="ogame-foot">
-            团队补贴每 15 分钟 +25 · 交付产出赚经费 · 家具提升舒适度让心情更稳 · 抚摸和投喂养出好状态 · 午休全员水吧
+            补贴 +25/15min · 交付赚经费 · 家具提升舒适度 · 午休全员水吧
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

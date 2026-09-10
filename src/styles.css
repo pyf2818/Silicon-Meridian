@@ -14317,6 +14317,9 @@ body {
   font-size: 11px;
   font-weight: 600;
   border: 1px solid var(--accent-cyan-border, var(--border-color));
+  /* v26.7 面板缩窄时文字不换行不挤压：缩不下就整颗胶囊换行 */
+  white-space: nowrap;
+  flex: none;
 }
 .chat-context-pill-toggle { cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
 .chat-context-pill-toggle:hover { background: var(--accent-cyan-soft); }
@@ -14532,6 +14535,8 @@ body {
   background: var(--surface-workbench-control);
   transition: border-color .15s ease;
   position: relative;
+  /* v26.7 容器查询锚点：胶囊字号随输入框宽度分级缩放 */
+  container: chatcomposer / inline-size;
 }
 /* 主行：textarea + 发送（v6） */
 .chat-input-main-row {
@@ -14547,6 +14552,9 @@ body {
   align-items: center;
   gap: 4px;
   min-width: 0;
+  /* v26.7 面板缩窄时换行排列而不是挤压重叠 */
+  flex-wrap: wrap;
+  row-gap: 4px;
   /* peek 弹层从胶囊向上浮出，禁止裁剪 */
   overflow: visible;
 }
@@ -14558,8 +14566,24 @@ body {
 .chat-input-tools .chat-context-group {
   flex: 1 1 auto;
   min-width: 0;
-  /* peek 弹层挂在本组内向上浮出，overflow 必须放行；水平溢出由 pill 自身收缩承担 */
+  /* peek 弹层挂在本组内向上浮出，overflow 必须放行；水平溢出由 pill 换行承担 */
   overflow: visible;
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+/* —— v26.7 输入框内容随面板缩放分级缩放（避免缩放后文字过大互相挤压） —— */
+@container chatcomposer (max-width: 520px) {
+  .chat-mode-chip, .chat-model-chip, .chat-context-pill { font-size: 10px; }
+  .chat-context-pill { padding: 3px 7px; gap: 3px; }
+  .chat-model-chip { max-width: 124px; }
+  .chat-model-name { max-width: 78px; }
+}
+@container chatcomposer (max-width: 380px) {
+  .chat-mode-chip, .chat-model-chip, .chat-context-pill { font-size: 9px; }
+  .chat-context-pill { padding: 2px 6px; gap: 2px; }
+  .chat-model-chip { max-width: 98px; }
+  .chat-model-name { max-width: 56px; }
+  .chat-input { font-size: 12px; }
 }
 .chat-mode-chip {
   display: inline-flex;
@@ -30150,64 +30174,69 @@ body {
 }
 @keyframes ofcFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .ogame {
-  width: min(920px, 94vw); height: min(640px, 90vh);
+  width: min(860px, 94vw); height: min(600px, 88vh);
   display: flex; flex-direction: column;
   border: 2px solid var(--border-color); border-radius: 14px;
   background: var(--bg-primary);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.4);
   overflow: hidden;
+  /* 容器查询锚点：内部 UI 随对话框尺寸动态适配（缩放不挤压不重叠） */
+  container: ogame / size;
 }
 .ogame-topbar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 14px; border-bottom: 1px solid var(--border-color);
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-bottom: 1px solid var(--border-color);
   background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
 }
-.ogame-title { font-size: 14px; font-weight: 800; letter-spacing: 0.06em; color: var(--text-primary); }
+.ogame-title { font-size: 12.5px; font-weight: 800; letter-spacing: 0.04em; color: var(--text-primary); white-space: nowrap; }
 .ogame-coins {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 800;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 800;
   border: 1px solid color-mix(in srgb, var(--accent-amber, #c9a961) 55%, transparent);
   color: var(--accent-amber, #c9a961);
   background: color-mix(in srgb, var(--accent-amber, #c9a961) 10%, transparent);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .ogame-coins i {
-  width: 10px; height: 10px; border-radius: 2px;
+  width: 9px; height: 9px; border-radius: 2px;
   background: linear-gradient(135deg, #ffd76b, #c9a961);
   border: 1px solid #8a7136;
 }
 .ogame-scene-tabs { display: flex; gap: 4px; margin-left: auto; }
 .ogame-scene-tabs button {
-  padding: 4px 14px; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 7px; cursor: pointer; font-size: 10.5px; font-weight: 700;
   border: 1px solid var(--border-color); background: transparent; color: var(--text-muted);
+  white-space: nowrap;
 }
 .ogame-scene-tabs button.active { border-color: var(--accent-cyan); color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
 .ogame-scene-tabs button:disabled { opacity: 0.45; cursor: not-allowed; }
 .ogame-close {
-  flex: none; width: 26px; height: 26px; border-radius: 7px; cursor: pointer;
-  border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); font-size: 12px;
+  flex: none; width: 24px; height: 24px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); font-size: 11px;
 }
 .ogame-close:hover { color: var(--status-critical); border-color: var(--status-critical); }
 
 .ogame-toolbar {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 14px; border-bottom: 1px solid var(--border-color);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+  padding: 6px 10px; border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
 }
 .ogame-mode {
-  padding: 4px 12px; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 700;
+  padding: 3px 9px; border-radius: 7px; cursor: pointer; font-size: 10.5px; font-weight: 700;
   border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-muted);
+  white-space: nowrap;
 }
 .ogame-mode.active { border-color: var(--accent-cyan); color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); }
 .ogame-mode.is-salary.active { border-color: var(--accent-amber, #c9a961); color: var(--accent-amber, #c9a961); background: color-mix(in srgb, var(--accent-amber, #c9a961) 10%, transparent); }
 .ogame-foods { display: inline-flex; gap: 4px; }
 .ogame-food {
-  padding: 4px 10px; border-radius: 7px; cursor: pointer; font-size: 11px;
+  padding: 3px 8px; border-radius: 7px; cursor: pointer; font-size: 10.5px;
   border: 1px dashed var(--border-color); background: var(--bg-primary); color: var(--text-muted);
+  white-space: nowrap;
 }
 .ogame-food.active { border-style: solid; border-color: var(--status-ok); color: var(--status-ok); }
-.ogame-food em { font-style: normal; font-size: 9.5px; color: var(--accent-amber, #c9a961); font-weight: 700; }
-.ogame-hint { margin-left: auto; font-size: 10.5px; color: var(--text-muted); }
+.ogame-food em { font-style: normal; font-size: 9px; color: var(--accent-amber, #c9a961); font-weight: 700; margin-left: 2px; }
 
 /* 场景大屏（复用 ofc-wall/ofc-floor，放大） */
 .ogame-scene { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -30308,9 +30337,67 @@ body {
 }
 
 .ogame-foot {
-  padding: 8px 14px; border-top: 1px solid var(--border-color);
-  font-size: 10.5px; color: var(--text-muted); background: var(--bg-secondary);
+  padding: 5px 10px; border-top: 1px solid var(--border-color);
+  font-size: 10px; color: var(--text-muted); background: var(--bg-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* —— v26.7：容器查询动态适配（对话框缩小 → UI 同步缩放，不挤压不重叠） —— */
+@container ogame (max-width: 560px) {
+  .ogame-unit { width: 66px; margin: -17px 0 0 -33px; }
+  .ogame-unit .ofc-person svg { width: 27px; }
+  .ogame-name { font-size: 9px; max-width: 66px; }
+  .ogame-stats { width: 33px; }
+  .ogame-chip { font-size: 8px; padding: 1px 5px; }
+  .ofc-bubble { font-size: 9px; max-width: 110px; }
+}
+@container ogame (max-height: 460px) {
+  .ofc-wall-big { height: 60px; }
+}
+
+/* —— v26.7：休息睡觉态（慢呼吸 + Zzz 漂浮） —— */
+.ogame-unit.is-resting .ofc-person { animation: ofcBreath 2.6s ease-in-out infinite; }
+@keyframes ofcBreath {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(1px) scaleY(0.96); }
+}
+.ogame-zzz { position: absolute; top: -15px; left: 55%; width: 20px; height: 16px; z-index: 3; pointer-events: none; }
+.ogame-zzz i {
+  position: absolute; left: 0; bottom: 0;
+  font-size: 9px; font-weight: 800; font-style: normal; line-height: 1;
+  color: var(--status-info); opacity: 0;
+  animation: ogameZzz 2.7s steps(4) infinite;
+}
+.ogame-zzz i:nth-child(2) { animation-delay: 0.9s; }
+.ogame-zzz i:nth-child(3) { animation-delay: 1.8s; }
+@keyframes ogameZzz {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.7); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(9px, -13px) scale(1.15); }
+}
+
+/* —— v26.7 关键修复：themes.css 的 `html * { transition: … !important }`（主题切换过渡）
+   会吞掉所有位移过渡，导致小人移动瞬移。这里用更高特异性夺回 left/top 过渡。 —— */
+html .ogame-overlay .ogame-unit,
+html .team-office-scene .ofc-unit {
+  transition-property: left, top !important;
+  transition-duration: 1.2s !important;
+  transition-timing-function: cubic-bezier(0.45, 0, 0.55, 1) !important;
+}
+html .team-office-scene .ofc-unit { transition-duration: 1.5s !important; }
+/* 步行时长随距离伸缩（组件内联 --ogame-walk-ms） */
+html .ogame-overlay .ogame-unit.is-walking { transition-duration: var(--ogame-walk-ms, 1.2s) !important; }
+/* 家具挪位短过渡 */
+html .ogame-overlay .ogame-furn {
+  transition-property: left, top !important;
+  transition-duration: 0.3s !important;
+  transition-timing-function: ease !important;
+}
+/* 拖拽中必须零过渡（跟手） */
+html .ogame-overlay .is-dragging { transition: none !important; }
+/* 朝向翻转 */
+html .ogame-overlay .ofc-person-svg,
+html .team-office-scene .ofc-person-svg { transition: transform 0.3s ease !important; }
 
 /* ---------- v26.6：自主行动 / 布置模式 / 思考气泡 ---------- */
 

@@ -49,6 +49,9 @@ try {
 
   await page.locator('.team-office-game').click();
   await wait(1000);
+  // v26.7 休息逻辑：空闲员工在休息区 → 切过去观测属性条与漫步
+  await page.locator('.ogame-scene-tabs button', { hasText: '休息区' }).click();
+  await wait(600);
 
   // ① 迷你属性条
   const mini = await page.evaluate(() => {
@@ -61,7 +64,7 @@ try {
   });
   console.log('[probe] mini stats:', JSON.stringify(mini));
 
-  // ② 自主漫步：静置 14s 观察成员自行移动（午休时段跳过）
+  // ② 自主行动：静置 14s 观察成员自行移动（含去休息位；午休时段跳过）
   const lunchNow = (() => { const d = new Date(); const m = d.getHours() * 60 + d.getMinutes(); return m >= 690 && m < 810; })();
   const posT0 = await page.evaluate(() => {
     const u = document.querySelector('.ogame-unit');
@@ -70,12 +73,19 @@ try {
   await wait(14000);
   const posT1 = await page.evaluate(() => {
     const u = document.querySelector('.ogame-unit');
-    return { left: u?.style.left || '', top: u?.style.top || '' };
+    return {
+      left: u?.style.left || '', top: u?.style.top || '',
+      walking: !!document.querySelector('.ogame-unit.is-walking'),
+      resting: !!document.querySelector('.ogame-unit.is-resting'),
+    };
   });
-  const wandered = posT0.left !== posT1.left || posT0.top !== posT1.top;
-  console.log('[probe] wander:', lunchNow ? 'SKIP(午休)' : `${posT0.left},${posT0.top} -> ${posT1.left},${posT1.top}`);
+  // v26.7：自主行动 = 漫游（位移）或 到位长驻休息（is-resting），二者的失败才算失败
+  const wandered = posT0.left !== posT1.left || posT0.top !== posT1.top || posT1.resting;
+  console.log('[probe] wander:', lunchNow ? 'SKIP(午休)' : `${posT0.left},${posT0.top} -> ${posT1.left},${posT1.top} walking=${posT1.walking} resting=${posT1.resting}`);
 
-  // ③ 布置模式
+  // ③ 布置模式（回办公室摆家具）
+  await page.locator('.ogame-scene-tabs button', { hasText: '办公室' }).click();
+  await wait(600);
   await page.locator('.ogame-mode', { hasText: '布置' }).click();
   await wait(400);
   const decor = await page.evaluate(() => ({

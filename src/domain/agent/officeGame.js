@@ -169,6 +169,44 @@ export const WANDER_BOUNDS = { minX: 8, maxX: 90, minY: 34, maxY: 88 };
 /** 漫步走位时长（与 .ogame-unit 的 left/top 过渡时长一致） */
 export const WANDER_WALK_MS = 1300;
 
+/** 休息位（v26.7）：沙发 A/B + 地毯 + 电视前，休息的员工去这些点睡觉 */
+export const REST_SPOTS = [
+  { x: 16, y: 58 },  // 沙发 A
+  { x: 82, y: 70 },  // 沙发 B
+  { x: 32, y: 80 },  // 绿植边地毯
+  { x: 46, y: 64 },  // 电视前
+];
+
+/**
+ * 员工所在场景由状态驱动（v26.7 休息逻辑）：
+ * 在岗/认领/刚交付 → 办公室；空闲（休息）→ 休息区（睡觉/躺沙发）。
+ * 午休水吧彩蛋由视图层在办公室场景覆盖。
+ */
+export function resolveActorScene(status) {
+  return (status === 'working' || status === 'claiming' || status === 'done' || status === 'claimed')
+    ? 'office'
+    : 'lounge';
+}
+
+/** 休息位决策：按序号分配 + 轻抖动（纯函数，rng 注入可测试） */
+export function pickRestSpot(index, rng = Math.random) {
+  const base = REST_SPOTS[((index % REST_SPOTS.length) + REST_SPOTS.length) % REST_SPOTS.length];
+  const clamp = (v) => Math.round(Math.max(WANDER_BOUNDS.minX, Math.min(WANDER_BOUNDS.maxX, v)) * 10) / 10;
+  return {
+    x: clamp(base.x + (rng() - 0.5) * 6),
+    y: clamp(base.y + (rng() - 0.5) * 5),
+  };
+}
+
+/**
+ * 步行时长：恒定步速（10%/s），随距离伸缩，严禁瞬移。
+ * 短步最快 0.9s，跨场景长步封顶 4s（速度适中不拖沓）。
+ */
+export function walkDurationMs(fromX, fromY, toX, toY) {
+  const dist = Math.hypot(toX - fromX, toY - fromY);
+  return Math.round(Math.max(900, Math.min(4000, dist * 100)));
+}
+
 /** 场景兴趣点：饮水机/绿植/沙发/电视/门口等，人爱往这些地方凑 */
 export const SCENE_POIS = {
   office: [
@@ -190,6 +228,9 @@ export const SCENE_POIS = {
 
 /** 摸鱼闲聊气泡（到达兴趣点时小概率冒一句） */
 export const AMBIENT_LINES = ['伸个懒腰~', '喝口水', '到处走走', '看看窗外的云', '脑子转转', '摸会儿鱼…', '这盆绿植真精神'];
+
+/** 休息气泡（到休息区躺下时小概率冒一句） */
+export const REST_LINES = ['眯一会儿~', '沙发真舒服', 'Zzz…', '养足精神再战', '躺平充电中'];
 
 /**
  * 自主漫步目标决策：60% 走向场景兴趣点（带抖动），40% 随机散步。

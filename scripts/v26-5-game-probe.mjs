@@ -48,9 +48,11 @@ try {
   await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await wait(6500);
 
-  // 开游戏
+  // 开游戏（v26.7 休息逻辑：空闲员工在休息区 → 先切到休息区操作）
   await page.locator('.team-office-game').click();
   await wait(1000);
+  await page.locator('.ogame-scene-tabs button', { hasText: '休息区' }).click();
+  await wait(600);
   const opened = await page.evaluate(() => ({
     overlay: !!document.querySelector('.ogame-overlay'),
     coins: document.querySelector('.ogame-coins')?.textContent?.trim() || '',
@@ -108,11 +110,11 @@ try {
   }
   console.log('[probe] drag left before/after:', leftBefore, '->', leftAfter);
 
-  // 场景切换
-  await page.locator('.ogame-scene-tabs button', { hasText: '休息区' }).click();
-  await wait(600);
-  const loungeEmpty = await page.evaluate(() => !!document.querySelector('.ogame-scene .ofc-empty'));
+  // 场景切换（v26.7：空闲员工都在休息区 → 办公室应为空）
   await page.locator('.ogame-scene-tabs button', { hasText: '办公室' }).click();
+  await wait(600);
+  const loungeEmpty = await page.evaluate(() => document.querySelectorAll('.ogame-unit').length === 0);
+  await page.locator('.ogame-scene-tabs button', { hasText: '休息区' }).click();
   await wait(600);
   const backUnits = await page.evaluate(() => document.querySelectorAll('.ogame-unit').length);
 
