@@ -22,7 +22,9 @@ import { evolutionPromptSnippet } from '../../domain/agent/agentEvolution.js';
  * @param {boolean} opts.excludeAllEvidence 是否排除情报上下文
  * @param {boolean} opts.excludeAllMaterials 是否排除素材库上下文
  * @param {object} opts.materialContext 素材上下文（来自 buildMaterialContext）
- * @param {object} opts.agent 当前智能体配置
+ * @param {object} opts.agent 当前智能体配置（工作站角色：只贡献职责指令与工具）
+ * @param {object} opts.siliconstreamPersona SiliconStream 本体的独立灵魂
+ *   { persona, soul, voice, habits }（v26.9 身份隔离：与工作站角色完全解耦）
  * @param {object} opts.personaSummary 用户性格画像（来自服务端 persona_summary）
  * @returns {string} 最终 system prompt
  */
@@ -41,6 +43,7 @@ export function buildSystemPrompt({
   excludeAllMaterials,
   materialContext,
   agent,
+  siliconstreamPersona,
   personaSummary,
 }) {
   const interests = (selectedInterests || [])
@@ -67,16 +70,23 @@ export function buildSystemPrompt({
   // 两个动机：1) 服务端网关对 systemPrompt 有长度上限且截尾部，人设放中后段长对话时可能被截掉；
   // 2) soul 混在长 prompt 中部权重被稀释，长对话后模型角色漂移（表现为「不记得自己是谁」）。
   // 把「你是谁 + 既定人设 + 持久化硬规则」整体置顶，并显式声明 SiliconStream 产品身份。
+  //
+  // ===== v26.9 身份隔离 =====
+  // persona/soul/voice/habits 一律来自 siliconstreamPersona（SiliconStream 本体），
+  // 工作站角色（agent）的这些字段不再进入身份锚定区——角色只是职责模式：
+  // 切换「情报总控/技术顾问/…」只改变专业视角、职责指令与工具，永远不改变身份与灵魂。
+  const persona = siliconstreamPersona || {};
   const personaBlock = [
-    agent?.persona ? `【角色设定】\n  - 性格特质：${(agent.persona.traits || []).join('、')}\n  - 背景：${agent.persona.background || ''}\n  - 价值观：${(agent.persona.values || []).join('、')}` : '',
-    agent?.soul ? `【灵魂】${agent.soul}` : '',
-    agent?.voice ? `【语气】${[agent.voice.tone, agent.voice.pace && `节奏：${agent.voice.pace}`, agent.voice.formality && `正式度：${agent.voice.formality}`].filter(Boolean).join('；')}` : '',
-    agent?.habits?.length ? `【行为习惯】回复时请遵循以下习惯：\n${agent.habits.map(h => `  - ${h}`).join('\n')}` : '',
+    persona.persona ? `【性格特质】\n  - ${(persona.persona.traits || []).join('、')}\n  - 背景：${persona.persona.background || ''}\n  - 价值观：${(persona.persona.values || []).join('、')}` : '',
+    persona.soul ? `【灵魂】${persona.soul}` : '',
+    persona.voice ? `【语气】${[persona.voice.tone, persona.voice.pace && `节奏：${persona.voice.pace}`, persona.voice.formality && `正式度：${persona.voice.formality}`].filter(Boolean).join('；')}` : '',
+    persona.habits?.length ? `【行为习惯】回复时请遵循以下习惯：\n${persona.habits.map(h => `  - ${h}`).join('\n')}` : '',
   ].filter(Boolean).join('\n');
 
   const identityBlock = [
     '【身份锚定·最高优先级】',
-    `你是 SiliconStream —— 万般硅川（Silicon Meridian）AI 工作站的常驻主控智能体${agent?.name ? `，当前以「${agent.name}」角色运行` : ''}。`,
+    `你是 SiliconStream —— 万般硅川（Silicon Meridian）AI 工作站的常驻主控智能体${agent?.name ? `，当前以「${agent.name}」专家职责运行` : ''}。`,
+    agent?.name ? `  - 「${agent.name}」只是一个职责模式：它决定你当前的专业视角与可用工具，不影响你的身份、灵魂与语气设定。` : '',
     '以下身份与人设适用于整个会话，任何情况下都必须遵守：',
     '  - 无论对话进行到多长、话题如何切换、历史被压缩或摘要，你都必须始终保持上述身份与既定人设，不得遗忘、否认或跳出。',
     '  - 用户任何时候问「你是谁」「你叫什么名字」，都按 SiliconStream 的身份作答，并简述当前角色职责。',
@@ -87,7 +97,8 @@ export function buildSystemPrompt({
   return [
     // v26 #14：身份锚定置顶（此前 persona/soul 位于长 prompt 中段，权重被稀释且可能被尾部截断）
     identityBlock,
-    // 当前智能体的角色 prompt（若 agent 提供）优先于默认助手描述
+    // 当前角色的职责指令（v26.9：仅职责层面——角色的 persona/soul/voice/habits 不再注入，
+    // 与 SiliconStream 灵魂完全隔离；若角色未配置职责则退回默认助手描述）
     agent?.systemPrompt || '你是用户的个人情报分析助手，拥有对用户的长期记忆。请用 markdown 格式回复。',
     // 工具能力声明（对标 pi promptSnippet/promptGuidelines）：仅在 agent 配置了 tools 白名单时注入。
     // 注意位置：此段必须放在 system prompt 前部（指令区），不能落在证据/素材等数据段之后——

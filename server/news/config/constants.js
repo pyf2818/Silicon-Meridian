@@ -791,6 +791,13 @@ export const DEFAULT_SOURCES = [
   { name: '廖雪峰博客', url: 'https://www.liaoxuefeng.com/feed/', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '知乎AI', url: 'https://rsshub.rssforever.com/zhihu/topic/19550517', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '微博热搜AI', url: 'https://rsshub.rssforever.com/weibo/search/hot/AI', region: 'domestic', defaultCategory: 'ai-models' },
+  // ========== v26.9 新增：国内源（全部经 scripts/test-source-candidates*.mjs 实测通过后接入） ==========
+  { name: '有赞技术', url: 'https://tech.youzan.com/feed/', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'company_blog', tags: ['国内','有赞','大厂技术'] },
+  { name: '云风博客', url: 'https://blog.codingnow.com/atom.xml', region: 'domestic', defaultCategory: 'open-source', sourceType: 'expert_blogger', tags: ['国内','云风','游戏引擎/编程'] },
+  { name: '程序师视野', url: 'https://www.techug.com/feed', region: 'domestic', defaultCategory: 'china-tech', sourceType: 'tech_media', tags: ['国内','程序师','开发者视野'] },
+  { name: '稀土掘金 AI', url: 'https://rss.injahow.cn/juejin/tag/人工智能', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'developer_community', tags: ['国内','掘金','AI'] },
+  { name: '稀土掘金 前端', url: 'https://rss.injahow.cn/juejin/tag/前端', region: 'domestic', defaultCategory: 'open-source', sourceType: 'developer_community', tags: ['国内','掘金','前端'] },
+  { name: '稀土掘金 后端', url: 'https://rss.injahow.cn/juejin/tag/后端', region: 'domestic', defaultCategory: 'open-source', sourceType: 'developer_community', tags: ['国内','掘金','后端'] },
   { name: 'Microsoft Research AI', url: 'https://www.microsoft.com/en-us/research/blog/topic/artificial-intelligence/feed/', region: 'overseas', defaultCategory: 'ai-models' },
   { name: 'NVIDIA AI Blog', url: 'https://blogs.nvidia.com/feed/', region: 'overseas', defaultCategory: 'ai-models' },
   { name: 'Amazon AI Blog', url: 'https://aws.amazon.com/blogs/machine-learning/feed/', region: 'overseas', defaultCategory: 'ai-models' },
@@ -1003,7 +1010,7 @@ export const DEFAULT_SOURCES = [
   // ========== 中文科技媒体 ==========
   { name: 'InfoQ CN', url: 'https://www.infoq.cn/feed', region: 'domestic', defaultCategory: 'china-tech' },
   { name: '虎嗅', url: 'https://www.huxiu.com/rss/0.xml', region: 'domestic', defaultCategory: 'china-tech' },
-  { name: '钛媒体', url: 'https://www.tmtpost.com/rss.xml', region: 'domestic', defaultCategory: 'china-tech' },
+  { name: '钛媒体', url: 'https://www.tmtpost.com/feed', region: 'domestic', defaultCategory: 'china-tech' },
   { name: '联合早报', url: 'https://www.zaobao.com/rss.xml', region: 'domestic', defaultCategory: 'china-tech' },
   { name: '德国之声中文', url: 'https://rss.dw.com/rdf/rss-zh-all', region: 'domestic', defaultCategory: 'china-tech' },
   { name: '香港电台国际', url: 'https://news.rthk.hk/rthk/ch/rss/international.xml', region: 'domestic', defaultCategory: 'china-tech' },

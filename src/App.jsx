@@ -214,7 +214,7 @@ function App() {
   const blocked = useNewsStore(s => s.blocked);
   const setBlocked = useNewsStore(s => s.setBlocked);
   // globeFullscreenOpen / elfAvatar / elfAvatarHistory / elfName 已迁移到 uiStore/elfStore
-  const { agents, setAgents, updateAgent, currentAgent, setCurrentAgent, showAgentForm, setShowAgentForm, editingAgent, setEditingAgent, newAgent, setNewAgent } = useAgents();
+  const { agents, setAgents, updateAgent, currentAgent, setCurrentAgent, showAgentForm, setShowAgentForm, editingAgent, setEditingAgent, newAgent, setNewAgent, siliconstreamPersona, setSiliconstreamPersona } = useAgents();
   // Workflow 编辑器 UI 状态从 useUiStore 获取
   const agentFilter = useUiStore(s => s.agentFilter);
   const setAgentFilter = useUiStore(s => s.setAgentFilter);
@@ -2497,6 +2497,8 @@ ${signals}
               agent={agents.find(a => a.id === currentAgent) || agents[0]}
               agents={agents}
               onUpdateAgent={updateAgent}
+              siliconstreamPersona={siliconstreamPersona}
+              onUpdateSiliconstreamPersona={setSiliconstreamPersona}
               setLlmConfig={setLlmConfig}
             />
           )}

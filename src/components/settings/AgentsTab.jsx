@@ -179,8 +179,12 @@ export default function AgentsTab({
                     </div>
                     <ElfCapabilityPanel />
                     <div className="setting-item">
-                      <label>工作站角色</label>
-                      <p className="setting-desc">管理 AI 工作站对话的角色（每个角色有独立的专长与提示词；AI 精灵为固定单例，不在此列）</p>
+                      <label>团队成员 · 专家角色</label>
+                      <p className="setting-desc">
+                        这些是 SiliconStream 的专家职责模式：切换角色只改变工作站对话的专业视角、职责指令与可用工具，
+                        不会影响 SiliconStream 的身份与灵魂设定（灵魂在工作站对话页右上角的「角色设定」中编辑，两者完全隔离）。
+                        AI 精灵为固定单例，不在此列。
+                      </p>
                       <div className="agent-filter-bar">
                         {AGENT_CATEGORIES.map(cat => (
                           <button

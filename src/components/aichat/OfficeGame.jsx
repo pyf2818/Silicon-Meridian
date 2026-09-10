@@ -18,6 +18,7 @@ import { getGroupState, getActiveChat, subscribeGroup, resolveMemberPreset, hueO
 import { deriveOfficeActivity } from '../../domain/agent/officeScene.js';
 import {
   isLunchTime, pickWanderTarget, pickRestSpot, resolveActorScene, walkDurationMs,
+  BED_SPOTS,
   AMBIENT_LINES, REST_LINES, FURNITURE,
 } from '../../domain/agent/officeGame.js';
 import {
@@ -176,7 +177,7 @@ export default function OfficeGame({ onClose }) {
           const stayMs = goingRest ? 18000 + Math.round(Math.random() * 17000) : target.stayMs;
           nextW[id] = {
             x: target.x, y: target.y,
-            kind: goingRest ? 'rest' : 'stroll',
+            kind: goingRest ? (target.kind || 'sofa') : 'stroll',
             until: now + walkMs + stayMs,
             movingUntil: now + walkMs,
             walkMs,
@@ -533,6 +534,17 @@ export default function OfficeGame({ onClose }) {
               </>
             ) : (
               <>
+                {/* 床铺（v26.9）：3 张，坐标与 officeGame.BED_SPOTS 一一对应——休息者优先到床躺卧 */}
+                {BED_SPOTS.map(b => (
+                  <span
+                    key={`bed_${b.bed}`}
+                    className="ogame-bed"
+                    style={{ left: `${b.x}%`, top: `${b.y}%`, zIndex: Math.round(b.y) - 1 }}
+                  >
+                    <i className="ogame-bed-pillow" />
+                    <i className="ogame-bed-quilt" />
+                  </span>
+                ))}
                 <span className="ogame-sofa ogame-sofa-a"><i /><b /></span>
                 <span className="ogame-sofa ogame-sofa-b"><i /><b /></span>
                 <span className="ogame-tv"><i className="ofc-screen-flicker" /></span>
@@ -577,13 +589,15 @@ export default function OfficeGame({ onClose }) {
               // 位置优先级：拖拽 > 自主漫步/休息位（工作/午休强制位除外）> 槽位/自定义
               const wanderActive = w && !workForced && !lunch;
               const walking = wanderActive && Date.now() < (w.movingUntil || 0);
-              const resting = wanderActive && !walking && w.kind === 'rest' && status === 'idle';
+              // v26.9：w.kind = 'bed'（睡床，躺卧姿态）/ 'sofa'（沙发地毯，坐姿休息）/ 'stroll'（漫步）
+              const resting = wanderActive && !walking && status === 'idle' && (w.kind === 'bed' || w.kind === 'sofa');
+              const lying = resting && w.kind === 'bed';
               const p = (drag && drag.id === id) ? drag : wanderActive ? w : pos;
               return (
                 <div
                   key={id}
                   data-ogame-id={id}
-                  className={`ogame-unit is-${status} ${walking ? 'is-walking' : ''} ${resting ? 'is-resting' : ''} ${drag && drag.id === id ? 'is-dragging' : ''} ${lunch ? 'is-lunch' : ''}`}
+                  className={`ogame-unit is-${status} ${walking ? 'is-walking' : ''} ${resting ? 'is-resting' : ''} ${lying ? 'is-lying' : ''} ${drag && drag.id === id ? 'is-dragging' : ''} ${lunch ? 'is-lunch' : ''}`}
                   style={{
                     left: `${p.x}%`, top: `${p.y}%`, zIndex: Math.round(p.y) + 2,
                     // 步行时长随距离伸缩（经 --ogame-walk-ms 注入，themes.css !important 只能让位给 CSS 变量）

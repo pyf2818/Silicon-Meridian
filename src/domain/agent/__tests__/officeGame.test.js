@@ -9,6 +9,7 @@ import {
   pickWanderTarget, WANDER_BOUNDS, SCENE_POIS,
   sceneComfort, FURNITURE, MAX_FURNITURE_PER_SCENE,
   resolveActorScene, REST_SPOTS, pickRestSpot, walkDurationMs,
+  BED_SPOTS,
 } from '../officeGame.js';
 
 const NOW = 1_000_000_000;
@@ -193,8 +194,6 @@ describe('v26.7 休息逻辑：场景随状态驱动', () => {
 
   it('休息位：按序号循环分配，落在边界内且围绕锚点抖动', () => {
     expect(REST_SPOTS.length).toBeGreaterThanOrEqual(2);
-    const a = pickRestSpot(0, () => 0.5);
-    expect(a.x).toBeCloseTo(REST_SPOTS[0].x, 1);
     for (let i = 0; i < 50; i++) {
       const s = pickRestSpot(i);
       expect(s.x).toBeGreaterThanOrEqual(WANDER_BOUNDS.minX);
@@ -202,6 +201,24 @@ describe('v26.7 休息逻辑：场景随状态驱动', () => {
       expect(s.y).toBeGreaterThanOrEqual(WANDER_BOUNDS.minY);
       expect(s.y).toBeLessThanOrEqual(WANDER_BOUNDS.maxY);
     }
+  });
+
+  it('v26.9 床铺优先：序号 0-2 分配床位（kind=bed），床满序号去沙发/地毯（kind=sofa）', () => {
+    expect(BED_SPOTS).toHaveLength(3);
+    const bed = pickRestSpot(0, () => 0.5);
+    expect(bed.kind).toBe('bed');
+    expect(bed.x).toBeCloseTo(BED_SPOTS[0].x, 1);
+    const bed3 = pickRestSpot(2, () => 0.5);
+    expect(bed3.kind).toBe('bed');
+    expect(bed3.x).toBeCloseTo(BED_SPOTS[2].x, 1);
+    const sofa = pickRestSpot(3, () => 0.5);
+    expect(sofa.kind).toBe('sofa');
+    expect(sofa.x).toBeCloseTo(REST_SPOTS[0].x, 1);
+    const sofaLast = pickRestSpot(6, () => 0.5);
+    expect(sofaLast.kind).toBe('sofa');
+    // 序号循环：3 床 + 4 休息位 = 7，i=7 重新从床 1 开始
+    const wrap = pickRestSpot(7, () => 0.5);
+    expect(wrap.kind).toBe('bed');
   });
 });
 

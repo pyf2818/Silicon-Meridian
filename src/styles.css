@@ -30274,6 +30274,49 @@ body {
 }
 .ogame-cooler-l { left: auto; right: 4%; top: 40%; }
 
+/* 床铺（v26.9）：休息区 3 张像素床，坐标与 officeGame.BED_SPOTS 一一对应。
+   transform translate(-50%,-50%) 让床中心对齐 BED_SPOTS 坐标（= 躺卧小人的中心点） */
+.ogame-bed {
+  position: absolute; width: 52px; height: 34px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.ogame-bed::before {
+  /* 床架（木色底框） */
+  content: ""; position: absolute; left: 0; bottom: 0; width: 52px; height: 26px;
+  background: linear-gradient(180deg, #8a6a48 0 46%, #6e5438 46% 100%);
+  border: 2px solid var(--border-color); border-radius: 3px;
+}
+.ogame-bed::after {
+  /* 床头板 */
+  content: ""; position: absolute; left: -2px; bottom: 18px; width: 9px; height: 20px;
+  background: #6e5438; border: 2px solid var(--border-color); border-radius: 3px 3px 0 0;
+}
+.ogame-bed-pillow {
+  position: absolute; left: 5px; bottom: 16px; width: 13px; height: 9px;
+  background: #e8e2d4; border: 2px solid var(--border-color); border-radius: 3px;
+}
+.ogame-bed-quilt {
+  position: absolute; left: 18px; bottom: 5px; width: 30px; height: 17px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-cyan) 32%, #ffffff) 0 34%, color-mix(in srgb, var(--accent-cyan) 58%, #3a6a86) 34% 100%);
+  border: 2px solid var(--border-color); border-radius: 2px 4px 4px 2px;
+}
+.ogame-bed-quilt::after {
+  /* 被角折线装饰 */
+  content: ""; position: absolute; left: 0; top: 0; width: 8px; height: 100%;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* 躺卧姿态（v26.9）：睡床休息时人物旋转 90° 横躺（头朝床头侧），叠呼吸动画 */
+.ogame-unit.is-lying .ofc-person-svg {
+  transform: rotate(90deg) translateY(8px);
+  transform-origin: 50% 58%;
+  transition: transform 0.45s ease;
+}
+.ogame-unit.is-lying .ogame-name,
+.ogame-unit.is-lying .ogame-stats { opacity: 0.55; }
+.ogame-unit.is-lying .ogame-zzz { top: -6px; left: 60%; }
+
 /* 成员单元（游戏版：更大 + 可拖拽） */
 .ogame-unit {
   position: absolute; width: 96px; margin: -30px 0 0 -48px;

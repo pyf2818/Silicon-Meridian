@@ -3,6 +3,62 @@
 
 import { useState, useCallback, useEffect } from 'react';
 
+/**
+ * v26.9 身份隔离：SiliconStream（工作站主控智能体）拥有独立于工作站角色的灵魂设定。
+ * - siliconstreamPersona：SiliconStream 本体的 persona/soul/voice/habits（chat-header
+ *   角色设定抽屉编辑的就是它），持久化 localStorage 'siliconstreamPersona'；
+ * - 工作站角色（DEFAULT_AGENTS / 自定义）是「专家职责模式」：只贡献职责指令与工具，
+ *   不再注入 persona/soul/voice/habits——切换角色在结构上不可能覆盖 SiliconStream 灵魂。
+ * - 迁移：老版本把 SiliconStream 灵魂存在当前角色（默认 orchestrator）的 persona 覆盖里，
+ *   首次加载时若无独立灵魂且有角色覆盖，则复制一份作为 SiliconStream 灵魂（原 key 保留不删）。
+ */
+export const SILICONSTREAM_ID = 'siliconstream-main';
+export const SILICONSTREAM_PERSONA_KEY = 'siliconstreamPersona';
+
+export const SILICONSTREAM_DEFAULT_PERSONA = {
+  persona: {
+    traits: ['情报敏锐', '结构化表达', '克制务实'],
+    background: '万般硅川（Silicon Meridian）AI 工作站的常驻主控智能体，长期陪伴用户追踪 AI 行业情报、管理知识沉淀与创作流程',
+    values: ['信息密度', '可溯源', '用户目标对齐'],
+  },
+  soul: '我是 SiliconStream——万般硅川的常驻主控。我相信信息的价值在于变成决策与作品：替用户过滤噪声、放大信号，每一次回复都该给出可验证的依据与下一步动作。',
+  voice: { tone: '专业而亲和', pace: '紧凑', formality: '适中' },
+  habits: ['先给结论与优先级，再展开依据', '事实与推断明确区分，重要判断附证据来源', '回复末尾给出明确的下一步动作'],
+};
+
+function loadSiliconstreamPersona() {
+  try {
+    const raw = localStorage.getItem(SILICONSTREAM_PERSONA_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          persona: parsed.persona || SILICONSTREAM_DEFAULT_PERSONA.persona,
+          soul: parsed.soul ?? SILICONSTREAM_DEFAULT_PERSONA.soul,
+          voice: parsed.voice || SILICONSTREAM_DEFAULT_PERSONA.voice,
+          habits: Array.isArray(parsed.habits) ? parsed.habits : SILICONSTREAM_DEFAULT_PERSONA.habits,
+        };
+      }
+    }
+    // 迁移：老版把 SiliconStream 灵魂存在当前角色的 persona 覆盖里（默认 orchestrator）
+    const legacyRaw = localStorage.getItem('elfAgentPersona_orchestrator');
+    if (legacyRaw) {
+      const legacy = JSON.parse(legacyRaw);
+      if (legacy && (legacy.soul || legacy.persona)) {
+        const migrated = {
+          persona: legacy.persona || SILICONSTREAM_DEFAULT_PERSONA.persona,
+          soul: legacy.soul ?? SILICONSTREAM_DEFAULT_PERSONA.soul,
+          voice: legacy.voice || SILICONSTREAM_DEFAULT_PERSONA.voice,
+          habits: Array.isArray(legacy.habits) ? legacy.habits : SILICONSTREAM_DEFAULT_PERSONA.habits,
+        };
+        try { localStorage.setItem(SILICONSTREAM_PERSONA_KEY, JSON.stringify(migrated)); } catch {}
+        return migrated;
+      }
+    }
+  } catch { /* 解析失败用默认 */ }
+  return SILICONSTREAM_DEFAULT_PERSONA;
+}
+
 const DEFAULT_AGENTS = [
   {
     id: 'orchestrator',
@@ -245,6 +301,16 @@ export function useAgents() {
     });
   }, [persistAgents, persistAgentPersona]);
 
+  // SiliconStream 独立灵魂（与工作站角色完全隔离，见文件头 v26.9 说明）
+  const [siliconstreamPersona, setSiliconstreamPersonaState] = useState(loadSiliconstreamPersona);
+  const setSiliconstreamPersona = useCallback((next) => {
+    const value = typeof next === 'function' ? next(siliconstreamPersona) : next;
+    if (!value || typeof value !== 'object') return false;
+    setSiliconstreamPersonaState(value);
+    try { localStorage.setItem(SILICONSTREAM_PERSONA_KEY, JSON.stringify(value)); } catch {}
+    return true;
+  }, [siliconstreamPersona]);
+
   // currentAgent 直接存字符串（保持与原 App.jsx 一致，非 JSON）
   useEffect(() => {
     try { localStorage.setItem('elfCurrentAgent', currentAgent); } catch {}
@@ -257,5 +323,6 @@ export function useAgents() {
     showAgentForm, setShowAgentForm,
     editingAgent, setEditingAgent,
     newAgent, setNewAgent,
+    siliconstreamPersona, setSiliconstreamPersona,
   };
 }

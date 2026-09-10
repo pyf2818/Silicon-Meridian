@@ -81,6 +81,8 @@ export default function AiChatPanel({
   agent,
   agents,
   onUpdateAgent,
+  siliconstreamPersona,
+  onUpdateSiliconstreamPersona,
   setLlmConfig,
   variant = 'copilot',
 }) {
@@ -184,15 +186,23 @@ export default function AiChatPanel({
     return () => { /* 不在切换时取消，让 abort 流程自己处理 */ };
   }, [activeSessionId]);
 
-  // 角色设定侧滑面板：从 chat-header 入口打开，编辑当前 agent 的 persona/soul/voice/habits
+  // 角色设定侧滑面板：从 chat-header 入口打开。
+  // v26.9 身份隔离：抽屉编辑的是 SiliconStream 本体的灵魂（siliconstreamPersona），
+  // 与工作站角色（agent 生态）完全解耦——切换/编辑角色不会影响这里的设定。
   const [showPersonaDrawer, setShowPersonaDrawer] = useState(false);
-  const handleSavePersona = useCallback((agentId, patch) => {
-    if (!onUpdateAgent) {
-      console.warn('[AiChatPanel] onUpdateAgent prop 未传入，无法保存角色设定');
+  const handleSavePersona = useCallback((_drawerAgentId, patch) => {
+    if (!onUpdateSiliconstreamPersona) {
+      console.warn('[AiChatPanel] onUpdateSiliconstreamPersona prop 未传入，无法保存 SiliconStream 灵魂设定');
       return;
     }
-    onUpdateAgent(agentId, patch);
-  }, [onUpdateAgent]);
+    onUpdateSiliconstreamPersona(patch);
+  }, [onUpdateSiliconstreamPersona]);
+  // PersonaDrawer 展示/编辑对象 = SiliconStream 本体
+  const siliconstreamDrawerAgent = useMemo(() => ({
+    id: 'siliconstream-main',
+    name: 'SiliconStream',
+    ...(siliconstreamPersona || {}),
+  }), [siliconstreamPersona]);
 
   // 三栏拖拽调宽（v7）：左（会话栏）/ 右（智能管理栏）列宽，localStorage 持久化
   const WS_WIDTHS_KEY = 'aiWorkstationPanelWidths';
@@ -785,8 +795,9 @@ export default function AiChatPanel({
   const systemPrompt = useMemo(() => buildSystemPrompt({
     selectedInterests, categories, intelligenceProfile, workbenchItems, intelligenceContext: effectiveIntelContext,
     workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs,
-    excludeAllEvidence, excludeAllMaterials, materialContext: effectiveMaterialContext, agent, personaSummary,
-  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, effectiveIntelContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, excludeAllEvidence, excludeAllMaterials, effectiveMaterialContext, agent, personaSummary]);
+    excludeAllEvidence, excludeAllMaterials, materialContext: effectiveMaterialContext, agent,
+    siliconstreamPersona, personaSummary,
+  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, effectiveIntelContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, excludeAllEvidence, excludeAllMaterials, effectiveMaterialContext, agent, siliconstreamPersona, personaSummary]);
 
   // ===== 上下文窗口进度环：与发送链路同源的估算器（systemPrompt + 历史 + 输入草稿） =====
   // 注意：必须在 systemPrompt 定义之后（TDZ）；分母 = 流式回复的真实压缩预算
@@ -2427,7 +2438,7 @@ export default function AiChatPanel({
       <PersonaDrawer
         open={showPersonaDrawer}
         onClose={() => setShowPersonaDrawer(false)}
-        agent={agent}
+        agent={siliconstreamDrawerAgent}
         onChange={handleSavePersona}
       />
       {/* 三栏拖拽手柄：贴在左右列边界上，hover 显色 */}

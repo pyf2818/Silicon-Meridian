@@ -169,7 +169,7 @@ export const WANDER_BOUNDS = { minX: 8, maxX: 90, minY: 34, maxY: 88 };
 /** 漫步走位时长（与 .ogame-unit 的 left/top 过渡时长一致） */
 export const WANDER_WALK_MS = 1300;
 
-/** 休息位（v26.7）：沙发 A/B + 地毯 + 电视前，休息的员工去这些点睡觉 */
+/** 休息位（v26.7）：沙发 A/B + 地毯 + 电视前——床满时的备选休息点 */
 export const REST_SPOTS = [
   { x: 16, y: 58 },  // 沙发 A
   { x: 82, y: 70 },  // 沙发 B
@@ -178,8 +178,18 @@ export const REST_SPOTS = [
 ];
 
 /**
+ * 床铺（v26.9）：休息区 3 张床，与视图层 .ogame-bed 的渲染坐标一一对应。
+ * 休息者按序号优先分配床位（kind:'bed'，躺卧睡觉姿态），床满才去沙发/地毯（kind:'sofa'，坐姿/蜷缩）。
+ */
+export const BED_SPOTS = [
+  { x: 20, y: 60, bed: 0 },  // 床 1（左侧墙边）
+  { x: 48, y: 78, bed: 1 },  // 床 2（中下）
+  { x: 74, y: 56, bed: 2 },  // 床 3（右侧）
+];
+
+/**
  * 员工所在场景由状态驱动（v26.7 休息逻辑）：
- * 在岗/认领/刚交付 → 办公室；空闲（休息）→ 休息区（睡觉/躺沙发）。
+ * 在岗/认领/刚交付 → 办公室；空闲（休息）→ 休息区（睡床/躺沙发）。
  * 午休水吧彩蛋由视图层在办公室场景覆盖。
  */
 export function resolveActorScene(status) {
@@ -188,13 +198,21 @@ export function resolveActorScene(status) {
     : 'lounge';
 }
 
-/** 休息位决策：按序号分配 + 轻抖动（纯函数，rng 注入可测试） */
+/**
+ * 休息位决策（v26.9 升级）：序号 i 的员工——
+ * i mod (床+沙发总数) 落在前 BED_SPOTS.length 个 → 睡床（躺卧）；
+ * 其余 → 原休息点（沙发/地毯，坐姿休息）。返回 kind 供视图层切换姿态。
+ */
 export function pickRestSpot(index, rng = Math.random) {
-  const base = REST_SPOTS[((index % REST_SPOTS.length) + REST_SPOTS.length) % REST_SPOTS.length];
+  const total = BED_SPOTS.length + REST_SPOTS.length;
+  const slot = ((index % total) + total) % total;
+  const isBed = slot < BED_SPOTS.length;
+  const base = isBed ? BED_SPOTS[slot] : REST_SPOTS[slot - BED_SPOTS.length];
   const clamp = (v) => Math.round(Math.max(WANDER_BOUNDS.minX, Math.min(WANDER_BOUNDS.maxX, v)) * 10) / 10;
   return {
-    x: clamp(base.x + (rng() - 0.5) * 6),
-    y: clamp(base.y + (rng() - 0.5) * 5),
+    x: clamp(base.x + (rng() - 0.5) * (isBed ? 3 : 6)),
+    y: clamp(base.y + (rng() - 0.5) * (isBed ? 2 : 5)),
+    kind: isBed ? 'bed' : 'sofa',
   };
 }
 
@@ -230,7 +248,7 @@ export const SCENE_POIS = {
 export const AMBIENT_LINES = ['伸个懒腰~', '喝口水', '到处走走', '看看窗外的云', '脑子转转', '摸会儿鱼…', '这盆绿植真精神'];
 
 /** 休息气泡（到休息区躺下时小概率冒一句） */
-export const REST_LINES = ['眯一会儿~', '沙发真舒服', 'Zzz…', '养足精神再战', '躺平充电中'];
+export const REST_LINES = ['眯一会儿~', '床真舒服', 'Zzz…', '养足精神再战', '躺平充电中', '小睡片刻…'];
 
 /**
  * 自主漫步目标决策：60% 走向场景兴趣点（带抖动），40% 随机散步。
