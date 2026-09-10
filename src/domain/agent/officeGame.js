@@ -6,7 +6,10 @@
  * - energy 精力：工作时加速消耗，休息时缓慢回复
  * - mood 心情：向「基础值」漂移（基础值由饱食/精力/在岗决定）+ 即时事件加成
  *
- * 经济闭环：完成产出 → 团队经费 +30；发工资 80/人、食物 10~20 币 → 心情/饱食提升。
+ * 经济闭环（v26.6 调平衡）：
+ * - 收入：产出交付 +30；Goal 达成 +90；团队补贴 +25/15min（挂机也有进账，不会破产卡死）
+ * - 支出：发工资 80/人、食物 10~20 币、家具 15~45 币（收回返一半）
+ * - 家具提升场景舒适度（每件 +2 心情基础值，封顶 +12），花钱有实际收益
  * 时间衰减支持「补账」：离线多久就按 elapsed 一次性衰减（封顶 24h），打开游戏即正确。
  * 全部纯函数，时间外部注入（可测试）。
  */
@@ -28,11 +31,25 @@ export const WORK_REWARD = 30;    // 一次产出交付的经费奖励
 export const WORK_START_MOOD = -2; // 开始干活的小心情消耗（打工人实感）
 export const MAX_CATCHUP_MS = 24 * 3600_000;
 
-/** 每分钟衰减速率 */
+/** 团队补贴：挂机保底收入，保证数值能玩下去 */
+export const STIPEND_AMOUNT = 25;          // 每次入账
+export const STIPEND_INTERVAL_MS = 15 * 60_000; // 每 15 分钟一拍
+
+/** 家具目录：cost 购入价（收回返还一半） */
+export const FURNITURE = {
+  plant: { id: 'plant', label: '绿植', cost: 15 },
+  lamp: { id: 'lamp', label: '落地灯', cost: 25 },
+  cooler: { id: 'cooler', label: '饮水机', cost: 30 },
+  cabinet: { id: 'cabinet', label: '文件柜', cost: 35 },
+  bookshelf: { id: 'bookshelf', label: '书架', cost: 45 },
+};
+export const MAX_FURNITURE_PER_SCENE = 8;
+
+/** 每分钟衰减速率（v26.6 调慢：满饱食约 3.7h，玩得起来不焦虑） */
 export const DECAY_PER_MIN = {
-  hunger: 0.8,
-  energyWorking: 1.3,   // 在岗（执行中/思考中）
-  energyIdle: -0.7,     // 空闲为负数 = 回复精力
+  hunger: 0.45,
+  energyWorking: 0.9,   // 在岗（执行中/思考中）
+  energyIdle: -0.5,     // 空闲为负数 = 回复精力
 };
 
 export function createActorState() {
@@ -43,12 +60,26 @@ function clamp100(v) {
   return Math.max(STAT_LIMITS.min, Math.min(STAT_LIMITS.max, v));
 }
 
-/** 心情基础值：吃饱 + 精力足 + 最近被发过工资 → 心情底子好 */
-export function moodBase(actor, working) {
+/** 心情基础值：吃饱 + 精力足 + 最近被发过工资 → 心情底子好；家具舒适度额外加成 */
+export function moodBase(actor, working, comfort = 0) {
   const hungerPart = (actor.hunger - 50) * 0.24;   // -12 ~ +12
   const energyPart = (actor.energy - 50) * 0.20;   // -10 ~ +10
   const workPart = working ? -4 : 3;               // 干活略压心情，摸鱼微涨
-  return clamp100(62 + hungerPart + energyPart + workPart);
+  return clamp100(62 + hungerPart + energyPart + workPart + comfort);
+}
+
+/** 场景舒适度：每件家具 +2，封顶 +12（花钱布置有实际收益） */
+export function sceneComfort(list = []) {
+  return Math.min(12, list.length * 2);
+}
+
+/** 团队补贴结算：按 elapsed 整拍入账（离线补账同样适用，不重复计费） */
+export function accrueStipend(coins, lastStipendAt, now) {
+  const base = lastStipendAt || now;
+  const elapsed = Math.max(0, Math.min(MAX_CATCHUP_MS, now - base));
+  const ticks = Math.floor(elapsed / STIPEND_INTERVAL_MS);
+  if (ticks <= 0) return { coins, lastStipendAt: base, gained: 0 };
+  return { coins: coins + ticks * STIPEND_AMOUNT, lastStipendAt: base + ticks * STIPEND_INTERVAL_MS, gained: ticks * STIPEND_AMOUNT };
 }
 
 /**
@@ -57,10 +88,11 @@ export function moodBase(actor, working) {
  * @param {number} lastTickAt 上次结算时间戳
  * @param {number} now 当前时间戳
  * @param {Object} workStates agentId → boolean（是否在岗执行）
+ * @param {Object} comforts agentId → number（所在场景的家具舒适度加成）
  * @returns {{ actors: Object, warnings: Array<{agentId, kind}> }}
  *  warnings：跨过警戒线的成员（饿/累/心情低），每次结算只报新越线者
  */
-export function tickActors(actors, lastTickAt, now, workStates = {}) {
+export function tickActors(actors, lastTickAt, now, workStates = {}, comforts = {}) {
   const elapsed = Math.max(0, Math.min(MAX_CATCHUP_MS, now - (lastTickAt || now)));
   const minutes = elapsed / 60000;
   const next = {};
@@ -70,7 +102,7 @@ export function tickActors(actors, lastTickAt, now, workStates = {}) {
     const working = Boolean(workStates[id]);
     const hunger = clamp100(a0.hunger - DECAY_PER_MIN.hunger * minutes);
     const energy = clamp100(a0.energy - (working ? DECAY_PER_MIN.energyWorking : DECAY_PER_MIN.energyIdle) * minutes);
-    const base = moodBase({ ...a0, hunger, energy }, working);
+    const base = moodBase({ ...a0, hunger, energy }, working, comforts[id] || 0);
     const mood = clamp100(a0.mood + (base - a0.mood) * Math.min(1, 0.06 * minutes));
     next[id] = { ...a0, hunger, energy, mood };
     // 警戒线：只在「从安全到危险」的跨越瞬间报警，避免反复刷
@@ -128,4 +160,55 @@ export function isLunchTime(now = Date.now()) {
   const d = new Date(now);
   const minutes = d.getHours() * 60 + d.getMinutes();
   return minutes >= 11 * 60 + 30 && minutes < 13 * 60 + 30;
+}
+
+/* ---------- 自主行动（v26.6）---------- */
+
+/** 漫步边界（地板区域百分比） */
+export const WANDER_BOUNDS = { minX: 8, maxX: 90, minY: 34, maxY: 88 };
+/** 漫步走位时长（与 .ogame-unit 的 left/top 过渡时长一致） */
+export const WANDER_WALK_MS = 1300;
+
+/** 场景兴趣点：饮水机/绿植/沙发/电视/门口等，人爱往这些地方凑 */
+export const SCENE_POIS = {
+  office: [
+    { x: 6, y: 42 },   // 饮水机
+    { x: 33, y: 52 },  // 左绿植
+    { x: 96, y: 34 },  // 右上绿植
+    { x: 50, y: 62 },  // 地毯中央
+    { x: 88, y: 28 },  // 门口
+    { x: 14, y: 76 },  // 墙角
+  ],
+  lounge: [
+    { x: 14, y: 60 },  // 沙发 A
+    { x: 84, y: 72 },  // 沙发 B
+    { x: 50, y: 40 },  // 电视前
+    { x: 90, y: 52 },  // 饮水机
+    { x: 30, y: 84 },  // 绿植边
+  ],
+};
+
+/** 摸鱼闲聊气泡（到达兴趣点时小概率冒一句） */
+export const AMBIENT_LINES = ['伸个懒腰~', '喝口水', '到处走走', '看看窗外的云', '脑子转转', '摸会儿鱼…', '这盆绿植真精神'];
+
+/**
+ * 自主漫步目标决策：60% 走向场景兴趣点（带抖动），40% 随机散步。
+ * 纯函数：rng 注入可测试。
+ * @returns {{ x: number, y: number, stayMs: number }}
+ */
+export function pickWanderTarget(scene, rng = Math.random) {
+  const pois = SCENE_POIS[scene] || SCENE_POIS.office;
+  let x;
+  let y;
+  if (rng() < 0.6) {
+    const p = pois[Math.floor(rng() * pois.length)];
+    x = p.x + (rng() - 0.5) * 10;
+    y = p.y + (rng() - 0.5) * 8;
+  } else {
+    x = WANDER_BOUNDS.minX + rng() * (WANDER_BOUNDS.maxX - WANDER_BOUNDS.minX);
+    y = WANDER_BOUNDS.minY + rng() * (WANDER_BOUNDS.maxY - WANDER_BOUNDS.minY);
+  }
+  x = Math.round(Math.max(WANDER_BOUNDS.minX, Math.min(WANDER_BOUNDS.maxX, x)) * 10) / 10;
+  y = Math.round(Math.max(WANDER_BOUNDS.minY, Math.min(WANDER_BOUNDS.maxY, y)) * 10) / 10;
+  return { x, y, stayMs: 3500 + Math.round(rng() * 6500) }; // 停留 3.5~10s 再走
 }

@@ -1,20 +1,36 @@
 /**
  * officeGameStore.js - 养成游戏全局状态（模块级单例，模式同 groupChatStore）
  *
- * - coins：团队经费（产出交付 +WORK_REWARD，发工资/买食物消耗）
+ * - coins：团队经费（产出交付 +WORK_REWARD、补贴 +25/15min；发工资/买食物/买家具消耗）
  * - actors：agentId → { hunger, energy, mood, lastPetAt, paidAt, scene, pos }
  *   · scene：员工当前所在场景（'office' | 'lounge'），工作时强制汇聚办公室（视图层处理）
  *   · pos：{ [scene]: {x, y} } 用户拖拽后的自定义位置（百分比）
- * - 惰性补账：任何读取都先把 lastTickAt → now 的衰减一次性结算（离线也正确）
+ * - furniture：{ [scene]: [{id, kind, x, y}] } 玩家自摆放家具（影响场景舒适度 → 心情基础值）
+ * - 惰性补账：任何读取都先把 lastTickAt → now 的衰减一次性结算（离线也正确）；补贴同拍补账
  * - 持久化 localStorage 'officeGameState'
  */
 import {
   createActorState, tickActors, applyFood, applySalary, applyPet, applyPlay,
-  FOODS, SALARY_COST, WORK_REWARD,
+  accrueStipend, sceneComfort,
+  FOODS, SALARY_COST, WORK_REWARD, FURNITURE, MAX_FURNITURE_PER_SCENE,
 } from '../../domain/agent/officeGame.js';
 
 const STORAGE_KEY = 'officeGameState';
 const START_COINS = 240;
+
+let furnSeq = 0;
+
+function sanitizeFurniture(raw) {
+  const byScene = {};
+  for (const scene of ['office', 'lounge']) {
+    const list = Array.isArray(raw?.[scene]) ? raw[scene] : [];
+    byScene[scene] = list
+      .filter(it => it && FURNITURE[it.kind] && Number.isFinite(Number(it.x)) && Number.isFinite(Number(it.y)))
+      .slice(0, MAX_FURNITURE_PER_SCENE)
+      .map(it => ({ id: String(it.id || `fu_${Date.now().toString(36)}_${furnSeq++}`), kind: it.kind, x: Number(it.x), y: Number(it.y) }));
+  }
+  return byScene;
+}
 
 function load() {
   try {
@@ -24,11 +40,13 @@ function load() {
       return {
         coins: Number(parsed.coins) || 0,
         actors: (parsed.actors && typeof parsed.actors === 'object') ? parsed.actors : {},
+        furniture: sanitizeFurniture(parsed.furniture),
         lastTickAt: Number(parsed.lastTickAt) || Date.now(),
+        lastStipendAt: Number(parsed.lastStipendAt) || Date.now(),
       };
     }
   } catch { /* ignore */ }
-  return { coins: START_COINS, actors: {}, lastTickAt: Date.now() };
+  return { coins: START_COINS, actors: {}, furniture: { office: [], lounge: [] }, lastTickAt: Date.now(), lastStipendAt: Date.now() };
 }
 
 let state = load();
@@ -52,12 +70,22 @@ function ensureActor(actorId) {
   return a;
 }
 
-/** 读取（先补账） */
+/** 读取（先补账：属性衰减 + 团队补贴） */
 export function getGameState(workStates = {}) {
-  const { actors, warnings } = tickActors(state.actors, state.lastTickAt, Date.now(), workStates);
+  // 补贴先行：挂机/离线也有保底进账，保证经济闭环玩得下去
+  const stipend = accrueStipend(state.coins, state.lastStipendAt, Date.now());
+  state.coins = stipend.coins;
+  state.lastStipendAt = stipend.lastStipendAt;
+  // 每人所在场景的家具舒适度 → 心情基础值
+  const comforts = {};
+  for (const [id, a] of Object.entries(state.actors)) {
+    comforts[id] = sceneComfort(state.furniture[a.scene || 'office']);
+  }
+  const { actors, warnings } = tickActors(state.actors, state.lastTickAt, Date.now(), workStates, comforts);
   state.actors = actors;
   state.lastTickAt = Date.now();
-  return { coins: state.coins, actors: state.actors, warnings };
+  if (stipend.gained > 0) persist(); // 补贴落盘，防刷新后重复入账
+  return { coins: state.coins, actors: state.actors, furniture: state.furniture, warnings, stipendGained: stipend.gained };
 }
 
 /** 确保成员有初始档案（新成员入群时调用，否则属性条会显示 0） */
@@ -136,6 +164,47 @@ export function setActorScene(agentId, scene) {
   const actor = ensureActor(agentId);
   actor.scene = scene;
   commit();
+}
+
+/* ---------- 家具（v26.6）：买入 / 摆放 / 挪动 / 收回 ---------- */
+
+/** 购买并摆放家具。返回 { ok, reason?, item? } */
+export function placeFurniture(scene, kind, x, y, workStates = {}) {
+  const def = FURNITURE[kind];
+  if (!def || (scene !== 'office' && scene !== 'lounge')) return { ok: false, reason: 'no-kind' };
+  getGameState(workStates);
+  const list = state.furniture[scene] || (state.furniture[scene] = []);
+  if (list.length >= MAX_FURNITURE_PER_SCENE) return { ok: false, reason: 'max' };
+  if (state.coins < def.cost) return { ok: false, reason: 'no-coins' };
+  const item = { id: `fu_${Date.now().toString(36)}_${furnSeq++}`, kind, x, y };
+  list.push(item);
+  state.coins -= def.cost;
+  commit();
+  return { ok: true, item, cost: def.cost };
+}
+
+/** 挪动已有家具。返回 { ok } */
+export function moveFurniture(scene, fid, x, y) {
+  const list = state.furniture[scene] || [];
+  const item = list.find(it => it.id === fid);
+  if (!item) return { ok: false, reason: 'no-item' };
+  item.x = x;
+  item.y = y;
+  commit();
+  return { ok: true };
+}
+
+/** 收回家具：返还一半购入价。返回 { ok, refund? } */
+export function removeFurniture(scene, fid, workStates = {}) {
+  const list = state.furniture[scene] || [];
+  const idx = list.findIndex(it => it.id === fid);
+  if (idx < 0) return { ok: false, reason: 'no-item' };
+  getGameState(workStates);
+  const [item] = list.splice(idx, 1);
+  const refund = Math.ceil((FURNITURE[item.kind]?.cost || 0) / 2);
+  state.coins += refund;
+  commit();
+  return { ok: true, refund };
 }
 
 /** 产出交付奖励：经费 +WORK_REWARD。返回是否真的入账（去重由调用方控制） */

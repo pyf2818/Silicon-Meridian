@@ -30263,10 +30263,10 @@ body {
   margin-top: 2px; font-size: 10.5px; font-weight: 700; color: var(--text-primary);
   max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* 三维属性条：饱食/精力/心情 */
-.ogame-stats { display: flex; flex-direction: column; gap: 2px; margin-top: 3px; width: 74px; }
+/* 三维属性条：饱食/精力/心情（v26.6 迷你版，减少画面占用） */
+.ogame-stats { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; width: 44px; }
 .ogame-bar {
-  position: relative; display: block; height: 6px; border-radius: 2px;
+  position: relative; display: block; height: 4px; border-radius: 2px;
   background: color-mix(in srgb, var(--text-muted) 18%, transparent);
   border: 1px solid color-mix(in srgb, var(--border-color) 80%, transparent);
   overflow: hidden;
@@ -30311,3 +30311,55 @@ body {
   padding: 8px 14px; border-top: 1px solid var(--border-color);
   font-size: 10.5px; color: var(--text-muted); background: var(--bg-secondary);
 }
+
+/* ---------- v26.6：自主行动 / 布置模式 / 思考气泡 ---------- */
+
+/* 自主漫步走路动画（复用 ofc 两帧腿臂） */
+.ogame-unit.is-walking .ofc-legs-a { animation: ofcFrameA 0.36s steps(1) infinite; }
+.ogame-unit.is-walking .ofc-legs-b { animation: ofcFrameB 0.36s steps(1) infinite; }
+.ogame-unit.is-walking .ofc-arm-a { animation: ofcFrameA 0.36s steps(1) infinite; }
+.ogame-unit.is-walking .ofc-arm-b { animation: ofcFrameB 0.36s steps(1) infinite; }
+.ogame-unit.is-walking .ofc-person { animation: ofcBob 0.36s steps(2) infinite; }
+
+/* 思考/执行气泡：头顶像素小云 + 跳动三点（省空间的状态表达） */
+.ogame-think {
+  position: absolute; top: -16px; left: 50%; margin-left: -12px;
+  width: 24px; height: 14px; z-index: 3;
+  display: flex; align-items: center; justify-content: center; gap: 2px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color); border-radius: 3px;
+  pointer-events: none;
+  animation: ogameThinkFloat 1.6s steps(2) infinite;
+}
+.ogame-think::after {
+  content: ''; position: absolute; bottom: -5px; left: 50%; margin-left: -1px;
+  width: 2px; height: 2px; background: var(--border-color);
+  box-shadow: -3px -3px 0 var(--border-color);
+}
+.ogame-think i { width: 3px; height: 3px; background: var(--status-info); opacity: 0.35; }
+.ogame-think i:nth-child(2) { opacity: 0.7; animation: ofcBlink 0.9s steps(2) infinite; }
+.ogame-think i:nth-child(3) { opacity: 1; animation: ofcBlink 0.9s steps(2) infinite; animation-delay: 0.3s; }
+@keyframes ogameThinkFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* 玩家摆放家具（布置模式可拖拽/收回；平时纯装饰不可点） */
+.ogame-furn {
+  position: absolute; margin: -43px 0 0 -18px;
+  pointer-events: none;
+  transition: left 0.3s ease, top 0.3s ease;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.22));
+}
+.ogame-scene.is-decorating .ogame-furn {
+  pointer-events: auto; cursor: grab;
+  outline: 1px dashed color-mix(in srgb, var(--accent-cyan) 55%, transparent);
+  outline-offset: 2px;
+}
+.ogame-furn.is-dragging {
+  transition: none; cursor: grabbing; z-index: 99 !important;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.3));
+}
+.ogame-scene.is-decorating .ofc-floor-big { cursor: crosshair; }
+/* 布置模式下装饰工位不拦截指针（否则会盖住低处家具并把点击漏给地板误摆放） */
+.ogame-scene.is-decorating .ogame-desk-only { pointer-events: none; }

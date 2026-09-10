@@ -84,16 +84,28 @@ try {
   });
   console.log('[probe] feed before:', JSON.stringify(before), 'after:', JSON.stringify(after));
 
-  // 拖拽第一个成员
-  const unit = page.locator('.ogame-unit').first();
-  const box = await unit.boundingBox();
+  // 拖拽第一个成员（自主漫步会让小人走动：动态找抓取点 + 重试）
   const leftBefore = await page.evaluate(() => document.querySelector('.ogame-unit')?.style.left || '');
-  await page.mouse.move(box.x + box.width / 2, box.y + 20);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 120, box.y + 60, { steps: 8 });
-  await page.mouse.up();
-  await wait(400);
-  const leftAfter = await page.evaluate(() => document.querySelector('.ogame-unit')?.style.left || '');
+  let leftAfter = leftBefore;
+  for (let attempt = 0; attempt < 5 && leftAfter === leftBefore; attempt++) {
+    const box = await page.locator('.ogame-unit').first().boundingBox();
+    if (!box) break;
+    let grab = null;
+    for (const [rx, ry] of [[0.5, 0.25], [0.5, 0.4], [0.4, 0.3], [0.6, 0.3]]) {
+      const px = box.x + box.width * rx;
+      const py = box.y + box.height * ry;
+      const hit = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.ogame-unit'), [px, py]);
+      if (hit) { grab = { px, py }; break; }
+    }
+    if (!grab) { await wait(1500); continue; }
+    await page.mouse.move(grab.px, grab.py);
+    await page.mouse.down();
+    await page.mouse.move(grab.px + 120, grab.py + 60, { steps: 8 });
+    await page.mouse.up();
+    await wait(400);
+    leftAfter = await page.evaluate(() => document.querySelector('.ogame-unit')?.style.left || '');
+    if (leftAfter === leftBefore) await wait(1500); // 可能正被漫步走位，稍等再试
+  }
   console.log('[probe] drag left before/after:', leftBefore, '->', leftAfter);
 
   // 场景切换

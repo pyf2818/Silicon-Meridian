@@ -5,6 +5,9 @@ import { describe, it, expect } from 'vitest';
 import {
   tickActors, applyFood, applySalary, applyPet, applyPlay,
   moodBase, isLunchTime, FOODS, SALARY_COST, MAX_CATCHUP_MS,
+  accrueStipend, STIPEND_AMOUNT, STIPEND_INTERVAL_MS,
+  pickWanderTarget, WANDER_BOUNDS, SCENE_POIS,
+  sceneComfort, FURNITURE, MAX_FURNITURE_PER_SCENE,
 } from '../officeGame.js';
 
 const NOW = 1_000_000_000;
@@ -17,13 +20,13 @@ function actor(over = {}) {
 describe('tickActors 时间衰减（含离线补账）', () => {
   it('饱食随时间下降；空闲时精力回复', () => {
     const { actors } = tickActors({ [A]: actor() }, NOW, NOW + 60 * 60000, { [A]: false });
-    expect(actors[A].hunger).toBeCloseTo(80 - 0.8 * 60, 5); // 0.8/分钟
-    expect(actors[A].energy).toBe(100); // 空闲回复（+0.7/分），封顶 100
+    expect(actors[A].hunger).toBeCloseTo(80 - 0.45 * 60, 5); // 0.45/分钟
+    expect(actors[A].energy).toBe(100); // 空闲回复（+0.5/分），封顶 100
   });
 
   it('在岗时精力加速消耗', () => {
     const { actors } = tickActors({ [A]: actor() }, NOW, NOW + 60 * 60000, { [A]: true });
-    expect(actors[A].energy).toBeCloseTo(90 - 1.3 * 60, 5); // 1.3/分钟
+    expect(actors[A].energy).toBeCloseTo(90 - 0.9 * 60, 5); // 0.9/分钟
   });
 
   it('离线补账：elapsed 封顶 24h，不会把属性打成负数', () => {
@@ -106,5 +109,73 @@ describe('moodBase 基础值与午休窗口', () => {
   it('常量自洽：工资成本与产出奖励构成经济闭环', () => {
     expect(SALARY_COST).toBeGreaterThan(0);
     expect(FOODS.riceball.cost).toBeGreaterThan(0);
+  });
+});
+
+describe('v26.6 经济平衡：团队补贴', () => {
+  it('不足一拍不入账', () => {
+    const r = accrueStipend(100, NOW, NOW + STIPEND_INTERVAL_MS - 1);
+    expect(r.coins).toBe(100);
+    expect(r.gained).toBe(0);
+  });
+
+  it('整拍入账，且按 lastStipendAt 推进不重复计费', () => {
+    const r1 = accrueStipend(100, NOW, NOW + STIPEND_INTERVAL_MS * 2.5);
+    expect(r1.gained).toBe(STIPEND_AMOUNT * 2);
+    expect(r1.coins).toBe(100 + STIPEND_AMOUNT * 2);
+    // 用推进后的锚点再算：剩余半拍不重复入账
+    const r2 = accrueStipend(r1.coins, r1.lastStipendAt, NOW + STIPEND_INTERVAL_MS * 2.5);
+    expect(r2.gained).toBe(0);
+  });
+
+  it('离线补账封顶 24h，不会无限入账', () => {
+    const r = accrueStipend(0, NOW - 100 * MAX_CATCHUP_MS, NOW);
+    expect(r.gained).toBe(STIPEND_AMOUNT * Math.floor(MAX_CATCHUP_MS / STIPEND_INTERVAL_MS));
+  });
+});
+
+describe('v26.6 自主行动：pickWanderTarget', () => {
+  it('目标始终落在场景边界内', () => {
+    for (let i = 0; i < 200; i++) {
+      const t = pickWanderTarget(i % 2 === 0 ? 'office' : 'lounge');
+      expect(t.x).toBeGreaterThanOrEqual(WANDER_BOUNDS.minX);
+      expect(t.x).toBeLessThanOrEqual(WANDER_BOUNDS.maxX);
+      expect(t.y).toBeGreaterThanOrEqual(WANDER_BOUNDS.minY);
+      expect(t.y).toBeLessThanOrEqual(WANDER_BOUNDS.maxY);
+      expect(t.stayMs).toBeGreaterThanOrEqual(3500);
+      expect(t.stayMs).toBeLessThanOrEqual(10000);
+    }
+  });
+
+  it('兴趣点模式：rng 恒 0 时落在第一个 POI 附近（带抖动不越界）', () => {
+    const t = pickWanderTarget('office', () => 0);
+    const p0 = SCENE_POIS.office[0];
+    expect(Math.abs(t.x - p0.x)).toBeLessThanOrEqual(5);
+    expect(Math.abs(t.y - p0.y)).toBeLessThanOrEqual(4);
+  });
+
+  it('随机模式：rng 恒 0.99 时落在边界附近', () => {
+    const t = pickWanderTarget('office', () => 0.99);
+    expect(t.x).toBeGreaterThan(WANDER_BOUNDS.maxX - 3);
+  });
+});
+
+describe('v26.6 家具舒适度', () => {
+  it('每件 +2，封顶 12', () => {
+    expect(sceneComfort([])).toBe(0);
+    expect(sceneComfort([{}, {}])).toBe(4);
+    expect(sceneComfort(Array(MAX_FURNITURE_PER_SCENE).fill({}))).toBe(12);
+    expect(sceneComfort(Array(20).fill({}))).toBe(12);
+  });
+
+  it('舒适度提升心情基础值', () => {
+    const base = moodBase(actor(), false);
+    expect(moodBase(actor(), false, 10)).toBe(Math.min(100, base + 10));
+  });
+
+  it('家具目录：价格递增、目录与摆放上限自洽', () => {
+    const costs = Object.values(FURNITURE).map(f => f.cost);
+    expect(costs.every(c => c > 0)).toBe(true);
+    expect(MAX_FURNITURE_PER_SCENE).toBeGreaterThan(0);
   });
 });

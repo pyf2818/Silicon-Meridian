@@ -1,23 +1,29 @@
 /**
- * OfficeGame - 像素养成模拟游戏（v26 #17 大屏覆盖层）
+ * OfficeGame - 像素养成模拟游戏（v26 #17 大屏覆盖层，v26.6 自主行动+家具布置）
  *
  * 玩法：
  * - 点击小人 = 抚摸（心情+，爱心粒子）；冷却中再点 = 逗趣（小心情-微精力）
- * - 按住拖动 = 挪位置（落点按场景持久化）
+ * - 按住拖动 = 挪位置（落点按场景持久化，拖完停留 20s 再恢复自主漫步）
+ * - 自主行动：空闲小人会自己去饮水机/绿植/沙发/门口逛，到达兴趣点偶尔冒摸鱼气泡
  * - 食物栏选中 → 点小人投喂（扣经费）；「发工资」模式 → 点小人发钱
- * - 属性：饱食/精力/心情随时间衰减（离线补账），产出交付 +经费、发工资/投喂消耗
+ * - 「布置」模式 → 家具目录选购 → 点地板摆放；拖动挪位；点家具收回（返一半）
+ *   家具提升场景舒适度（心情基础值 +2/件，封顶 +12）
+ * - 属性：饱食/精力/心情随时间衰减（离线补账），产出交付 +经费、补贴 +25/15min
  * - 场景：办公室 / 休息区；团队协作开始时全员自动汇聚办公室
  * - 彩蛋：午休时间（11:30–13:30）全员聚集水吧干饭；交付时像素烟花庆祝
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { getGroupState, getActiveChat, subscribeGroup, resolveMemberPreset, hueOfMemberId } from './groupChatStore.js';
 import { deriveOfficeActivity } from '../../domain/agent/officeScene.js';
-import { isLunchTime } from '../../domain/agent/officeGame.js';
+import {
+  isLunchTime, pickWanderTarget, AMBIENT_LINES, WANDER_WALK_MS, FURNITURE,
+} from '../../domain/agent/officeGame.js';
 import {
   getGameState, subscribeGame, feedActor, paySalary, petActor, playWithActor,
   setActorPos, grantWorkReward, grantGoalBonus, ensureActors,
+  placeFurniture, moveFurniture, removeFurniture,
 } from './officeGameStore.js';
-import { PixelPerson, PixelDesk } from './pixelArt.jsx';
+import { PixelPerson, PixelDesk, PixelFurniture } from './pixelArt.jsx';
 import { showToast } from '../../utils/toast.js';
 
 const SCENES = [
@@ -31,10 +37,13 @@ const FOOD_MENU = [
   { id: 'cake', label: '蛋糕', cost: 20 },
 ];
 
+const FURNITURE_MENU = Object.values(FURNITURE);
+
 const MODES = [
   { id: 'pet', label: '互动' },
   { id: 'feed', label: '投喂' },
   { id: 'salary', label: '发工资' },
+  { id: 'decorate', label: '布置' },
 ];
 
 const PET_LINES = ['好开心～', '摸摸头', '嘿嘿，被发现了', '精神多了！'];
@@ -72,14 +81,21 @@ export default function OfficeGame({ onClose }) {
   const [particles, setParticles] = useState([]);
   const [bubbles, setBubbles] = useState({}); // agentId → text
   const [lunchOnce, setLunchOnce] = useState(false); // 本次午休是否已提示
+  const [wander, setWander] = useState({});   // agentId → { x, y, until, movingUntil } 自主漫步目标
+  const [selectedFurniture, setSelectedFurniture] = useState('plant');
+  const [furnDrag, setFurnDrag] = useState(null); // { id, x, y } 家具拖拽临时位
 
   const dragRef = useRef(null);       // { id, startX, startY, moved, origX, origY, clientX, clientY }
+  const furnDragRef = useRef(null);   // { id, startX, startY, moved, origX, origY }
+  const wanderRef = useRef({});       // 漫步目标镜像（interval 闭包读写）
+  const liveRef = useRef({});         // { roster, activityMap, game, scene } 供 interval 读取最新值
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
   const workDoneRef = useRef({});     // agentId → 已结算奖励的最新 done 消息 id
   const goalRef = useRef(null);       // 上一次 goal status
   const warnRef = useRef(new Set());  // 已提示过的警告 key
   const lunchRef = useRef(false);
+  const activityLiveRef = useRef({}); // useMemo 后每渲染赋最新 activityMap
 
   /* ---------- 数据订阅 ---------- */
   useEffect(() => subscribeGroup(() => {
@@ -110,6 +126,8 @@ export default function OfficeGame({ onClose }) {
     for (const a of activity) m[a.agentId] = a;
     return m;
   }, [activity]);
+  activityLiveRef.current = activityMap;
+  liveRef.current = { roster: snap.roster, activityMap, game, scene };
   const presets = useMemo(() => snap.roster.map(id => resolveMemberPreset(id)), [snap.roster]);
   const anyWorking = activity.some(a => a.status === 'working' || a.status === 'claiming');
 
@@ -118,6 +136,37 @@ export default function OfficeGame({ onClose }) {
   useEffect(() => {
     const t = setInterval(() => setNow5(Date.now()), 5000);
     return () => clearInterval(t);
+  }, []);
+
+  /* ---------- 自主行动：空闲小人自己逛街（1.5s 决策一拍） ---------- */
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = Date.now();
+      const { roster, activityMap: acts, game: g } = liveRef.current;
+      const lunch = isLunchTime(now);
+      let changed = false;
+      const nextW = { ...wanderRef.current };
+      for (const id of roster || []) {
+        const act = acts?.[id];
+        const working = act && (act.status === 'working' || act.status === 'claiming');
+        if (working) { if (nextW[id]) { delete nextW[id]; changed = true; } continue; }
+        if (dragRef.current?.id === id) continue; // 手里拖着的不动
+        const actorScene = g.actors?.[id]?.scene || 'office';
+        if (lunch && actorScene === 'office') { if (nextW[id]) { delete nextW[id]; changed = true; } continue; } // 午休强制水吧
+        const w = nextW[id];
+        if (!w || now >= w.until) {
+          const target = pickWanderTarget(actorScene);
+          nextW[id] = { x: target.x, y: target.y, until: now + WANDER_WALK_MS + target.stayMs, movingUntil: now + WANDER_WALK_MS };
+          changed = true;
+          if (w && Math.random() < 0.22) {
+            showBubble(id, AMBIENT_LINES[Math.floor(Math.random() * AMBIENT_LINES.length)]);
+          }
+        }
+      }
+      if (changed) { wanderRef.current = nextW; setWander(nextW); }
+    }, 1500);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ---------- 彩蛋结算：交付烟花 + 经费；Goal 达成大烟花 + 奖金 ---------- */
@@ -260,10 +309,15 @@ export default function OfficeGame({ onClose }) {
     if (!d) return;
     if (d.moved && drag && drag.id === agentId) {
       setActorPos(agentId, sceneRef.current, { x: drag.x, y: drag.y });
+      // 拖完钉在原地 20s，再恢复自主漫步（尊重玩家摆放意图）
+      const pin = { x: drag.x, y: drag.y, until: Date.now() + 20000, movingUntil: 0 };
+      wanderRef.current = { ...wanderRef.current, [agentId]: pin };
+      setWander(wanderRef.current);
       setDrag(null);
       return;
     }
     setDrag(null);
+    if (mode === 'decorate') return; // 布置模式下点小人不触发互动
     // 点击互动：按当前模式分发
     const working = activityMap[agentId] && (activityMap[agentId].status === 'working' || activityMap[agentId].status === 'claiming');
     const workMap = { [agentId]: working };
@@ -293,6 +347,69 @@ export default function OfficeGame({ onClose }) {
         spawnParticles('heart', agentId);
         showBubble(agentId, PLAY_LINES[Math.floor(Math.random() * PLAY_LINES.length)]);
       }
+    }
+  };
+
+  /* ---------- 布置模式：家具摆放 / 挪动 / 收回 ---------- */
+  // 点地板空处 = 摆放选中家具
+  const onScenePointerDown = (e) => {
+    if (mode !== 'decorate' || !selectedFurniture) return;
+    if (e.target.closest('.ogame-unit') || e.target.closest('.ogame-furn')) return;
+    const floor = e.currentTarget;
+    const r = floor.getBoundingClientRect();
+    const x = Math.max(4, Math.min(96, ((e.clientX - r.left) / r.width) * 100));
+    const y = Math.max(30, Math.min(92, ((e.clientY - r.top) / r.height) * 100));
+    const res = placeFurniture(sceneRef.current, selectedFurniture, x, y);
+    if (!res.ok && res.reason === 'no-coins') { showToast('经费不足——先赚点经费再布置吧'); return; }
+    if (!res.ok && res.reason === 'max') { showToast('这个场景最多摆 8 件家具'); return; }
+    if (res.ok) {
+      spawnParticles('coin', '_center');
+      showToast(`已摆放 ${FURNITURE[selectedFurniture].label}（-${res.cost}）· 舒适度 +2`);
+    }
+  };
+
+  const onFurnPointerDown = (fid, e) => {
+    if (mode !== 'decorate' || e.button !== 0) return;
+    e.stopPropagation();
+    const item = (game.furniture?.[sceneRef.current] || []).find(it => it.id === fid);
+    if (!item) return;
+    furnDragRef.current = {
+      id: fid, startClientX: e.clientX, startClientY: e.clientY,
+      origX: item.x, origY: item.y, moved: false,
+    };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const onFurnPointerMove = (e) => {
+    const d = furnDragRef.current;
+    if (!d) return;
+    const floor = document.querySelector('.ofc-floor-big');
+    if (!floor) return;
+    const dx = e.clientX - d.startClientX;
+    const dy = e.clientY - d.startClientY;
+    if (!d.moved && Math.hypot(dx, dy) < 7) return;
+    if (!d.moved) d.moved = true;
+    const r = floor.getBoundingClientRect();
+    const x = Math.max(4, Math.min(96, d.origX + (dx / r.width) * 100));
+    const y = Math.max(30, Math.min(92, d.origY + (dy / r.height) * 100));
+    setFurnDrag({ id: d.id, x, y });
+  };
+
+  const onFurnPointerUp = (fid) => {
+    const d = furnDragRef.current;
+    furnDragRef.current = null;
+    if (!d) return;
+    if (d.moved && furnDrag && furnDrag.id === fid) {
+      moveFurniture(sceneRef.current, fid, furnDrag.x, furnDrag.y);
+      setFurnDrag(null);
+      return;
+    }
+    setFurnDrag(null);
+    // 点击（未拖动）= 收回家具，返还一半购入价
+    const res = removeFurniture(sceneRef.current, fid);
+    if (res.ok) {
+      spawnParticles('coin', '_center');
+      showToast(`已收回，经费 +${res.refund}`);
     }
   };
 
@@ -347,13 +464,28 @@ export default function OfficeGame({ onClose }) {
               ))}
             </span>
           )}
+          {mode === 'decorate' && (
+            <span className="ogame-foods">
+              {FURNITURE_MENU.map(f => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={`ogame-food ${selectedFurniture === f.id ? 'active' : ''}`}
+                  onClick={() => setSelectedFurniture(f.id)}
+                  title={`舒适度 +2（封顶 +12）`}
+                >{f.label} <em>{f.cost}</em></button>
+              ))}
+            </span>
+          )}
           <span className="ogame-hint">
-            {anyWorking ? '团队协作中：全员已汇聚办公室' : isLunchTime() ? '午休时间：大家在水吧干饭' : '点击=抚摸 · 按住拖动=挪位置'}
+            {mode === 'decorate'
+              ? '选家具 → 点地板摆放 · 拖动挪位 · 点已摆的家具收回（返一半）'
+              : anyWorking ? '团队协作中：全员已汇聚办公室' : isLunchTime() ? '午休时间：大家在水吧干饭' : '点击=抚摸 · 按住拖动=挪位置 · 小人会自己逛'}
           </span>
         </div>
 
         {/* 场景 */}
-        <div className="ogame-scene">
+        <div className={`ogame-scene ${mode === 'decorate' ? 'is-decorating' : ''}`}>
           {/* 共用墙 */}
           <div className="ofc-wall ofc-wall-big">
             <span className="ofc-window"><i className="ofc-cloud" /><i className="ofc-cloud ofc-cloud2" /></span>
@@ -371,7 +503,7 @@ export default function OfficeGame({ onClose }) {
             )}
           </div>
           {/* 地板与场景物件 */}
-          <div className="ofc-floor ofc-floor-big">
+          <div className="ofc-floor ofc-floor-big" onPointerDown={onScenePointerDown}>
             {scene === 'office' ? (
               <>
                 <span className="ofc-rug" />
@@ -396,6 +528,25 @@ export default function OfficeGame({ onClose }) {
               </>
             )}
 
+            {/* 玩家自摆放家具（布置模式可拖拽/点击收回；z 层由 y 决定，画在人前面） */}
+            {(game.furniture?.[scene] || []).map(item => {
+              const p = (furnDrag && furnDrag.id === item.id) ? furnDrag : item;
+              return (
+                <div
+                  key={item.id}
+                  data-ogame-furn={item.id}
+                  className={`ogame-furn ${furnDrag && furnDrag.id === item.id ? 'is-dragging' : ''}`}
+                  style={{ left: `${p.x}%`, top: `${p.y}%`, zIndex: Math.round(p.y) + 1 }}
+                  onPointerDown={(e) => onFurnPointerDown(item.id, e)}
+                  onPointerMove={onFurnPointerMove}
+                  onPointerUp={() => onFurnPointerUp(item.id)}
+                  title={mode === 'decorate' ? '拖动挪位 · 点击收回（返一半）' : undefined}
+                >
+                  <PixelFurniture kind={item.kind} width={36} />
+                </div>
+              );
+            })}
+
             {/* 成员 */}
             {visible.length === 0 && (
               <div className="ofc-empty">{scene === 'office' ? '办公室空荡荡——邀请成员进群吧' : '休息区没人，大家都上班去了'}</div>
@@ -406,24 +557,32 @@ export default function OfficeGame({ onClose }) {
               const st = game.actors[id] || {};
               const act = activityMap[id];
               const status = act?.status || 'idle';
-              const p = (drag && drag.id === id) ? drag : pos;
-              const lunch = scene === 'office' && isLunchTime(now5) && !status.startsWith('work') && status !== 'claiming';
+              const workForced = status === 'working' || status === 'claiming';
+              const lunch = scene === 'office' && isLunchTime(now5) && !workForced;
+              const w = wander[id];
+              // 位置优先级：拖拽 > 自主漫步（工作/午休强制位除外）> 槽位/自定义
+              const wanderActive = w && !workForced && !lunch;
+              const p = (drag && drag.id === id) ? drag : wanderActive ? w : pos;
+              const walking = wanderActive && Date.now() < (w.movingUntil || 0);
               return (
                 <div
                   key={id}
                   data-ogame-id={id}
-                  className={`ogame-unit is-${status} ${drag && drag.id === id ? 'is-dragging' : ''} ${lunch ? 'is-lunch' : ''}`}
+                  className={`ogame-unit is-${status} ${walking ? 'is-walking' : ''} ${drag && drag.id === id ? 'is-dragging' : ''} ${lunch ? 'is-lunch' : ''}`}
                   style={{ left: `${p.x}%`, top: `${p.y}%`, zIndex: Math.round(p.y) + 2 }}
                   onPointerDown={(e) => onUnitPointerDown(id, i, e)}
                   onPointerMove={onUnitPointerMove}
                   onPointerUp={() => onUnitPointerUp(id)}
                 >
                   {bubbles[id] && <span className="ofc-bubble">{bubbles[id]}</span>}
+                  {(status === 'working' || status === 'claiming') && !bubbles[id] && (
+                    <span className="ogame-think" title={status === 'working' ? '执行中' : '思考中'}><i /><i /><i /></span>
+                  )}
                   <div className="ofc-person">
                     <PixelPerson hue={hue} status={status} variant={i} width={38} />
                   </div>
                   <span className="ogame-name">{preset.name}</span>
-                  {/* 三维属性条 */}
+                  {/* 三维属性条（迷你版） */}
                   <div className="ogame-stats" title={`饱食 ${Math.round(st.hunger ?? 0)} · 精力 ${Math.round(st.energy ?? 0)} · 心情 ${Math.round(st.mood ?? 0)}`}>
                     <span className={`ogame-bar is-hunger ${((st.hunger ?? 0) < 25) ? 'is-low' : ''}`}><i style={{ width: `${st.hunger ?? 0}%` }} /></span>
                     <span className={`ogame-bar is-energy ${((st.energy ?? 0) < 25) ? 'is-low' : ''}`}><i style={{ width: `${st.energy ?? 0}%` }} /></span>
@@ -446,7 +605,7 @@ export default function OfficeGame({ onClose }) {
 
           {/* 底部说明 */}
           <div className="ogame-foot">
-            饱食/精力会随时间下降（离线也照算）· 交付产出赚经费 · 抚摸和投喂提升心情 · 午休时间全员去水吧
+            团队补贴每 15 分钟 +25 · 交付产出赚经费 · 家具提升舒适度让心情更稳 · 抚摸和投喂养出好状态 · 午休全员水吧
           </div>
         </div>
       </div>
