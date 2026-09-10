@@ -24338,8 +24338,9 @@ body {
   height: 100vh;
 }
 /* v20 深浅模式适配：浅色下整体降透明度（浅背景对彩色粒子更敏感），
-   并把泡泡高光/描边换成浅底可读的版本（纯白高光在浅背景洗白消失） */
-:root[data-mode="light"] .visual-particle-layer { opacity: 0.72; }
+   并把泡泡高光/描边换成浅底可读的版本（纯白高光在浅背景洗白消失）
+   v26.8：0.72 → 0.88 —— 浅色粒子本就颜色淡，再砍一刀会连侧栏透出区域都不可见 */
+:root[data-mode="light"] .visual-particle-layer { opacity: 0.88; }
 :root[data-mode="light"] {
   --particle-bubble-hl: rgba(255,255,255,.95);
   --particle-bubble-edge: rgba(30,41,59,.14);

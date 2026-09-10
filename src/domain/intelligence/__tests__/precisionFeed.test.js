@@ -232,3 +232,76 @@ describe('buildPrecisionFeed（当日硬过滤 + 不限条数 + 探索注入 + �
     expect(a1.feedScore).toBeGreaterThan(s.feedScore);
   });
 });
+
+describe('buildPrecisionFeed 回填机制（v26.8：今日不足时补充近两天精华）', () => {
+  const profile = {
+    domainTiers: { 'ai-models': 'focus' },
+    sourceTiers: {},
+    selectedInterests: ['ai-models'],
+    followKeywords: [],
+    specialFollows: [],
+  };
+  const behavior = { readingHistory: [], bookmarks: [], feedback: {}, feedbackEvents: [] };
+  const opts = { minFeedSize: 24, backfillWindowHours: 48, backfillCap: 60 };
+  const mk = (id, publishedAt, category = 'ai-models') => scoredItem(id, { publishedAt, category });
+
+  it('默认关闭：不传 minFeedSize 时昨日条目绝不出现（旧行为不变）', () => {
+    const items = [
+      mk('today', new Date(NOW - 3600_000).toISOString()),
+      mk('yesterday', new Date(DAY_START - 3600_000).toISOString()),
+    ];
+    const { feed, meta } = buildPrecisionFeed({ items, now: NOW, profile, behavior });
+    expect(feed.map(i => i.id)).toEqual(['today']);
+    expect(meta.backfillCount).toBe(0);
+  });
+
+  it('今日不足 24 条时回填 48h 内昨日高分条目，带 isBackfill 标记与说明', () => {
+    const items = [
+      ...Array.from({ length: 5 }, (_, i) => mk(`t${i}`, new Date(NOW - (i + 1) * 600_000).toISOString())),
+      ...Array.from({ length: 30 }, (_, i) => mk(`old-${i}`, new Date(DAY_START - (i + 1) * 900_000).toISOString())),
+    ];
+    const { feed, meta } = buildPrecisionFeed({ items, now: NOW, profile, behavior, options: opts });
+    const backfills = feed.filter(i => i.isBackfill);
+    expect(backfills.length).toBeGreaterThan(0);
+    expect(meta.backfillCount).toBe(backfills.length);
+    // 今日条目排在前、回填条目排在后
+    expect(feed.slice(0, 5).every(i => !i.isBackfill)).toBe(true);
+    expect(backfills[0].feedReasons[0]).toBe('今日更新不足，为你补充近两天精华');
+    // 今日 5 条 + 回填补到 24
+    expect(feed.length).toBe(24);
+  });
+
+  it('回填排除已读 / hiddenIds / 窗口外（72h 前）条目', () => {
+    const items = [
+      mk('today', new Date(NOW - 600_000).toISOString()),
+      mk('yesterday-ok', new Date(DAY_START - 3600_000).toISOString()),
+      mk('yesterday-read', new Date(DAY_START - 7200_000).toISOString()),
+      mk('yesterday-hidden', new Date(DAY_START - 10800_000).toISOString()),
+      mk('too-old', new Date(NOW - 72 * 3600_000).toISOString()),
+    ];
+    const { feed } = buildPrecisionFeed({
+      items, now: NOW, profile,
+      behavior: { readingHistory: [{ id: 'yesterday-read', readAt: new Date().toISOString() }], bookmarks: [], feedback: { hiddenIds: ['yesterday-hidden'] }, feedbackEvents: [] },
+      options: { ...opts, minFeedSize: 5 },
+    });
+    const ids = feed.map(i => i.id);
+    expect(ids).toContain('yesterday-ok');
+    expect(ids).not.toContain('yesterday-read');
+    expect(ids).not.toContain('yesterday-hidden');
+    expect(ids).not.toContain('too-old');
+    expect(ids).toContain('today');
+  });
+
+  it('backfillCap 封顶回填数量', () => {
+    const items = [
+      mk('today', new Date(NOW - 600_000).toISOString()),
+      ...Array.from({ length: 100 }, (_, i) => mk(`old-${i}`, new Date(DAY_START - (i + 1) * 60_000).toISOString())),
+    ];
+    const { feed, meta } = buildPrecisionFeed({
+      items, now: NOW, profile, behavior,
+      options: { minFeedSize: 24, backfillWindowHours: 48, backfillCap: 10 },
+    });
+    expect(meta.backfillCount).toBe(10);
+    expect(feed.length).toBe(11);
+  });
+});

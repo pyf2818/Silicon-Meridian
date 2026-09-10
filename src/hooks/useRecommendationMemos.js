@@ -128,7 +128,8 @@ export function useRecommendationMemos({
 
   // 统一推荐引擎：系统A(用户权重)+系统B(AI算法)+系统C(动态行为) —— 候选池（供简报/仪表盘）
   const todayMustRead = useMemo(() => {
-    const readIds = new Set(readingHistory.map(h => h.id));
+    // v26.8：已读排除仅针对正式阅读（depth!=='preview'），预览过的条目仍可被推荐
+    const readIds = new Set(readingHistory.filter(h => h?.depth !== 'preview').map(h => h.id));
     const bookmarkIds = new Set(bookmarks.map(b => b.itemId || b.id));
 
     // 领域热度统计（基于当前所有文章）
@@ -174,8 +175,9 @@ export function useRecommendationMemos({
   }, [items, readingHistory, bookmarks, effectiveDomainTiers, sourceTiers, effectiveSpecialFollows, clusterByItemId, personaSummary, relevantMemories]);
 
   // 当日精准推荐流（抖音式）：多信号预估互动概率 + 时间衰减行为 + 探索流量池 + 多样性打散。
-  // 硬约束：仅保留本地时区"今天 00:00 → 现在"发布的资讯，绝不显示其他日期；不限条数。
-  // 与 selectedNewsDate（快照日期轨）解耦——精准推荐永远聚焦"今天"。
+  // 硬约束：仅保留本地时区"今天 00:00 → 现在"发布的资讯；不限条数。
+  // v26.8：当日合格内容不足 24 条时，回填近 48h 高分条目（isBackfill 标记），
+  // 避免"新增领域冷启动/夜间时段"候选过薄导致推荐页只剩几条。
   const recommendationCandidates = useMemo(() => buildPrecisionFeed({
     items: todayMustRead,
     now: Date.now(),
@@ -193,6 +195,7 @@ export function useRecommendationMemos({
       feedbackEvents: recommendationFeedbackEvents,
     },
     clusters: eventClusters,
+    options: { minFeedSize: 24, backfillWindowHours: 48, backfillCap: 60 },
   }).feed, [todayMustRead, effectiveDomainTiers, sourceTiers, effectiveSpecialFollows, selectedInterests, followKeywords, readingHistory, bookmarks, recommendationFeedback, recommendationFeedbackEvents, eventClusters]);
 
   const recommendationLanes = useMemo(() => selectBriefingLanes(recommendationCandidates, {

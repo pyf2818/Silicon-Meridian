@@ -7,6 +7,8 @@ import {
   buildSharedTaskListText,
   buildMailboxText,
   formatTeamDigest,
+  parseRouterVerdict,
+  buildRouterPrompt,
   TEAM_LIMITS,
 } from '../teamCore.js';
 
@@ -164,5 +166,52 @@ describe('formatTeamDigest（lead 摘要）', () => {
     expect(digest).toContain('素材 12 条');
     expect(digest).toContain('侦察完成');
     expect(digest).toContain('未完成');
+  });
+});
+
+describe('parseRouterVerdict / buildRouterPrompt（v26.8 智能调度）', () => {
+  const members = [
+    { id: 'explorer', name: '探索者' },
+    { id: 'researcher', name: '研究员' },
+    { id: 'writer', name: '撰写者' },
+    { id: 'critic', name: '评论员' },
+  ];
+
+  it('解析任务判定：直接回应 + 参与认领名单', () => {
+    const raw = ['【任务】', '直接回应：探索者、研究员', '参与认领：撰写者'].join('\n');
+    const v = parseRouterVerdict(raw, members);
+    expect(v.simple).toBe(false);
+    expect(v.valid).toBe(true);
+    expect(v.respond).toEqual(['explorer', 'researcher']);
+    expect(v.consider).toEqual(['writer']);
+  });
+
+  it('解析简单对话判定：仅最相关成员直接回应', () => {
+    const raw = ['【简单对话】', '直接回应：研究员', '参与认领：无'].join('\n');
+    const v = parseRouterVerdict(raw, members);
+    expect(v.simple).toBe(true);
+    expect(v.respond).toEqual(['researcher']);
+    expect(v.consider).toEqual([]);
+    expect(v.valid).toBe(true);
+  });
+
+  it('@名字与 id 大小写均可匹配，重复去重，respond 优先于 consider', () => {
+    const raw = ['【任务】', '直接回应：@探索者 explorer', '参与认领：探索者、未知角色'].join('\n');
+    const v = parseRouterVerdict(raw, members);
+    expect(v.respond).toEqual(['explorer']);
+    expect(v.consider).toEqual([]); // 探索者已在 respond，未知角色被忽略
+  });
+
+  it('空名单/无格式输出 → valid=false（调用方降级全员认领）', () => {
+    expect(parseRouterVerdict('我无法判断', members).valid).toBe(false);
+    expect(parseRouterVerdict('【任务】\n直接回应：\n参与认领：', members).valid).toBe(false);
+  });
+
+  it('buildRouterPrompt 包含名册/消息/格式要求', () => {
+    const prompt = buildRouterPrompt({ userText: '你好', transcript: '[撰写者]: 上篇简报', memberPresets: members });
+    expect(prompt).toContain('探索者');
+    expect(prompt).toContain('你好');
+    expect(prompt).toContain('【简单对话】');
+    expect(prompt).toContain('直接回应：');
   });
 });

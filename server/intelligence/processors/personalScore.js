@@ -17,10 +17,17 @@ export function scorePersonalFit(event = {}, context = {}) {
   // 学习主题（learned_preferences.topics）：LLM/启发式从历史交互推导，权重低于手动兴趣
   const learnedTopics = normalizeList(context.learnedTopics || context.learned?.topics);
   const text = textFor(event);
+  const eventCategory = String(event.category || '').toLowerCase();
+  const eventCategoryLabel = String(event.categoryLabel || '').toLowerCase();
 
+  // v26.8 修复：interests 是类目 ID（如 ai-models / policy-finance），此前一律
+  // text.includes 匹配标题——类目 ID 几乎永远不会出现在标题里，22pt 加权形同虚设。
+  // 现在优先做类目直等/标签匹配，标题文本匹配仅作为兜底（关键词型兴趣）。
   const interestMatches = interests.filter(interest => {
     const value = interest.toLowerCase();
-    return value && text.includes(value);
+    if (!value) return false;
+    if (eventCategory === value || eventCategoryLabel === value) return true;
+    return text.includes(value);
   });
   const followMatches = follows.filter(follow => {
     const value = follow.toLowerCase();

@@ -64,3 +64,65 @@ describe('useBehaviorStore actions', () => {
     expect(useBehaviorStore.getState().trackTargets[0].note).toBe('updated');
   });
 });
+
+describe('useBehaviorStore 预览历史（v26.8）', () => {
+  beforeEach(() => {
+    installLocalStorage();
+    useBehaviorStore.getState().clearAll?.();
+  });
+
+  const previewItem = { id: 'n1', title: '标题', source: '源', category: 'ai-models' };
+
+  it('recordPreview 记入预览轨迹并并入阅读记录（depth=preview）', () => {
+    useBehaviorStore.getState().recordPreview(previewItem);
+    const { previewHistory, readingHistory } = useBehaviorStore.getState();
+    expect(previewHistory).toHaveLength(1);
+    expect(previewHistory[0].id).toBe('n1');
+    expect(previewHistory[0].previewCount).toBe(1);
+    expect(readingHistory).toHaveLength(1);
+    expect(readingHistory[0].depth).toBe('preview');
+  });
+
+  it('recordPreview 60s 内同条目重复打开被节流', () => {
+    useBehaviorStore.getState().recordPreview(previewItem);
+    useBehaviorStore.getState().recordPreview(previewItem);
+    useBehaviorStore.getState().recordPreview(previewItem);
+    const { previewHistory } = useBehaviorStore.getState();
+    expect(previewHistory).toHaveLength(1);
+    expect(previewHistory[0].previewCount).toBe(1);
+  });
+
+  it('recordPreview 不覆盖已有的 full 深度阅读记录', () => {
+    useBehaviorStore.getState().upsertReadingEntry(previewItem, 'full');
+    useBehaviorStore.getState().recordPreview(previewItem);
+    const { readingHistory } = useBehaviorStore.getState();
+    expect(readingHistory).toHaveLength(1);
+    expect(readingHistory[0].depth).toBe('full');
+    // full 深度保留，但这次预览仍被计数
+    expect(readingHistory[0].previewCount).toBe(1);
+  });
+
+  it('addPreviewHistory 同 id upsert：置顶 + previewCount 累计', () => {
+    useBehaviorStore.getState().addPreviewHistory(previewItem);
+    // 直接绕过节流的 addPreviewHistory 再记一次
+    useBehaviorStore.getState().addPreviewHistory(previewItem);
+    const { previewHistory } = useBehaviorStore.getState();
+    expect(previewHistory).toHaveLength(1);
+    expect(previewHistory[0].previewCount).toBe(2);
+    expect(previewHistory[0].firstPreviewAt).toBeTruthy();
+  });
+
+  it('clearPreviewHistory 只清预览轨迹，不动阅读记录', () => {
+    useBehaviorStore.getState().recordPreview(previewItem);
+    useBehaviorStore.getState().clearPreviewHistory();
+    const { previewHistory, readingHistory } = useBehaviorStore.getState();
+    expect(previewHistory).toHaveLength(0);
+    expect(readingHistory).toHaveLength(1);
+  });
+
+  it('recordPreview 忽略无 id 的条目', () => {
+    useBehaviorStore.getState().recordPreview({ title: 'no id' });
+    expect(useBehaviorStore.getState().previewHistory).toHaveLength(0);
+    expect(useBehaviorStore.getState().readingHistory).toHaveLength(0);
+  });
+});

@@ -29,6 +29,7 @@ import {
   resolveMemberPreset, getAllRolePresets, subscribeCustomRoles, hueOfMemberId,
 } from './groupChatStore.js';
 import { showToast } from '../../utils/toast.js';
+import { buildRouterPrompt, parseRouterVerdict } from '../../domain/agent/teamCore.js';
 
 /** 认领语义 → 标签文案（Phase 1 气泡角标） */
 const KIND_LABEL = { claim: '认领', watch: '关注', bystander: '旁观' };
@@ -389,7 +390,8 @@ export default function AgentTeamChat({
     `你是群成员「${preset.name}」。请基于你的角色职责判断如何回应这条消息，只输出认领声明本身（不要执行任务、不要展开工作）。用你自己的性格和说话风格表达，一句话也要有你的味道：`,
     '- 消息与你的职责相关且你愿承担 → 第一行输出「【认领】」，随后 ≤60 字说明你打算做什么；',
     '- 值得补充观点但无需深度参与 → 第一行输出「【关注】」，随后一句简短看法（≤40 字）；',
-    '- 与你职责无关 → 输出「【旁观】」即可（可带一句符合性格的短评）。',
+    '- 与你职责无关 → 输出「【旁观】」即可（可带一句符合性格的短评）；',
+    '- 简单提问不需要人人参与：职责最相关的成员回应即可，其他人请旁观——克制比热情更专业。',
   ].join('\n'), []);
 
   /** 产出阶段任务书（含认领声明与前序成员产出） */
@@ -433,11 +435,44 @@ export default function AgentTeamChat({
     );
   }, [runtime]);
 
+  /* ---------- 智能调度器（v26.8 #19）：发布消息后先分流，仅相关成员参与 ----------
+   * 简单提问 → 最相关 1-2 人直接回复（跳过认领阶段）；
+   * 任务 → 核心成员 + 可补充成员进入认领，无关成员零调用零气泡；
+   * 调度失败/解析失败 → 降级全员认领（旧行为，安全兜底）。被 @ 者无条件参与。 */
+  const runTaskRouter = useCallback(async ({ userText, signal }) => {
+    const transcript = buildSharedTranscript(getActiveChat().messages, 6, '');
+    const prompt = buildRouterPrompt({ userText, transcript, memberPresets: rosterPresets });
+    try {
+      const res = await fetch('/api/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal,
+        body: JSON.stringify({
+          baseUrl: runtime.llmConfig.baseUrl,
+          apiKey: runtime.llmConfig.apiKey,
+          model: runtime.selectedModel,
+          action: 'chat',
+          content: prompt,
+          systemPrompt: '你是团队任务调度器，只按用户要求的格式输出，不要执行任务本身。',
+          messages: [],
+        }),
+      });
+      const data = await res.json();
+      const verdict = parseRouterVerdict(String(data.content || ''), rosterPresets);
+      return verdict.valid ? verdict : null; // null = 解析失败，调用方降级
+    } catch (e) {
+      if (e?.name === 'AbortError') throw e;
+      return null; // 调度失败 → 降级全员认领
+    }
+  }, [rosterPresets, runtime]);
+
   /** 两阶段广播流水线（认领 → 产出）：普通消息与 Goal 自动循环共用。
-   *  返回 claims Map（presetId → { preset, claimText, kind }）。 */
-  const runRoundPhases = useCallback(async ({ controller, runMember, ordered, mentionedIds, userText, runId }) => {
-    /* ---- Phase 1：全员广播 · 角色认领（v16 并行：每个成员都是独立个体，同时认领） ---- */
-    const claimResults = await Promise.allSettled(ordered.map(async (preset) => {
+   *  v26.8：respondIds = 被调度为「直接回应」的成员（跳过认领阶段直接产出，
+   *  简单提问时 1-2 人快速回复，不再全员广播）。 */
+  const runRoundPhases = useCallback(async ({ controller, runMember, ordered, mentionedIds, userText, runId, respondIds = new Set(), simpleMode = false }) => {
+    /* ---- Phase 1：广播认领（v16 并行；v26.8：直接回应者跳过认领） ---- */
+    const claimBroadcast = ordered.filter(p => !respondIds.has(p.id));
+    const claimResults = await Promise.allSettled(claimBroadcast.map(async (preset) => {
       if (controller.signal.aborted) return null;
       const placeholder = addGroupMessage({
         role: 'agent', agentId: preset.id, agentName: preset.name,
@@ -469,10 +504,19 @@ export default function AgentTeamChat({
 
     /* ---- 流水线事件行：谁接下了任务（微信系统行的"事件流"语义） ---- */
     const contributors = ordered.filter(p => {
+      if (respondIds.has(p.id)) return true; // 被调度直接回应者必然参与
       const c = claims.get(p.id);
       return c && (c.kind === 'claim' || mentionedIds.has(p.id)); // 被 @ 点名者必然参与
     });
-    if (contributors.length) {
+    if (respondIds.size) {
+      const responders = ordered.filter(p => respondIds.has(p.id)).map(p => p.name).join('、');
+      addGroupMessage({
+        role: 'system',
+        content: simpleMode
+          ? `🧭 简单对话，${responders} 直接回应`
+          : `🧭 智能调度：${responders} 直接回应，${contributors.filter(p => !respondIds.has(p.id)).map(p => p.name).join('、') || '无其他成员'}接力产出`,
+      });
+    } else if (contributors.length) {
       addGroupMessage({
         role: 'system',
         content: `${contributors.map(p => p.name).join('、')} 接下了任务，开始接力产出`,
@@ -490,7 +534,12 @@ export default function AgentTeamChat({
       });
       if (!placeholder?.id) throw new Error('占位消息创建失败');
       const shared = buildSharedTranscript(getActiveChat().messages.filter(m => m.id !== placeholder.id), 14, active.announcement);
-      const myClaim = claims.get(preset.id)?.claimText || '';
+      const isResponder = respondIds.has(preset.id);
+      const myClaim = isResponder
+        ? (simpleMode
+          ? '（创始人简单提问，你被调度为最相关的回应者：直接给出简洁准确的回复，不要长篇产出）'
+          : '（被调度为直接回应者）')
+        : (claims.get(preset.id)?.claimText || '');
       const objective = buildWorkObjective(preset, shared, userText, myClaim);
       const result = await runMember(preset, objective, placeholder);
       const ok = result.status === 'done' && result.report;
@@ -511,11 +560,6 @@ export default function AgentTeamChat({
 
     const mentioned = parseMentions(text, rosterPresets);
     const mentionedIds = new Set(mentioned.map(p => p.id));
-    // 广播顺序：被 @ 的成员优先接收，其余按入群顺序
-    const ordered = [
-      ...rosterPresets.filter(p => mentionedIds.has(p.id)),
-      ...rosterPresets.filter(p => !mentionedIds.has(p.id)),
-    ];
     const runId = `run_${Date.now().toString(36)}`;
 
     addGroupMessage({ role: 'user', content: text });
@@ -527,10 +571,38 @@ export default function AgentTeamChat({
     const runMember = makeRunMember(controller);
 
     try {
-      await runRoundPhases({ controller, runMember, ordered, mentionedIds, userText: text, runId });
+      /* ---- v26.8 智能调度：先分流再广播（失败降级全员认领；被 @ 者无条件参与） ---- */
+      let ordered = [
+        ...rosterPresets.filter(p => mentionedIds.has(p.id)),
+        ...rosterPresets.filter(p => !mentionedIds.has(p.id)),
+      ];
+      let respondIds = new Set();
+      let simpleMode = false;
+      const verdict = await runTaskRouter({ userText: text, signal: controller.signal });
+      if (verdict) {
+        simpleMode = verdict.simple;
+        respondIds = new Set([...verdict.respond, ...mentionedIds]);
+        const considerIds = verdict.consider.filter(id => !respondIds.has(id));
+        ordered = [
+          ...rosterPresets.filter(p => respondIds.has(p.id)),
+          ...rosterPresets.filter(p => considerIds.includes(p.id)),
+        ];
+        // 透明度：未参与成员明确告知（而非无声消失）
+        const silent = rosterPresets.filter(p => !respondIds.has(p.id) && !considerIds.includes(p.id));
+        if (silent.length && !simpleMode) {
+          addGroupMessage({
+            role: 'system',
+            content: `🧭 智能调度：${silent.map(p => p.name).join('、')} 与本条职责无关，本轮未参与`,
+          });
+        }
+      }
+
+      await runRoundPhases({ controller, runMember, ordered, mentionedIds, userText: text, runId, respondIds, simpleMode });
     } catch (err) {
-      // 防御：unexpected 异常也以系统行落进群聊，而不是无声消失
-      addGroupMessage({ role: 'system', content: `⚠️ 团队协作异常中断：${err?.message || err}` });
+      // 防御：unexpected 异常也以系统行落进群聊，而不是无声消失（中止由 finally 提示）
+      if (err?.name !== 'AbortError') {
+        addGroupMessage({ role: 'system', content: `⚠️ 团队协作异常中断：${err?.message || err}` });
+      }
     } finally {
       if (controller.signal.aborted) {
         addGroupMessage({ role: 'system', content: '⏹ 团队协作已被创始人中止' });
@@ -538,7 +610,7 @@ export default function AgentTeamChat({
       setGroupRunning(false);
       abortRef.current = null;
     }
-  }, [input, running, roster, rosterPresets, active, runtime, onNeedConfig, makeRunMember, runRoundPhases]);
+  }, [input, running, roster, rosterPresets, active, runtime, onNeedConfig, makeRunMember, runRoundPhases, runTaskRouter]);
 
   const handleStop = () => {
     abortRef.current?.abort();

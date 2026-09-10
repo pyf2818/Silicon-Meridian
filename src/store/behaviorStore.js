@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
 const READING_HISTORY_CAP = 200;
+const PREVIEW_HISTORY_CAP = 200;
+// 同一条目 60s 内重复打开预览只算一次（防连点/预览面板内反复刷新灌水）
+const PREVIEW_DEDUPE_WINDOW_MS = 60_000;
 
 function readLS(key, fallback) {
   try {
@@ -59,6 +62,7 @@ export const useBehaviorStore = create(
   persist(
     (set, get) => ({
       readingHistory: [],
+      previewHistory: [],
       recommendationFeedback: { hiddenIds: [], boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
       recommendationFeedbackEvents: [],
       followKeywords: [],
@@ -95,6 +99,36 @@ export const useBehaviorStore = create(
         set({ readingHistory: next.slice(0, READING_HISTORY_CAP) });
       },
       clearReadingHistory: () => set({ readingHistory: [] }),
+
+      // ===== v26.8 预览历史 =====
+      /** 预览轨迹（独立持久化）：同 id upsert 置顶 + 累计 previewCount，cap 200 */
+      addPreviewHistory: (item) => set(state => {
+        const now = new Date().toISOString();
+        const prev = state.previewHistory.find(x => x.id === item.id);
+        const merged = {
+          ...(prev || {}),
+          ...item,
+          previewCount: (prev?.previewCount || 0) + 1,
+          previewAt: now,
+          ...(prev?.firstPreviewAt ? {} : { firstPreviewAt: now }),
+        };
+        return {
+          previewHistory: [merged, ...state.previewHistory.filter(x => x.id !== item.id)].slice(0, PREVIEW_HISTORY_CAP),
+        };
+      }),
+      /**
+       * v26.8 预览入账统一入口（newsPreviewStore.open 调用）：
+       * 1) 记入预览轨迹；2) 以 depth='preview' 并入阅读记录（与正式阅读一并纳入画像分析，
+       *    不覆盖已存在的 full 深度）。60s 内同条目重复打开直接忽略。
+       */
+      recordPreview: (item) => {
+        if (!item?.id) return;
+        const prev = get().previewHistory.find(x => x.id === item.id);
+        if (prev?.previewAt && Date.now() - Date.parse(prev.previewAt) < PREVIEW_DEDUPE_WINDOW_MS) return;
+        get().addPreviewHistory(item);
+        get().upsertReadingEntry(item, 'preview');
+      },
+      clearPreviewHistory: () => set({ previewHistory: [] }),
 
       setRecommendationFeedback: (updater) => {
         const cur = get().recommendationFeedback;
@@ -134,6 +168,7 @@ export const useBehaviorStore = create(
 
       clearAll: () => set({
         readingHistory: [],
+        previewHistory: [],
         recommendationFeedback: { hiddenIds: [], boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
         recommendationFeedbackEvents: [],
         followKeywords: [],
@@ -145,6 +180,7 @@ export const useBehaviorStore = create(
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({
         readingHistory: s.readingHistory,
+        previewHistory: s.previewHistory,
         recommendationFeedback: s.recommendationFeedback,
         recommendationFeedbackEvents: s.recommendationFeedbackEvents,
         followKeywords: s.followKeywords,

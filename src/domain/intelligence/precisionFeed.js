@@ -241,6 +241,12 @@ export function buildPrecisionFeed({
     explorationEvery = 6,
     explorationCapRatio = 0.2,
     halfLifeHours = 48,
+    // 回填机制（v26.8）：当日合格内容不足 minFeedSize 时，用近 backfillWindowHours 小时
+    // （非今日）的高分条目补齐，避免"宁缺毋滥"退化成"推荐页只剩两三条"。
+    // 默认 0 = 关闭，保持"严格只看今天"的既有行为；调用方显式开启。
+    minFeedSize = 0,
+    backfillWindowHours = 48,
+    backfillCap = 60,
   } = options;
 
   // ── 1. 当日硬过滤：本地时区今天 00:00 → now，绝不显示其他日期 ──
@@ -258,7 +264,13 @@ export function buildPrecisionFeed({
     now,
     halfLifeHours,
   });
-  const readIds = new Set((Array.isArray(behavior.readingHistory) ? behavior.readingHistory : []).map(h => String(h.id)));
+  // 已读不重现：仅排除正式阅读（depth!=='preview'）——预览过的条目只是瞄了一眼，
+  // 不应从推荐流消失，但其行为信号已计入 categoryWeights 参与排序（v26.8）
+  const readIds = new Set(
+    (Array.isArray(behavior.readingHistory) ? behavior.readingHistory : [])
+      .filter(h => h?.depth !== 'preview')
+      .map(h => String(h.id)),
+  );
   const bookmarkIds = new Set((Array.isArray(behavior.bookmarks) ? behavior.bookmarks : []).map(b => String(b.itemId || b.id)));
 
   const focusCategories = new Set([
@@ -319,6 +331,55 @@ export function buildPrecisionFeed({
   const merged = injectExploration(focusFeed, explorationFeed, { every: explorationEvery, capRatio: explorationCapRatio });
   const feed = diversifyOrder(merged, { maxConsecutiveCategory: 2, maxConsecutiveSource: 3 });
 
+  // ── 6. 回填（v26.8）：今日条目不足时，用近 N 小时（非今日）高分条目补齐 ──
+  // 复用同一套打分/已读/负反馈排除结果（scored 里日期被硬过滤掉的条目不会进来，
+  // 所以回填基于"未被打分循环消费的近期条目"重新走一遍打分）。
+  let backfillCount = 0;
+  if (minFeedSize > 0 && feed.length < minFeedSize && Array.isArray(items) && items.length) {
+    const backfillFloor = now - backfillWindowHours * 3_600_000;
+    const inFeedIds = new Set(feed.map(i => String(i.id)));
+    const backfillPool = (Array.isArray(items) ? items : []).filter(item => {
+      const t = Date.parse(item.publishedAt);
+      // 非今日、但在回填窗口内；已读/负反馈同样排除；已在 feed 的排除
+      if (!Number.isFinite(t) || t >= dayStart || t < backfillFloor || t > now) return false;
+      const id = String(item.id);
+      return !inFeedIds.has(id) && !readIds.has(id) && !behaviorSignals.hiddenIds.has(id);
+    });
+    const backfillScored = backfillPool.map(item => {
+      const titleLower = `${item.title || ''} ${item.summary || ''}`.toLowerCase();
+      const keywordFreqScore = followTerms.reduce((sum, term) => (titleLower.includes(term) ? keywordFreq[term] || 0 : sum), 0);
+      const isSpecial = specialTargets.some(target => titleLower.includes(target) || String(item.source || '').toLowerCase().includes(target));
+      const result = scorePrecisionItem(
+        { ...item, specialFollowHit: isSpecial },
+        {
+          behaviorSignals,
+          focusCategories,
+          bookmarkIds,
+          followKeywords: profile.followKeywords,
+          trackedTerms: profile.trackedTerms,
+          clusterSize: clusterByItemId.get(item.id) || 1,
+          keywordFreq: keywordFreqScore,
+          maxKeywordFreq,
+        },
+      );
+      // 回填条目天然不是"探索位"——它们是画像内近因补充，避免污染探索占比
+      return {
+        ...item,
+        feedScore: result.score,
+        feedParts: result.parts,
+        feedReasons: ['今日更新不足，为你补充近两天精华', ...result.reasons.slice(0, 2)],
+        isExploration: false,
+        isBackfill: true,
+      };
+    })
+      .sort(byScore)
+      .slice(0, Math.max(0, Math.min(backfillCap, minFeedSize - feed.length)));
+    if (backfillScored.length) {
+      feed.push(...diversifyOrder(backfillScored, { maxConsecutiveCategory: 2, maxConsecutiveSource: 3 }));
+      backfillCount = backfillScored.length;
+    }
+  }
+
   return {
     feed,
     meta: {
@@ -326,6 +387,7 @@ export function buildPrecisionFeed({
       focusCount: focusFeed.length,
       explorationCount: feed.filter(i => i.isExploration).length,
       candidateCount: pool.length,
+      backfillCount,
       dayStart,
       generatedAt: now,
     },

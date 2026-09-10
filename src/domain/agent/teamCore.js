@@ -157,6 +157,66 @@ export function buildMailboxText(team, memberName) {
   ].join('\n');
 }
 
+/* ============ 智能调度器（v26.8 #19） ============
+ * 问题：此前每条消息都全员广播认领——寒暄也让 6 个成员各跑一次 LLM，
+ * 观感就是"所有员工都被触发"；且成员认领过度热情，简单提问撰写者也写文章。
+ * 方案：发布消息后先跑一次轻量调度（router），判定谁直接回应 / 谁参与认领 / 谁无关。
+ * 纯逻辑（prompt 构造 + 宽松解析）在此文件，LLM 调用在 AgentTeamChat。 */
+
+/** 调度判定 { simple:boolean, respond:string[], consider:string[], unknown:string[] } */
+export function parseRouterVerdict(text, memberPresets) {
+  const raw = String(text || '');
+  const simple = /【\s*简单(对话|提问|交流)?\s*】/.test(raw);
+  const lines = raw.split(/\n+/);
+  const readList = (labelRe) => {
+    const line = lines.find(l => labelRe.test(l));
+    if (!line) return [];
+    return line.replace(labelRe, '').split(/[、,，;；\s/]+/).map(s => s.trim()).filter(Boolean);
+  };
+  const respondNames = readList(/直接回应[:：]?/);
+  const considerNames = readList(/参与认领[:：]?/);
+  const byName = (names) => {
+    const ids = [];
+    names.forEach(name => {
+      const clean = name.replace(/^@/, '').trim();
+      if (!clean) return;
+      const preset = memberPresets.find(p => p.name === clean
+        || p.id.toLowerCase() === clean.toLowerCase()
+        || p.name.toLowerCase() === clean.toLowerCase());
+      if (preset && !ids.includes(preset.id)) ids.push(preset.id);
+    });
+    return ids;
+  };
+  const respond = byName(respondNames);
+  const consider = byName(considerNames).filter(id => !respond.includes(id));
+  // 解析完整性：两个名单都没解析出任何成员 → 视为无效（调用方降级全员认领）
+  const valid = respond.length > 0 || consider.length > 0;
+  return { simple, respond, consider, valid };
+}
+
+/** 调度器 prompt：给成员名册 + 本轮消息，要求输出可直接 parseRouterVerdict 的格式 */
+export function buildRouterPrompt({ userText, transcript = '', memberPresets = [] }) {
+  const roster = memberPresets
+    .map(p => `- ${p.name}：${String(p.description || '').slice(0, 60)}`)
+    .join('\n');
+  return [
+    '你是团队任务调度器。根据这条消息判断每位成员是否需要参与本轮回复。',
+    '判断原则：',
+    '- 简单提问/寒暄/只需要回答的问题：标注为【简单对话】，只让职责最相关的 1-2 人「直接回应」，其余无人参与；',
+    '- 需要多人协作的任务/分析/创作：标注为【任务】，列出「直接回应」的核心成员与「参与认领」的可补充成员；',
+    '- 与成员职责无关就不要写进任何名单（不参与、不产出、不打扰）。',
+    '',
+    `【成员名册】\n${roster}`,
+    transcript ? `【近期群聊上下文（截断）】\n${transcript}` : '',
+    `【本轮消息】\n${userText}`,
+    '',
+    '只按以下格式输出（不要多余内容）：',
+    '第一行：【简单对话】或【任务】',
+    '第二行：直接回应：成员名、成员名',
+    '第三行：参与认领：成员名、成员名（无则写「无」）',
+  ].filter(Boolean).join('\n');
+}
+
 /** lead 用的团队执行摘要（全部报告 + 消息流） */
 export function formatTeamDigest(team, memberReports) {
   const tasks = team?.tasks || [];

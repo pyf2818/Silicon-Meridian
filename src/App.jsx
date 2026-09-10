@@ -1026,9 +1026,11 @@ function App() {
 
   // regionFilter 不自动清空：国内/国外是用户主动选择，切换赛道后保留选择
   // 若用户选择后无结果，由空状态提示引导，而非静默重置（之前依赖 regionFilter 自身导致切换不了）
+  // 修复 v26.8：selectedInterests 变化也必须重拉——否则推荐页新增/移除兴趣领域后
+  // items 仍是旧 interests 过滤的结果，新领域内容永远不会进入推荐候选池
   useEffect(() => {
     if (nav === 'recommendations') loadNews(blocked, false, debouncedQuery);
-  }, [nav]);
+  }, [nav, selectedInterests, isLoggedIn]);
   // 后台预加载：进入首页即拉取热门/GitHub/资讯，避免切 tab 时白屏等待
   const backgroundLoadedRef = useRef(false);
   useEffect(() => {
@@ -1379,7 +1381,8 @@ function App() {
       return { ...item, recScore: score };
     });
 
-    const readIds = new Set(readingHistory.map(h => h.id));
+    // v26.8：预览（depth='preview'）不算已读——预览行为只参与画像分析，不把条目从推荐里排除
+    const readIds = new Set(readingHistory.filter(h => h?.depth !== 'preview').map(h => h.id));
     return scored.filter(i => !readIds.has(i.id) && i.recScore > 20).sort((a, b) => b.recScore - a.recScore).slice(0, 15);
   }, [items, readingHistory, followKeywords]);
 
