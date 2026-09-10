@@ -12,7 +12,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { useNewsPreviewStore } from '../store/newsPreviewStore.js';
 import { useBehaviorStore } from '../store/behaviorStore.js';
 import { ICONS } from '../constants/index.jsx';
-import { formatRelative } from '../utils/format.js';
+import { formatRelative, decodeHtmlEntities } from '../utils/format.js';
 import { fetchArticleDetail } from '../utils/articleFetcher.js';
 import { renderMarkdown } from '../utils/markdown.jsx';
 
@@ -125,8 +125,13 @@ export default function NewsPreviewPanel() {
 
   if (!item) return null;
 
-  const isMd = looksLikeMarkdown(content);
-  const paragraphs = !isMd ? toParagraphs(content) : [];
+  // v26.9e：服务端已在抓取/解析时解码实体，这里对存量缓存与本地快照再兜底一次
+  const displayTitle = decodeHtmlEntities(item.title);
+  const displaySummary = decodeHtmlEntities(item.summary);
+  const displayContent = decodeHtmlEntities(content);
+
+  const isMd = looksLikeMarkdown(displayContent);
+  const paragraphs = !isMd ? toParagraphs(displayContent) : [];
   // 图片穿插：首图作 hero，其余每 5 段插一张
   const extraImages = images.slice(1);
   const heroImage = images[0] || null;
@@ -144,7 +149,7 @@ export default function NewsPreviewPanel() {
     }
     if (status === 'failed') {
       // v23 #5：抓取失败也按段落排版——优先渲染本地快照正文（缩进阅读体验），摘要作兜底
-      const localText = String(item.fullContent || item.content || '');
+      const localText = decodeHtmlEntities(item.fullContent || item.content || '');
       const localParas = toParagraphs(localText).filter(p => p.trim());
       return (
         <>
@@ -159,13 +164,14 @@ export default function NewsPreviewPanel() {
               </Fragment>
             ))
           ) : (
-            item.summary && <p className="news-preview-para lede">{item.summary}</p>
+            item.summary && <p className="news-preview-para lede">{displaySummary}</p>
           )}
         </>
       );
     }
     if (isMd) {
-      return <div className="news-preview-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />;
+      // 传解码后的文本：renderMarkdown 内部会重新做 HTML 转义，顺序不能反
+      return <div className="news-preview-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(displayContent) }} />;
     }
     return (
       <>
@@ -189,7 +195,7 @@ export default function NewsPreviewPanel() {
             {item.source && <span className="news-preview-source">{item.source}</span>}
             <span className="news-preview-time">{formatRelative(item.publishedAt)}</span>
           </div>
-          <h2 className="news-preview-title">{item.title}</h2>
+          <h2 className="news-preview-title">{displayTitle}</h2>
           <div className="news-preview-actions">
             {item.url && (
               <a href={item.url} target="_blank" rel="noreferrer" className="news-preview-link">

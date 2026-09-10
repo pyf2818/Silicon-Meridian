@@ -4,6 +4,36 @@ import React from 'react';
 // Markdown rendering for AI-generated content (returns HTML string)
 // Supports: headers, bold, italic, strikethrough, code blocks, inline code,
 // images, links, horizontal rules, tables, blockquotes, lists
+//
+// ⚠️ 安全边界（v26.9e）：本函数的返回值会被 10+ 处 dangerouslySetInnerHTML 直接注入 DOM，
+// 输入可能来自社区正文、抓取的网页正文、LLM 输出等**外部不可信来源**。因此：
+//   1. 全文转义阶段必须连引号一起转义（否则 URL 里的 `"` 能逃出 href="" 注入事件属性）
+//   2. 所有 URL 走协议白名单（挡 javascript: / vbscript: / data:text/html）
+//   3. 被原样保留的 <img> 标签要剥掉 on* 事件属性
+// 改动这里请务必同步更新 src/utils/__tests__/markdown.test.jsx 的注入用例。
+
+// 协议白名单：相对路径 / 锚点 / 查询串 / http(s) / mailto / tel
+const SAFE_URL_RE = /^(?:https?:|mailto:|tel:|\/|\.{1,2}\/|#|\?)/i;
+// 允许内嵌图片的 data URL（ArticleEditor 会把 base64 图片塞进正文）
+const SAFE_DATA_IMG_RE = /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp);base64,[a-z0-9+/=]+$/i;
+
+function isSafeUrl(url) {
+  const u = String(url || '').trim();
+  if (!u) return false;
+  if (SAFE_URL_RE.test(u)) return true;
+  return SAFE_DATA_IMG_RE.test(u);
+}
+
+/** 剥掉 <img> 上的 on* 事件属性，并对 src 做协议校验（不合规则移除 src） */
+function sanitizeImgTag(tag) {
+  return String(tag)
+    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(\ssrc\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi, (m, pre, dq, sq, uq) => {
+      const url = (dq ?? sq ?? uq ?? '').trim();
+      return isSafeUrl(url) ? `${pre}"${url}"` : '';
+    });
+}
+
 export function renderMarkdown(text) {
   if (!text) return '';
   // Ensure text is a string
@@ -13,17 +43,19 @@ export function renderMarkdown(text) {
   }
   let html = typeof str === 'string' ? str : String(str);
 
-  // Protect existing <img> tags from HTML escaping
+  // Protect existing <img> tags from HTML escaping（同时剥掉事件属性，防 onerror 注入）
   const imgMap = new Map();
   let imgCounter = 0;
-  html = html.replace(/<img[^>]*\/>/g, (match) => {
+  html = html.replace(/<img[^>]*\/?>/g, (match) => {
     const key = `__IMG_${imgCounter++}__`;
-    imgMap.set(key, match);
+    imgMap.set(key, sanitizeImgTag(match));
     return key;
   });
 
   // Escape HTML (but preserve existing markdown syntax)
-  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // 引号必须一起转义：否则 [x](a" onmouseover="alert(1)) 会逃出 href="" 属性（存储型 XSS）
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   // Fenced code blocks
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     return `<pre class="code-block${lang ? ` language-${lang}` : ''}"><code>${code.trim()}</code></pre>`;
@@ -40,10 +72,14 @@ export function renderMarkdown(text) {
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
   // Strikethrough
   html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
-  // Images
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" loading="lazy" />');
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Images（URL 过协议白名单；alt 已在转义阶段处理）
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => (
+    isSafeUrl(url) ? `<img src="${url}" alt="${alt}" loading="lazy" />` : alt
+  ));
+  // Links（同上；不安全协议降级为纯文本，不留可点击出口）
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, url) => (
+    isSafeUrl(url) ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>` : label
+  ));
   // Horizontal rule
   html = html.replace(/^---$/gm, '<hr />');
   // Tables
@@ -74,9 +110,9 @@ export function renderMarkdown(text) {
   html = html.replace(/\n\n/g, '</p><p>');
   html = html.replace(/\n/g, '<br>');
 
-  // Restore <img> tags
+  // Restore <img> tags（用函数式替换：字符串替换会把 $&/$' 当替换模式解析，破坏 base64 内容）
   imgMap.forEach((imgTag, key) => {
-    html = html.replace(key, imgTag);
+    html = html.replace(key, () => imgTag);
   });
 
   return `<p>${html}</p>`;
@@ -113,7 +149,9 @@ export function renderMarkdownWithImages(text, images = []) {
           // If no size specified, use original dimensions but cap max width
           sizeAttrs = ` style="max-width:100%;height:auto;"`;
         }
-        return `<img src="${img.base64}" alt="${alt || img.alt}"${sizeAttrs} />`;
+        // alt 来自正文，必须转义引号与尖括号，否则能逃出属性（同 v26.9e XSS 修复）
+        const safeAlt = String(alt || img.alt || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<img src="${img.base64}" alt="${safeAlt}"${sizeAttrs} />`;
       });
     });
   }

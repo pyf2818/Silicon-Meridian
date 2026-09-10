@@ -1,5 +1,5 @@
 import { parseFeed } from '../parsing/feedParser.js';
-import { trimSummary, trimIntro } from '../utils/textProcessing.js';
+import { cleanText, trimSummary, trimIntro } from '../utils/textProcessing.js';
 
 // ========== Jina AI Reader（绕过反爬虫，获取全文）==========
 // 从顶级项目（AI News Radar/Horizon）学来的技术
@@ -54,8 +54,12 @@ export async function fetchSource(source, options = {}) {
         if (!item.summary || item.summary.length < 100) {
           const enhanced = await jinaFetch(item.url, 5000);
           if (enhanced) {
-            item.summary = trimSummary(enhanced);
-            item.bodyIntro = trimIntro(enhanced);
+            // 必须过 cleanText：Jina 返回的是网页正文，可能夹带标签与 HTML 实体（&nbsp; 等）
+            const cleaned = cleanText(enhanced);
+            if (cleaned) {
+              item.summary = trimSummary(cleaned);
+              item.bodyIntro = trimIntro(cleaned);
+            }
           }
         }
       }));

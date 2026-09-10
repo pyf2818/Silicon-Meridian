@@ -28,7 +28,32 @@ export { mergeToolCallDeltas } from './agentLoopCore.js';
  * 要求它在不调用任何工具的前提下直接输出修正后的完整回答。
  * 仅尝试一次（不无限递归）；任何失败都返回 null，由调用方降级保留原答案。
  */
-async function selfVerifyRepair({ content, issues, llmConfig, selectedModel, systemPrompt }) {
+// v26.9e：两处收尾用的非流式 fetch 原先既没有 signal 也没有超时——
+// 上游不响应时会永久挂起，而它们 await 在 sendMessage 的 try 内、拖住 finally，
+// 导致「停止」按钮失效且该会话的 streaming 标志迟迟不复位（后续消息全进队）。
+// 统一给：调用方 signal（用户停止）+ 单次请求超时。
+const AUX_FETCH_TIMEOUT_MS = 60_000;
+
+async function fetchAuxCompletion(url, body, parentSignal, timeoutMs = AUX_FETCH_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const onAbort = () => ctrl.abort();
+  if (parentSignal?.aborted) ctrl.abort();
+  else parentSignal?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctrl.signal,
+      body: JSON.stringify(body),
+    });
+  } finally {
+    clearTimeout(timer);
+    parentSignal?.removeEventListener?.('abort', onAbort);
+  }
+}
+
+async function selfVerifyRepair({ content, issues, llmConfig, selectedModel, systemPrompt, signal }) {
   try {
     const repairMessages = [
       {
@@ -40,19 +65,15 @@ async function selfVerifyRepair({ content, issues, llmConfig, selectedModel, sys
         content: `【原始回答】\n${content}\n\n【自检发现的问题】\n${issues.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\n请输出修正后的完整回答：`,
       },
     ];
-    const response = await fetch('/api/ai-generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        baseUrl: llmConfig.baseUrl,
-        apiKey: llmConfig.apiKey,
-        model: selectedModel,
-        action: 'chat',
-        systemPrompt: systemPrompt || '',
-        messages: repairMessages,
-        max_tokens: 4000,
-      }),
-    });
+    const response = await fetchAuxCompletion('/api/ai-generate', {
+      baseUrl: llmConfig.baseUrl,
+      apiKey: llmConfig.apiKey,
+      model: selectedModel,
+      action: 'chat',
+      systemPrompt: systemPrompt || '',
+      messages: repairMessages,
+      max_tokens: 4000,
+    }, signal);
     if (!response.ok) return null;
     const data = await response.json();
     if (data?.ok === false) return null;
@@ -233,6 +254,7 @@ export async function runAgentLoop({
       llmConfig,
       selectedModel,
       systemPrompt,
+      signal: controller?.signal,
     });
     if (repaired) {
       finalFinalContent = repaired;
@@ -309,21 +331,17 @@ export async function runAgentLoop({
         { role: 'user', content: skillPrecipitationPrompt },
       ];
 
-      const precipitationResponse = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: llmConfig.baseUrl,
-          apiKey: llmConfig.apiKey,
-          model: selectedModel,
-          action: 'chat',
-          systemPrompt: `${systemPrompt}\n\n【技能沉淀模式】你正在进行工作反思。你的任务是把刚才完成的工作过程、方法论、经验教训沉淀为一个可复用的 Skill。重点描述过程和方法，而不是重复输出结果。`,
-          messages: precipitationMessages,
-          max_tokens: 3000,
-          tools: toolSchemas.filter(s => s.function?.name === 'create_skill'),
-          tool_choice: 'auto',
-        }),
-      });
+      const precipitationResponse = await fetchAuxCompletion('/api/ai-generate', {
+        baseUrl: llmConfig.baseUrl,
+        apiKey: llmConfig.apiKey,
+        model: selectedModel,
+        action: 'chat',
+        systemPrompt: `${systemPrompt}\n\n【技能沉淀模式】你正在进行工作反思。你的任务是把刚才完成的工作过程、方法论、经验教训沉淀为一个可复用的 Skill。重点描述过程和方法，而不是重复输出结果。`,
+        messages: precipitationMessages,
+        max_tokens: 3000,
+        tools: toolSchemas.filter(s => s.function?.name === 'create_skill'),
+        tool_choice: 'auto',
+      }, controller?.signal);
 
       if (precipitationResponse.ok) {
         const pData = await precipitationResponse.json();

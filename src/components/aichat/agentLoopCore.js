@@ -17,29 +17,70 @@ import { persistLongResult } from '../../session/outputSink.js';
 const CONTEXT_BUDGET = 48_000;
 const KEEP_RECENT = 25; // 压缩时保留的最近消息数
 
-export { mergeToolCallDeltas };
+// v26.9e：流式「静默看门狗」超时（毫秒）。
+// 原实现只挂了调用方的 controller，没有任何超时——上游建连后既不返回数据也不关闭时，
+// 这个 await 会**永久挂起**：该会话一直停在「生成中」、后续消息全部进队、而队列永远没人消费。
+// 注意这是**静默**超时而非总时长超时：只要还在持续吐增量就一直续期，长回答不会被误杀。
+const STREAM_STALL_TIMEOUT_MS = 90_000;
+
+export { mergeToolCallDeltas, STREAM_STALL_TIMEOUT_MS };
 
 /**
  * 流式调用 /api/ai-generate。
  * 后端 SSE 转发文本增量（delta）、tool_calls 分片（toolCallDelta）与 token 用量（usage）。
  * 返回 { content, tool_calls, usage }：usage 为上游报告的本轮 token 消耗（可能为 null）。
  * 任一异常带 retriable 标记，供重试循环判断。
+ *
+ * 取消语义：调用方 controller 中止 → 原样抛 AbortError（上层识别为「用户停止」）；
+ * 静默超时 → 抛带 retriable 的普通 Error（上层识别为「上游异常」可重试）。
  */
-export async function streamAgentResponse({ controller, baseUrl, apiKey, model, systemPrompt, messages, maxTokens, tools, toolChoice, onChunk }) {
-  const response = await fetch('/api/ai-generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: controller.signal,
-    body: JSON.stringify({
-      baseUrl, apiKey, model, action: 'chat',
-      systemPrompt, messages, max_tokens: maxTokens,
-      stream: true,
-      includeUsage: true, // 服务端据此附加 stream_options.include_usage，透传 usage
-      tools,
-      tool_choice: toolChoice,
-    }),
-  });
+export async function streamAgentResponse({ controller, baseUrl, apiKey, model, systemPrompt, messages, maxTokens, tools, toolChoice, onChunk, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS }) {
+  // 组合信号：调用方 controller（用户停止）+ 内部看门狗。分开是为了能区分两种中止原因。
+  const internal = new AbortController();
+  const forwardAbort = () => internal.abort();
+  if (controller?.signal?.aborted) internal.abort();
+  else controller?.signal?.addEventListener('abort', forwardAbort, { once: true });
+
+  let stalled = false;
+  let stallTimer = null;
+  const armStall = () => {
+    if (!stallTimeoutMs) return;
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => { stalled = true; internal.abort(); }, stallTimeoutMs);
+  };
+  const clearStall = () => { if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; } };
+  const makeStallError = () => {
+    const e = new Error(`上游 ${Math.round(stallTimeoutMs / 1000)} 秒无响应，已中断本次生成`);
+    e.retriable = true;
+    return e;
+  };
+
+  armStall();
+  let response;
+  try {
+    response = await fetch('/api/ai-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: internal.signal,
+      body: JSON.stringify({
+        baseUrl, apiKey, model, action: 'chat',
+        systemPrompt, messages, max_tokens: maxTokens,
+        stream: true,
+        includeUsage: true, // 服务端据此附加 stream_options.include_usage，透传 usage
+        tools,
+        tool_choice: toolChoice,
+      }),
+    });
+  } catch (err) {
+    clearStall();
+    controller?.signal?.removeEventListener?.('abort', forwardAbort);
+    if (stalled) throw makeStallError();
+    throw err;
+  }
+
   if (!response.ok) {
+    clearStall();
+    controller?.signal?.removeEventListener?.('abort', forwardAbort);
     const errData = await response.json().catch(() => ({}));
     const errMsg = typeof errData.error === 'string' ? errData.error : errData.error?.message || `AI 请求失败 (${response.status})`;
     const e = new Error(errMsg);
@@ -59,6 +100,7 @@ export async function streamAgentResponse({ controller, baseUrl, apiKey, model, 
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
+      armStall(); // 收到数据即续期：只有「持续静默」才算卡死
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
@@ -87,7 +129,14 @@ export async function streamAgentResponse({ controller, baseUrl, apiKey, model, 
         }
       }
     }
+  } catch (err) {
+    // 看门狗中止会把 reader.read() 变成 AbortError —— 必须转成可重试错误，
+    // 否则上层会误判为「用户主动停止」而丢弃已生成内容。
+    if (stalled) throw makeStallError();
+    throw err;
   } finally {
+    clearStall();
+    controller?.signal?.removeEventListener?.('abort', forwardAbort);
     reader.cancel().catch(() => {});
   }
 

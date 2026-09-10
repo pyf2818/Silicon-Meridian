@@ -1,4 +1,10 @@
 import { CATEGORY_RULES, TAG_RULES, CATEGORIES } from '../config/constants.js';
+import { decodeEntities } from '../../utils/htmlEntities.js';
+
+// 实体解码实现已抽到 server/utils/htmlEntities.js（零依赖），
+// 供 fetchPageHandler 等 serverless 入口复用而不必拖入 271 个源配置。
+// 这里原样转出，保持既有调用方（feedParser / sourceDiscovery）不变。
+export { decodeEntities };
 
 export function cleanText(value) {
   return decodeEntities(value)
@@ -6,17 +12,6 @@ export function cleanText(value) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-export function decodeEntities(value) {
-  return String(value)
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(parseInt(num, 10)));
 }
 
 export function trimSummary(value) {

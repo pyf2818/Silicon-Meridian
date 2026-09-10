@@ -17,10 +17,12 @@
  * - 两阶段广播流水线（v16 并行化）：全员同时认领 → 认领者并行独立产出（每个成员都是独立个体，互不等待）
  * - 执行核：复用 subagentRunner.runOneSubagent（独立工具白名单/预算/审批会话）
  */
-import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { runOneSubagent } from './subagentRunner.js';
 import AgentRoleCard from './AgentRoleCard.jsx';
 import { renderMarkdown } from '../../utils/markdown.jsx';
+import { computePopoverPosition, toPlainRect } from '../../utils/popoverPosition.js';
 import { downloadMarkdown } from '../../utils/workspace.js';
 import {
   getGroupState, getActiveChat, subscribeGroup, inviteMember, removeMember,
@@ -170,6 +172,11 @@ export default function AgentTeamChat({
   const panelRef = useRef(null);
   const atBottomRef = useRef(true);
   const prevCountRef = useRef(0);
+  // v26.9e：「＋邀请」下拉改挂 body（fixed 定位）。
+  // 原先它绝对定位在 .gtc-panel（overflow-y:auto）内，弹层会被面板滚动容器整块裁掉/截断。
+  const inviteBtnRef = useRef(null);
+  const inviteMenuRef = useRef(null);
+  const [invitePopStyle, setInvitePopStyle] = useState(null);
 
   const rosterPresets = useMemo(
     () => roster.map(id => resolveMemberPreset(id)).filter(Boolean),
@@ -310,11 +317,38 @@ export default function AgentTeamChat({
     setEditingAnn(false);
   }, [annDraft]);
 
-  /* ---------- 面板邀请菜单外点关闭 ---------- */
+  /* ---------- 面板邀请菜单：portal 定位 + 外点关闭 ---------- */
+  // 菜单已 portal 到 body，不再受 .gtc-panel 的 overflow 裁剪。
+  // 定位策略：优先向下弹（align='start' 与按钮左缘对齐）；面板在右侧，下方空间不足时自动上翻。
+  const placeInviteMenu = useCallback(() => {
+    const anchor = toPlainRect(inviteBtnRef.current);
+    if (!anchor) return;
+    const rect = inviteMenuRef.current?.getBoundingClientRect();
+    const size = rect ? { width: rect.width, height: rect.height } : { width: 0, height: 0 };
+    const { left, top } = computePopoverPosition(anchor, size, { width: window.innerWidth, height: window.innerHeight }, { align: 'start' });
+    setInvitePopStyle(prev => (prev && prev.left === left && prev.top === top ? prev : { left, top }));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!invitingOpen) { setInvitePopStyle(null); return undefined; }
+    placeInviteMenu();
+    const raf = requestAnimationFrame(placeInviteMenu);
+    window.addEventListener('resize', placeInviteMenu);
+    window.addEventListener('scroll', placeInviteMenu, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', placeInviteMenu);
+      window.removeEventListener('scroll', placeInviteMenu, true);
+    };
+  }, [invitingOpen, placeInviteMenu]);
+
   useEffect(() => {
     if (!invitingOpen) return undefined;
     const onDown = (e) => {
-      if (!panelRef.current?.contains(e.target)) setInvitingOpen(false);
+      if (panelRef.current?.contains(e.target)) return;
+      // 菜单不在 panelRef 子树内（已 portal），必须单独判断，否则一点菜单项就关闭
+      if (inviteMenuRef.current?.contains(e.target)) return;
+      setInvitingOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -1043,14 +1077,25 @@ export default function AgentTeamChat({
                 ))}
                 <div className="gtc-invite-wrap gtc-panel-invite">
                   <button
+                    ref={inviteBtnRef}
                     type="button"
                     className="gtc-panel-member-add"
                     onClick={() => setInvitingOpen(v => !v)}
                     disabled={running || rosterPresets.length >= 6}
                     title="邀请成员进群"
                   >＋ 邀请</button>
-                  {invitingOpen && (
-                    <div className="gtc-invite-menu">
+                  {invitingOpen && createPortal((
+                    <div
+                      className="gtc-invite-menu"
+                      ref={inviteMenuRef}
+                      style={{
+                        position: 'fixed',
+                        left: invitePopStyle ? invitePopStyle.left : 0,
+                        top: invitePopStyle ? invitePopStyle.top : 0,
+                        right: 'auto',
+                        visibility: invitePopStyle ? 'visible' : 'hidden',
+                      }}
+                    >
                       {allPresets.filter(p => !roster.includes(p.id)).map(p => (
                         <button key={p.id} type="button" onClick={() => { inviteMember(p.id); setInvitingOpen(false); }}>
                           <b>{p.name}{String(p.id).startsWith('cr_') ? ' ·自建' : ''}</b>
@@ -1063,7 +1108,7 @@ export default function AgentTeamChat({
                         ＋ 创建自定义角色
                       </button>
                     </div>
-                  )}
+                  ), document.body)}
                 </div>
               </div>
             </section>

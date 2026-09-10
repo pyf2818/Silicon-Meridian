@@ -1,6 +1,6 @@
 import { memo, useRef, useEffect, useState } from 'react';
 import { ICONS, MODE_MAP, REGION_MAP } from '../constants/index.jsx';
-import { getGradeColors, isEnglishText, formatRelative, isFreshNews } from '../utils/format.js';
+import { getGradeColors, isEnglishText, formatRelative, isFreshNews, decodeHtmlEntities } from '../utils/format.js';
 import { useNewsPreviewStore } from '../store/newsPreviewStore.js';
 
 function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBookmarked = false, isInMaterials = false, onBookmark, onSummary, isSummaryOpen, summaryText, summaryLoading = false, summaryMode = '', isFollowed = false, onRead, showTranslation, onToggleTranslation, onRequestTranslation, isTranslating, translation, onOpenLightbox, onAddMaterial, onShareToChat }) {
@@ -40,8 +40,9 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
     if (!normalized) return '';
     return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
   };
-  const displayTitle = showTranslation && translation ? translation.title : item.title;
-  const displaySummary = showTranslation && translation && translation.summary ? translation.summary : item.summary;
+  // v26.9e：存量数据可能残留 HTML 实体（&nbsp; 等），展示层兜底解码
+  const displayTitle = decodeHtmlEntities(showTranslation && translation ? translation.title : item.title);
+  const displaySummary = decodeHtmlEntities(showTranslation && translation && translation.summary ? translation.summary : item.summary);
   const summaryModeLabel = summaryMode === 'llm-scraped'
     ? 'AI 短摘要 · 已尝试抓取网页'
     : summaryMode === 'llm-card'

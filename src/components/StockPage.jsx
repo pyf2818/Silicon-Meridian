@@ -308,39 +308,46 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
     return morning || afternoon || preOpen;
   }, []);
 
+  // v26.9e 修复：把「是否开盘」抽成**稳定的布尔值**再进依赖数组。
+  // 原先四个轮询 effect 的依赖里直接放 clockNow（每 1000ms +1），effect 每 ~1s 重建 →
+  // clearInterval 总在回调触发前把定时器清掉 → 2s/5s/10s 的轮询**一次都不会执行**，
+  // 行情/大盘/K 线的「实时刷新」形同虚设（数据永远停在首屏）。
+  // 派生为布尔后，只有真正跨过开盘/收盘边界时依赖才变化，定时器得以存活。
+  const marketOpen = useMemo(() => isMarketOpen(new Date(clockNow)), [isMarketOpen, clockNow]);
+
   // 实时行情轮询：交易时段 2s，盘后 60s
   useEffect(() => {
     if (!selectedCode) return;
-    const interval = isMarketOpen() ? 2000 : 60000;
+    const interval = marketOpen ? 2000 : 60000;
     const timer = setInterval(() => {
       refreshRealtime(selectedCode);
     }, interval);
     return () => clearInterval(timer);
-  }, [selectedCode, refreshRealtime, isMarketOpen, clockNow]);
+  }, [selectedCode, refreshRealtime, marketOpen]);
 
   // 大盘指数轮询：交易时段 5s，盘后 60s
   useEffect(() => {
     if (!dashboard) return;
-    const interval = isMarketOpen() ? 5000 : 60000;
+    const interval = marketOpen ? 5000 : 60000;
     const timer = setInterval(() => loadDashboard(), interval);
     return () => clearInterval(timer);
-  }, [dashboard, loadDashboard, isMarketOpen, clockNow]);
+  }, [dashboard, loadDashboard, marketOpen]);
 
   // K 线轮询：交易时段 10s，盘后不轮询（K 线盘后不变）
   useEffect(() => {
     if (!selectedCode || period === 'timeline') return;
-    if (!isMarketOpen()) return; // 盘后 K 线不会变化，不轮询
+    if (!marketOpen) return; // 盘后 K 线不会变化，不轮询
     const timer = setInterval(() => setKlineReloadKey(k => k + 1), 10000);
     return () => clearInterval(timer);
-  }, [selectedCode, period, isMarketOpen, clockNow]);
+  }, [selectedCode, period, marketOpen]);
 
   // 分时图轮询：交易时段 5s，盘后不轮询
   useEffect(() => {
     if (!selectedCode || period !== 'timeline') return;
-    if (!isMarketOpen()) return;
+    if (!marketOpen) return;
     const timer = setInterval(() => setKlineReloadKey(k => k + 1), 5000);
     return () => clearInterval(timer);
-  }, [selectedCode, period, isMarketOpen, clockNow]);
+  }, [selectedCode, period, marketOpen]);
 
   // K线按需加载（切到日K/周K/月K时）
   useEffect(() => {

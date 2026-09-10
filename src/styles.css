@@ -14690,8 +14690,10 @@ body {
   transition: all var(--ease-fast);
 }
 .chat-queue-btn:hover, .chat-queue-btn.open { background: color-mix(in srgb, var(--status-critical, #f85149) 18%, transparent); }
+/* v26.9e：坐标改由 JS（computePopoverPosition）以 fixed 定位注入，挂 body。
+   原因：挂在 .chat-composer-top（overflow-x:auto）内会被整块裁剪，点击后看不见任何东西。 */
 .chat-queue-pop {
-  position: absolute; top: calc(100% + 8px); right: 0; z-index: 70;
+  z-index: 1300;
   width: 360px; max-height: 320px; overflow-y: auto;
   padding: 8px;
   background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px;
@@ -14836,30 +14838,11 @@ body {
 
 /* 停止生成按钮 */
 
-.chat-queue-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 3px 8px;
-  border-radius: 10px;
-  background: rgba(59, 130, 246, .15);
-  color: #3b82f6;
-  font-size: 10px;
-  font-weight: 700;
-  border: 1px solid rgba(59, 130, 246, .3);
-  flex-shrink: 0;
-  animation: chatQueuePulse 1.5s ease-in-out infinite;
-}
-.chat-queue-indicator svg {
-  width: 10px;
-  height: 10px;
-  display: block;
-  animation: spin 2s linear infinite;
-}
-@keyframes chatQueuePulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .6; }
-}
+/* v26.9e 死代码清理：.chat-queue-indicator / .chat-queue-indicator svg / @keyframes chatQueuePulse
+   已被移除——这是 v15 时期的「队列计数指示器」，改版后 UI 由 .chat-queue-btn + .chat-queue-pop
+   承担，这三个选择器在 JSX/JS 中零引用（grep 全仓无命中，仅 styles.css 内部自引用）。
+   配套的 i18n key chat.queueSend / chat.queueIndicator 也已删除；
+   chat.inputPlaceholderStreaming 保留（等 AI 工作站做 i18n 化时启用，目前面板是硬编码中文）。 */
 
 /* 独立停止按钮：流式生成中显示在发送按钮左侧 */
 .chat-stop-btn {
@@ -28135,8 +28118,10 @@ body {
 }
 .gtc-invite-btn:hover:not(:disabled) { border-color: var(--accent-cyan); color: var(--accent-cyan); }
 .gtc-invite-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* v26.9e：坐标由 JS（computePopoverPosition）以 fixed 注入并 portal 到 body。
+   原实现挂在 .gtc-panel（overflow-y:auto）内被裁剪，弹层显示不全。 */
 .gtc-invite-menu {
-  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40;
+  z-index: 1300;
   min-width: 210px; padding: 6px;
   background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);

@@ -6,9 +6,10 @@
  * - 流式回复 / 引用校验 / 快捷指令 / 附件 / 消息操作栏
  * - 接收 pendingMessage（来自右栏「剖析」或其它入口）做深度分析
  */
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { renderMarkdown } from '../utils/markdown.jsx';
+import { computePopoverPosition, toPlainRect } from '../utils/popoverPosition.js';
 import SafeBoundary from './SafeBoundary.jsx';
 import SessionSidebar from './SessionSidebar.jsx';
 import AgentPanel from './AgentPanel.jsx';
@@ -103,6 +104,11 @@ export default function AiChatPanel({
   const [editingQueueIdx, setEditingQueueIdx] = useState(null);
   const [editDraft, setEditDraft] = useState('');
   const queueWrapRef = useRef(null);
+  // v26.9e：弹层改挂 body（fixed 定位）。原先绝对定位在 .chat-composer-top 内，
+  // 而该容器带 overflow-x:auto → 计算出的 overflow-y 也是 auto → 弹层整体被裁掉、点了没反应。
+  const queueBtnRef = useRef(null);
+  const queuePopRef = useRef(null);
+  const [queuePopStyle, setQueuePopStyle] = useState(null);
   // 暴露给原 setSessions 调用点的兼容函数：写入 store + 持久化
   const setSessions = useCallback((updater) => {
     const prev = sessionsStore.state.sessions;
@@ -324,6 +330,8 @@ export default function AiChatPanel({
   const activeQueue = messageQueueMap[activeSessionId] || [];
   const dragQueueIdxRef = useRef(null); // v26 #13：排队消息拖拽中的源索引（拖拽过程无需重渲染）
   const abortControllerRef = useRef(null);
+  // v26.9e：队首消费函数（在 sendMessage 之后赋值）。用 ref 打断「sendMessage ←→ drainQueue」的循环依赖。
+  const drainQueueRef = useRef(null);
 
   const currentSession = sessions.find(s => s.id === activeSessionId);
   const messages = currentSession?.messages || EMPTY_MESSAGES;
@@ -595,14 +603,43 @@ export default function AiChatPanel({
   }, [showWfMenu]);
 
   // 排队管理弹层：外点关闭
+  // 注意：弹层已 portal 到 body，不在 queueWrapRef 子树内，必须单独判断，
+  // 否则在弹层里点「编辑/删除/拖拽」会被当成外点、瞬间关闭。
   useEffect(() => {
     if (!showQueueMenu) return undefined;
     const onQueueDown = (e) => {
-      if (!queueWrapRef.current?.contains(e.target)) { setShowQueueMenu(false); setEditingQueueIdx(null); }
+      if (queueWrapRef.current?.contains(e.target)) return;
+      if (queuePopRef.current?.contains(e.target)) return;
+      setShowQueueMenu(false);
+      setEditingQueueIdx(null);
     };
     document.addEventListener('mousedown', onQueueDown);
     return () => document.removeEventListener('mousedown', onQueueDown);
   }, [showQueueMenu]);
+
+  // v26.9e：排队弹层定位（portal + fixed）。两趟测量——先量尺寸再定位，
+  // 避免弹层高度（条目数/换行）变化后停留在错误位置。
+  const placeQueuePop = useCallback(() => {
+    const anchor = toPlainRect(queueBtnRef.current);
+    if (!anchor) return;
+    const rect = queuePopRef.current?.getBoundingClientRect();
+    const size = rect ? { width: rect.width, height: rect.height } : { width: 0, height: 0 };
+    const { left, top } = computePopoverPosition(anchor, size, { width: window.innerWidth, height: window.innerHeight });
+    setQueuePopStyle(prev => (prev && prev.left === left && prev.top === top ? prev : { left, top }));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!showQueueMenu) { setQueuePopStyle(null); return undefined; }
+    placeQueuePop();
+    const raf = requestAnimationFrame(placeQueuePop);
+    window.addEventListener('resize', placeQueuePop);
+    window.addEventListener('scroll', placeQueuePop, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', placeQueuePop);
+      window.removeEventListener('scroll', placeQueuePop, true);
+    };
+  }, [showQueueMenu, placeQueuePop]);
 
   const pickModel = useCallback((modelId) => {
     setLlmConfig?.(prev => ({ ...(prev || {}), selectedModel: modelId }));
@@ -832,34 +869,52 @@ export default function AiChatPanel({
     const controller = new AbortController();
     setSessionStreaming(activeSessionId, true, controller);
 
-    // 2) 跑编排器
-    const { ok, views, synthesis, error } = await multiAgent.run(prompt);
+    // v26.9e 修复：原实现没有 try/finally —— 一旦 multiAgent.run 抛出，
+    // setSessionStreaming(activeSessionId, false) 永远不会执行，该会话会**永久停在「生成中」**：
+    // 停止按钮常亮、后续每条消息都被判定为「正在运行」而进队、而队列又永远没人消费。
+    try {
+      // 2) 跑编排器
+      const { ok, views, synthesis, error } = await multiAgent.run(prompt);
 
-    // 3) 拼总报告：各视角 + 综合（综合在前，视角折叠其后）
-    const viewsText = (views || []).length
-      ? views.map((v, i) => `### ${i + 1} · ${v.viewLabel}\n${v.output}`).join('\n\n---\n\n')
-      : '';
-    const synthesisText = synthesis ? `## 综合判断\n\n${synthesis}\n` : '';
-    const body = [synthesisText, viewsText ? `## ${(views || []).length} 个视角\n\n${viewsText}` : '', error ? `\n> 部分视角执行失败：${error}` : ''].filter(Boolean).join('\n\n') || '（无输出）';
+      // 3) 拼总报告：各视角 + 综合（综合在前，视角折叠其后）
+      const viewsText = (views || []).length
+        ? views.map((v, i) => `### ${i + 1} · ${v.viewLabel}\n${v.output}`).join('\n\n---\n\n')
+        : '';
+      const synthesisText = synthesis ? `## 综合判断\n\n${synthesis}\n` : '';
+      const body = [synthesisText, viewsText ? `## ${(views || []).length} 个视角\n\n${viewsText}` : '', error ? `\n> 部分视角执行失败：${error}` : ''].filter(Boolean).join('\n\n') || '（无输出）';
 
-    // 4) 写回会话
-    setSessions(prev => prev.map(s => {
-      if (s.id !== activeSessionId) return s;
-      const msgs = [...s.messages];
-      msgs[msgs.length - 1] = { role: 'assistant', content: body, loading: false };
-      return { ...s, messages: msgs, updatedAt: Date.now() };
-    }));
-    // 中止时把占位标记为已停止，避免 loading 卡死
-    const aborted = controller.signal.aborted;
-    setSessions(prev => prev.map(s => {
-      if (s.id !== activeSessionId) return s;
-      const msgs = [...s.messages];
-      const last = msgs[msgs.length - 1];
-      if (aborted && last?.role === 'assistant') msgs[msgs.length - 1] = { ...last, loading: false, stopped: true };
-      return { ...s, messages: msgs };
-    }));
-    setSessionStreaming(activeSessionId, false);
-  }, [activeSessionId, isStreaming, setSessions, setSessionStreaming, multiAgent.run]);
+      // 4) 写回会话
+      setSessions(prev => prev.map(s => {
+        if (s.id !== activeSessionId) return s;
+        const msgs = [...s.messages];
+        msgs[msgs.length - 1] = { role: 'assistant', content: body, loading: false };
+        return { ...s, messages: msgs, updatedAt: Date.now() };
+      }));
+      // 中止时把占位标记为已停止，避免 loading 卡死
+      const aborted = controller.signal.aborted;
+      setSessions(prev => prev.map(s => {
+        if (s.id !== activeSessionId) return s;
+        const msgs = [...s.messages];
+        const last = msgs[msgs.length - 1];
+        if (aborted && last?.role === 'assistant') msgs[msgs.length - 1] = { ...last, loading: false, stopped: true };
+        return { ...s, messages: msgs };
+      }));
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        setSessions(prev => prev.map(s => {
+          if (s.id !== activeSessionId) return s;
+          const msgs = [...s.messages];
+          const last = msgs[msgs.length - 1];
+          if (last?.role === 'assistant') msgs[msgs.length - 1] = { ...last, content: `多视角协作失败：${err?.message || err}`, loading: false, error: true };
+          return { ...s, messages: msgs };
+        }));
+      }
+    } finally {
+      setSessionStreaming(activeSessionId, false);
+      if (controller.signal.aborted) clearQueued(activeSessionId);
+      else drainQueueRef.current?.(activeSessionId);
+    }
+  }, [activeSessionId, isStreaming, setSessions, setSessionStreaming, multiAgent.run, clearQueued]);
 
   // 用户消息节点列表（用于侧边导航跳转）
   const userMessageNodes = useMemo(() => messages
@@ -1233,14 +1288,34 @@ export default function AiChatPanel({
       setSessionStreaming(targetId, false);
       // 消费该会话的消息队列：非用户主动停止时自动依序发送
       if (!wasAborted) {
-        const nextMsg = shiftQueued(targetId);
-        if (nextMsg) setTimeout(() => sendMessage(nextMsg, { sessionId: targetId }), 50);
+        // 走 drainQueueRef（在 sendMessage 之后定义），避免 useCallback 的 TDZ/陈旧闭包
+        drainQueueRef.current?.(targetId);
       } else {
         // 用户主动停止：清空该会话队列
         clearQueued(targetId);
       }
     }
   }, [input, messages, sessions, llmConfig, selectedModel, systemPrompt, onOpenLlmConfig, activeSessionId, intelligenceContext, agent, runAgentLoop, setSessionStreaming, enqueueQueued, shiftQueued, clearQueued]);
+
+  // v26.9e 队列自愈：仅在「该会话确实没有在跑」时才补发队首。
+  // 加 2s 冷静期是刻意的——正常的队列消费会在 finally 里 50ms 内把 isStreaming 拉回 true，
+  // 冷静期一到就被 effect cleanup 取消，因此不会和正常消费路径并发双发。
+  const drainQueue = useCallback((sid) => {
+    if (!sid) return;
+    if (streamingSessionsRef.current.has(sid)) return;
+    if (!llmConfig?.baseUrl || !selectedModel) return; // 无配置时不消费，避免消息被 shift 出来却发不出去
+    const nextMsg = shiftQueued(sid);
+    if (!nextMsg) return;
+    setTimeout(() => sendMessage(nextMsg, { sessionId: sid }), 50);
+  }, [shiftQueued, sendMessage, llmConfig?.baseUrl, selectedModel]);
+  drainQueueRef.current = drainQueue;
+
+  useEffect(() => {
+    if (isStreaming || !activeSessionId || activeQueue.length === 0) return undefined;
+    const sid = activeSessionId;
+    const timer = setTimeout(() => drainQueueRef.current?.(sid), 2000);
+    return () => clearTimeout(timer);
+  }, [isStreaming, activeSessionId, activeQueue.length]);
 
   // 停止生成：同时取消所有未决审批，让 Agent Loop 解除阻塞
   const stopGeneration = useCallback(() => {
@@ -1406,11 +1481,18 @@ export default function AiChatPanel({
   }, [activeSpace]);
 
   // Watch for pending messages from external triggers (e.g. 右栏「剖析」按钮 / 快捷入口)
+  // v26.9e：sendMessage 的依赖含 sessions/messages → 每次渲染都会换新引用，
+  // 该 effect 在 pendingMessage 尚未被父级清空时会随每次渲染重跑。首次调用已把会话标记为
+  // streaming（ref 同步写入），重入时就走进了「排队」分支 → 同一条消息被重复塞进队列。
+  // 用「已处理负载」标记去重，父级清空 pendingMessage 时复位（同一内容可再次触发）。
+  const pendingSentRef = useRef(null);
   useEffect(() => {
-    if (pendingMessage && !isStreaming) {
-      sendMessage(pendingMessage);
-      onMessageSent?.();
-    }
+    if (!pendingMessage) { pendingSentRef.current = null; return; }
+    if (isStreaming) return;
+    if (pendingSentRef.current === pendingMessage) return;
+    pendingSentRef.current = pendingMessage;
+    sendMessage(pendingMessage);
+    onMessageSent?.();
   }, [pendingMessage, isStreaming, sendMessage, onMessageSent]);
 
   // 输入历史导航 hook（已抽离至 aichat/useInputHistory.js）
@@ -1803,11 +1885,14 @@ export default function AiChatPanel({
               <span className="chat-skill-caret">{ICONS.chevronUp || '▴'}</span>
             </button>
           </div>
-          {/* 消息排队（v15）：按钮在输入框上方，弹层可查看/二次编辑/调序/删除排队消息 */}
+          {/* 消息排队（v15）：按钮在输入框上方，弹层可查看/二次编辑/调序/删除排队消息。
+              v26.9e：弹层已改为 portal 到 body + fixed 定位——原先挂在 .chat-composer-top 内，
+              该容器 overflow-x:auto 会把弹层整体裁掉，表现为「点了没反应」。 */}
           <div className="chat-queue-wrap" ref={queueWrapRef}>
             {activeQueue.length > 0 && (
               <>
                 <button
+                  ref={queueBtnRef}
                   type="button"
                   className={`chat-queue-btn ${showQueueMenu ? 'open' : ''}`}
                   onClick={() => setShowQueueMenu(v => !v)}
@@ -1817,8 +1902,18 @@ export default function AiChatPanel({
                   排队 {activeQueue.length}
                   <span className="chat-skill-caret">{ICONS.chevronUp || '▴'}</span>
                 </button>
-                {showQueueMenu && (
-                  <div className="chat-queue-pop">
+                {showQueueMenu && createPortal((
+                  <div
+                    className="chat-queue-pop"
+                    ref={queuePopRef}
+                    style={{
+                      position: 'fixed',
+                      left: queuePopStyle ? queuePopStyle.left : 0,
+                      top: queuePopStyle ? queuePopStyle.top : 0,
+                      right: 'auto',
+                      visibility: queuePopStyle ? 'visible' : 'hidden',
+                    }}
+                  >
                     <div className="chat-queue-pop-label">排队消息（按顺序自动发送，可拖拽排序）</div>
                     {activeQueue.map((q, i) => (
                       <div
@@ -1874,7 +1969,7 @@ export default function AiChatPanel({
                       </div>
                     ))}
                   </div>
-                )}
+                ), document.body)}
               </>
             )}
           </div>
