@@ -191,6 +191,20 @@ playwright-report/
 test-results/
 .data/
 
+# 探针运行时输出目录（每次探针用新目录名，规避回收站删除的沙盒限制）
+/.pw-*/
+
+# 根目录临时采集产物
+/.m.json
+/.ml.json
+
+# 一次性调试脚本（结论已沉淀到 docs/ 与项目记忆，脚本本身不入库）
+/scripts/*-debug.mjs
+/screenshots/_dbg_*.mjs
+/screenshots/_probe_*.mjs
+/screenshots/_shot_*.mjs
+/screenshots/_visual_*.mjs
+
 # 本地凭证 / 临时文件（勿提交）
 cookies.txt
 commit-msg.txt
