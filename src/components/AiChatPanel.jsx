@@ -42,7 +42,7 @@ import { useSkills } from '../hooks/useSkills.js';
 import { showToast } from '../utils/toast.js';
 import { useProfileStore, useUiStore } from '../store';
 import { ICONS } from '../constants/appConstants.jsx';
-import { buildContext, shouldCompact, estimateMessages, localSummary } from '../session/contextManager.js';
+import { packConversation, estimateMessages } from '../session/contextManager.js';
 import { forkLinearSession } from '../session/trailStore.js';
 import { useMultiAgentOrchestrator } from '../hooks/useMultiAgentOrchestrator.js';
 import { recordAgentRun, depositExperience } from '../domain/agent/agentEvolution.js';
@@ -52,10 +52,13 @@ import '../utils/agentSubagentTool.js';
 // Agent Team 工具注册（spawn_agent_team + 队友协作工具）
 import '../utils/agentTeamTools.js';
 
-// 流式回复的上下文预算（token）。超预算时对中段做本地摘要压缩，替代 slice(-20) 硬截断
+import ChatHeader from './aichat/ChatHeader.jsx';
+
+// 流式回复的上下文预算（token）。超预算时对中段做本地摘要压缩，替代 slice 硬截断。
+// 轻量流式路径预算低于 agent 工具循环，且只做本地摘要（省一次 LLM 调用）。
 const STREAM_CONTEXT_BUDGET = 40_000;
 const STREAM_KEEP_RECENT = 15;
-import ChatHeader from './aichat/ChatHeader.jsx';
+const STREAM_TAIL_LIMIT = 20;
 
 // 模块级 abortController，跨组件生命周期保持
 let activeAbortController = null;
@@ -1100,25 +1103,21 @@ export default function AiChatPanel({
       }
 
       // 上下文预算检查（对标 pi/compaction）：超预算时把中段折叠为一条本地摘要，
-      // 替代 slice(-20) 硬截断。本地摘要不额外调 LLM，失败自动回退到 slice。
+      // 替代 slice 硬截断。本地摘要不额外调 LLM（summaryStrategy:'local'），失败自动回退。
+      // 打包逻辑与 agent 工具循环、AI 精灵共用 contextManager.packConversation 一份实现。
       const fullHistory = [...targetHistory, userMessage];
-      let sendMessages;
-      if (shouldCompact(fullHistory, STREAM_CONTEXT_BUDGET)) {
-        const packed = await buildContext(fullHistory, STREAM_CONTEXT_BUDGET, {
-          keepRecent: STREAM_KEEP_RECENT,
-          cutMin: 2,
-          summaryText: localSummary(fullHistory.slice(1, Math.max(1, fullHistory.length - STREAM_KEEP_RECENT))),
-        });
-        sendMessages = packed.compressed ? packed.messages : fullHistory.slice(-20);
-        // 压缩是 lossy 的：沉淀为跨会话记忆，避免被压段"蒸发"（同会话去重）
-        if (packed.compressed && targetId) {
-          try { rememberCompaction(targetId, packed.summaryText || ''); } catch { /* silent */ }
-        }
-      } else {
-        sendMessages = fullHistory.slice(-20);
+      const packed = await packConversation(fullHistory, {
+        budget: STREAM_CONTEXT_BUDGET,
+        keepRecent: STREAM_KEEP_RECENT,
+        cutMin: 2,
+        fallbackLimit: STREAM_TAIL_LIMIT,
+        summaryStrategy: 'local',
+      });
+      const sendMessages = packed.messages;
+      // 压缩是 lossy 的：沉淀为跨会话记忆，避免被压段"蒸发"（同会话去重）
+      if (packed.compressed && targetId) {
+        try { rememberCompaction(targetId, packed.summaryText || ''); } catch { /* silent */ }
       }
-      // 终极兜底：绝不越界
-      if (estimateMessages(sendMessages) > STREAM_CONTEXT_BUDGET) sendMessages = sendMessages.slice(-20);
 
       // ── 带重试的流式 LLM 调用（仅对 429/5xx/网络瞬错重试，最多 3 次）──
       const MAX_CHAT_RETRIES = 3;

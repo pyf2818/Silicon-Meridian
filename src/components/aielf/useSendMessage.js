@@ -1,10 +1,11 @@
 import { selectToolSchemas } from '../../utils/agentTools.js';
-import { buildContext, shouldCompact, estimateMessages, localSummary } from '../../session/contextManager.js';
+import { packConversation } from '../../session/contextManager.js';
 import { saveDropSnapshot } from '../../utils/articleFetcher.js';
 
 // 普通模式（无工具）上下文预算：超预算时中段本地摘要压缩，替代整段发送
 const PLAIN_CONTEXT_BUDGET = 40_000;
 const PLAIN_KEEP_RECENT = 15;
+const PLAIN_TAIL_LIMIT = 20;
 
 /**
  * AI 精灵发送消息逻辑（v14 简化：单线程会话，无多会话历史）
@@ -96,19 +97,16 @@ export function useSendMessage({
       }
 
       // ===== 普通模式：无工具，单次请求（超预算时中段本地摘要压缩） =====
+      // 打包逻辑与 agent 工具循环、工作站流式路径共用 contextManager.packConversation
       const plainHistory = messages.slice(-40);
-      let plainMessages;
-      if (shouldCompact(plainHistory, PLAIN_CONTEXT_BUDGET)) {
-        const packed = await buildContext(plainHistory, PLAIN_CONTEXT_BUDGET, {
-          keepRecent: PLAIN_KEEP_RECENT,
-          cutMin: 2,
-          summaryText: localSummary(plainHistory.slice(1, Math.max(1, plainHistory.length - PLAIN_KEEP_RECENT))),
-        });
-        plainMessages = packed.compressed ? packed.messages : plainHistory.slice(-20);
-      } else {
-        plainMessages = plainHistory.slice(-20);
-      }
-      if (estimateMessages(plainMessages) > PLAIN_CONTEXT_BUDGET) plainMessages = plainMessages.slice(-20);
+      const packed = await packConversation(plainHistory, {
+        budget: PLAIN_CONTEXT_BUDGET,
+        keepRecent: PLAIN_KEEP_RECENT,
+        cutMin: 2,
+        fallbackLimit: PLAIN_TAIL_LIMIT,
+        summaryStrategy: 'local', // 精灵是轻量路径：不额外调 LLM 做摘要
+      });
+      const plainMessages = packed.messages;
 
       const response = await fetch('/api/ai-generate', {
         method: 'POST',

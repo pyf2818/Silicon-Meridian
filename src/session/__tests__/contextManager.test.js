@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   estimateTokens,
   estimateMessages,
@@ -7,6 +7,8 @@ import {
   buildContext,
   localSummary,
   buildCompactionPrompt,
+  packConversation,
+  PACK_DEFAULTS,
 } from '../contextManager.js';
 
 // ---------------------------------------------------------------------------
@@ -185,5 +187,193 @@ describe('buildCompactionPrompt', () => {
   it('空区域安全', () => {
     const { user } = buildCompactionPrompt([]);
     expect(user).toContain('0 条消息');
+  });
+});
+// ---------------------------------------------------------------------------
+// packConversation —— 三个调用点（agent 工具循环 / 工作站流式 / 精灵流式）共用的唯一实现
+// ---------------------------------------------------------------------------
+describe('packConversation', () => {
+  const mk = (role, content) => ({ role, content });
+  const cjk = (n) => '中'.repeat(n); // 1 个中文字 ≈ 1 token（ceil(n/1.5)）
+
+  it('空输入安全返回，不抛异常', async () => {
+    for (const input of [[], null, undefined]) {
+      const r = await packConversation(input);
+      expect(r.messages).toEqual([]);
+      expect(r.compressed).toBe(false);
+      expect(r.tokens).toBe(0);
+    }
+  });
+
+  it('未超预算：原样返回、不压缩、不调用摘要器', async () => {
+    const generateSummary = vi.fn();
+    const msgs = [mk('user', '你好'), mk('assistant', '在的')];
+    const r = await packConversation(msgs, { budget: 10_000, generateSummary });
+    expect(r.messages).toHaveLength(2);
+    expect(r.compressed).toBe(false);
+    expect(r.summaryText).toBe('');
+    expect(generateSummary).not.toHaveBeenCalled();
+  });
+
+  it('未超预算但超过 fallbackLimit：按条数收拢尾部并标记 truncated', async () => {
+    const msgs = Array.from({ length: 10 }, (_, i) => mk('user', `m${i}`));
+    const r = await packConversation(msgs, { budget: 10_000, fallbackLimit: 4 });
+    expect(r.messages).toHaveLength(4);
+    expect(r.messages[3].content).toBe('m9'); // 保留的是最新的
+    expect(r.truncated).toBe(true);
+  });
+
+  it("summaryStrategy:'local' 不调用 LLM 摘要器（省一次调用）", async () => {
+    const generateSummary = vi.fn();
+    const msgs = [mk('user', cjk(20)), mk('assistant', cjk(400)), mk('user', cjk(400)), mk('assistant', '收尾')];
+    const r = await packConversation(msgs, {
+      budget: 200, keepRecent: 1, cutMin: 1, summaryStrategy: 'local', generateSummary,
+    });
+    expect(r.compressed).toBe(true);
+    expect(generateSummary).not.toHaveBeenCalled();
+    expect(r.summaryText).not.toBe('');
+  });
+
+  it("summaryStrategy:'llm' 调用摘要器并采用其返回值", async () => {
+    const generateSummary = vi.fn(async () => 'LLM 生成的结构化摘要');
+    const msgs = [mk('user', cjk(20)), mk('assistant', cjk(400)), mk('user', cjk(400)), mk('assistant', '收尾')];
+    const r = await packConversation(msgs, {
+      budget: 200, keepRecent: 1, cutMin: 1, summaryStrategy: 'llm', generateSummary,
+    });
+    expect(generateSummary).toHaveBeenCalledTimes(1);
+    expect(r.summaryText).toBe('LLM 生成的结构化摘要');
+    expect(r.messages.some((m) => m.content.includes('LLM 生成的结构化摘要'))).toBe(true);
+  });
+
+  it('LLM 摘要器抛错时降级为本地摘要，不向外抛', async () => {
+    const generateSummary = vi.fn(async () => { throw new Error('上游挂了'); });
+    const msgs = [mk('user', cjk(20)), mk('assistant', cjk(400)), mk('user', cjk(400)), mk('assistant', '收尾')];
+    const r = await packConversation(msgs, {
+      budget: 200, keepRecent: 1, cutMin: 1, summaryStrategy: 'llm', generateSummary,
+    });
+    expect(r.compressed).toBe(true);
+    expect(r.summaryText).not.toBe(''); // 本地降级摘要兜住了
+  });
+
+  it('【核心回归】摘要窗口 === 压缩窗口：开头是 tool 的消息不会被算进摘要', async () => {
+    // 旧实现用 messages.slice(1, len - keepRecent) 手算摘要窗口，
+    // 会包含 index 1 的 tool 消息；而 findCutRegion 会跳过它（cutStart 推进到 2）。
+    // 两者错位 → 摘要描述的内容与实际被压掉的内容不一致。
+    const msgs = [
+      mk('user', cjk(30)),        // 0 锚点，永不压缩
+      mk('tool', cjk(30)),        // 1 开头的 tool：findCutRegion 会跳过
+      mk('assistant', cjk(300)),  // 2 ┐
+      mk('user', cjk(300)),       // 3 ├ 预期压缩窗口
+      mk('assistant', cjk(300)),  // 4 ┘
+      mk('user', 'TASK'),         // 5 keepRecent
+      mk('assistant', 'OK'),      // 6 keepRecent
+    ];
+    const seen = [];
+    const generateSummary = vi.fn(async (region) => { seen.push(region); return '摘要'; });
+
+    const r = await packConversation(msgs, {
+      budget: 200, keepRecent: 2, cutMin: 1, summaryStrategy: 'llm', generateSummary,
+    });
+
+    expect(r.compressed).toBe(true);
+    expect(seen).toHaveLength(1);
+    const region = seen[0];
+    expect(region.map((m) => m.role)).toEqual(['assistant', 'user', 'assistant']);
+    expect(region[0].content).toBe(msgs[2].content);
+    // 关键断言：那条 tool 消息不在摘要窗口内
+    expect(region.some((m) => m.role === 'tool')).toBe(false);
+  });
+
+  it("'local' 策略的摘要内容取自同一个 findCutRegion 窗口", async () => {
+    const msgs = [
+      mk('user', cjk(30)),
+      mk('tool', cjk(30)),
+      mk('assistant', cjk(300)),
+      mk('user', cjk(300)),
+      mk('assistant', cjk(300)),
+      mk('user', 'TASK'),
+      mk('assistant', 'OK'),
+    ];
+    const r = await packConversation(msgs, {
+      budget: 200, keepRecent: 2, cutMin: 1, summaryStrategy: 'local',
+    });
+    // localSummary 对 3 条 assistant/user/assistant 生成 3 行，首行角色标签为「助手」
+    const lines = r.summaryText.split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain('[助手]');
+    expect(lines[1]).toContain('[用户]');
+  });
+
+  it('压缩窗口压不动时退回尾部条数兜底，绝不越界', async () => {
+    // 全部是超长消息且 keepRecent 很大 → findCutRegion 返回 null
+    const msgs = Array.from({ length: 6 }, (_, i) => mk('user', cjk(4000) + i));
+    const r = await packConversation(msgs, {
+      budget: 100, keepRecent: 6, cutMin: 1, fallbackLimit: 2,
+    });
+    expect(r.messages.length).toBeLessThanOrEqual(2);
+  });
+
+  it('返回值字段齐全，tokens 与 messages 自洽', async () => {
+    const msgs = [mk('user', '你好'), mk('assistant', '在的')];
+    const r = await packConversation(msgs, { budget: 10_000 });
+    expect(Object.keys(r).sort()).toEqual(
+      ['compressed', 'messages', 'originalTokens', 'summaryText', 'tokens', 'truncated'].sort(),
+    );
+    expect(r.tokens).toBe(estimateMessages(r.messages));
+    expect(r.originalTokens).toBe(estimateMessages(msgs));
+  });
+
+  it('PACK_DEFAULTS 导出且缺省参数与其一致', async () => {
+    const msgs = [mk('user', 'a'), mk('assistant', 'b')];
+    const withDefaults = await packConversation(msgs);
+    const withExplicit = await packConversation(msgs, {
+      budget: PACK_DEFAULTS.budget,
+      keepRecent: PACK_DEFAULTS.keepRecent,
+      cutMin: PACK_DEFAULTS.cutMin,
+      fallbackLimit: PACK_DEFAULTS.fallbackLimit,
+    });
+    expect(withExplicit.messages).toEqual(withDefaults.messages);
+    expect(PACK_DEFAULTS.budget).toBe(48_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildContext 回归：摘要器必须收到「真正的压缩窗口」，本地降级摘要不得为空
+// 历史 BUG：把 region.cutRegion 误写成 region.region，导致摘要器恒收 undefined
+//（「LLM 真压缩」形同虚设），且本地降级摘要恒为空串，压缩段被替换成一句「摘要（）」。
+// ---------------------------------------------------------------------------
+describe('buildContext 摘要窗口回归', () => {
+  const mk = (role, content) => ({ role, content });
+  const cjk = (n) => '中'.repeat(n);
+
+  it('generateSummary 收到的是压缩窗口的消息数组，而非 undefined', async () => {
+    const msgs = [mk('user', cjk(30)), mk('assistant', cjk(300)), mk('user', cjk(300)), mk('assistant', '尾')];
+    const received = [];
+    await buildContext(msgs, 200, {
+      keepRecent: 1, cutMin: 1,
+      generateSummary: async (region) => { received.push(region); return 'S'; },
+    });
+    expect(received).toHaveLength(1);
+    expect(Array.isArray(received[0])).toBe(true);
+    expect(received[0].length).toBeGreaterThan(0);
+    expect(received[0].every((m) => typeof m.content === 'string')).toBe(true);
+  });
+
+  it('无摘要器时本地降级摘要非空（不再产出「摘要（）」）', async () => {
+    const msgs = [mk('user', cjk(30)), mk('assistant', cjk(300)), mk('user', cjk(300)), mk('assistant', '尾')];
+    const r = await buildContext(msgs, 200, { keepRecent: 1, cutMin: 1 });
+    expect(r.compressed).toBe(true);
+    expect(r.summaryText).not.toBe('');
+    expect(r.summaryText).toContain('[助手]'); // localSummary 的角色标签
+    const sysLine = r.messages.find((m) => m.role === 'system');
+    expect(sysLine.content).not.toContain('摘要（）。');
+  });
+
+  it('摘要器返回空串时同样降级到非空本地摘要', async () => {
+    const msgs = [mk('user', cjk(30)), mk('assistant', cjk(300)), mk('user', cjk(300)), mk('assistant', '尾')];
+    const r = await buildContext(msgs, 200, {
+      keepRecent: 1, cutMin: 1, generateSummary: async () => '',
+    });
+    expect(r.summaryText).not.toBe('');
   });
 });

@@ -10,12 +10,13 @@ import { getTool, resolveApprovalDecision } from '../../utils/toolRegistry.js';
 import { mergeToolCallDeltas } from '../../utils/toolCallMerge.js';
 import { validateToolArgs } from '../../utils/toolArgsValidator.js';
 import { wrapUntrusted } from '../../session/untrusted.js';
-import { buildContext, estimateMessages, shouldCompact } from '../../session/contextManager.js';
+import { packConversation } from '../../session/contextManager.js';
 import { persistLongResult } from '../../session/outputSink.js';
 
 // 上下文预算：发送给 LLM 的消息总 token 上限。超过则触发「中段摘要压缩」而非硬截断。
 const CONTEXT_BUDGET = 48_000;
 const KEEP_RECENT = 25; // 压缩时保留的最近消息数
+const TAIL_LIMIT = 30; // 未压缩/压缩失败时尾部兜底条数（工具循环比轻量路径留更多）
 
 // v26.9e：流式「静默看门狗」超时（毫秒）。
 // 原实现只挂了调用方的 controller，没有任何超时——上游建连后既不返回数据也不关闭时，
@@ -228,23 +229,21 @@ export async function runToolLoop({
       }
 
       // 上下文压缩：超过预算时把中段折叠为一条摘要消息。摘要优先 LLM 生成（generateSummary），
-      // 失败/缺省降级为本地截断摘要（buildContext 内部处理），不再每轮硬编码 summaryText。
-      let sendMessages;
-      if (shouldCompact(conversationMessages, contextBudget)) {
-        const packed = await buildContext(conversationMessages, contextBudget, {
-          keepRecent,
-          cutMin: 2,
-          generateSummary,
-        });
-        sendMessages = packed.compressed ? packed.messages : conversationMessages.slice(-30);
-        if (packed.compressed && typeof toolCtx?.onCompacted === 'function') {
-          try { toolCtx.onCompacted(packed.summaryText || ''); } catch { /* silent */ }
-        }
-      } else {
-        sendMessages = conversationMessages.slice(-30);
+      // 失败/缺省降级为本地截断摘要（buildContext 内部处理）。
+      // 打包逻辑（判定 → 压缩 → 尾部兜底）统一走 packConversation，与工作站/精灵两条流式路径共用一份实现。
+      const packed = await packConversation(conversationMessages, {
+        budget: contextBudget,
+        keepRecent,
+        cutMin: 2,
+        // 工具循环保留更多尾部：工具结果本身就是后续推理的证据，截太狠会丢依据
+        fallbackLimit: TAIL_LIMIT,
+        summaryStrategy: 'llm',
+        generateSummary,
+      });
+      const sendMessages = packed.messages;
+      if (packed.compressed && typeof toolCtx?.onCompacted === 'function') {
+        try { toolCtx.onCompacted(packed.summaryText || ''); } catch { /* silent */ }
       }
-      // 终极兜底：即使压缩后仍超长，也保留最近 30 条（绝不越界）
-      if (estimateMessages(sendMessages) > contextBudget) sendMessages = sendMessages.slice(-30);
 
       // 最后一轮硬断工具：直接不下发 tools，模型物理上无法再调
       const iterTools = isFinalIteration ? undefined : toolSchemas;

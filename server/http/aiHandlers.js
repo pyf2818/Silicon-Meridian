@@ -154,10 +154,30 @@ async function handleAiStreamRequest(req, res, body) {
     ? Math.floor(requestedMaxTokens)
     : 4000;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90_000);
-  // 前端关闭连接时中止上游
-  const onClose = () => controller.abort();
-  req.on('close', onClose);
+  // 建连超时：仅覆盖「建立连接 + 拿到响应头」这一段（下一段 try 的 finally 里即清除）。
+  const connectTimeout = setTimeout(() => controller.abort(), 90_000);
+
+  // 流式读取阶段的「静默看门狗」：上游连着但不再吐字节时中止，避免连接永久挂起。
+  // 注意这是**静默**超时而非总时长超时——每收到一个 chunk 就续期，长回答不会被误杀。
+  const STREAM_STALL_MS = 60_000;
+  let stalled = false;
+  let stallTimer = null;
+  const armStall = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => { stalled = true; controller.abort(); }, STREAM_STALL_MS);
+  };
+  const clearStall = () => { if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; } };
+
+  // 前端断开（用户点「停止」/ 客户端静默看门狗中止）时终止上游请求，避免上游连接与
+  // 本 handler 被永久占住，同时不再为空转的生成付 token。
+  //
+  // ⚠️ 必须监听 res 而不是 req（2026-09 实测取证，见 scripts/probe-req-close-semantics*.mjs）：
+  // Node 16+ 起 IncomingMessage 的 'close' 会在**请求体读完**时立即发出——而本函数是在
+  // `await readJsonBody(req)` 之后才被调用的，此时 'close' 早已发过，挂在 req 上等于**死代码**
+  // （实测：挂监听后 1.5s 的流里 'close' 一次都不触发）。res 的 'close' 在响应流真正关闭时
+  // 触发，配合 writableEnded 即可区分「正常写完」与「中途断开」。
+  const onClientGone = () => { if (!res.writableEnded) controller.abort(); };
+  res.on('close', onClientGone);
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -216,19 +236,21 @@ async function handleAiStreamRequest(req, res, body) {
       ? '模型服务请求超时或已停止'
       : (isRateLimited ? '模型服务繁忙（429），请稍候再试，或更换模型' : (err?.message || 'AI 网关请求失败'));
     const errorCode = isAbort ? 'UPSTREAM_TIMEOUT' : (isRateLimited ? 'UPSTREAM_RATE_LIMITED' : 'AI_GATEWAY_ERROR');
-    res.write(`data: ${JSON.stringify({ ok: false, error: msg, errorCode })}\n\n`);
+    if (!res.writableEnded) res.write(`data: ${JSON.stringify({ ok: false, error: msg, errorCode })}\n\n`);
     return res.end();
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(connectTimeout);
   }
 
   const reader = upstream.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
+  armStall(); // 进入读取循环即开始静默计时；有数据就续期
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
+      armStall(); // 收到数据即续期：只有「持续静默」才判定卡死
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
@@ -260,16 +282,24 @@ async function handleAiStreamRequest(req, res, body) {
         } catch { /* 跳过不完整的 JSON 行 */ }
       }
     }
-    res.write('data: [DONE]\n\n');
+    if (!res.writableEnded) res.write('data: [DONE]\n\n');
     res.end();
   } catch (err) {
-    if (err?.name !== 'AbortError') {
-      res.write(`data: ${JSON.stringify({ ok: false, error: err?.message || '流式读取失败', errorCode: 'AI_GATEWAY_ERROR' })}\n\n`);
+    // 回写条件：客户端还连着，且属于「需要告知用户」的失败。
+    // 静默看门狗触发的也是 AbortError，但必须告知（否则客户端会把它当成一次正常的短回答）。
+    const clientGone = err?.name === 'AbortError' && !stalled;
+    if (!clientGone && !res.writableEnded) {
+      const msg = stalled
+        ? `上游 ${Math.round(STREAM_STALL_MS / 1000)} 秒无响应，已中断本次生成`
+        : (err?.message || '流式读取失败');
+      const errorCode = stalled ? 'UPSTREAM_TIMEOUT' : 'AI_GATEWAY_ERROR';
+      res.write(`data: ${JSON.stringify({ ok: false, error: msg, errorCode })}\n\n`);
     }
     res.end();
   } finally {
-    clearTimeout(timeout);
-    req.off('close', onClose);
+    clearStall();
+    clearTimeout(connectTimeout);
+    res.off('close', onClientGone);
   }
 }
 
