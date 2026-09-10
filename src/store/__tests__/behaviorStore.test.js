@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useBehaviorStore, migrateLegacyBehavior } from '../behaviorStore.js';
+import { useBehaviorStore, migrateLegacyBehavior, normalizePersistedBehavior } from '../behaviorStore.js';
 
 // 项目惯例：vitest 默认 environment 为 'node'，需用 vi.stubGlobal 注入 localStorage
 // （参考 src/domain/creative/__tests__/versionStore.test.js 同款写法）
@@ -124,5 +124,55 @@ describe('useBehaviorStore 预览历史（v26.8）', () => {
     useBehaviorStore.getState().recordPreview({ title: 'no id' });
     expect(useBehaviorStore.getState().previewHistory).toHaveLength(0);
     expect(useBehaviorStore.getState().readingHistory).toHaveLength(0);
+  });
+});
+
+describe('normalizePersistedBehavior（v26.9c 脏数据防崩）', () => {
+  const defaults = {
+    readingHistory: [],
+    previewHistory: [],
+    recommendationFeedback: { hiddenIds: [], boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
+    recommendationFeedbackEvents: [],
+    followKeywords: [],
+    trackTargets: [],
+  };
+
+  it('数组字段形状不符时回落默认值（对象脏数据不再导致整站崩）', () => {
+    // 实测复现的崩溃载荷：readingHistory 被写成对象 map
+    const out = normalizePersistedBehavior({ readingHistory: { a: { depth: 'full' } } }, defaults);
+    expect(Array.isArray(out.readingHistory)).toBe(true);
+    expect(out.readingHistory).toEqual([]);
+    // 下游 .filter/.map 不再抛 TypeError
+    expect(() => out.readingHistory.filter((h) => h.depth !== 'preview')).not.toThrow();
+  });
+
+  it('合法数组数据原样保留（不清空用户真实数据）', () => {
+    const hist = [{ id: 'n1', depth: 'full' }, { id: 'n2', depth: 'preview' }];
+    const out = normalizePersistedBehavior({ readingHistory: hist, followKeywords: ['AI'] }, defaults);
+    expect(out.readingHistory).toHaveLength(2);
+    expect(out.followKeywords).toEqual(['AI']);
+  });
+
+  it('recommendationFeedback 内部 hiddenIds 非数组时单独归一化', () => {
+    const out = normalizePersistedBehavior({ recommendationFeedback: { hiddenIds: 'oops', trackedTerms: { x: 1 } } }, defaults);
+    expect(Array.isArray(out.recommendationFeedback.hiddenIds)).toBe(true);
+    expect(out.recommendationFeedback.trackedTerms).toEqual({ x: 1 });
+  });
+
+  it('空/非法 persisted（null、字符串、数组）不抛异常', () => {
+    for (const bad of [null, undefined, 'x', 42, []]) {
+      expect(() => normalizePersistedBehavior(bad, defaults)).not.toThrow();
+      expect(normalizePersistedBehavior(bad, defaults).readingHistory).toEqual([]);
+    }
+  });
+
+  it('全部字段为脏数据时整体回落，函数仍返回完整结构', () => {
+    const out = normalizePersistedBehavior({ readingHistory: 1, previewHistory: 'x', followKeywords: {}, trackTargets: null, recommendationFeedbackEvents: 3, recommendationFeedback: [] }, defaults);
+    expect(out.readingHistory).toEqual([]);
+    expect(out.previewHistory).toEqual([]);
+    expect(out.followKeywords).toEqual([]);
+    expect(out.trackTargets).toEqual([]);
+    expect(out.recommendationFeedbackEvents).toEqual([]);
+    expect(out.recommendationFeedback).toEqual(defaults.recommendationFeedback);
   });
 });

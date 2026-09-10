@@ -38,8 +38,8 @@ try {
   // color-mix 计算值浏览器可能输出 rgba()/oklab()/color(srgb) —— alpha 一律取 "/ x)" 尾段
   const extractAlpha = (bg) => bg ? parseFloat(bg.match(/\/\s*([\d.]+)\s*\)/)?.[1] ?? '1') : null;
   const lightAlpha = extractAlpha(lightSidebarBg);
-  // v26.9b 玻璃调参：浅色 42% → 30%（粒子透出更明显）
-  check('浅色侧栏底色半透明(alpha≈0.30)', lightAlpha !== null && Math.abs(lightAlpha - 0.3) < 0.06, `bg=${lightSidebarBg}`);
+  // v26.9c 玻璃复调：浅色 42% → 30% → 24%（blur 收敛到 2px，粒子点真正透出）
+  check('浅色侧栏底色半透明(alpha≈0.24)', lightAlpha !== null && Math.abs(lightAlpha - 0.24) < 0.06, `bg=${lightSidebarBg}`);
 
   // ===== 2. 深色模式不回归 =====
   await page.evaluate(() => document.documentElement.setAttribute('data-mode', 'dark'));
@@ -54,8 +54,8 @@ try {
     return el ? getComputedStyle(el).backgroundColor : null;
   });
   const darkAlpha = extractAlpha(darkSidebarBg);
-  // v26.9b 玻璃调参：深色 64% → 46%（对齐 MonitorPage 的粒子透出观感）
-  check('深色侧栏保持半透明毛玻璃', darkAlpha !== null && Math.abs(darkAlpha - 0.46) < 0.06, `bg=${darkSidebarBg}`);
+  // v26.9c 玻璃复调：深色 64% → 46% → 38%（blur 14px → 2px）
+  check('深色侧栏保持半透明毛玻璃', darkAlpha !== null && Math.abs(darkAlpha - 0.38) < 0.06, `bg=${darkSidebarBg}`);
 
   // ===== 3. 预览历史：等资讯池出内容后点击标题 =====
   await page.evaluate(() => {

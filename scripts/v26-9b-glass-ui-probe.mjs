@@ -35,7 +35,7 @@ try {
   });
   check('深色侧栏启用毛玻璃(backdrop-filter 含 blur)', /blur\(/.test(darkGlass.bf || ''), darkGlass.bf);
   const darkAlpha = extractAlpha(darkGlass.bg);
-  check('深色侧栏底色 alpha≈0.46（粒子可透出）', darkAlpha !== null && Math.abs(darkAlpha - 0.46) < 0.06, `bg=${darkGlass.bg}`);
+  check('深色侧栏底色 alpha≈0.38（粒子可透出）', darkAlpha !== null && Math.abs(darkAlpha - 0.38) < 0.06, `bg=${darkGlass.bg}`);
 
   // ===== 1b. 浅色侧栏 =====
   await page.evaluate(() => document.documentElement.setAttribute('data-mode', 'light'));
@@ -45,7 +45,7 @@ try {
     return { bf: cs.backdropFilter || cs.webkitBackdropFilter, bg: cs.backgroundColor };
   });
   const lightAlpha = extractAlpha(lightGlass.bg);
-  check('浅色侧栏 alpha≈0.30 + blur 保持', lightAlpha !== null && Math.abs(lightAlpha - 0.3) < 0.06 && /blur\(/.test(lightGlass.bf || ''), `bg=${lightGlass.bg} bf=${lightGlass.bf}`);
+  check('浅色侧栏 alpha≈0.24 + blur 保持', lightAlpha !== null && Math.abs(lightAlpha - 0.24) < 0.06 && /blur\(/.test(lightGlass.bf || ''), `bg=${lightGlass.bg} bf=${lightGlass.bf}`);
   await page.evaluate(() => document.documentElement.setAttribute('data-mode', 'dark'));
   await page.waitForTimeout(300);
 

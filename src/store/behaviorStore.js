@@ -58,6 +58,38 @@ export function migrateLegacyBehavior(persisted = {}) {
   return merged;
 }
 
+/** 期望为数组的持久化字段（形状不符 → 回落默认值） */
+const ARRAY_FIELDS = ['readingHistory', 'previewHistory', 'recommendationFeedbackEvents', 'followKeywords', 'trackTargets'];
+
+/**
+ * v26.9c persist merge：持久化数据形状归一化（防"脏数据整站崩"）
+ *
+ * 实测复现：localStorage['siliconstream-behavior-store'] 若为异常形状
+ * （旧版本结构残留 / 写入中断 / 手工改动），rehydrate 后原样进 state，
+ * 而下游 useRecommendationMemos / profileModel / App 等十余处直接调用
+ * 数组方法（.filter/.map/.find）→ TypeError: readingHistory.filter is not a function
+ * → 冒泡到 SafeBoundary → 整站兜底（「应用暂未就绪」，.app 不渲染）。
+ *
+ * 策略：逐字段类型校验，不符则用 current（默认值）替代；合法数据原样保留。
+ * 副作用：任何"形状错了但内容还在"的数据都不会被丢弃（除类型完全不符的字段）。
+ */
+export function normalizePersistedBehavior(persisted, current) {
+  const p = persisted && typeof persisted === 'object' ? persisted : {};
+  const out = { ...current, ...p };
+  for (const key of ARRAY_FIELDS) {
+    if (!Array.isArray(p[key])) out[key] = current[key];
+  }
+  const fb = p.recommendationFeedback;
+  out.recommendationFeedback = (fb && typeof fb === 'object' && !Array.isArray(fb))
+    ? {
+        ...current.recommendationFeedback,
+        ...fb,
+        hiddenIds: Array.isArray(fb.hiddenIds) ? fb.hiddenIds : current.recommendationFeedback.hiddenIds,
+      }
+    : current.recommendationFeedback;
+  return out;
+}
+
 export const useBehaviorStore = create(
   persist(
     (set, get) => ({
@@ -186,6 +218,16 @@ export const useBehaviorStore = create(
         followKeywords: s.followKeywords,
         trackTargets: s.trackTargets,
       }),
+      /**
+       * v26.9c 健壮性修复：持久化数据形状归一化。
+       * 背景（实测发现）：localStorage 里 behavior 数据若是异常形状（旧版本结构残留 /
+       * 写入中断 / 手工改动），rehydrate 后会原样进入 state，而下游
+       * useRecommendationMemos / profileModel / App 等十余处都直接对它调用数组方法
+       * （.filter/.map/.find）→ 抛 TypeError → 冒泡到 SafeBoundary → **整站兜底**
+       * （用户看到「应用暂未就绪」，.app 都不渲染）。
+       * 这里以类型校验兜住：形状不符的字段回落到默认值，合法数据原样保留（自愈）。
+       */
+      merge: normalizePersistedBehavior,
       // 仅首次 rehydrate 时执行迁移
       onRehydrateStorage: () => (state) => {
         if (!state) return;
