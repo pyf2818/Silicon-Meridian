@@ -25839,6 +25839,13 @@ body {
 .profile-modal .profile-modal-body {
   padding: 0 28px 28px;
   margin-top: -50px;
+  /* v26.9b 修复：内容超高时被 .profile-modal 的 overflow:hidden 连体裁切
+     （max-height:85vh 生效后上下两端直接看不到）→ body 自己滚动，封面保持钉在顶部 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
 }
 
 .profile-modal .profile-identity {
@@ -29592,6 +29599,9 @@ body {
 }
 .auth-guest-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-cyan) 14%, transparent); border-color: var(--accent-cyan); }
 .auth-guest-btn:disabled { opacity: .5; cursor: not-allowed; }
+/* v26.9b 修复：appConstants 图标 SVG 均无 width/height（靠上下文约束），
+   此按钮之前未约束 → sparkle 图标被 flex 拉伸成整块巨型星形溢出 */
+.auth-guest-btn svg { width: 16px; height: 16px; flex: none; }
 
 /* v23 #4：侧边栏收起态仅显示图标（居中、隐藏文字占位） */
 .sidebar.collapsed .nav-label-wrap, .sidebar.collapsed .nav-label, .sidebar.collapsed .nav-count, .sidebar.collapsed .sidebar-action span, .sidebar.collapsed .nav-short-label { display: none; }

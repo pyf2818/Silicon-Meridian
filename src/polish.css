@@ -242,10 +242,20 @@
    粒子画布 ParticleField 在 z-index:-1 持续运行，但默认落地页（AI 工作站）
    整屏不透明面板把背景盖死 → 动态背景完全不可见。
    这里只降「全屏级容器」的底色不透明度并加毛玻璃保文字可读；
-   卡片 / 弹层 / 局部面板一律不动。颜色走 color-mix(变量)，深浅主题自适应。 */
+   卡片 / 弹层 / 局部面板一律不动。颜色走 color-mix(变量)，深浅主题自适应。
+   v26.9b 调参：64% 底色 + blur(8px) 把小粒子点完全糊进底色，侧栏看起来仍是不透明
+   → 对齐 MonitorPage 的「透出粒子」观感：底色再降 + blur 加大(光斑化) + saturate 提质。 */
 .sidebar,
 .sidebar-footer {
-  background: color-mix(in srgb, var(--bg-secondary) 64%, transparent);
+  background: color-mix(in srgb, var(--bg-secondary) 46%, transparent);
+  backdrop-filter: blur(14px) saturate(1.35);
+  -webkit-backdrop-filter: blur(14px) saturate(1.35);
+}
+/* v26.9b：topbar 原为实心 var(--bg-secondary)，横贯整个内容区顶部，同样玻璃化 */
+.topbar {
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
 }
 .ai-chat-panel-main {
   background: color-mix(in srgb, var(--surface-workbench) 56%, transparent);
@@ -256,18 +266,28 @@
 .chat-messages {
   background: transparent;
 }
-
-/* v26.8 浅色模式粒子可见性修复：浅色下侧栏是近白底色，64% 不透明 + 浅色粒子低 alpha
-   → 粒子完全被洗白。浅色专属再降底色不透明度（深色保持 v26 原值不动），
-   文字可读性由 blur 毛玻璃 + 深色文字本身的对比度保证。 */
-.sidebar,
-.sidebar-footer {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+/* v26.9b：AI 工作站会话栏深色态原为实心暖墨渐变，改半透明版（浅色已有专属降透明版） */
+.session-sidebar {
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, color-mix(in srgb, var(--accent-cyan) 4%, transparent) 60%, color-mix(in srgb, var(--bg-secondary) 50%, transparent)) 0%,
+      color-mix(in srgb, var(--bg-secondary) 52%, transparent) 40%,
+      color-mix(in srgb, rgba(120, 90, 60, .03) 50%, color-mix(in srgb, var(--bg-secondary) 52%, transparent)) 100%);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
 }
+
+/* v26.8 浅色模式粒子可见性修复：浅色下侧栏是近白底色，高不透明 + 浅色粒子低 alpha
+   → 粒子完全被洗白。浅色专属再降底色不透明度（深色保持上值），
+   文字可读性由 blur 毛玻璃 + 深色文字本身的对比度保证。 */
 :root[data-mode="light"] .sidebar,
 :root[data-mode="light"] .sidebar-footer {
-  background: color-mix(in srgb, var(--bg-secondary) 42%, transparent);
+  background: color-mix(in srgb, var(--bg-secondary) 30%, transparent);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+}
+:root[data-mode="light"] .topbar {
+  background: color-mix(in srgb, var(--bg-secondary) 40%, transparent);
 }
 :root[data-mode="light"] .session-sidebar {
   background:
