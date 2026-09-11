@@ -17,6 +17,8 @@
 | 死代码（高置信） | 2 处 | ✅ 已删 |
 | 死代码（待确认，**刻意未删**） | ~40 导出 + 3 组件 | ⏸ 需人工确认 |
 
+**v27 追加进展（2026-09-11，见文末 §6）**：R1 上下文打包统一 + 2 个既有真 BUG 已修（`94098ef`）；三处口径漂移收口（`f1f460d`）；「洞察分析 v1」692 行不可达整链经用户拍板后删除，净 −1785 行（`565d676`）。
+
 本轮共修 **5 个真缺陷**，全部有单测/探针锁死。
 刻意**没有**动的：需要大范围重构的 3 项（见 §3），为了保持这次改动可审查。
 
@@ -203,3 +205,56 @@ rect.bottom = 866  vs  clippedBy = { cls:'chat-composer-top', overflow:'auto/aut
 - 实体问题是"解码成 NBSP 没被空白折叠收掉"，不是没解码。
 
 三处都是**症状落在 A、故障在 B** —— 所以本轮全部先构造复现取证、再动手，没有一处是靠读代码猜着改的。
+
+---
+
+## 7. v27 自主优化批次追记（2026-09-10 ~ 09-11）
+
+> 本节由 v27 批次补记。三次提交：`1f70fe5`（仓库卫生）→ `94098ef`（R1+2 真BUG）→ `f1f460d`（口径收口）→ `565d676`（死代码删除）。
+
+### 7.1 R1 上下文打包统一 —— 顺藤摸出 2 个既有真 BUG（`94098ef`）
+
+- **BUG-1（P1）**：`contextManager.buildContext` 把 `region.cutRegion` 写成 `region.region`（3 处）→ 摘要器拿到的永远是 `undefined`，本地摘要恒为空 → **压缩等于静默删历史**。由新写的单测以 `undefined.map` 炸出。
+- **BUG-2（P0/P1）**：`aiHandlers.js` 流式 handler 用 `req.on('close')` 做客户端断开检测 —— 该事件在**请求体读完**时触发，是**死代码**（与 §4 的 mock 上游坑互为镜像：一个在服务端、一个在 mock 客户端，同一个语义陷阱）→「停止」按钮从未真正中断上游，且流阶段无超时 → handler+连接永久泄漏。修复：`res.on('close') + !writableEnded` + 60s 无输出看门狗 + 90s 连接超时。**A/B 回归实证**：旧代码 6/8（mock 上游 `aborted=false`），新代码 8/8（`aborted=true`，且中断耗时 −1113ms）。
+- 新增 `packConversation` 单一入口（budget/keepRecent/cutMin/fallbackLimit 全可配），工作站 / AiChatPanel / Elf 三处调用点口径统一。
+
+### 7.2 口径收口（`f1f460d`）
+
+- `constants/agentLoop.js`：maxIterations 12/6、max_tokens 4000/3000 曾散落 4 文件 5 处 → 单一调参点，grep 零残留。
+- App 内联 58 行 trendData → `domain/intelligence/trendAnalytics.js`（+13 单测）。
+- useIntelligenceMemos 105 行阅读画像复制版 → `profileModel.computeReadingProfile`；label 展示映射抽为 `withInterestLabels` 纯函数（+4 单测）。
+- 修上一轮误操作：同一段 6 条契约测试被重复追加两遍，去重。
+
+### 7.3 「洞察分析 v1」整链删除（`565d676`，用户拍板批准）
+
+**不可达证明**（删除前逐项核实，非 grep 猜测）：
+1. 唯一渲染分支 `App.jsx:2695` 要求 `nav ∈ {briefing, tracker, trends, reading-stats}`；
+2. nav 的全部写入点：`?view=` 参数有 `NAV_ITEMS.some(...)` 白名单校验（12 项，不含这四个值）、`goNav` 由侧栏/命令面板驱动（均来自 NAV_ITEMS）、`setNav` 字面量仅 'chat'/'square'/'all'/'editor'/'materials'/'home'；
+3. 唯一列出这四个值的常量 `NAV_GROUPS` 零引用（注意：`SettingsModal.jsx` 里有个同名**局部**常量，易混淆）。
+
+**连带死亡**（逐 prop 审计，20 个 props 中 8 个仅该页消费）：`useBriefingOps` 整 hook、`generateAiBrief`（aiBrief 状态的唯一写入方）、`trackerData` + trackTargets 输入链、`NAV_GROUPS`、styles.css 167 个独占类（239 条规则，−1193 行）。删除工具 `scripts/prune-insight-css.py` 已入库：**仅删「选择器类名 100% ⊆ 孤儿集合」的规则**，@media 递归、双向断言。⚠️ 第一版用行级解析把单行 `@media` 整块误删（无关的 agent-workflow/chat-layout/aviation 规则遭殃），已回滚改字符级解析——**教训：CSS 块级操作必须以大括号配平为准，且注释黏在 prelude 里会抢 `@media` 前缀判定**。
+
+**刻意保留**：`behaviorStore.trackTargets`、`aiStore.aiBrief` 两个孤儿 slice（持久化状态是对外契约，只摘 UI 层；后续清理需连 persist 迁移一起考虑）。
+
+### 7.4 遗留决策项（更新 §2/§3）
+
+| 项 | 状态 |
+| --- | --- |
+| R1 上下文预算统一 | ✅ `94098ef` |
+| R2 sendMessage 拆分 | ⏸ **维持不做**：100+ 行跨 4 段职责，拆分需动 6+ 调用契约；本轮已把其中可独立的两块（打包/max_tokens）收口，剩余风险由流式看门狗兜底 |
+| R3 App.jsx hook 化 | ⏸ 维持不做（同 §3 理由）；本轮仅做了无风险的两块数据抽取 |
+| P2-2 迭代参数硬编码 | ✅ `f1f460d` |
+| 孤儿 store slice（trackTargets / aiBrief） | ⏸ 需连 persist 迁移一起做 |
+| 其余 P2（并行工具 / per-tool timeout / sanitizeImgTag style / 自定义 HTTP 出站） | ⏸ 待拍板 |
+
+### 7.5 v27 验证证据
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | **919 / 919**（87 文件；882 → 919：+50 R1/打包，+13 trendAnalytics，+4 withInterestLabels，−6 去重，v26.9e 后其它小幅增补） |
+| 构建 | `vite build` ✓ 1368 modules 0 error（删 2 文件后恰减 2） |
+| 探针 · 画像/趋势 | `v27-profile-trend-refactor-probe.mjs` **18/18**，画像断言为注入数据的**确定性期望值**（streak=5 / peakHour=09 / 4 赛道首位 ai），非"元素存在"软断言 |
+| 产物验证 | `grep insight-dashboard dist/assets/*` 零命中；主包 1,705,568 → 1,675,475 B |
+| 推送 | `1f70fe5..565d676` → `origin/main` ✓（ls-remote 复核） |
+
+> 探针方法论沉淀：注入确定性 mock 数据 + 手算期望值写死断言 + 用"本应为空的区块仍为空"反证没有把空态误判成有数据。
