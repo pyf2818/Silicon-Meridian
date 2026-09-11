@@ -5,6 +5,17 @@
  * 这里负责把它们拼接回 { id, type, function:{ name, arguments } }（蛇形键名，与后端一致）。
  * 纯函数，无任何 I/O，便于单测与复用。
  *
+ * 历史卫生（2026-09-11，修「Assistant tool call .arguments must be valid JSON」400）：
+ * 合并结果会原样进入 conversationMessages 历史，之后每轮请求都带着它发给上游。
+ * 若参数流被截断（max_tokens 耗尽 / 流中断），拼接出的 arguments 是半截 JSON——
+ * 原样回传会让上游整包 400，该会话从此卡死。因此输出前强制：
+ *   - arguments 必须是合法 JSON，非法（截断/损坏）一律替换为 '{}'；
+ *     模型会从随后的「参数不是合法 JSON」工具错误回灌中自修。
+ *     （有意不做截断补齐修复：修出来的"合法但错误"参数会被 schema 放行并真执行，
+ *      write_workspace_file 写半截内容是数据事故——安全失败优于垃圾执行。）
+ *   - id 为空时生成占位 id（部分上游对空 tool_call_id 同样 400，且 tool 消息
+ *     tool_call_id 必须能与 assistant.tool_calls 匹配）。
+ *
  * @param {Array<Array>} batches 每批 delta.tool_calls（元素可能含 undefined / 空数组）
  * @returns {Array|undefined} 还原后的 tool_calls 数组；未出现任何工具分片时返回 undefined
  */
@@ -27,9 +38,18 @@ export function mergeToolCallDeltas(batches) {
     }
   }
   if (!saw || toolAcc.size === 0) return undefined;
-  return [...toolAcc.values()].map(t => ({
-    id: String(t.id || ''),
-    type: 'function',
-    function: { name: String(t.function.name || ''), arguments: String(t.function.arguments || '{}') },
-  }));
+  return [...toolAcc.values()].map((t, i) => {
+    const rawArgs = String(t.function.arguments || '');
+    let safeArgs;
+    if (rawArgs.trim() === '') {
+      safeArgs = '{}';
+    } else {
+      try { JSON.parse(rawArgs); safeArgs = rawArgs; } catch { safeArgs = '{}'; }
+    }
+    return {
+      id: String(t.id || '') || `call_delta_${i}`,
+      type: 'function',
+      function: { name: String(t.function.name || ''), arguments: safeArgs },
+    };
+  });
 }
