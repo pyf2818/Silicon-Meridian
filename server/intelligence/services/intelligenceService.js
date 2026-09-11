@@ -3,6 +3,7 @@ import { fetchRssIntelligenceItems } from '../collectors/rssCollector.js';
 import { normalizeAiHotItems, normalizeRssItems } from '../processors/normalizeItem.js';
 import { scoreIntelligenceItems } from '../processors/impactScore.js';
 import { clusterIntelligenceEvents } from '../processors/eventCluster.js';
+import { verifyEventsWithGdelt } from './gdeltService.js';
 import { buildDailyIntelligenceBriefing } from '../processors/dailyBriefing.js';
 import { buildEntityProfiles, findEntityProfile } from '../processors/entityExtract.js';
 import { buildOpportunitySignals } from '../processors/opportunityAnalysis.js';
@@ -294,10 +295,21 @@ export async function syncIntelligenceSnapshot(params = {}) {
   const take = boundedNumber(params.take, DEFAULT_INTELLIGENCE_TAKE, { min: 12 });
   const itemsPayload = await getIntelligenceItems({ ...params, take });
   const events = clusterIntelligenceEvents(itemsPayload.items);
+  // GDELT 交叉验证（Batch3）：为头部事件附加独立域名佐证元数据（随 payload 落库）。
+  // 内部全兜底（节流/缓存/单事件失败静默），绝不阻塞落库主链；VITEST 环境自动跳过。
+  let verifications = new Map();
+  try {
+    verifications = await verifyEventsWithGdelt(events, { cap: params.gdeltCap });
+  } catch { /* 永不阻塞 */ }
+  const enrichedEvents = verifications.size
+    ? events.map(event => verifications.get(event.id)
+      ? { ...event, verification: verifications.get(event.id) }
+      : event)
+    : events;
   const repository = createIntelligenceRepository();
   const saved = await repository.upsertArticlesAndEvents({
     articles: itemsPayload.items,
-    events,
+    events: enrichedEvents,
   });
 
   return {
