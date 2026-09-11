@@ -54,6 +54,6 @@ export function pick(block, tags) {
 }
 
 export function pickAtomLink(block) {
-  const href = block.match(/<link\\b[^>]*href=["']([^"']+)["'][^>]*>/i)?.[1];
+  const href = block.match(/<link\b[^>]*href=["']([^"']+)["'][^>]*>/i)?.[1];
   return href ? decodeEntities(href) : '';
 }

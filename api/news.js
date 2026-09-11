@@ -212,7 +212,8 @@ export default async function handler(req, res) {
     .map(s => s.trim())
     .filter(Boolean);
 
-  const filteredSources = DEFAULT_SOURCES.filter(s => !disabledSources.includes(s.name));
+  // type:'api' 源由调度池（runFetchCycle）负责采集，旧直连 RSS 扇出路径跳过
+  const filteredSources = DEFAULT_SOURCES.filter(s => !disabledSources.includes(s.name) && s.type !== 'api');
 
   if (!blocked.length && !disabledSources.length && cache.data && cache.expiresAt > now) {
     const filtered = applyBlockedWords(cache.data.items, blocked);

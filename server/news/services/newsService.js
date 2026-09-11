@@ -2,6 +2,7 @@ import { DEFAULT_SOURCES, SOURCE_WEIGHTS, CROSS_VERIFY_THRESHOLD, MAX_NEWS_ITEMS
 import { getSourceGradeInfo } from '../config/sourceGrades.js';
 import { applyBlockedWords, normalizeUrl } from '../utils/textProcessing.js';
 import { fetchSource } from './externalFetchers.js';
+import { fetchApiSource } from './apiFetchers.js';
 import {
   createSourceState, recordOutcome, pickDueSources, runWithConcurrency,
 } from './sourceScheduler.js';
@@ -175,7 +176,8 @@ export async function runFetchCycle() {
     let ok = 0;
     let failed = 0;
     const results = await runWithConcurrency(due, async source => {
-      const result = await fetchSource(source);
+      // API 源走生产端结构化抓取，RSS 源走 feed 抓取；失败语义一致（抛错 → 调度退避）
+      const result = source.type === 'api' ? await fetchApiSource(source) : await fetchSource(source);
       mergeIntoPool(result.items);
       return result;
     });

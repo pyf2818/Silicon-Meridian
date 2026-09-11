@@ -25,6 +25,12 @@ export const MEDIA_CONFIG = {
 // ========== 信息源质量权重 ==========
 // 从顶级项目（Horizon/TrendRadar）学到的：给不同质量源设置权重，高权重源优先展示
 export const SOURCE_WEIGHTS = {
+  // ========== 生产端 API 源（一手结构化数据，高权重） ==========
+  'GitHub Releases · PyTorch': 0.9,
+  'GitHub Releases · vLLM': 0.9,
+  'GitHub Releases · Ollama': 0.9,
+  'HF 新模型速递': 0.9,
+  'arXiv Agent 研究': 0.9,
   // 顶刊/政府/顶级实验室/AI官方博客（权重1.0）
   'Amazon AI Blog': 1.0,
   'Amazon Science': 1.0,
@@ -385,6 +391,12 @@ export const SOURCE_GRADES = {
 
 // 信息源等级映射（按名称到等级）
 export const SOURCE_GRADE_MAP = {
+  // 生产端 API 源：HF 新模型 B（1h，快讯价值）；GitHub/arXiv C（3h，尊重官方配额）
+  'GitHub Releases · PyTorch': 'C',
+  'GitHub Releases · vLLM': 'C',
+  'GitHub Releases · Ollama': 'C',
+  'HF 新模型速递': 'B',
+  'arXiv Agent 研究': 'C',
   // S级 - 权威官方（政府机构、顶级期刊、顶级实验室、AI官方博客）
   'Amazon AI Blog': 'S',
   'Amazon Science': 'S',
@@ -1040,23 +1052,29 @@ export const DEFAULT_SOURCES = [
   { name: 'YouTube @DeepMind', url: rsshubUrl('/youtube/user/DeepMind'), region: 'overseas', defaultCategory: 'ai-models', sourceType: 'video_platform', tags: ['海外','DeepMind','YouTube'] , bridged: true},
   { name: 'YouTube @TwoMinutePapers', url: rsshubUrl('/youtube/user/TwoMinutePapers'), region: 'overseas', defaultCategory: 'research', sourceType: 'video_platform', tags: ['海外','论文解读','YouTube'] , bridged: true},
   { name: 'YouTube @YannLeCun', url: rsshubUrl('/youtube/user/YannLeCun'), region: 'overseas', defaultCategory: 'silicon-valley', sourceType: 'video_platform', tags: ['海外','Yann LeCun','YouTube'] , bridged: true},
+  // ========== 生产端 API 源（type:'api'：厂商官方结构化数据，非 RSS；抓取见 services/apiFetchers.js） ==========
+  { name: 'GitHub Releases · PyTorch', type: 'api', url: 'https://api.github.com/repos/pytorch/pytorch/releases', api: { kind: 'github-releases', repo: 'pytorch/pytorch' }, region: 'global', defaultCategory: 'open-source', sourceType: 'official_api', tags: ['GitHub','PyTorch'] },
+  { name: 'GitHub Releases · vLLM', type: 'api', url: 'https://api.github.com/repos/vllm-project/vllm/releases', api: { kind: 'github-releases', repo: 'vllm-project/vllm' }, region: 'global', defaultCategory: 'open-source', sourceType: 'official_api', tags: ['GitHub','vLLM'] },
+  { name: 'GitHub Releases · Ollama', type: 'api', url: 'https://api.github.com/repos/ollama/ollama/releases', api: { kind: 'github-releases', repo: 'ollama/ollama' }, region: 'global', defaultCategory: 'open-source', sourceType: 'official_api', tags: ['GitHub','Ollama'] },
+  { name: 'HF 新模型速递', type: 'api', url: 'https://huggingface.co/api/models', api: { kind: 'hf-models', filter: 'text-generation', limit: 20 }, region: 'global', defaultCategory: 'ai-models', sourceType: 'official_api', tags: ['Hugging Face','新模型'] },
+  { name: 'arXiv Agent 研究', type: 'api', url: 'https://export.arxiv.org/api/query', api: { kind: 'arxiv', search: 'cat:cs.AI AND abs:"agent"', maxResults: 15 }, region: 'global', defaultCategory: 'research', sourceType: 'official_api', tags: ['arXiv','Agent'] },
 ];
 
 // 桥接源名单（传输层经第三方 RSSHub 实例中转的源）：
 // enrichItem 据此给 item 盖章 item.bridged，meta API（plugin.js / api/meta.js）透出给前端。
-export const BRIDGED_SOURCE_NAMES = new Set(DEFAULT_SOURCES.filter((s) => s?.bridged).map((s) => s.name));;
+export const BRIDGED_SOURCE_NAMES = new Set(DEFAULT_SOURCES.filter((s) => s?.bridged).map((s) => s.name));
 
 export const TRENDING_SOURCES = [
   // === 国内平台 ===
   // 科技媒体热门
   { name: '36氪', url: 'https://36kr.com/feed', region: 'domestic', platform: '36氪' },
-  { name: '36氪快讯', url: `${RSSHUB_BASE}/36kr/newsflashes`, region: 'domestic', platform: '36氪' },
+  { name: '36氪快讯', url: rsshubUrl('/36kr/newsflashes'), region: 'domestic', platform: '36氪', bridged: true },
   { name: '少数派', url: 'https://sspai.com/feed', region: 'domestic', platform: '少数派' },
   { name: '爱范儿', url: 'https://www.ifanr.com/feed', region: 'domestic', platform: '爱范儿' },
   { name: '品玩', url: 'https://www.pingwest.com/feed', region: 'domestic', platform: '品玩' },
   { name: '虎扑', url: 'https://bbs.hupu.com/feed', region: 'domestic', platform: '虎扑' },
   // 热门排行榜
-  { name: 'IT之家 24h 热榜', url: `${RSSHUB_BASE}/ithome/ranking/24h`, region: 'domestic', platform: 'IT之家' },
+  { name: 'IT之家 24h 热榜', url: rsshubUrl('/ithome/ranking/24h'), region: 'domestic', platform: 'IT之家', bridged: true },
 
   // === 国际平台 ===
   // 技术社区热榜
