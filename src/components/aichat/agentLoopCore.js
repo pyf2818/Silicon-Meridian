@@ -203,6 +203,10 @@ export async function runToolLoop({
   const patchTrace = (id, patch) => {
     const item = toolCallTrace.find(t => t.id === id);
     if (!item) return;
+    // 僵尸进度守卫：仅在 running 状态接受进度。被超时弃等的 executor 若在卡片
+    // 完结（done/skipped）后才回来 emitProgress（如嵌套子代理残存的 onProgress），
+    // 不得再刷新已完成卡片。
+    if (item.status !== 'running') return;
     Object.assign(item, patch);
     flushTrace();
   };

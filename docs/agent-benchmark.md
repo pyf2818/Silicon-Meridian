@@ -4,6 +4,14 @@
 > 方法：逐行精读核心代码 + 52 个单测全绿验证 + 对标 ChatGPT Agent / Claude Code / Manus / Perplexity Deep Research
 > 结论先行：**这是一个架构上对标 Claude Code 的浏览器端 agent，审批/沙箱/上下文工程的骨架是对的、且有几处市面少见的亮点（8 层上下文注入、双沉淀、三级搜索降级）。但存在 1 个真实的逻辑 bug（协助模式双重审批）、计划模式与执行断裂、6 轮循环上限 + 非流式 + 串行执行三个能力天花板。修 P0 三项 + P1 五项即可达到「市面一线 agent」的单机体验水准。**
 
+> **【状态追记 2026-09-11】** 本报告为 2026-08-18 快照，下列条目此后已落地，勿再当作待办：
+> - **P0 双重审批**：已修——`approvalMode` 作为注册表层单点判定（P0-1），循环层不再重复审批。
+> - **非流式（C2 / P1-6）**：已落地——循环内核抽离为 `agentLoopCore.js`，`streamAgentResponse` 走 SSE 转发（`onChunk` 逐字渲染 + toolCallDelta 合并 + usage 透传 + 90s 静默看门狗 + 429/5xx 重试 + AbortError 取消语义），工作站/精灵/子代理三路径共用。
+> - **串行工具**：免审批调用已并行（`Promise.allSettled` 并发池），需审批的仍串行。
+> - **6 轮上限**：工作站 `WORKSTATION_MAX_ITERATIONS` 已提升（12），末轮硬撤工具强制收敛。
+> - **per-tool 超时（P1-7）**：已落地并在 2026-09-11 升级为「真取消」——`executeTool` 每次调用建独立 AbortController（父级 signal + 超时合并），到点广播 abort 掐断在途 fetch/嵌套子代理（此前 `Promise.race` 只是弃等，僵尸 executor 继续烧 token）；trace 层加僵尸进度守卫（完结卡片不再接受迟到 emitProgress）。
+> - 仍开放：plan→execute 闭环（P1-1，需产品拍板交互形态）、resume、服务端沙箱执行类能力。
+
 ---
 
 ## 一、总体判断：处于什么水平

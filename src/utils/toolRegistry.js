@@ -308,13 +308,31 @@ export async function executeTool(name, args, ctx) {
   const timeoutMs = Number(entry.meta?.timeoutMs) > 0
     ? Number(entry.meta.timeoutMs)
     : TOOL_TIMEOUT_MS;
+
+  // 每次调用的独立取消信号 = 父级 ctx.signal（用户停止）+ 本调用超时。
+  // 此前超时只是 Promise.race 弃等：executor 在后台继续跑——对 spawn_subagent
+  // 这类长任务（预算 15min）意味着超时后仍在烧 LLM token、占连接。现在到点即向
+  // executor 广播 abort（executor 拿到的是合并信号），在途 fetch / 嵌套循环被真掐断。
+  const callCtrl = new AbortController();
+  const onParentAbort = () => callCtrl.abort();
+  if (ctx?.signal) {
+    if (ctx.signal.aborted) callCtrl.abort();
+    else ctx.signal.addEventListener('abort', onParentAbort, { once: true });
+  }
+  const executorCtx = { ...(ctx || {}), signal: callCtrl.signal };
+
   let timer = null;
   try {
     const result = await Promise.race([
-      entry.executor(effectiveArgs || {}, ctx || {}),
+      entry.executor(effectiveArgs || {}, executorCtx),
       new Promise((_, reject) => {
         timer = setTimeout(() => {
-          reject(new Error(`工具执行超时（${Math.round(timeoutMs / 1000)}s）`));
+          const timeoutErr = new Error(`工具执行超时（${Math.round(timeoutMs / 1000)}s）`);
+          // 带名字的标记错误：executor 侧 fetch 会以此 reason 拒绝，不会与
+          // 「用户主动停止」的 AbortError 混淆（后者仍原样穿透上抛）。
+          timeoutErr.name = 'ToolTimeoutError';
+          callCtrl.abort(timeoutErr); // 先掐断 executor 的在途工作，race 随即以超时落败
+          reject(timeoutErr);
         }, timeoutMs);
       }),
     ]);
@@ -334,6 +352,7 @@ export async function executeTool(name, args, ctx) {
   } finally {
     // 不清理会导致每次工具调用泄漏一个 timer，长会话下累积成内存与唤醒噪声
     if (timer) clearTimeout(timer);
+    ctx?.signal?.removeEventListener?.('abort', onParentAbort);
   }
 }
 
