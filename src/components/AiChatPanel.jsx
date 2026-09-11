@@ -34,6 +34,7 @@ import { sessionsStore, loadSessions, saveSessions } from './aichat/sessionsStor
 import { WELCOME_MSGS, EMPTY_MESSAGES, SUGGEST_ICONS } from './aichat/constants.jsx';
 import { buildMaterialContext } from './aichat/buildMaterialContext.js';
 import { buildSystemPrompt } from './aichat/buildSystemPrompt.js';
+import { buildPlanSystemPrompt } from './aichat/planMode.js';
 import { buildQuickActions } from './aichat/buildQuickActions.js';
 import { runAgentLoop as runAgentLoopImpl } from './aichat/runAgentLoop.js';
 import { useInputHistory } from './aichat/useInputHistory.js';
@@ -1027,6 +1028,8 @@ export default function AiChatPanel({
   const sendMessage = useCallback(async (text, opts = {}) => {
     const msg = text || input.trim();
     if (!msg) return;
+    // 计划请求（P0-2）：只出方案不执行——清空工具强制纯文本路径，回复打 isPlan 供计划卡渲染
+    const planRequest = opts?.planRequest === true;
     let targetId = opts.sessionId || activeSessionId;
     // 队列模式：该会话生成中 → 排进「该会话」的队（不阻塞其他会话并行）
     if (streamingSessionsRef.current.has(targetId)) {
@@ -1092,6 +1095,8 @@ export default function AiChatPanel({
       if (llmConfig?.webSearchEnabled === false) {
         toolSchemas = toolSchemas.filter(s => s?.function?.name !== 'web_search');
       }
+      // 计划请求：清空工具强制走纯文本路径（只出方案不执行；批准后由 executeApprovedPlan 全量工具执行）
+      if (planRequest) toolSchemas = [];
       if (toolSchemas.length > 0) {
         await runAgentLoop({
           targetId,
@@ -1139,7 +1144,7 @@ export default function AiChatPanel({
               apiKey: llmConfig.apiKey,
               model: selectedModel,
               action: 'chat',
-              systemPrompt,
+              systemPrompt: planRequest ? buildPlanSystemPrompt(systemPrompt) : systemPrompt,
               messages: sendMessages.map(m => ({ role: m.role, content: m.content })),
               max_tokens: COMPLETION_MAX_TOKENS,
               stream: true,
@@ -1227,8 +1232,10 @@ export default function AiChatPanel({
         ? `${rawContent}\n\n> 引用校验失败：以下资讯 ID 不在当前证据集中：${invalidIds.join('、')}`
         : rawContent;
 
-      // plan 模式生成的消息打 isPlan 标记，前端据此渲染"批准执行/修改/放弃"操作条（P0-2 闭环）
-      const planFlag = (planMode && rawContent) ? { isPlan: true } : {};
+      // 计划请求的回复打 isPlan 标记，前端据此渲染"批准执行/修改/放弃"操作条（P0-2 闭环）。
+      // 注意：v6 权限重构曾删除 planMode 定义却遗留本处引用 → 每次纯文本回复完成即
+      // ReferenceError，已流出的回复被 catch 替换成错误气泡（2026-09-11 对抗性审查修复）。
+      const planFlag = planRequest ? { isPlan: true } : {};
       setSessions(prev => prev.map(s => {
         if (s.id !== targetId) return s;
         const msgs = [...s.messages];
@@ -1324,11 +1331,17 @@ export default function AiChatPanel({
   }, [activeSessionId]);
 
   // ── P0-2 计划 → 执行闭环 ──
-  // plan 模式下 Agent 只产出方案不执行；用户点"批准执行"后，这里以 autonomous 模式真正跑一遍，
+  // plan 模式下 Agent 只产出方案不执行；用户点"批准执行"后，这里真正跑一遍，
   // 并把已批准计划注入用户消息，让 Agent 直接照做、不再反复征求计划。
+  // 权限语义：传入 'autonomous' 经注册表归一后实际按 semi 执行——敏感写操作
+  // 仍会弹审批卡，批准"计划"不等于放权"执行"。
+  // 双击防御：isStreaming 来自渲染闭包（异步置位有延迟），ref 立即生效，
+  // 防止快速双击双开两个 runAgentLoop 并发写同一会话。
+  const planExecutingRef = useRef(false);
   const executeApprovedPlan = useCallback(async (planText) => {
-    if (isStreaming) return;
+    if (isStreaming || planExecutingRef.current) return;
     if (!llmConfig?.baseUrl || !selectedModel) { onOpenLlmConfig?.(); return; }
+    planExecutingRef.current = true;
     const targetId = activeSessionId;
     if (!targetId || !planText) return;
     const userMessage = {
@@ -1362,6 +1375,7 @@ export default function AiChatPanel({
         }));
       }
     } finally {
+      planExecutingRef.current = false;
       const wasAborted = controller.signal.aborted;
       setSessionStreaming(targetId, false);
       if (wasAborted) clearQueued(targetId);
@@ -1517,6 +1531,18 @@ export default function AiChatPanel({
   }, []);
 
   const hasConfig = Boolean(llmConfig?.baseUrl && selectedModel);
+
+  // 计划模式触发（P0-2）：把输入框内容作为计划请求发送——智能体先出方案，
+  // 用户在计划卡上「批准执行」后才由 executeApprovedPlan 全量工具执行。
+  // 注意：必须定义在 hasConfig 声明之后（deps 数组渲染期求值，先行会 TDZ 崩溃）。
+  const handlePlanRequest = useCallback(() => {
+    setShowModeMenu(false); // 与权限胶囊同容器（外点检测不覆盖），手动收起
+    if (!hasConfig) { onOpenLlmConfig?.(); return; } // 与 sendMessage 同口径：未配置不清空输入
+    const text = input.trim();
+    if (!text) { inputRef?.current?.focus?.(); return; }
+    setInput('');
+    sendMessage(`请为以下请求制定执行计划：\n${text}`, { planRequest: true });
+  }, [hasConfig, onOpenLlmConfig, input, sendMessage, setInput, inputRef]);
 
   return (
     <div
@@ -2036,6 +2062,17 @@ export default function AiChatPanel({
                 ))}
               </div>
             )}
+            {/* 计划模式触发（P0-2）：把输入框内容转为「先出方案、批准后执行」的计划请求 */}
+            <button
+              type="button"
+              className="chat-mode-chip chat-plan-trigger"
+              disabled={isStreaming || !input.trim()}
+              onClick={handlePlanRequest}
+              title="把输入框内容转为执行计划：智能体先出方案，你批准后再执行"
+            >
+              <span className="chat-mode-dot" style={{ background: 'var(--accent-cyan)' }} />
+              计划
+            </button>
             {/* 附件按钮（小图标） */}
             <button className="chat-attach-mini" onClick={() => fileInputRef.current?.click()} title="上传附件" disabled={!hasConfig}>
               {ICONS.paperclip}

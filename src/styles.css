@@ -13655,6 +13655,10 @@ body {
   white-space: nowrap;
 }
 .chat-mode-chip:hover, .chat-mode-chip.open { background: color-mix(in srgb, var(--accent-cyan) 10%, transparent); color: var(--accent-cyan); }
+/* 计划模式触发按钮（P0-2 计划→执行闭环）：静态即青色可辨识，与权限胶囊区分 */
+.chat-mode-chip.chat-plan-trigger:not(:disabled) { color: var(--accent-cyan); background: color-mix(in srgb, var(--accent-cyan) 8%, transparent); }
+.chat-mode-chip.chat-plan-trigger:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-cyan) 16%, transparent); }
+.chat-mode-chip.chat-plan-trigger:disabled { opacity: 0.45; cursor: not-allowed; }
 .chat-mode-dot {
   width: 6px; height: 6px; border-radius: 50%;
   flex: none;
