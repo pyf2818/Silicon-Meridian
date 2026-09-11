@@ -1,7 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+// v28 flake 根治：模块形状检查原先放在 it() 内动态 import——useSnapshotPreheat
+// 经 '../store' 桶文件拉起全部 store 的 import 链（solo 就要 ~700ms），
+// 全量并行时 import 计时被放大、偶发撞 vitest 默认 5s deadline。
+// 现改为「顶层装 stub + 顶层 await import」：模块求值留在文件加载期（移出 it
+// 计时区），且先于求值装好 localStorage stub——store 桶文件里 useUiStore
+// 顶层同步读 localStorage（index.js 'nav'），stub 时序是硬前提。
+installLocalStorageStub();
+const { useSnapshotPreheat } = await import('../useSnapshotPreheat.js');
 
 // localStorage stub for node environment（profileStore 依赖 localStorage）
-function installLocalStorage() {
+function installLocalStorageStub() {
   const store = {};
   vi.stubGlobal('localStorage', {
     getItem: vi.fn((k) => (k in store ? store[k] : null)),
@@ -81,10 +89,9 @@ describe('useSnapshotPreheat state machine', () => {
 });
 
 describe('useSnapshotPreheat module shape', () => {
-  beforeEach(() => installLocalStorage());
+  beforeEach(() => installLocalStorageStub());
 
-  it('导出 useSnapshotPreheat 函数', async () => {
-    const mod = await import('../useSnapshotPreheat.js');
-    expect(typeof mod.useSnapshotPreheat).toBe('function');
+  it('导出 useSnapshotPreheat 函数', () => {
+    expect(typeof useSnapshotPreheat).toBe('function');
   });
 });

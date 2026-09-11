@@ -19,7 +19,6 @@ describe('migrateLegacyBehavior', () => {
   it('merges legacy localStorage keys into persisted state', () => {
     localStorage.setItem('readingHistory', JSON.stringify([{ id: 'a', readAt: '2026-07-01' }]));
     localStorage.setItem('followKeywords', JSON.stringify(['AI']));
-    localStorage.setItem('trackTargets', JSON.stringify([{ term: 'GPU' }]));
     localStorage.setItem('recommendationFeedback', JSON.stringify({
       boostedCategories: { ai: 1 }, mutedSources: {}, trackedTerms: {}, hiddenIds: []
     }));
@@ -28,7 +27,6 @@ describe('migrateLegacyBehavior', () => {
     const result = migrateLegacyBehavior({});
     expect(result.readingHistory).toHaveLength(1);
     expect(result.followKeywords).toEqual(['AI']);
-    expect(result.trackTargets).toHaveLength(1);
     expect(result.recommendationFeedback.boostedCategories.ai).toBe(1);
     expect(result.recommendationFeedbackEvents).toHaveLength(1);
   });
@@ -57,12 +55,6 @@ describe('useBehaviorStore actions', () => {
     expect(useBehaviorStore.getState().followKeywords).toEqual(['AI']);
   });
 
-  it('addTrackTarget dedupes by term', () => {
-    useBehaviorStore.getState().addTrackTarget({ term: 'GPU' });
-    useBehaviorStore.getState().addTrackTarget({ term: 'GPU', note: 'updated' });
-    expect(useBehaviorStore.getState().trackTargets).toHaveLength(1);
-    expect(useBehaviorStore.getState().trackTargets[0].note).toBe('updated');
-  });
 });
 
 describe('useBehaviorStore 预览历史（v26.8）', () => {
@@ -134,7 +126,6 @@ describe('normalizePersistedBehavior（v26.9c 脏数据防崩）', () => {
     recommendationFeedback: { hiddenIds: [], boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
     recommendationFeedbackEvents: [],
     followKeywords: [],
-    trackTargets: [],
   };
 
   it('数组字段形状不符时回落默认值（对象脏数据不再导致整站崩）', () => {
@@ -166,12 +157,19 @@ describe('normalizePersistedBehavior（v26.9c 脏数据防崩）', () => {
     }
   });
 
+  it('v28 净化：persisted 残留的废弃字段 trackTargets 不得进入 state', () => {
+    const out = normalizePersistedBehavior({ trackTargets: [{ term: 'GPU' }], followKeywords: ['AI'] }, defaults);
+    expect(out.trackTargets).toBeUndefined();
+    expect(out.followKeywords).toEqual(['AI']);
+  });
+
   it('全部字段为脏数据时整体回落，函数仍返回完整结构', () => {
     const out = normalizePersistedBehavior({ readingHistory: 1, previewHistory: 'x', followKeywords: {}, trackTargets: null, recommendationFeedbackEvents: 3, recommendationFeedback: [] }, defaults);
     expect(out.readingHistory).toEqual([]);
     expect(out.previewHistory).toEqual([]);
     expect(out.followKeywords).toEqual([]);
-    expect(out.trackTargets).toEqual([]);
+    // v28：废弃字段被净化（即便 persisted 里有残留也不复活）
+    expect(out.trackTargets).toBeUndefined();
     expect(out.recommendationFeedbackEvents).toEqual([]);
     expect(out.recommendationFeedback).toEqual(defaults.recommendationFeedback);
   });

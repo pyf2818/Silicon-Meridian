@@ -239,6 +239,7 @@ export const SOURCE_WEIGHTS = {
   '阿里云开发者': 0.85,
   '腾讯云开发者': 0.85,
   '华为云开发者': 0.85,
+  '华为云技术博客': 0.85,
   '滴滴技术团队': 0.85,
   '携程技术': 0.8,
   '哔哩哔哩技术': 0.85,
@@ -611,6 +612,7 @@ export const SOURCE_GRADE_MAP = {
   '阿里云开发者': 'B',
   '腾讯云开发者': 'B',
   '华为云开发者': 'B',
+  '华为云技术博客': 'B',
   '滴滴技术团队': 'B',
   '携程技术': 'B',
   '哔哩哔哩技术': 'B',
@@ -795,8 +797,6 @@ export const DEFAULT_SOURCES = [
   // ========== 新增：国内大厂技术博客（多数走 RSSHub 路由） ==========
   { name: '美团技术团队', url: 'https://tech.meituan.com/feed/', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '字节跳动技术', url: rsshubUrl('/juejin/posts/1838039172387262'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
-  { name: '阿里云开发者', url: rsshubUrl('/aliyun/field/11'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
-  { name: '腾讯云开发者', url: rsshubUrl('/tencent/cloud/developer'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
   { name: '华为云开发者', url: rsshubUrl('/huaweicloud/developer'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
   { name: '滴滴技术团队', url: 'https://didi.github.io/atom.xml', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '携程技术', url: rsshubUrl('/ctrip/tech'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
@@ -891,7 +891,7 @@ export const DEFAULT_SOURCES = [
   { name: 'IBM Cloud Blog', url: 'https://www.ibm.com/cloud/blog/feed', region: 'overseas', defaultCategory: 'cloud' },
   { name: '腾讯云开发者', url: 'https://cloud.tencent.com/developer/rss', region: 'domestic', defaultCategory: 'cloud' },
   { name: '阿里云开发者', url: 'https://developer.aliyun.com/rss', region: 'domestic', defaultCategory: 'cloud' },
-  { name: '华为云开发者', url: rsshubUrl('/huaweicloud/zh/blog'), region: 'domestic', defaultCategory: 'cloud' , bridged: true},
+  { name: '华为云技术博客', url: rsshubUrl('/huaweicloud/zh/blog'), region: 'domestic', defaultCategory: 'cloud' , bridged: true},
   // ========== 芯片半导体 ==========
   { name: 'AnandTech', url: 'https://www.anandtech.com/rss/newsfeed.aspx', region: 'overseas', defaultCategory: 'chips-compute' },
   { name: 'Semiconductor Engineering', url: 'https://semiengineering.com/feed/', region: 'overseas', defaultCategory: 'chips-compute' },

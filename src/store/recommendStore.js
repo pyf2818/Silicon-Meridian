@@ -4,8 +4,8 @@
  * 包含：置顶关键词、推荐快照、搜索历史、搜索 UI（开关/排序/焦点）、
  * 时间轴展开、导出过滤 9 个核心状态。
  *
- * 注意：5 路行为信号（followKeywords / recommendationFeedback /
- * recommendationFeedbackEvents / trackTargets / readingHistory）已迁出至
+ * 注意：行为信号（followKeywords / recommendationFeedback /
+ * recommendationFeedbackEvents / readingHistory）已迁出至
  * useBehaviorStore（src/store/behaviorStore.js），旧 localStorage key 保留 30 天
  * 由 migrateLegacyBehavior 处理迁移。
  *

@@ -15,9 +15,10 @@ function readLS(key, fallback) {
 }
 
 /**
- * 将旧 localStorage key（readingHistory/followKeywords/trackTargets/
+ * 将旧 localStorage key（readingHistory/followKeywords/
  * recommendationFeedback/recommendationFeedback:v2）合并到 persisted。
  * 旧 key 保留 30 天不删除（仅复制）。
+ * （v28：trackTargets 已随「洞察分析 v1」下线移除，不再迁移。）
  */
 export function migrateLegacyBehavior(persisted = {}) {
   const merged = { ...persisted };
@@ -30,11 +31,6 @@ export function migrateLegacyBehavior(persisted = {}) {
   if (!merged.followKeywords || !merged.followKeywords.length) {
     const legacy = readLS('followKeywords', []);
     if (legacy.length) merged.followKeywords = legacy;
-  }
-
-  if (!merged.trackTargets || !merged.trackTargets.length) {
-    const legacy = readLS('trackTargets', []);
-    if (legacy.length) merged.trackTargets = legacy;
   }
 
   const legacyFeedback = readLS('recommendationFeedback', null);
@@ -59,7 +55,9 @@ export function migrateLegacyBehavior(persisted = {}) {
 }
 
 /** 期望为数组的持久化字段（形状不符 → 回落默认值） */
-const ARRAY_FIELDS = ['readingHistory', 'previewHistory', 'recommendationFeedbackEvents', 'followKeywords', 'trackTargets'];
+const ARRAY_FIELDS = ['readingHistory', 'previewHistory', 'recommendationFeedbackEvents', 'followKeywords'];
+/** v28 废弃字段：一旦从 state 移除，旧 localStorage 残留不得借 merge 复活 */
+const DEPRECATED_FIELDS = ['trackTargets'];
 
 /**
  * v26.9c persist merge：持久化数据形状归一化（防"脏数据整站崩"）
@@ -76,6 +74,9 @@ const ARRAY_FIELDS = ['readingHistory', 'previewHistory', 'recommendationFeedbac
 export function normalizePersistedBehavior(persisted, current) {
   const p = persisted && typeof persisted === 'object' ? persisted : {};
   const out = { ...current, ...p };
+  for (const key of DEPRECATED_FIELDS) {
+    delete out[key];
+  }
   for (const key of ARRAY_FIELDS) {
     if (!Array.isArray(p[key])) out[key] = current[key];
   }
@@ -98,7 +99,6 @@ export const useBehaviorStore = create(
       recommendationFeedback: { hiddenIds: [], boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
       recommendationFeedbackEvents: [],
       followKeywords: [],
-      trackTargets: [],
 
       // ===== actions =====
       addReadingHistory: (item) => set(state => ({
@@ -182,29 +182,12 @@ export const useBehaviorStore = create(
         set({ followKeywords: next });
       },
 
-      addTrackTarget: (t) => set(state => {
-        const idx = state.trackTargets.findIndex(x => x.term === t.term);
-        if (idx >= 0) {
-          const next = [...state.trackTargets];
-          next[idx] = { ...next[idx], ...t };
-          return { trackTargets: next };
-        }
-        return { trackTargets: [...state.trackTargets, t] };
-      }),
-      removeTrackTarget: (term) => set(state => ({ trackTargets: state.trackTargets.filter(t => t.term !== term) })),
-      setTrackTargets: (updater) => {
-        const cur = get().trackTargets;
-        const next = typeof updater === 'function' ? updater(cur) : updater;
-        set({ trackTargets: next });
-      },
-
       clearAll: () => set({
         readingHistory: [],
         previewHistory: [],
         recommendationFeedback: { hiddenIds: [], boostedCategories: {}, mutedSources: {}, trackedTerms: {} },
         recommendationFeedbackEvents: [],
         followKeywords: [],
-        trackTargets: [],
       }),
     }),
     {
@@ -216,7 +199,6 @@ export const useBehaviorStore = create(
         recommendationFeedback: s.recommendationFeedback,
         recommendationFeedbackEvents: s.recommendationFeedbackEvents,
         followKeywords: s.followKeywords,
-        trackTargets: s.trackTargets,
       }),
       /**
        * v26.9c 健壮性修复：持久化数据形状归一化。
@@ -236,7 +218,6 @@ export const useBehaviorStore = create(
           recommendationFeedback: state.recommendationFeedback,
           recommendationFeedbackEvents: state.recommendationFeedbackEvents,
           followKeywords: state.followKeywords,
-          trackTargets: state.trackTargets,
         });
         // 已 rehydrate 的 state 不能直接覆盖，用 setTimeout 推迟一拍
         setTimeout(() => useBehaviorStore.setState(migrated), 0);

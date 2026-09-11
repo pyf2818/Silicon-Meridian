@@ -1,27 +1,19 @@
 /**
- * AI Store - AI 助手与简报状态
+ * AI Store - AI 助手状态
  *
- * 包含：AI Insights、AI 简报、Elf 引用上下文、Copilot 待发消息 4 个核心状态。
+ * 包含：AI Insights、Elf 引用上下文、Copilot 待发消息 3 个核心状态。
+ * （v28：aiBrief 已随「洞察分析 v1」下线移除——generateAiBrief 唯一写入方不存在，
+ *   旧 persisted 里的 aiBrief 由 merge 剔除，独立 LS key 'aiBrief' 按既有策略留置不删。）
  *
  * 持久化策略：
- * - aiBrief.content 持久化（保留最近一次生成的简报内容，刷新后可见）
  * - aiInsights / elfQuotedContext / copilotPendingMessage 不持久化（会话级临时状态）
+ * - 持久化桶当前为空：保留 persist 壳以兼容既有 LS 键名，避免旧数据残留生效
  *
  * 使用方式：
  *   import { useAiStore } from './store';
- *   const aiBrief = useAiStore(s => s.aiBrief);
  */
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-
-// 读取 localStorage 工具
-function readLS(key, fallback) {
-  try {
-    const v = localStorage.getItem(key);
-    if (!v) return fallback;
-    return JSON.parse(v);
-  } catch { return fallback; }
-}
 
 // ============ AI Store ============
 export const useAiStore = create(
@@ -35,22 +27,6 @@ export const useAiStore = create(
         set({ aiInsights: next });
       },
 
-      // ===== AI 简报（content 持久化）=====
-      aiBrief: (() => {
-        const saved = readLS('aiBrief', null);
-        return {
-          loading: false,
-          content: saved?.content || '',
-          error: '',
-          generatedAt: saved?.generatedAt || null,
-        };
-      })(),
-      setAiBrief: (updater) => {
-        const cur = get().aiBrief;
-        const next = typeof updater === 'function' ? updater(cur) : updater;
-        set({ aiBrief: next });
-      },
-
       // ===== Elf 引用上下文（不持久化）=====
       elfQuotedContext: null,
       setElfQuotedContext: (v) => set({ elfQuotedContext: v }),
@@ -62,12 +38,14 @@ export const useAiStore = create(
     {
       name: 'siliconstream-ai-store',
       storage: createJSONStorage(() => localStorage),
-      // 仅持久化 aiBrief.content 与 generatedAt（loading/error 不持久化）
-      partialize: (state) => ({
-        aiBrief: state.aiBrief?.loading
-          ? { ...state.aiBrief, loading: false }
-          : { loading: false, content: state.aiBrief?.content || '', error: '', generatedAt: state.aiBrief?.generatedAt || null },
-      }),
+      // v28：aiBrief 下线后持久化桶为空；merge 显式剔除旧 persisted 残留，
+      // 防 zustand 默认浅合并把孤儿字段重新注入 state
+      partialize: () => ({}),
+      merge: (persisted, current) => {
+        const { aiBrief: _legacyAiBrief, ...rest } = persisted || {};
+        void _legacyAiBrief;
+        return { ...current, ...rest };
+      },
     }
   )
 );

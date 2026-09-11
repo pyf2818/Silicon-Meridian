@@ -259,7 +259,7 @@ export { useNewsStore } from './newsStore.js';
 
 // ============ Behavior Store ============
 // 行为信号单一 source of truth：readingHistory/recommendationFeedback/
-// recommendationFeedbackEvents/followKeywords/trackTargets
+// recommendationFeedbackEvents/followKeywords
 // (从 recommendStore 迁入；旧 LS key 保留 30 天由 migrateLegacyBehavior 处理)
 export { useBehaviorStore } from './behaviorStore.js';
 
@@ -268,7 +268,7 @@ export { useBehaviorStore } from './behaviorStore.js';
 export { useRecommendStore } from './recommendStore.js';
 
 // ============ AI Store ============
-// AI 助手与简报：aiInsights/aiBrief/elfQuotedContext/copilotPendingMessage
+// AI 助手：aiInsights/elfQuotedContext/copilotPendingMessage
 export { useAiStore } from './aiStore.js';
 
 // ============ GitHub Store ============
