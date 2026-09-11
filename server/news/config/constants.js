@@ -704,17 +704,26 @@ export const MAX_NEWS_ITEMS = 500;
 export const MAX_ITEMS_PER_SOURCE = 16;
 export const PAGE_SIZE = 40;
 
-// 公共RSSHub实例随网络环境波动较大；本地部署推荐自建或用备选实例。
-// 这里预留3个公共节点串联模板，实际抓取时可在 settings -> LLM&源设置 -> 自定义源 处切换。
-export const RSSHUB_BASE = 'https://rsshub.rssforever.com';
+// 桥接源（bridged: true）经第三方 RSSHub 实例中转；公共实例可用性随网络环境波动。
+// 可用环境变量 RSSHUB_BASE 指向自建实例（模块加载时解析，重启生效）；
+// 所有桥接源 URL 必须经 rsshubUrl(路由) 生成，禁止再硬编码实例域名。
 export const RSSHUB_FALLBACKS = [
   'https://rsshub.rssforever.com',
   'https://rsshub.app',
   'https://rss.inshs.xyz',
 ];
-// 通用 fallback：对没有原生RSS的官网，用 simple-sitemap-parser 抓首页链接生成伪RSS。
-// 注意：simple-sitemap-parser 要求 RSSHub 实例版本 >= 2024.x；参数 url = 目标官网首页。
-const SITEMAP_PARSER = (url) => `${RSSHUB_BASE}/simple-sitemap-parser?url=${encodeURIComponent(url)}&sitemap=false`;
+
+function resolveRsshubBase() {
+  const fromEnv = (process.env.RSSHUB_BASE || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\/\S+$/.test(fromEnv)) return fromEnv;
+  return RSSHUB_FALLBACKS[0];
+}
+
+export const RSSHUB_BASE = resolveRsshubBase();
+// 桥接源 URL 统一拼装：rsshubUrl('/aminer/ai') === `${RSSHUB_BASE}/aminer/ai`
+export const rsshubUrl = (route) => `${RSSHUB_BASE}${route.startsWith('/') ? route : `/${route}`}`;
+// 桥接通道信任折扣：公共实例可能限流/失效/被篡改，作为传输层折扣乘入 qualityScore（内容等级 sourceWeight 不受影响）。
+export const BRIDGED_WEIGHT_FACTOR = 0.8;
 
 export const DEFAULT_SOURCES = [
   // ========== 学术权威与研究 ==========
@@ -768,29 +777,29 @@ export const DEFAULT_SOURCES = [
   { name: '量子位', url: 'https://www.qbitai.com/feed', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '机器之心', url: 'https://www.jiqizhixin.com/rss', region: 'domestic', defaultCategory: 'ai-models' },
   // ========== 新增：国内 AI 权威源 ==========
-  { name: '新智元', url: 'https://rsshub.rssforever.com/aminer/ai', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: 'AI 前线', url: 'https://rsshub.rssforever.com/infoq/ai', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: 'PaperWeekly', url: 'https://rsshub.rssforever.com/paperweekly/popular', region: 'domestic', defaultCategory: 'ai-models' },
+  { name: '新智元', url: rsshubUrl('/aminer/ai'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
+  { name: 'AI 前线', url: rsshubUrl('/infoq/ai'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
+  { name: 'PaperWeekly', url: rsshubUrl('/paperweekly/popular'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
   // ========== 新增：国内大厂技术博客（多数走 RSSHub 路由） ==========
   { name: '美团技术团队', url: 'https://tech.meituan.com/feed/', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '字节跳动技术', url: 'https://rsshub.rssforever.com/juejin/posts/1838039172387262', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '阿里云开发者', url: 'https://rsshub.rssforever.com/aliyun/field/11', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '腾讯云开发者', url: 'https://rsshub.rssforever.com/tencent/cloud/developer', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '华为云开发者', url: 'https://rsshub.rssforever.com/huaweicloud/developer', region: 'domestic', defaultCategory: 'ai-models' },
+  { name: '字节跳动技术', url: rsshubUrl('/juejin/posts/1838039172387262'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
+  { name: '阿里云开发者', url: rsshubUrl('/aliyun/field/11'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
+  { name: '腾讯云开发者', url: rsshubUrl('/tencent/cloud/developer'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
+  { name: '华为云开发者', url: rsshubUrl('/huaweicloud/developer'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
   { name: '滴滴技术团队', url: 'https://didi.github.io/atom.xml', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '携程技术', url: 'https://rsshub.rssforever.com/ctrip/tech', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '哔哩哔哩技术', url: 'https://rsshub.rssforever.com/bilibili/search/article/技术', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '小米开发者', url: 'https://rsshub.rssforever.com/xiaomi/dev', region: 'domestic', defaultCategory: 'ai-models' },
+  { name: '携程技术', url: rsshubUrl('/ctrip/tech'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
+  { name: '哔哩哔哩技术', url: rsshubUrl('/bilibili/search/article/技术'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
+  { name: '小米开发者', url: rsshubUrl('/xiaomi/dev'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
   { name: '京东技术', url: 'https://developer.jd.com/article/feed', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '蚂蚁集团技术', url: 'https://rsshub.rssforever.com/antfin/tech', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '网易严选技术', url: 'https://rsshub.rssforever.com/you163/tech', region: 'domestic', defaultCategory: 'ai-models' },
+  { name: '蚂蚁集团技术', url: rsshubUrl('/antfin/tech'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
+  { name: '网易严选技术', url: rsshubUrl('/you163/tech'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
   // ========== 新增：国内知名博主 ==========
   { name: '阮一峰博客', url: 'http://www.ruanyifeng.com/blog/atom.xml', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '张鑫旭博客', url: 'https://www.zhangxinxu.com/wordpress/feed/', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '苏剑林博客', url: 'https://kexue.fm/feed.xml', region: 'domestic', defaultCategory: 'ai-models' },
   { name: '廖雪峰博客', url: 'https://www.liaoxuefeng.com/feed/', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '知乎AI', url: 'https://rsshub.rssforever.com/zhihu/topic/19550517', region: 'domestic', defaultCategory: 'ai-models' },
-  { name: '微博热搜AI', url: 'https://rsshub.rssforever.com/weibo/search/hot/AI', region: 'domestic', defaultCategory: 'ai-models' },
+  { name: '知乎AI', url: rsshubUrl('/zhihu/topic/19550517'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
+  { name: '微博热搜AI', url: rsshubUrl('/weibo/search/hot/AI'), region: 'domestic', defaultCategory: 'ai-models' , bridged: true},
   // ========== v26.9 新增：国内源（全部经 scripts/test-source-candidates*.mjs 实测通过后接入） ==========
   { name: '有赞技术', url: 'https://tech.youzan.com/feed/', region: 'domestic', defaultCategory: 'ai-models', sourceType: 'company_blog', tags: ['国内','有赞','大厂技术'] },
   { name: '云风博客', url: 'https://blog.codingnow.com/atom.xml', region: 'domestic', defaultCategory: 'open-source', sourceType: 'expert_blogger', tags: ['国内','云风','游戏引擎/编程'] },
@@ -835,15 +844,15 @@ export const DEFAULT_SOURCES = [
   { name: 'Solidot', url: 'https://www.solidot.org/index.rss', region: 'domestic', defaultCategory: 'open-source' },
   { name: 'OSChina', url: 'https://www.oschina.net/news/rss', region: 'domestic', defaultCategory: 'open-source' },
   { name: 'CoolShell', url: 'https://coolshell.cn/feed', region: 'domestic', defaultCategory: 'open-source' },
-  { name: 'GitHub Trending JS', url: 'https://rsshub.rssforever.com/github/trending/daily/javascript', region: 'global', defaultCategory: 'open-source' },
-  { name: 'GitHub Trending Python', url: 'https://rsshub.rssforever.com/github/trending/daily/python', region: 'global', defaultCategory: 'open-source' },
-  { name: 'GitHub Trending Rust', url: 'https://rsshub.rssforever.com/github/trending/daily/rust', region: 'global', defaultCategory: 'open-source' },
-  { name: 'GitHub Trending TypeScript', url: 'https://rsshub.rssforever.com/github/trending/daily/typescript', region: 'global', defaultCategory: 'open-source' },
-  { name: 'GitHub Trending Go', url: 'https://rsshub.rssforever.com/github/trending/daily/go', region: 'global', defaultCategory: 'open-source' },
-  { name: 'V2EX 技术', url: 'https://rsshub.rssforever.com/v2ex/topics/hot', region: 'domestic', defaultCategory: 'open-source' },
-  { name: 'Segmentfault 热榜', url: 'https://rsshub.rssforever.com/segmentfault/hot', region: 'domestic', defaultCategory: 'open-source' },
-  { name: '掘金热榜', url: 'https://rsshub.rssforever.com/juejin/trending/javascript/7days', region: 'domestic', defaultCategory: 'open-source' },
-  { name: 'CSDN 热榜', url: 'https://rsshub.rssforever.com/csdn/blog/hot', region: 'domestic', defaultCategory: 'open-source' },
+  { name: 'GitHub Trending JS', url: rsshubUrl('/github/trending/daily/javascript'), region: 'global', defaultCategory: 'open-source' , bridged: true},
+  { name: 'GitHub Trending Python', url: rsshubUrl('/github/trending/daily/python'), region: 'global', defaultCategory: 'open-source' , bridged: true},
+  { name: 'GitHub Trending Rust', url: rsshubUrl('/github/trending/daily/rust'), region: 'global', defaultCategory: 'open-source' , bridged: true},
+  { name: 'GitHub Trending TypeScript', url: rsshubUrl('/github/trending/daily/typescript'), region: 'global', defaultCategory: 'open-source' , bridged: true},
+  { name: 'GitHub Trending Go', url: rsshubUrl('/github/trending/daily/go'), region: 'global', defaultCategory: 'open-source' , bridged: true},
+  { name: 'V2EX 技术', url: rsshubUrl('/v2ex/topics/hot'), region: 'domestic', defaultCategory: 'open-source' , bridged: true},
+  { name: 'Segmentfault 热榜', url: rsshubUrl('/segmentfault/hot'), region: 'domestic', defaultCategory: 'open-source' , bridged: true},
+  { name: '掘金热榜', url: rsshubUrl('/juejin/trending/javascript/7days'), region: 'domestic', defaultCategory: 'open-source' , bridged: true},
+  { name: 'CSDN 热榜', url: rsshubUrl('/csdn/blog/hot'), region: 'domestic', defaultCategory: 'open-source' , bridged: true},
   // ========== 国际顶级科技媒体 ==========
   { name: 'TechCrunch', url: 'https://techcrunch.com/feed/', region: 'overseas', defaultCategory: 'silicon-valley' },
   { name: 'Wired', url: 'https://www.wired.com/feed/rss', region: 'overseas', defaultCategory: 'silicon-valley' },
@@ -851,7 +860,7 @@ export const DEFAULT_SOURCES = [
   { name: 'VentureBeat', url: 'https://venturebeat.com/feed/', region: 'overseas', defaultCategory: 'silicon-valley' },
   { name: 'ZDNet', url: 'https://www.zdnet.com/news/rss.xml', region: 'overseas', defaultCategory: 'silicon-valley' },
   { name: 'Reddit Technology', url: 'https://www.reddit.com/r/technology/.rss', region: 'global', defaultCategory: 'silicon-valley' },
-  { name: 'Product Hunt Daily', url: 'https://rsshub.rssforever.com/producthunt/today', region: 'overseas', defaultCategory: 'silicon-valley' },
+  { name: 'Product Hunt Daily', url: rsshubUrl('/producthunt/today'), region: 'overseas', defaultCategory: 'silicon-valley' , bridged: true},
   // ========== 硬件数码与专业科技媒体 ==========
   { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml', region: 'overseas', defaultCategory: 'devices' },
   { name: 'CNET', url: 'https://www.cnet.com/rss/news/', region: 'overseas', defaultCategory: 'devices' },
@@ -870,7 +879,7 @@ export const DEFAULT_SOURCES = [
   { name: 'IBM Cloud Blog', url: 'https://www.ibm.com/cloud/blog/feed', region: 'overseas', defaultCategory: 'cloud' },
   { name: '腾讯云开发者', url: 'https://cloud.tencent.com/developer/rss', region: 'domestic', defaultCategory: 'cloud' },
   { name: '阿里云开发者', url: 'https://developer.aliyun.com/rss', region: 'domestic', defaultCategory: 'cloud' },
-  { name: '华为云开发者', url: 'https://rsshub.rssforever.com/huaweicloud/zh/blog', region: 'domestic', defaultCategory: 'cloud' },
+  { name: '华为云开发者', url: rsshubUrl('/huaweicloud/zh/blog'), region: 'domestic', defaultCategory: 'cloud' , bridged: true},
   // ========== 芯片半导体 ==========
   { name: 'AnandTech', url: 'https://www.anandtech.com/rss/newsfeed.aspx', region: 'overseas', defaultCategory: 'chips-compute' },
   { name: 'Semiconductor Engineering', url: 'https://semiengineering.com/feed/', region: 'overseas', defaultCategory: 'chips-compute' },
@@ -884,9 +893,9 @@ export const DEFAULT_SOURCES = [
   // ========== 前沿科技 ==========
   { name: 'Futurism', url: 'https://futurism.com/feed', region: 'overseas', defaultCategory: 'tech-frontier' },
   { name: 'SingularityHub', url: 'https://singularityhub.com/feed/', region: 'overseas', defaultCategory: 'tech-frontier' },
-  { name: '知乎热榜', url: 'https://rsshub.rssforever.com/zhihu/hotlist', region: 'domestic', defaultCategory: 'tech-frontier' },
-  { name: '知乎科技互联网', url: 'https://rsshub.rssforever.com/zhihu/topic/19550895', region: 'domestic', defaultCategory: 'tech-frontier' },
-  { name: '微博热搜科技', url: 'https://rsshub.rssforever.com/weibo/search/hot/科技', region: 'domestic', defaultCategory: 'tech-frontier' },
+  { name: '知乎热榜', url: rsshubUrl('/zhihu/hotlist'), region: 'domestic', defaultCategory: 'tech-frontier' , bridged: true},
+  { name: '知乎科技互联网', url: rsshubUrl('/zhihu/topic/19550895'), region: 'domestic', defaultCategory: 'tech-frontier' , bridged: true},
+  { name: '微博热搜科技', url: rsshubUrl('/weibo/search/hot/科技'), region: 'domestic', defaultCategory: 'tech-frontier' , bridged: true},
   // ========== 新能源 ==========
   { name: 'Canary Media', url: 'https://www.canarymedia.com/feed', region: 'overseas', defaultCategory: 'new-energy' },
   { name: 'Electrek', url: 'https://electrek.co/feed/', region: 'overseas', defaultCategory: 'new-energy' },
@@ -898,10 +907,10 @@ export const DEFAULT_SOURCES = [
   { name: 'MedTech', url: 'https://www.medtechdive.com/rss/news/', region: 'overseas', defaultCategory: 'healthcare' },
   { name: 'HealthTech', url: 'https://www.healthtechzone.com/rss/feed.xml', region: 'overseas', defaultCategory: 'healthcare' },
   { name: 'Medscape', url: 'https://www.medscape.com/rss/news', region: 'overseas', defaultCategory: 'healthcare' },
-  { name: '丁香园', url: 'https://rsshub.rssforever.com/dxy/dxyc', region: 'domestic', defaultCategory: 'healthcare' },
-  { name: '医学界', url: 'https://rsshub.rssforever.com/yxj/xwzx', region: 'domestic', defaultCategory: 'healthcare' },
-  { name: '健康界', url: 'https://rsshub.rssforever.com/cn-healthcare/news', region: 'domestic', defaultCategory: 'healthcare' },
-  { name: '36氪医疗', url: 'https://rsshub.rssforever.com/36kr/motif/5474', region: 'domestic', defaultCategory: 'healthcare' },
+  { name: '丁香园', url: rsshubUrl('/dxy/dxyc'), region: 'domestic', defaultCategory: 'healthcare' , bridged: true},
+  { name: '医学界', url: rsshubUrl('/yxj/xwzx'), region: 'domestic', defaultCategory: 'healthcare' , bridged: true},
+  { name: '健康界', url: rsshubUrl('/cn-healthcare/news'), region: 'domestic', defaultCategory: 'healthcare' , bridged: true},
+  { name: '36氪医疗', url: rsshubUrl('/36kr/motif/5474'), region: 'domestic', defaultCategory: 'healthcare' , bridged: true},
   // ========== 政策法规与财经 ==========
   { name: 'Reuters Business', url: 'https://www.reuters.com/business/feed/', region: 'overseas', defaultCategory: 'policy-finance' },
   { name: 'Bloomberg Technology', url: 'https://feeds.bloomberg.com/technology/news.rss', region: 'overseas', defaultCategory: 'policy-finance' },
@@ -910,16 +919,16 @@ export const DEFAULT_SOURCES = [
   { name: 'Law.com', url: 'https://www.law.com/feed/', region: 'overseas', defaultCategory: 'policy-finance' },
   { name: 'Reuters Legal', url: 'https://www.reuters.com/legal/feed/', region: 'overseas', defaultCategory: 'policy-finance' },
   { name: '中国法院网', url: 'https://www.chinacourt.org/article/rss.shtml', region: 'domestic', defaultCategory: 'policy-finance' },
-  { name: '北大法宝', url: 'https://rsshub.rssforever.com/pkulaw/chl', region: 'domestic', defaultCategory: 'policy-finance' },
+  { name: '北大法宝', url: rsshubUrl('/pkulaw/chl'), region: 'domestic', defaultCategory: 'policy-finance' , bridged: true},
   { name: 'NIST Technology', url: 'https://www.nist.gov/news-events/technology-news/feed', region: 'overseas', defaultCategory: 'policy-finance' },
   { name: '欧盟AI法案', url: 'https://digital-strategy.ec.europa.eu/en/artificial-intelligence', region: 'overseas', defaultCategory: 'policy-finance' },
-  { name: '工信部', url: 'https://rsshub.rssforever.com/miit/xwzx', region: 'domestic', defaultCategory: 'policy-finance' },
-  { name: '科技部', url: 'https://rsshub.rssforever.com/most/kjyw', region: 'domestic', defaultCategory: 'policy-finance' },
-  { name: '法制日报', url: 'https://rsshub.rssforever.com/legaldaily/xwsf', region: 'domestic', defaultCategory: 'policy-finance' },
+  { name: '工信部', url: rsshubUrl('/miit/xwzx'), region: 'domestic', defaultCategory: 'policy-finance' , bridged: true},
+  { name: '科技部', url: rsshubUrl('/most/kjyw'), region: 'domestic', defaultCategory: 'policy-finance' , bridged: true},
+  { name: '法制日报', url: rsshubUrl('/legaldaily/xwsf'), region: 'domestic', defaultCategory: 'policy-finance' , bridged: true},
   // ========== 经济与股市 ==========
   { name: '36氪', url: 'https://www.36kr.com/feed', region: 'domestic', defaultCategory: 'economy-stock' },
   { name: 'IT之家', url: 'https://www.ithome.com/rss', region: 'domestic', defaultCategory: 'economy-stock' },
-  { name: '财新网', url: 'https://rsshub.rssforever.com/caixin/latest', region: 'domestic', defaultCategory: 'economy-stock' },
+  { name: '财新网', url: rsshubUrl('/caixin/latest'), region: 'domestic', defaultCategory: 'economy-stock' , bridged: true},
   { name: 'Seeking Alpha', url: 'https://seekingalpha.com/feed/feed.xml', region: 'overseas', defaultCategory: 'economy-stock' },
   { name: '经济观察网', url: 'https://www.eeo.com.cn/rss.xml', region: 'domestic', defaultCategory: 'economy-stock' },
   { name: 'MarketWatch', url: 'https://www.marketwatch.com/rss/topstories', region: 'overseas', defaultCategory: 'economy-stock' },
@@ -936,10 +945,10 @@ export const DEFAULT_SOURCES = [
   { name: '第一财经', url: 'https://www.yicai.com/rss/', region: 'domestic', defaultCategory: 'economy-stock' },
   { name: '华尔街见闻', url: 'https://rss.wallstreetcn.com/latest', region: 'domestic', defaultCategory: 'economy-stock' },
   { name: 'Motley Fool', url: 'https://www.fool.com/the-motley-fool/rss.aspx', region: 'overseas', defaultCategory: 'economy-stock' },
-  { name: '证券时报', url: 'https://rsshub.rssforever.com/stcn/xwzx', region: 'domestic', defaultCategory: 'economy-stock' },
-  { name: '中国证券报', url: 'https://rsshub.rssforever.com/cs/zjxw', region: 'domestic', defaultCategory: 'economy-stock' },
-  { name: '东方财富', url: 'https://rsshub.rssforever.com/eastmoney/cyxw', region: 'domestic', defaultCategory: 'economy-stock' },
-  { name: '雪球', url: 'https://rsshub.rssforever.com/xueqiu/user/2588023793', region: 'domestic', defaultCategory: 'economy-stock' },
+  { name: '证券时报', url: rsshubUrl('/stcn/xwzx'), region: 'domestic', defaultCategory: 'economy-stock' , bridged: true},
+  { name: '中国证券报', url: rsshubUrl('/cs/zjxw'), region: 'domestic', defaultCategory: 'economy-stock' , bridged: true},
+  { name: '东方财富', url: rsshubUrl('/eastmoney/cyxw'), region: 'domestic', defaultCategory: 'economy-stock' , bridged: true},
+  { name: '雪球', url: rsshubUrl('/xueqiu/user/2588023793'), region: 'domestic', defaultCategory: 'economy-stock' , bridged: true},
   { name: 'ArXiv Quantitative Finance', url: 'https://export.arxiv.org/rss/q-fin', region: 'global', defaultCategory: 'economy-stock' },
   { name: 'BBC World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', region: 'overseas', defaultCategory: 'economy-stock' },
   { name: 'BBC Business', url: 'https://feeds.bbci.co.uk/news/business/rss.xml', region: 'overseas', defaultCategory: 'economy-stock' },
@@ -1021,17 +1030,21 @@ export const DEFAULT_SOURCES = [
   { name: '博客园', url: 'https://www.cnblogs.com/rss', region: 'domestic', defaultCategory: 'open-source', sourceType: 'developer_community', tags: ['国内','博客园','开发者'] },
   { name: 'FreeBuf', url: 'https://www.freebuf.com/feed', region: 'domestic', defaultCategory: 'cybersecurity', sourceType: 'professional_media', tags: ['国内','FreeBuf','安全'] },
   // ========== 新增：社媒 / 视频平台（Folo/RSSHub 式跨源订阅，补 M4 非 RSS 源盲区） ==========
-  { name: 'X @OpenAI', url: 'https://rsshub.rssforever.com/twitter/user/OpenAI', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'social_platform', tags: ['海外','OpenAI','X'] },
-  { name: 'X @AnthropicAI', url: 'https://rsshub.rssforever.com/twitter/user/AnthropicAI', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'social_platform', tags: ['海外','Anthropic','X'] },
-  { name: 'X @GoogleDeepMind', url: 'https://rsshub.rssforever.com/twitter/user/GoogleDeepMind', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'social_platform', tags: ['海外','DeepMind','X'] },
-  { name: 'X @NVIDIA', url: 'https://rsshub.rssforever.com/twitter/user/NVIDIA', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'social_platform', tags: ['海外','NVIDIA','X'] },
-  { name: 'X @ylecun', url: 'https://rsshub.rssforever.com/twitter/user/ylecun', region: 'overseas', defaultCategory: 'silicon-valley', sourceType: 'social_platform', tags: ['海外','Yann LeCun','X'] },
-  { name: 'X @demishassabis', url: 'https://rsshub.rssforever.com/twitter/user/demishassabis', region: 'overseas', defaultCategory: 'silicon-valley', sourceType: 'social_platform', tags: ['海外','Demis Hassabis','X'] },
-  { name: 'YouTube @OpenAI', url: 'https://rsshub.rssforever.com/youtube/user/openai', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'video_platform', tags: ['海外','OpenAI','YouTube'] },
-  { name: 'YouTube @DeepMind', url: 'https://rsshub.rssforever.com/youtube/user/DeepMind', region: 'overseas', defaultCategory: 'ai-models', sourceType: 'video_platform', tags: ['海外','DeepMind','YouTube'] },
-  { name: 'YouTube @TwoMinutePapers', url: 'https://rsshub.rssforever.com/youtube/user/TwoMinutePapers', region: 'overseas', defaultCategory: 'research', sourceType: 'video_platform', tags: ['海外','论文解读','YouTube'] },
-  { name: 'YouTube @YannLeCun', url: 'https://rsshub.rssforever.com/youtube/user/YannLeCun', region: 'overseas', defaultCategory: 'silicon-valley', sourceType: 'video_platform', tags: ['海外','Yann LeCun','YouTube'] },
-];;
+  { name: 'X @OpenAI', url: rsshubUrl('/twitter/user/OpenAI'), region: 'overseas', defaultCategory: 'ai-models', sourceType: 'social_platform', tags: ['海外','OpenAI','X'] , bridged: true},
+  { name: 'X @AnthropicAI', url: rsshubUrl('/twitter/user/AnthropicAI'), region: 'overseas', defaultCategory: 'ai-models', sourceType: 'social_platform', tags: ['海外','Anthropic','X'] , bridged: true},
+  { name: 'X @GoogleDeepMind', url: rsshubUrl('/twitter/user/GoogleDeepMind'), region: 'overseas', defaultCategory: 'ai-models', sourceType: 'social_platform', tags: ['海外','DeepMind','X'] , bridged: true},
+  { name: 'X @NVIDIA', url: rsshubUrl('/twitter/user/NVIDIA'), region: 'overseas', defaultCategory: 'ai-models', sourceType: 'social_platform', tags: ['海外','NVIDIA','X'] , bridged: true},
+  { name: 'X @ylecun', url: rsshubUrl('/twitter/user/ylecun'), region: 'overseas', defaultCategory: 'silicon-valley', sourceType: 'social_platform', tags: ['海外','Yann LeCun','X'] , bridged: true},
+  { name: 'X @demishassabis', url: rsshubUrl('/twitter/user/demishassabis'), region: 'overseas', defaultCategory: 'silicon-valley', sourceType: 'social_platform', tags: ['海外','Demis Hassabis','X'] , bridged: true},
+  { name: 'YouTube @OpenAI', url: rsshubUrl('/youtube/user/openai'), region: 'overseas', defaultCategory: 'ai-models', sourceType: 'video_platform', tags: ['海外','OpenAI','YouTube'] , bridged: true},
+  { name: 'YouTube @DeepMind', url: rsshubUrl('/youtube/user/DeepMind'), region: 'overseas', defaultCategory: 'ai-models', sourceType: 'video_platform', tags: ['海外','DeepMind','YouTube'] , bridged: true},
+  { name: 'YouTube @TwoMinutePapers', url: rsshubUrl('/youtube/user/TwoMinutePapers'), region: 'overseas', defaultCategory: 'research', sourceType: 'video_platform', tags: ['海外','论文解读','YouTube'] , bridged: true},
+  { name: 'YouTube @YannLeCun', url: rsshubUrl('/youtube/user/YannLeCun'), region: 'overseas', defaultCategory: 'silicon-valley', sourceType: 'video_platform', tags: ['海外','Yann LeCun','YouTube'] , bridged: true},
+];
+
+// 桥接源名单（传输层经第三方 RSSHub 实例中转的源）：
+// enrichItem 据此给 item 盖章 item.bridged，meta API（plugin.js / api/meta.js）透出给前端。
+export const BRIDGED_SOURCE_NAMES = new Set(DEFAULT_SOURCES.filter((s) => s?.bridged).map((s) => s.name));;
 
 export const TRENDING_SOURCES = [
   // === 国内平台 ===

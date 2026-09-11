@@ -1,4 +1,4 @@
-import { DEFAULT_SOURCES, SOURCE_WEIGHTS, CROSS_VERIFY_THRESHOLD, MAX_NEWS_ITEMS, MAX_ITEMS_PER_SOURCE, PAGE_SIZE, MEDIA_CONFIG } from '../config/constants.js';
+import { DEFAULT_SOURCES, SOURCE_WEIGHTS, CROSS_VERIFY_THRESHOLD, MAX_NEWS_ITEMS, MAX_ITEMS_PER_SOURCE, PAGE_SIZE, MEDIA_CONFIG, BRIDGED_SOURCE_NAMES, BRIDGED_WEIGHT_FACTOR } from '../config/constants.js';
 import { getSourceGradeInfo } from '../config/sourceGrades.js';
 import { applyBlockedWords, normalizeUrl } from '../utils/textProcessing.js';
 import { fetchSource } from './externalFetchers.js';
@@ -99,13 +99,15 @@ export function crossVerifyItems(items) {
 
     // 获取源权重
     const sourceWeight = SOURCE_WEIGHTS[item.source] || 0.5;
+    // 桥接通道折扣：内容等级（sourceWeight）不变，质量分按传输层可信度打折
+    const effectiveWeight = item.bridged ? sourceWeight * BRIDGED_WEIGHT_FACTOR : sourceWeight;
 
     return {
       ...item,
       crossVerifyScore,
       sourceWeight,
-      // 综合质量分数 = 交叉验证分数 * 源权重 * 10
-      qualityScore: Math.round((crossVerifyScore * sourceWeight) * 10) / 10
+      // 综合质量分数 = 交叉验证分数 * 有效源权重（桥接源乘 BRIDGED_WEIGHT_FACTOR） * 10
+      qualityScore: Math.round((crossVerifyScore * effectiveWeight) * 10) / 10
     };
   });
 }
@@ -116,13 +118,14 @@ function poolKey(item) {
   return `${item.source}|${normalizeUrl(item.url)}|${(item.title || '').toLowerCase()}`;
 }
 
-/** 入池时富化：等级信息 + 涉华标记（一次性，读路径不再重复计算） */
-function enrichItem(item) {
+/** 入池时富化：等级信息 + 桥接标记 + 涉华标记（一次性，读路径不再重复计算）。export 仅供测试 */
+export function enrichItem(item) {
   const gradeInfo = getSourceGradeInfo(item.source);
   item.sourceGrade = gradeInfo.weight;
   item.sourceGradeLabel = gradeInfo.label;
   item.sourceGradeColor = gradeInfo.color;
   item.sourceGradeIcon = gradeInfo.icon;
+  item.bridged = BRIDGED_SOURCE_NAMES.has(item.source);
   item.isChinaFocused = computeIsChinaFocused(item);
   return item;
 }

@@ -77,13 +77,14 @@ export function newsPlugin() {
           return sendJson(res, {
             categories: CATEGORIES,
             modes: MODES,
-            sources: DEFAULT_SOURCES.map(({ name, url, region, defaultCategory }) => {
+            sources: DEFAULT_SOURCES.map(({ name, url, region, defaultCategory, bridged }) => {
               const gradeInfo = getSourceGradeInfo(name);
               return {
                 name,
                 url,
                 region,
                 defaultCategory,
+                bridged: !!bridged,
                 grade: getSourceGrade(name),
                 gradeInfo: {
                   label: gradeInfo.label,
