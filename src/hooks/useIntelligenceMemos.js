@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { computeReadingProfile, withInterestLabels } from '../utils/profileModel.js';
+import { computeReadingProfile } from '../utils/profileModel.js';
 
 // Extracted from App.jsx - intelligence-related useMemo computations.
 // Logic is unchanged; only moved into a hook for maintainability.
@@ -8,7 +8,6 @@ export function useIntelligenceMemos({
   items,
   followKeywords,
   briefingConfig,
-  trackTargets,
   categories,
   trendData,
   bookmarks,
@@ -49,21 +48,9 @@ export function useIntelligenceMemos({
     return { topNews, categoryGroups, emergingKeywords, totalToday: todayItems.length, generatedAt: now.toISOString() };
   }, [items, followKeywords, briefingConfig.length]);
 
-  const trackerData = useMemo(() => {
-    const result = {};
-    trackTargets.forEach(target => {
-      const matched = items.filter(i => {
-        const text = `${i.title} ${i.summary}`.toLowerCase();
-        return text.includes(target.keyword.toLowerCase()) || target.aliases?.some(a => text.includes(a.toLowerCase()));
-      });
-      const last7Days = matched.filter(i => new Date(i.publishedAt) >= new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-      const last30Days = matched.filter(i => new Date(i.publishedAt) >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
-      result[target.id] = { all: matched, last7Days, last30Days, total: matched.length, weekly: last7Days.length };
-    });
-    return result;
-  }, [items, trackTargets]);
-
   // 洞察分析数据层
+  // （trackerData 已随「洞察分析 v1」InsightDashboardPage 一起移除——它是该页
+  //  「我的追踪」tab 的专属数据；追踪关键词状态本身仍在 behaviorStore，可随时复活）
   const insightData = useMemo(() => {
     const now = new Date();
     const buildDayKeys = (days) => Array.from({ length: days }).map((_, idx) => {
@@ -277,11 +264,11 @@ export function useIntelligenceMemos({
   // 计算逻辑统一在 utils/profileModel.computeReadingProfile（原来此处有一份 105 行的
   // 逐行复制版，与 profileModel 各演化一份：唯一差异是本处 topInterests 多一个 label 字段、
   // 且 topTags 的 pct 每项都重算一次 reduce。已在纯函数里补齐 day7/heatData/maxHeat；
-  // label 这类需要外部赛道字典的展示字段，由 withInterestLabels 单独叠一层）。
+  // label 展示映射已随「洞察分析 v1」下线，移到唯一活消费方 ProfileInsightsSection 内完成）。
   const readingProfile = useMemo(
-    () => withInterestLabels(computeReadingProfile(bookmarks), categories),
-    [bookmarks, categories],
+    () => computeReadingProfile(bookmarks),
+    [bookmarks],
   );
 
-  return { dailyBriefing, trackerData, insightData, readingProfile };
+  return { dailyBriefing, insightData, readingProfile };
 }

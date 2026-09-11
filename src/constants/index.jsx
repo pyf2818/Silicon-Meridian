@@ -34,14 +34,8 @@ export {
 
 // index.jsx 历史独有的死代码（无任何文件引用），仅为兼容性保留
 // 新代码不应使用这些 export
-
-// 导航分组（旧版，已被 PRIMARY_NAV_ITEMS / NAV_CONTEXT_SECTIONS 取代）
-export const NAV_GROUPS = [
-  { id: 'core', label: '资讯中心', items: ['all', 'recommendations', 'trending', 'github', 'custom-url'] },
-  { id: 'insight', label: '洞察分析', items: ['briefing', 'tracker', 'trends', 'reading-stats'] },
-  { id: 'create', label: '素材创作', items: ['materials', 'editor'] },
-  { id: 'manage', label: '管理沉淀', items: ['calendar', 'reading-list', 'knowledge-export'] }
-];
+// （原 NAV_GROUPS 已删：零引用，且它曾引用的 briefing/tracker/trends/reading-stats
+//   四个 nav 值已随「洞察分析 v1」InsightDashboardPage 一起下线——2026-09-11）
 
 // 分类列表（旧版 CATEGORIES，内容与 appConstants.jsx 的 FALLBACK_CATEGORIES 完全一致）
 import { FALLBACK_CATEGORIES } from './appConstants.jsx';

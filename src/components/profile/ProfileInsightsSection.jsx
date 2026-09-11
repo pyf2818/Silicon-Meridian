@@ -12,7 +12,7 @@ import { useMemo } from 'react';
 import { ICONS } from '../../constants/index.jsx';
 import { HudLineChart } from './charts/HudCharts.jsx';
 import { useThemeColors } from '../../hooks/useThemeColors.js';
-import { computeReadingProfile } from '../../utils/profileModel.js';
+import { computeReadingProfile, withInterestLabels } from '../../utils/profileModel.js';
 import { Panel, Tele, Brand } from './charts/AtlasShell.jsx';
 import { WeightedBars, PreferenceMeters, SessionTiles } from './charts/InsightPanels.jsx';
 
@@ -37,12 +37,18 @@ function relTime(lastAt) {
 export default function ProfileInsightsSection({
   readingHistory = [],
   bookmarks = [],
+  categories = [],
   profileLearningEngine,
   learnedPrefs,
 }) {
   const theme = useThemeColors();
   const engine = profileLearningEngine || {};
-  const reading = useMemo(() => computeReadingProfile(bookmarks), [bookmarks]);
+  // label 展示映射在这里（而非 useIntelligenceMemos）完成：本组件是唯一需要
+  // 「赛道中文名」的消费方，且映射依赖外部字典，放纯函数 withInterestLabels 可单测。
+  const reading = useMemo(
+    () => withInterestLabels(computeReadingProfile(bookmarks), categories),
+    [bookmarks, categories],
+  );
   const ins = learnedPrefs?.insights || {};
 
   const hasData = readingHistory.length + bookmarks.length > 0;
@@ -63,7 +69,7 @@ export default function ProfileInsightsSection({
 
   /* ---------- 加权条数据 ---------- */
   const interestBars = useMemo(() => (reading.topInterests || []).slice(0, 6).map(i => ({
-    label: i.id, count: i.count || 0,
+    label: i.label || i.id, count: i.count || 0,
   })), [reading]);
 
   const sourceBars = useMemo(() => (reading.topSources || []).slice(0, 6).map(s => ({

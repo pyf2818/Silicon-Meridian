@@ -225,6 +225,7 @@ export default function ProfilePage({
                 <ProfileInsightsSection
                   readingHistory={readingHistory}
                   bookmarks={bookmarks}
+                  categories={categories}
                   profileLearningEngine={profileLearningEngine}
                   learnedPrefs={learnedPrefs}
                 />

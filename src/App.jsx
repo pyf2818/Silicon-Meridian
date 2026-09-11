@@ -41,7 +41,6 @@ import { computeNewsTrends } from './domain/intelligence/trendAnalytics.js';
 import { useIntelligenceBriefing } from './hooks/useIntelligenceBriefing.js';
 import { useBookmarkMaterial } from './hooks/useBookmarkMaterial.js';
 import { useArticleEditor } from './hooks/useArticleEditor.js';
-import { useBriefingOps } from './hooks/useBriefingOps.js';
 import { useGithubInsight } from './hooks/useGithubInsight.js';
 import { BlockGrid, BlockPanel, BlockStat, BlockToolbar } from './blocks/index.js';
 import CommandPalette from './shell/CommandPalette.jsx';
@@ -58,7 +57,6 @@ import Topbar from './components/Topbar.jsx';
 import NewsPage from './components/NewsPage.jsx';
 import CustomUrlPage from './components/CustomUrlPage.jsx';
 import KnowledgeExportPage from './components/KnowledgeExportPage.jsx';
-import InsightDashboardPage from './components/InsightDashboardPage.jsx';
 import GithubPage from './components/GithubPage.jsx';
 import MonitorPage from './components/MonitorPage.jsx';
 import TrendingPage from './components/TrendingPage.jsx';
@@ -505,10 +503,6 @@ function App() {
 
   // customUrl states moved to useCustomUrl hook
   // UI switch states (showFollowDropdown/mobileMenuOpen/showBackToTop) moved to useUI
-  const trackTargets = useBehaviorStore(s => s.trackTargets);
-  const setTrackTargets = useBehaviorStore(s => s.setTrackTargets);
-  // briefingConfig 已迁移到 profileStore
-  const [newTrackTarget, setNewTrackTarget] = useState('');
   const readingHistory = useBehaviorStore(s => s.readingHistory);
   const setReadingHistory = useBehaviorStore(s => s.setReadingHistory);
   // recommendationFeedbackEvents 持久化由 useBehaviorStore 的 persist 中间件自动处理
@@ -544,9 +538,6 @@ function App() {
   const setMaterialView = useMaterialsStore(s => s.setMaterialView);
   const materialDetailId = useMaterialsStore(s => s.materialDetailId);
   const setMaterialDetailId = useMaterialsStore(s => s.setMaterialDetailId);
-  // ===== AI 简报状态（迁移自 useState -> Zustand aiStore，content 自动持久化）=====
-  const aiBrief = useAiStore(s => s.aiBrief);
-  const setAiBrief = useAiStore(s => s.setAiBrief);
   const signalFilter = useStockStore(s => s.signalFilter);
   const setSignalFilter = useStockStore(s => s.setSignalFilter);
   // article editor state moved to useArticleEditor hook
@@ -756,7 +747,7 @@ function App() {
   // 30+ 个 saveLS 合并为一个统一同步 effect — 任何 state 变化只触发一次写入
   // 注：nav/sidebarCollapsed/themeMode/expandedNavGroups/contextGroupOpen/recentVisits
   // 等已迁移到 useUiStore；followKeywords/pinnedKeywords/recommendationFeedback/
-  // searchHistory/viewMode/trackTargets/briefingConfig/readingHistory/recommendationFeedbackEvents
+  // searchHistory/viewMode/briefingConfig/readingHistory/recommendationFeedbackEvents
   // 已迁移到对应 Zustand store，由 store 自行持久化，不再需要在这里同步
   useEffect(() => {
     const map = {
@@ -1234,11 +1225,10 @@ function App() {
     return { matrix, maxVal, regions };
   }, [items]);
 
-  const { dailyBriefing, trackerData, insightData, readingProfile } = useIntelligenceMemos({
+  const { dailyBriefing, insightData, readingProfile } = useIntelligenceMemos({
     items,
     followKeywords,
     briefingConfig,
-    trackTargets,
     categories,
     trendData,
     bookmarks,
@@ -1999,60 +1989,6 @@ ${materialLines || '暂无素材'}`;
 
   // 书签与素材操作已提取至 useBookmarkMaterial hook
 
-  // AI 每日简报生成
-  async function generateAiBrief() {
-    if (!llmConfig.baseUrl || !llmConfig.selectedModel) {
-      setAiBrief({ loading: false, content: '', error: '请先在设置中配置大模型', generatedAt: null });
-      return;
-    }
-    setAiBrief({ loading: true, content: '', error: '', generatedAt: null });
-    try {
-      const topNews = items.slice(0, 15).map(i => `- ${i.title} (${i.source})`).join('\n');
-      const signals = insightData.anomalies.slice(0, 5).map(a => `- ${a.label}: ${a.type === 'surge' ? '升温' : '降温'} ${a.growth > 0 ? '+' : ''}${a.growth}%`).join('\n');
-      const prompt = `请根据以下今日科技资讯生成一份简洁的中文每日简报（500字以内）：
-
-## 要闻
-${topNews}
-
-## 信号
-${signals}
-
-格式要求：
-1. 【今日焦点】1-2条最重要新闻及简评
-2. 【赛道观察】2-3个值得关注的趋势
-3. 【明日关注】1-2个前瞻性预测
-
-保持简洁客观，避免冗余。`;
-
-      const res = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: llmConfig.baseUrl,
-          apiKey: llmConfig.apiKey,
-          model: llmConfig.selectedModel,
-          action: 'custom',
-          content: prompt
-        })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setAiBrief({ loading: false, content: data.content, error: '', generatedAt: new Date().toISOString() });
-      } else {
-        setAiBrief({ loading: false, content: '', error: data.error || '生成失败', generatedAt: null });
-      }
-    } catch (e) {
-      setAiBrief({ loading: false, content: '', error: e.message, generatedAt: null });
-    }
-  }
-
-  // Markdown 简化渲染（支持标题、粗体、列表）- 用于 AI 简报
-
-
-  // 简报导出操作（保存到素材库 / 导出为本地文件 / 导出到创作中心）
-  const { saveBriefToMaterials, exportBriefToFile, exportBriefToEditor } = useBriefingOps({
-    aiBrief, setMaterials, setArticles, setCurrentArticleId, setNav
-  });
 
   const {
     readingStatsData,
@@ -2104,12 +2040,6 @@ ${signals}
     setPinnedKeywords(prev => prev.filter(k => k !== kw));
   }
 
-  function addTrackTarget() {
-    if (!newTrackTarget.trim()) return;
-    const id = Date.now().toString();
-    setTrackTargets(prev => [...prev, { id, keyword: newTrackTarget.trim(), aliases: [], createdAt: new Date().toISOString() }]);
-    setNewTrackTarget('');
-  }
 
   function recordReading(item) {
     // 阅读行为单独进入行为校准，不得覆盖用户显式设置的领域/信源等级。
@@ -2691,33 +2621,6 @@ ${signals}
             <MonitorPage items={items} />
           )}
 
-           {/* 洞察分析 - 统一仪表盘 */}
-          {(nav === 'briefing' || nav === 'tracker' || nav === 'trends' || nav === 'reading-stats') && (
-            <InsightDashboardPage
-              nav={nav}
-              setNav={setNav}
-              insightData={insightData}
-              trackerData={trackerData}
-              readingProfile={readingProfile}
-              items={items}
-              aiBrief={aiBrief}
-              saveBriefToMaterials={saveBriefToMaterials}
-              exportBriefToFile={exportBriefToFile}
-              exportBriefToEditor={exportBriefToEditor}
-              generateAiBrief={generateAiBrief}
-              followKeywords={followKeywords}
-              followKeywordUpdates={followKeywordUpdates}
-              todayMustRead={todayMustRead}
-              setCategory={setCategory}
-              categories={categories}
-              executeSearch={executeSearch}
-              newTrackTarget={newTrackTarget}
-              setNewTrackTarget={setNewTrackTarget}
-              addTrackTarget={addTrackTarget}
-              trackTargets={trackTargets}
-              setTrackTargets={setTrackTargets}
-            />
-          )}
 
           {nav === 'materials' && renderMaterialsRepo()}
           <AddMaterialModal showAddMaterial={showAddMaterial} setShowAddMaterial={setShowAddMaterial} addManualMaterial={addManualMaterial} materialSpaces={materialSpaces} />
