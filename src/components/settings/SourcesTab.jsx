@@ -407,6 +407,12 @@ export default function SourcesTab({
                                           {source.grade}
                                         </span>
                                       )}
+                                      {source.type === 'api' && (
+                                        <span className="source-api-badge" title="生产端 API 源：厂商官方结构化数据">API</span>
+                                      )}
+                                      {source.bridged && (
+                                        <span className="source-bridge-badge" title="经第三方 RSSHub 实例桥接：质量分按传输层可信度打折">桥接</span>
+                                      )}
                                     </div>
                                     <button
                                       className="source-toggle-btn"
@@ -755,6 +761,8 @@ export default function SourcesTab({
                                  <div className="source-card-main">
                                   <div className="source-card-header">
                                     <span className="source-card-name">{source.name}</span>
+                                    {source.type === 'api' && <span className="source-api-badge" title="生产端 API 源：厂商官方结构化数据">API</span>}
+                                    {source.bridged && <span className="source-bridge-badge" title="经第三方 RSSHub 实例桥接：质量分按传输层可信度打折">桥接</span>}
                                     <div className="source-card-status">
                                       {getSourceHealthIndicator(sourceHealth, source.name)}
                                       {health && health.responseTime && (

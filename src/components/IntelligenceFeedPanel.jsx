@@ -38,6 +38,11 @@ export function buildIntelInsight(event) {
   if (sourceCount >= 3) lines.push(`已有 ${sourceCount} 家独立信源报道，交叉验证充分（置信度约 ${confidence}%），事实基础较扎实。`);
   else if (sourceCount === 2) lines.push(`目前 ${sourceCount} 家信源，初步互证；关键细节仍以官方公告为准。`);
   else if (sourceCount === 1) lines.push(`仅单一信源，早期信号；持续观察是否有跟进报道。`);
+  // GDELT 全球媒体交叉佐证（Batch3 元数据，缺失则跳过）
+  if (event.verification) {
+    const v = event.verification;
+    lines.push(`GDELT 交叉佐证：${v.distinctDomains} 家独立域名报道（${v.level === 'strong' ? '强佐证' : '部分佐证'}）。`);
+  }
   // 关注理由
   (event.reasons || []).slice(0, 2).forEach(r => lines.push(String(r)));
   // 实体
@@ -156,6 +161,14 @@ export default function IntelligenceFeedPanel({
               <span className="intel-radar-chip rank">{formatScore(hero.impactScore)} 影响 · {formatScore(hero.heatScore)} 热度</span>
               {hero.categoryLabel && <span className="intel-radar-chip">{hero.categoryLabel}</span>}
               {hero.independentSourceCount > 1 && <span className="intel-radar-chip">{hero.independentSourceCount} 源互证</span>}
+              {hero.verification && (
+                <span
+                  className={`intel-radar-chip verify-${hero.verification.level === 'strong' ? 'strong' : 'partial'}`}
+                  title={`GDELT 全球媒体交叉验证：${hero.verification.distinctDomains} 家独立域名报道`}
+                >
+                  ✓ GDELT {hero.verification.distinctDomains} 域
+                </span>
+              )}
             </div>
             <h3 className="intel-radar-lead-title">{hero.title}</h3>
             <p className="intel-radar-lead-summary">{hero.summary || t('common.empty')}</p>
@@ -179,6 +192,7 @@ export default function IntelligenceFeedPanel({
                 <span className="intel-radar-row-meta">
                   {event.categoryLabel && <i>{event.categoryLabel}</i>}
                   {event.independentSourceCount > 1 && <i>{event.independentSourceCount} 源</i>}
+                  {event.verification && <i className="intel-verify" title="GDELT 全球媒体交叉验证">✓{event.verification.distinctDomains}域</i>}
                   <i>{event.source || ''}</i>
                 </span>
               </span>
