@@ -10,7 +10,7 @@
 > - **串行工具**：免审批调用已并行（`Promise.allSettled` 并发池），需审批的仍串行。
 > - **6 轮上限**：工作站 `WORKSTATION_MAX_ITERATIONS` 已提升（12），末轮硬撤工具强制收敛。
 > - **per-tool 超时（P1-7）**：已落地并在 2026-09-11 升级为「真取消」——`executeTool` 每次调用建独立 AbortController（父级 signal + 超时合并），到点广播 abort 掐断在途 fetch/嵌套子代理（此前 `Promise.race` 只是弃等，僵尸 executor 继续烧 token）；trace 层加僵尸进度守卫（完结卡片不再接受迟到 emitProgress）。
-> - 仍开放：plan→execute 闭环（P1-1，需产品拍板交互形态）、resume、服务端沙箱执行类能力。
+> - 仍开放：resume、服务端沙箱执行类能力。**plan→execute 闭环已于 2026-09-11 关闭**（c9c8166）：v6 重构遗留的悬空 planMode 引用修复（纯聊天路径崩溃 P0）+ 输入区「计划」触发器重接（planMode.js 纯逻辑 + opts.planRequest → isPlan → 计划卡「批准执行」以全量工具执行，权限归一后实为 semi，敏感写仍走审批）。
 
 ---
 
