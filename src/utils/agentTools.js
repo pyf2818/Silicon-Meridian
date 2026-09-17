@@ -310,11 +310,13 @@ async function toolSearchNews(args, ctx) {
  * agent 可直接以 [资讯:ID] 引用（ID 会登记进 ctx.focusCitations 供终答引用校验放行）。
  */
 async function toolReadIntelligenceFocus(args, ctx) {
+  // topic 可选：不传 = 「今日概览」模式（回答"今日有哪些值得关注的资讯"）。
+  // 此前 topic 必填，而这正是本次要修的断点——概览类问题没有可填的主题，只能退联网。
   const topic = String(args?.topic || '').trim();
-  if (!topic) return '错误：topic 参数不能为空（想深入的主题，如某公司/模型/领域）';
   const take = Math.max(4, Math.min(Number(args?.take) || 10, 24));
 
-  const params = new URLSearchParams({ take: String(take * 2), q: topic, storage: 'auto' });
+  const params = new URLSearchParams({ take: String(take * 2), storage: 'auto' });
+  if (topic) params.set('q', topic);
   if (args?.date && /^\d{4}-\d{2}-\d{2}$/.test(String(args.date))) params.set('date', String(args.date));
   if (args?.category) params.set('category', String(args.category).trim().slice(0, 32));
 
@@ -323,7 +325,9 @@ async function toolReadIntelligenceFocus(args, ctx) {
     if (!res.ok) return `错误：情报接口返回 ${res.status}`;
     const data = await res.json();
     if (!data?.ok || !Array.isArray(data.events) || data.events.length === 0) {
-      return `未找到与 "${topic}" 相关的情报事件。可尝试换一个关键词，或改用 search_news / web_search 工具补充。`;
+      return topic
+        ? `未找到与 "${topic}" 相关的情报事件。可尝试换一个关键词，或改用 search_news / web_search 工具补充。`
+        : '今日暂无情报事件（快照尚未生成或来源还没有更新）。可稍后重试，或改用 search_news 按关键词检索。';
     }
 
     const events = data.events.slice(0, take);
@@ -337,7 +341,10 @@ async function toolReadIntelligenceFocus(args, ctx) {
       const summary = String(ev.summary || '').replace(/\s+/g, ' ').slice(0, 400);
       return `[资讯:${ev.id}] ${ev.title}\n  来源：${src}（${ev.independentSourceCount || 1} 个独立源，置信度 ${ev.confidence || 0}%）\n  摘要：${summary || '无'}`;
     });
-    return `聚焦主题 "${topic}" 的 ${events.length} 条情报事件（可直接以 [资讯:ID] 格式引用）：\n\n${lines.join('\n\n')}`;
+    const header = topic
+      ? `聚焦主题 "${topic}" 的 ${events.length} 条情报事件（可直接以 [资讯:ID] 格式引用）：`
+      : `今日情报概览 · 共 ${events.length} 条事件（可直接以 [资讯:ID] 格式引用）：`;
+    return `${header}\n\n${lines.join('\n\n')}`;
   } catch (err) {
     return `错误：聚焦情报拉取失败 - ${err?.message || err}`;
   }
@@ -1464,7 +1471,7 @@ const BUILTIN_TOOL_DEFS = [
       type: 'function',
       function: {
         name: 'read_intelligence_focus',
-        description: '【情报聚焦】按主题拉取聚焦的情报事件（多源聚类 + 交叉验证 + 置信度），返回条目可直接以 [资讯:ID] 格式引用。当需要深入分析某个主题（某公司、某模型、某领域）而当前证据不够时调用。与 search_news（关键词找单条资讯）互补',
+        description: '【情报聚焦·今日概览+主题聚焦】多源聚类 + 交叉验证 + 置信度的事件列表，可直接以 [资讯:ID] 格式引用。topic 不传 = 返回今日 TOP 情报概览（用户问"今日有哪些值得关注的资讯"时必须用它，而不是联网搜索）；传 topic = 聚焦某主题（某公司/模型/领域）。与 search_news（关键词找单条资讯）互补',
         parameters: {
           type: 'object',
           properties: {
@@ -1473,7 +1480,7 @@ const BUILTIN_TOOL_DEFS = [
             date: { type: 'string', description: '限定日期 YYYY-MM-DD（可选，默认不限）' },
             category: { type: 'string', description: '限定类别（可选，如 ai-models/industry/paper）' },
           },
-          required: ['topic'],
+          required: [],
         },
       },
     },

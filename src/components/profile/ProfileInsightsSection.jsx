@@ -45,10 +45,22 @@ export default function ProfileInsightsSection({
   const engine = profileLearningEngine || {};
   // label 展示映射在这里（而非 useIntelligenceMemos）完成：本组件是唯一需要
   // 「赛道中文名」的消费方，且映射依赖外部字典，放纯函数 withInterestLabels 可单测。
-  const reading = useMemo(
-    () => withInterestLabels(computeReadingProfile(bookmarks), categories),
-    [bookmarks, categories],
-  );
+  // 修复：阅读趋势此前只吃 bookmarks，而书签默认 readAt=null → 趋势线永远没有数据。
+  // 真正持续记录的是 readingHistory（每次阅读都带 readAt）——两者合并后才是完整的阅读画像。
+  const reading = useMemo(() => {
+    const historyRows = (readingHistory || []).map(item => ({
+      ...item,
+      readAt: item.readAt || item.firstReadAt || item.publishedAt || null,
+    }));
+    const bookmarkRows = (bookmarks || []).map(item => ({
+      ...item,
+      readAt: item.readAt || item.savedAt || item.createdAt || null,
+    }));
+    return withInterestLabels(
+      computeReadingProfile([...historyRows, ...bookmarkRows]),
+      categories,
+    );
+  }, [readingHistory, bookmarks, categories]);
   const ins = learnedPrefs?.insights || {};
 
   const hasData = readingHistory.length + bookmarks.length > 0;

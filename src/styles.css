@@ -25310,6 +25310,17 @@ body {
 .profile-center-page .hud-kpi-trend.up { color: #37f5b6; }
 .profile-center-page .hud-kpi-trend.down { color: #ff6e9c; }
 .profile-center-page .hud-kpi-label { display: block; margin-top: 7px; font-size: 12px; color: var(--text-secondary); }
+
+/* 浅色模式：状态/涨跌色在深色下调优的亮绿/亮粉，浅底上对比不足 → 换低亮度变体 */
+:root[data-mode="light"] .profile-center-page .snapshot-status.status-success,
+:root[data-mode="light"] .profile-center-page .snapshot-detail-label {
+  background: rgba(11, 107, 86, 0.1);
+  border-color: rgba(11, 107, 86, 0.28);
+  color: #0b6b56;
+}
+:root[data-mode="light"] .profile-center-page .snapshot-status.status-failed { color: #a32d4b; }
+:root[data-mode="light"] .profile-center-page .hud-kpi-trend.up { color: #0b6b56; }
+:root[data-mode="light"] .profile-center-page .hud-kpi-trend.down { color: #a32d4b; }
 .profile-center-page .hud-kpi-sub {
   display: block;
   margin-top: 2px;

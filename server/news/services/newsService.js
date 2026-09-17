@@ -472,7 +472,9 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
     filteredItems = filteredItems.filter(item => {
       const txt = `${item.title} ${item.summary} ${item.source} ${(item.tags || []).join(' ')}`.toLowerCase();
       if (tokens.length > 1) {
-        return tokens.every(t => txt.includes(t));
+        // 多词改 OR 命中：AND 子串匹配会让自然语言关键词（如"今日值得关注"）全军覆没；
+        // 命中数排序（下方）保证完全命中的仍排最前。
+        return tokens.some(t => txt.includes(t));
       }
       return txt.includes(q);
     });
