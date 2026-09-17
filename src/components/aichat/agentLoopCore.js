@@ -187,7 +187,7 @@ export async function runToolLoop({
   const CONVERGE_AT = maxIterations - 1; // 倒数第二轮起提示收敛
   const toolCallTrace = [];
   const usageTotal = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, turns: 0 };
-  const conversationMessages = baseMessages.map(m => ({ role: m.role, content: m.content }));
+  const conversationMessages = baseMessages.map(m => ({ ...m }));
   let finalContent = '';
   let aborted = false;
 
@@ -252,6 +252,7 @@ export async function runToolLoop({
 
       // 最后一轮硬断工具：直接不下发 tools，模型物理上无法再调
       const iterTools = isFinalIteration ? undefined : toolSchemas;
+      const allowedToolNames = new Set((iterTools || []).map(t => t.function?.name));
 
       // ── 带重试的 LLM 调用：仅对 429/5xx/上游限流瞬错重试，最多 2 次 ──
       const MAX_AGENT_RETRIES = 2;
@@ -313,18 +314,26 @@ export async function runToolLoop({
       // 此前 JSON.parse 失败静默变 {}，schema 只是给模型看的装饰；现在校验失败/缺必填
       // 直接以结构化错误回灌，让模型下一轮自修，不进入执行。
       const calls = [];
+      const allCalls = [];
       const resultMap = new Map(); // tc.id -> resultText（含校验失败预填）
       for (const tc of (data.tool_calls || [])) {
         const toolName = tc?.function?.name || 'unknown';
         let args = {};
         let invalidReason = '';
+        let rejection = '';
+        if (!allowedToolNames.has(toolName)) {
+          rejection = `错误：当前智能体未授权工具 "${toolName}"，本次调用未执行。`;
+        }
         try {
           args = JSON.parse(tc?.function?.arguments || '{}');
         } catch (parseErr) {
           invalidReason = `参数不是合法 JSON（${parseErr?.message || 'parse error'}）`;
         }
-        if (!invalidReason) {
+        if (!rejection && !invalidReason) {
           const entry = getTool(toolName);
+          if (typeof entry?.meta?.normalizeArgs === 'function') {
+            try { args = entry.meta.normalizeArgs(args); } catch { /* 与注册表保持一致 */ }
+          }
           if (entry?.schema?.function?.parameters) {
             const verdict = validateToolArgs(entry.schema.function.parameters, args);
             if (!verdict.ok) {
@@ -334,19 +343,22 @@ export async function runToolLoop({
             }
           }
         }
-        if (invalidReason) {
-          resultMap.set(tc.id, `错误：工具 "${toolName}" 参数校验失败：${invalidReason}。请修正参数后重新调用。`);
+        const call = { tc, toolName, args };
+        allCalls.push(call);
+        if (rejection || invalidReason) {
+          const result = rejection || `错误：工具 "${toolName}" 参数校验失败：${invalidReason}。请修正参数后重新调用。`;
+          resultMap.set(tc.id, result);
           toolCallTrace.push({
             id: tc.id,
             name: toolName,
             args: typeof args === 'object' && args !== null ? args : {},
-            status: 'done',
-            result: `错误：参数校验失败：${invalidReason}`,
+            status: 'failed',
+            result,
             startedAt: Date.now(),
             completedAt: Date.now(),
           });
         } else {
-          calls.push({ tc, toolName, args });
+          calls.push(call);
         }
       }
 
@@ -378,7 +390,8 @@ export async function runToolLoop({
        * 每次执行注入独立的 emitProgress（子代理等长任务可向对应卡片推进度）。
        */
       const runOne = async (c) => {
-        const callCtx = { ...toolCtx, emitProgress: (patch) => patchTrace(c.tc.id, { progress: patch }) };
+        controller?.signal?.throwIfAborted();
+        const callCtx = { ...toolCtx, signal: controller?.signal || toolCtx?.signal, emitProgress: (patch) => patchTrace(c.tc.id, { progress: patch }) };
         let r;
         try {
           r = await executeAgentTool(c.toolName, c.args, callCtx);
@@ -413,15 +426,15 @@ export async function runToolLoop({
       }
 
       // 按原始顺序统一回灌：trace / 历史钩子 / 长结果落盘 / 不可信包裹后的 tool message
-      for (const c of calls) {
+      for (const c of allCalls) {
         const resultText = resultMap.get(c.tc.id) ?? '（无返回）';
         // 审批被拒 / 被取消 = "未执行"，标 skipped；"错误："前缀 = 执行失败
-        const wasSkipped = /^错误：(用户拒绝授权|审批被取消|审批失败|精灵未授权)/.test(resultText);
+        const wasSkipped = /^错误：(用户拒绝授权|审批被取消|审批失败|精灵未授权|当前智能体未授权)/.test(resultText);
         const wasFailed = !wasSkipped && resultText.startsWith('错误：');
 
         const traceItem = toolCallTrace.find(t => t.id === c.tc.id);
         if (traceItem) {
-          traceItem.status = wasSkipped ? 'skipped' : 'done';
+          traceItem.status = wasSkipped ? 'skipped' : (wasFailed ? 'failed' : 'done');
           traceItem.result = resultText.slice(0, 8000);
           traceItem.completedAt = Date.now();
         }
@@ -468,6 +481,12 @@ export async function runToolLoop({
       // 其他错误：向上传播，由调用方统一处理
       throw err;
     }
+  }
+
+  // 个别兼容层会忽略 tool_choice/no-tools 约束，在最后一轮仍返回工具调用。
+  // 此时不能把空字符串作为成功回复交给 UI。
+  if (!finalContent && toolCallTrace.length >= maxIterations) {
+    finalContent = '已达到本次推理轮次上限，未能生成完整回答。请缩小任务范围后重试。';
   }
 
   return {

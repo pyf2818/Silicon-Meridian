@@ -53,7 +53,7 @@ describe('buildMaterialContext(query)', () => {
     expect(ctx.total).toBe(4);
     expect(ctx.lines.length).toBeGreaterThan(0);
     // 默认按时间排序，最新 m3 在前
-    expect(ctx.selected[0].id).toBe('m3');
+    expect(ctx.selected[0].originalItemId).toBe('m3');
   });
 
   it('有 query 时按相关性检索，mode=query', () => {
@@ -61,7 +61,7 @@ describe('buildMaterialContext(query)', () => {
     expect(ctx.mode).toBe('query');
     expect(ctx.selected).toHaveLength(2);
     // 英伟达命中最强应排前
-    const ids = ctx.selected.map(m => m.id);
+    const ids = ctx.selected.map(m => m.originalItemId);
     expect(ids).toContain('m1');
   });
 
@@ -73,7 +73,7 @@ describe('buildMaterialContext(query)', () => {
 
   it('query 会避免注入不相关素材（提高注入精度）', () => {
     const ctx = buildMaterialContext(MATERIALS, { query: '股票市场 量化', limit: 2 });
-    const ids = ctx.selected.map(m => m.id);
+    const ids = ctx.selected.map(m => m.originalItemId);
     // 股市素材应被检索到；纯重复素材不应混入
     expect(ids).toContain('m4');
   });

@@ -1,6 +1,6 @@
 import { ICONS, GITHUB_PERIODS } from '../constants/index.jsx';
 import GithubRepoCard from './GithubRepoCard.jsx';
-import { buildGithubMaterial } from '../utils/githubMaterial.js';
+import { buildGithubMaterial, getGithubItemId } from '../utils/githubMaterial.js';
 
 function GithubPage({
   githubSince,
@@ -27,7 +27,7 @@ function GithubPage({
         </div>
       </div>
        {githubLoading && <div className="github-grid">{Array.from({ length: 6 }).map((_, i) => <article key={i} className="github-card skeleton"><div className="skeleton-gh-header" /><div className="skeleton-gh-desc" /><div className="skeleton-gh-stats" /></article>)}</div>}
-       <div className="github-grid">{githubRepos.map((repo, i) => <GithubRepoCard key={repo.id} repo={repo} index={i} since={githubSince} isBookmarked={isBookmarked(repo.url)} isInMaterials={isInMaterials(repo.id)} onBookmark={() => toggleBookmark({ id: repo.url, title: repo.fullName, url: repo.url, source: 'GitHub', summary: repo.description, tags: [repo.language].filter(Boolean), region: 'global', mode: 'deep', publishedAt: new Date().toISOString(), category: 'open-source' })} onAddMaterial={() => toggleMaterial(buildGithubMaterial(repo, githubSince), 'project', `GitHub ${GITHUB_PERIODS.find(p => p.id === githubSince)?.label || '周榜'}项目观察`)} insight={githubInsights[repo.id]} onRequestInsight={requestGithubInsight} insightLoading={githubInsightLoading[repo.id]} expandedAll={expandedAll} onOpenLightbox={(src, title, images, index) => setLightbox({ open: true, src, title, images: images || [], index: index || 0 })} />)}</div>
+       <div className="github-grid">{githubRepos.map((repo, i) => { const itemId = getGithubItemId(repo); return <GithubRepoCard key={itemId || repo.id || i} repo={repo} index={i} since={githubSince} isBookmarked={isBookmarked(itemId)} isInMaterials={isInMaterials(itemId)} onBookmark={() => toggleBookmark({ id: itemId, title: repo.fullName, url: repo.url, source: 'GitHub', summary: repo.description, tags: [repo.language].filter(Boolean), region: 'global', mode: 'deep', publishedAt: new Date().toISOString(), category: 'open-source' })} onAddMaterial={() => toggleMaterial(buildGithubMaterial(repo, githubSince), 'project', `GitHub ${GITHUB_PERIODS.find(p => p.id === githubSince)?.label || '周榜'}项目观察`)} insight={githubInsights[repo.id]} onRequestInsight={requestGithubInsight} insightLoading={githubInsightLoading[repo.id]} expandedAll={expandedAll} onOpenLightbox={(src, title, images, index) => setLightbox({ open: true, src, title, images: images || [], index: index || 0 })} />; })}</div>
     </>
   );
 }

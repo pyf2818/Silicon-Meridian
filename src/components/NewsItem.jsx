@@ -139,13 +139,22 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
       onDragStart={handleDragStart}
     >
       {isFollowed && <div className="follow-badge">关注</div>}
-      {isFreshNews(item.publishedAt) && <div className="new-badge" aria-label="新资讯">NEW</div>}
+      {isFreshNews(item.publishedAt, { estimated: item.publishedAtEstimated }) && <div className="new-badge" aria-label="新资讯">NEW</div>}
       <div className="item-left">
         {!isCompact && <div className="item-tags">
           <span className={`item-mode mode-${item.mode}`}>{MODE_MAP[item.mode]}</span>
           <span className={`item-region region-${item.region}`}>{REGION_MAP[item.region]}</span>
         </div>}
-        <div className="item-time">{formatRelative(item.publishedAt)}</div>
+        <div
+          className="item-time"
+          title={
+            Array.isArray(item.rankParts) && item.rankParts.length
+              ? `为什么给你看这条：${item.rankParts.filter(p => p.confidence > 0).map(p => p.reason).join('；')}`
+              : (item.publishedAtEstimated ? '信源未提供可解析的发布时间' : undefined)
+          }
+        >
+          {formatRelative(item.publishedAt, { estimated: item.publishedAtEstimated })}
+        </div>
       </div>
       <div className="item-main">
         <div className="item-top-tags">

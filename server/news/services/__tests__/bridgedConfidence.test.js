@@ -51,4 +51,33 @@ describe('桥接源置信度（Batch1）', () => {
     const w0 = SOURCE_WEIGHTS[names[0]];
     expect(group[0].qualityScore).toBe(Math.round(3 * w0 * BRIDGED_WEIGHT_FACTOR * 10) / 10);
   });
+
+  it('缺少原文 URL 的条目不因共享空值获得交叉验证分', () => {
+    const items = [
+      base({ url: '', source: '源A' }),
+      base({ url: '', source: '源B' }),
+    ];
+    const group = crossVerifyItems(items);
+    expect(group.map(item => item.crossVerifyScore)).toEqual([0, 0]);
+    expect(group.map(item => item.qualityScore)).toEqual([0, 0]);
+  });
+
+  it('同一来源重复条目不计作多个独立来源', () => {
+    const items = [
+      base({ url: 'https://example.com/dup', source: '同一媒体' }),
+      base({ url: 'https://example.com/dup', source: '同一媒体' }),
+    ];
+    expect(crossVerifyItems(items).map(item => item.crossVerifyScore)).toEqual([1, 1]);
+  });
+
+  it('合并脏来源数据时跳过缺失标题和非对象条目', async () => {
+    const { mergeDiverseItems } = await import('../newsService.js');
+    const result = mergeDiverseItems([
+      null,
+      { source: 'A', title: null, url: 'https://example.com/bad' },
+      { source: 'A', title: '  Valid title  ', url: 'https://example.com/good' },
+    ], [], 10, 10);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ source: 'A', title: 'Valid title' });
+  });
 });

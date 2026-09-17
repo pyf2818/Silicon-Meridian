@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { ensureE2eDatabase } from './db.js';
-import { installExternalFixtures } from './fixtures.js';
+import { dismissOnboarding, installExternalFixtures } from './fixtures.js';
 
 test.skip(!process.env.TEST_DATABASE_URL, 'TEST_DATABASE_URL is required for community persistence E2E');
 
@@ -11,6 +11,8 @@ test.beforeAll(async () => {
 async function openCommunity(page) {
   await installExternalFixtures(page, { community: false });
   await page.goto('/?view=square');
+  // 首访引导蒙层会拦截所有指针事件，必须先关掉再交互
+  await dismissOnboarding(page);
 }
 
 async function register(page, username) {

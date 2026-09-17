@@ -2,17 +2,47 @@
 
 # SiliconStream · 万般硅川
 
-**个人智能情报与创作 OS —— 资讯聚合 × 卫星态势大屏 × AI 工作站 × 智能体画布 × 社区协作**
+**个人智能情报与认知生产平台 —— 从发现信息，到理解、沉淀、创作与分享**
 
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-7-646cff?logo=vite&logoColor=white)](https://vite.dev)
 [![Node](https://img.shields.io/badge/Node-20%20%7C%2022-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-763%20passing-3fb950)](../../actions)
+[![Tests](https://img.shields.io/badge/tests-1005%20passing-3fb950)](../../actions)
 [![MapLibre](https://img.shields.io/badge/globe-MapLibre%20GL%20v6-1e88e5)](https://maplibre.org)
 
-*将公开 RSS/Atom 资讯、GitHub 趋势、A 股行情、用户画像、AI 分析、创作资产与真实社区整合进一个工作台。未配置大模型时使用确定性算法驱动，接入 OpenAI 兼容模型后获得增强智能。*
+*SiliconStream 把公开 RSS/Atom 资讯、GitHub 趋势、A 股行情和用户关注主题汇总到同一个情报入口，再用 AI 帮你验证、分析、沉淀为素材和作品。全球态势、AI 工作站、Agent Team、工作流与社区都是这条主线上的专业视图与执行层。未配置大模型时仍可用确定性算法运行核心情报流程。*
 
 </div>
+
+---
+
+## 🎯 一条主线
+
+```text
+发现信息 → AI 理解与交叉验证 → 形成判断 → 沉淀为个人资产 → 生成作品 → 分享交流
+```
+
+打开首页，你先看到“今天什么信息值得关注、为什么与你有关、下一步可以做什么”。你可以从一条资讯继续执行：
+
+```text
+查看证据 → 交给 AI 工作站深度分析 → 保存到素材库 → 生成报告/文章 → 发布到社区
+```
+
+平台保持完整的专业能力，但各模块服务于同一条情报生产链：资讯和推荐负责发现，股票/GitHub/全球态势负责专业观察，Agent 与工作流负责分析执行，素材库和画像负责长期积累，创作与社区负责输出和复用。
+
+### 适合谁
+
+- **个人研究者与创作者**：把每天的信息流变成可检索、可复用的知识资产。
+- **产品、投资与技术团队**：追踪行业、竞品、开源项目和市场信号，生成带证据的内部简报。
+- **喜欢自托管的开发者**：用自己的 PostgreSQL、模型 API 和 MCP 工具搭建可扩展的个人情报工作台。
+
+### 先跑通一个任务
+
+不配置模型也可以体验推荐、信源分级和确定性分析；配置任意 OpenAI 兼容模型后，直接在 AI 工作站输入：
+
+> 追踪最近 7 天 AI 行业的重要变化，按“发生了什么、为什么重要、对我有什么影响、证据链接、下一步动作”输出一份简报。
+
+这条任务路径是项目的核心演示，其他页面和工具都可以从结果继续展开。
 
 ---
 
@@ -174,7 +204,7 @@ AI 与抓取网关内置请求体限制、超时、频率限制、私网拦截�
 ## 🧪 测试与质量
 
 ```bash
-npm run test              # Vitest 单测：763 个用例全绿（domain 纯逻辑引擎 / stores / hooks / utils / server）
+npm run test              # Vitest 单测：1072 个用例全绿（domain 纯逻辑引擎 / stores / hooks / utils / server）
 npm run test:integration  # 集成测试
 npm run test:e2e          # Playwright E2E
 npm run verify:platform   # 平台连通性自检（DB + 服务）

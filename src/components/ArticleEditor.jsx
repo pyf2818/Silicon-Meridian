@@ -4,6 +4,7 @@ import { ARTICLE_STATUS, ARTICLE_TEMPLATES, ARTICLE_TEMPLATE_CONTENT, MATERIAL_T
 import { formatRelative } from '../utils/format.js';
 import { renderMarkdownWithImages } from '../utils/markdown.jsx';
 import { loadCreativeVersions } from '../domain/creative/versionStore.js';
+import { matchesSpaceId } from '../utils/itemIdentity.js';
 
 export default function ArticleEditor({
   editorFullscreen, setEditorFullscreen,
@@ -526,7 +527,7 @@ export default function ArticleEditor({
                             <div className="materials-picker-list">
                               {materials
                                 .filter(m => !(article.materials || []).includes(m.id))
-                                .filter(m => articleMaterialSpaceFilter === 'all' || m.spaceId === Number(articleMaterialSpaceFilter))
+                                .filter(m => articleMaterialSpaceFilter === 'all' || matchesSpaceId(m.spaceId, articleMaterialSpaceFilter))
                                 .slice(0, 20)
                                 .map(m => (
                                   <div

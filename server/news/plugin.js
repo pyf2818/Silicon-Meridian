@@ -63,10 +63,11 @@ export function newsPlugin() {
     configureServer(server) {
       // 启动资讯缓存定时预热：服务启动即预热一次，之后每 5 分钟自动刷新
       // 用户进入页面看到的总是新鲜或不超过 5 分钟的缓存数据
-      const stopWarming = startNewsWarming(5 * 60 * 1000);
+      // E2E fixtures must be deterministic and offline; do not start external fan-out.
+      const stopWarming = process.env.SILICON_E2E === '1' ? () => {} : startNewsWarming(5 * 60 * 1000);
       // 启动 agent cron 守护：每 60 秒扫描到期任务，自动执行
       // 注意：cron 任务执行 LLM 需要 AGENT_LLM_CONFIG 环境变量
-      const stopCron = startCronDaemon(60 * 1000);
+      const stopCron = process.env.SILICON_E2E === '1' ? () => {} : startCronDaemon(60 * 1000);
       server.httpServer?.on?.('close', () => { stopWarming(); stopCron(); });
 
       const handleApiRequest = async (req, res, next) => {
@@ -245,8 +246,14 @@ export function newsPlugin() {
             .map(s => s.trim())
             .filter(Boolean);
 
-          const page = parseInt(requestUrl.searchParams.get('page') || '0', 10);
-          const pageSize = parseInt(requestUrl.searchParams.get('pageSize') || String(PAGE_SIZE), 10);
+          const rawPage = requestUrl.searchParams.get('page') || '0';
+          const rawPageSize = requestUrl.searchParams.get('pageSize') || String(PAGE_SIZE);
+          if (!/^\d+$/.test(rawPage) || !/^\d+$/.test(rawPageSize)) {
+            return sendJson(res, { ok: false, error: 'page and pageSize must be non-negative integers' }, 400);
+          }
+          const page = Math.min(Number(rawPage), 10_000);
+          // 前端工作站会请求最多 200 条，服务端上限仍低于全局池上限 500。
+          const pageSize = Math.min(Math.max(Number(rawPageSize), 1), 500);
           const search = requestUrl.searchParams.get('search') || '';
           const interestsParam = requestUrl.searchParams.get('interests') || '';
           const interests = interestsParam ? interestsParam.split(',').filter(Boolean) : [];
@@ -388,6 +395,7 @@ export function newsPlugin() {
           const body = await parseBody(req);
           const { baseUrl = '', apiKey = '', model = '', prompt = 'Hello' } = body;
           if (!baseUrl || !model) return sendJson(res, { ok: false, message: 'baseUrl and model are required' }, 400);
+          if (!isSafeUrl(baseUrl)) return sendJson(res, { ok: false, message: 'baseUrl points to a blocked destination' }, 403);
           try {
             const cleanBaseUrl = baseUrl.replace(/\/$/, '');
             const apiUrl = cleanBaseUrl.endsWith('/v1') || cleanBaseUrl.endsWith('/v2') || cleanBaseUrl.endsWith('/v3') || cleanBaseUrl.endsWith('/v4')
@@ -397,13 +405,17 @@ export function newsPlugin() {
             if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 15000);
-            const response = await fetch(apiUrl, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 50 }),
-              signal: controller.signal
-            });
-            clearTimeout(timeout);
+            let response;
+            try {
+              response = await fetch(apiUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ model, messages: [{ role: 'user', content: String(prompt).slice(0, 2000) }], max_tokens: 50 }),
+                signal: controller.signal
+              });
+            } finally {
+              clearTimeout(timeout);
+            }
             if (!response.ok) {
               const errText = await response.text().catch(() => '');
               return sendJson(res, { ok: false, message: `API responded ${response.status}: ${errText.slice(0, 200)}` });

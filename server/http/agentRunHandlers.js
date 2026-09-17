@@ -6,6 +6,7 @@ import { buildAgentSystemPrompt, buildAgentUserMessage } from '../agent/agentCon
 import { addAgentMemory } from '../agent/agentMemoryService.js';
 import { sendJsonResponse, readJsonBody } from './httpUtils.js';
 import { getUserIdFromRequest } from './agentAuth.js';
+import { requestChatCompletion } from '../agent/llmClient.js';
 
 async function requireUserId(req) {
   return getUserIdFromRequest(req);
@@ -16,23 +17,17 @@ async function requireUserId(req) {
  * 返回 agent 的最终回复
  */
 export async function runAgentOnce({ agentId, missionPrompt, userId, llmConfig, newsContext = null, sessionId = null, toolSchemas = null }) {
+  if (typeof missionPrompt !== 'string' || !missionPrompt.trim()) {
+    throw Object.assign(new Error('missionPrompt must be a non-empty string'), { status: 400 });
+  }
   // 1. 构建 systemPrompt
   const systemPrompt = await buildAgentSystemPrompt({ agentId, userId });
 
   // 2. 构建 user 消息（含今日资讯）
   const userMessage = await buildAgentUserMessage({ missionPrompt, newsContext });
 
-  // 3. 调用 LLM（复用 aiHandlers 的 handleAiGenerateRequest 内部逻辑）
-  // 直接 fetch 自己的 /api/ai-generate（避免重复实现 LLM 调用）
-  // 注：定时任务场景没有 req/res，直接走内部函数
-  const llmResp = await fetch(`${llmConfig.baseUrl}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(llmConfig.apiKey ? { 'Authorization': `Bearer ${llmConfig.apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: llmConfig.selectedModel,
+  // 3. 后台调用也复用安全 URL 策略，超时覆盖响应体读取。
+  const llmData = await requestChatCompletion(llmConfig, {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
@@ -41,15 +36,7 @@ export async function runAgentOnce({ agentId, missionPrompt, userId, llmConfig, 
       tool_choice: toolSchemas?.length ? 'auto' : undefined,
       max_tokens: 4000,
       temperature: 0.6,
-    }),
   });
-
-  if (!llmResp.ok) {
-    const errText = await llmResp.text();
-    throw new Error(`LLM API ${llmResp.status}: ${errText.slice(0, 200)}`);
-  }
-
-  const llmData = await llmResp.json();
   const assistantMsg = llmData.choices?.[0]?.message;
   const output = assistantMsg?.content || '';
 
@@ -85,14 +72,14 @@ export async function handleAgentRunRequest(req, res) {
   const userId = await requireUserId(req);
   if (!userId) return sendJsonResponse(res, 401, { ok: false, error: 'UNAUTHORIZED' });
 
-  const body = await readJsonBody(req);
-  if (!body.agentId) return sendJsonResponse(res, 400, { ok: false, error: 'agentId is required' });
-  if (!body.missionPrompt) return sendJsonResponse(res, 400, { ok: false, error: 'missionPrompt is required' });
-  if (!body.llmConfig?.baseUrl || !body.llmConfig?.selectedModel) {
-    return sendJsonResponse(res, 400, { ok: false, error: 'llmConfig.baseUrl and llmConfig.selectedModel are required' });
-  }
-
   try {
+    const body = await readJsonBody(req);
+    if (typeof body?.agentId !== 'string' || !body.agentId.trim()) {
+      return sendJsonResponse(res, 400, { ok: false, error: 'agentId is required' });
+    }
+    if (typeof body.missionPrompt !== 'string' || !body.missionPrompt.trim()) {
+      return sendJsonResponse(res, 400, { ok: false, error: 'missionPrompt must be a non-empty string' });
+    }
     const result = await runAgentOnce({
       agentId: body.agentId,
       missionPrompt: body.missionPrompt,
@@ -105,6 +92,6 @@ export async function handleAgentRunRequest(req, res) {
     return sendJsonResponse(res, 200, { ok: true, ...result });
   } catch (err) {
     console.error('[handleAgentRunRequest] failed:', err.message);
-    return sendJsonResponse(res, 500, { ok: false, error: err.message });
+    return sendJsonResponse(res, err.status || (err.name === 'AbortError' ? 504 : 500), { ok: false, error: err.message });
   }
 }

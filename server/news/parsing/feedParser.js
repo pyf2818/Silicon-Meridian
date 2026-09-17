@@ -1,19 +1,25 @@
 import { cleanText, decodeEntities, trimSummary, trimIntro, normalizeDate, detectCategory, detectTags, detectMode, hash, escapeRegExp } from '../utils/textProcessing.js';
+import { isEstimatedPublishTime } from '../utils/dateUtils.js';
 import { extractImageUrl, extractVideoUrl } from '../images/imageProcessing.js';
 
-export function parseFeed(xml, source) {
+export function parseFeed(xml, source, options = {}) {
+  const fetchedAt = options.fetchedAt || new Date().toISOString();
   const blocks = matchBlocks(xml, 'item').length ? matchBlocks(xml, 'item') : matchBlocks(xml, 'entry');
-  return blocks.map((block, index) => normalizeItem(block, source, index)).filter(item => item.title && item.url);
+  return blocks
+    .map((block, index) => normalizeItem(block, source, index, fetchedAt))
+    .filter(item => item.title && item.url);
 }
 
-export function normalizeItem(block, source, index) {
+export function normalizeItem(block, source, index, fetchedAt = new Date().toISOString()) {
   const title = cleanText(pick(block, ['title']));
   const rawSummary = cleanText(pick(block, ['description', 'summary']));
   const rawContent = pick(block, ['content:encoded', 'content']);
   const bodyIntro = trimIntro(cleanText(rawContent));
   const summary = trimSummary(rawSummary || bodyIntro);
   const url = cleanText(pick(block, ['link'])) || pickAtomLink(block);
+  // 没有日期字段 / 日期不可解析 → null（绝不伪造为「抓取时刻」，见 dateUtils.js 的说明）
   const publishedAt = normalizeDate(pick(block, ['pubDate', 'published', 'updated', 'dc:date']));
+  const publishedAtEstimated = isEstimatedPublishTime(publishedAt);
   const text = `${title} ${summary} ${bodyIntro} ${source.name}`;
   const category = detectCategory(text, source.defaultCategory);
   const tags = detectTags(text, category);
@@ -33,6 +39,8 @@ export function normalizeItem(block, source, index) {
     category,
     mode: detectMode(text, source.name),
     publishedAt,
+    publishedAtEstimated,
+    fetchedAt,
     tags,
     imageUrl,
     videoUrl

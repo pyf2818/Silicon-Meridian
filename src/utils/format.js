@@ -4,21 +4,48 @@ export function formatTime(v) {
   return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(v));
 }
 
-export function formatRelative(v) {
-  const diff = Date.now() - new Date(v).getTime();
+/**
+ * 相对时间展示。
+ *
+ * 为什么需要 `estimated`：
+ * 服务端解析发布时间失败时**不再伪造**成抓取时刻（见 server/news/utils/dateUtils.js），
+ * 这类条目（源里没有 pubDate / 日期不可解析 / 时间明显在将来）由 `publishedAtEstimated` 标记。
+ * 对它们必须显示「时间未知」，不能显示「刚刚」——否则等于把一篇旧文包装成刚发生的事。
+ */
+export function formatRelative(v, options = {}) {
+  const { estimated = false, now = Date.now() } = options;
+  if (estimated) return '时间未知';
+  if (!v) return '时间未知';
+  const time = new Date(v).getTime();
+  if (!Number.isFinite(time)) return '时间未知';
+  const diff = now - time;
+  // 未来时间不可信（时区解析错误 / 源站排期发布）→ 不参与「刚刚 / N分钟前」这套话术
+  if (diff < 0) return '时间未知';
   const mins = Math.round(diff / 60000);
-  if (mins < 1) return '刚刚';        // 新增"刚刚"档：5分钟内的资讯感知更强
+  if (mins < 1) return '刚刚';        // 「刚刚」档：5分钟内的资讯感知更强
   if (mins < 60) return `${mins}分钟前`;
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours}小时前`;
   return formatTime(v);
 }
 
-// 是否为"刚到"的资讯（用于 NewsItem NEW 角标）
-// 5 分钟内的资讯显示 NEW 标识，强化时效感知
-export function isFreshNews(publishedAt, thresholdMs = 5 * 60 * 1000) {
+/**
+ * 是否为「刚到」的资讯（用于 NewsItem 的 NEW 角标）。
+ *
+ * @param {*} publishedAt
+ * @param {number|{thresholdMs?:number,estimated?:boolean}} options 兼容旧签名（直接传毫秒数）
+ */
+export function isFreshNews(publishedAt, options = {}) {
+  const { thresholdMs = 5 * 60 * 1000, estimated = false } =
+    typeof options === 'number' ? { thresholdMs: options } : options;
+  // 估计时间绝不算「刚到」：否则无日期字段的条目会顶着 NEW 角标冒充最新
+  if (estimated) return false;
   if (!publishedAt) return false;
-  return (Date.now() - new Date(publishedAt).getTime()) < thresholdMs;
+  const time = new Date(publishedAt).getTime();
+  if (!Number.isFinite(time)) return false;
+  const diff = Date.now() - time;
+  if (diff < 0) return false;   // 未来时间同样不算「刚到」
+  return diff < thresholdMs;
 }
 
 export function formatStars(n) {

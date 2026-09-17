@@ -1,6 +1,9 @@
 import { DEFAULT_SOURCES, SOURCE_WEIGHTS, CROSS_VERIFY_THRESHOLD, MAX_NEWS_ITEMS, MAX_ITEMS_PER_SOURCE, PAGE_SIZE, MEDIA_CONFIG, BRIDGED_SOURCE_NAMES, BRIDGED_WEIGHT_FACTOR } from '../config/constants.js';
 import { getSourceGradeInfo } from '../config/sourceGrades.js';
 import { applyBlockedWords, normalizeUrl } from '../utils/textProcessing.js';
+import { compareByRecency } from '../utils/dateUtils.js';
+import { rankItems } from '../../ranking/ranker.js';
+import { recordBlockedHits, recordCorroborations, recordTopHits } from '../../ranking/sourceStats.js';
 import { fetchSource } from './externalFetchers.js';
 import { fetchApiSource } from './apiFetchers.js';
 import {
@@ -58,11 +61,16 @@ function computeIsChinaFocused(item) {
 export function mergeDiverseItems(items, _sourceResults, maxItems, perSourceLimit) {
   const seen = new Set();
   const deduped = [];
-  items.forEach(item => {
-    const key = `${item.source}|${normalizeUrl(item.url)}|${item.title.toLowerCase()}`;
+  (Array.isArray(items) ? items : []).forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const source = String(item.source || '未知来源').trim();
+    const title = String(item.title || '').trim();
+    // 无标题的脏条目无法被用户识别，也不能作为有效资讯进入推荐池。
+    if (!title) return;
+    const key = `${source}|${normalizeUrl(item.url)}|${title.toLowerCase()}`;
     if (seen.has(key)) return;
     seen.add(key);
-    deduped.push(item);
+    deduped.push({ ...item, source, title });
   });
 
   const sourceCounts = new Map();
@@ -75,7 +83,8 @@ export function mergeDiverseItems(items, _sourceResults, maxItems, perSourceLimi
   });
 
   return capped
-    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+    // 估计时间（无日期字段 / 未来时间）沉底：不让它挤掉有真实发布时间的条目
+    .sort(compareByRecency)
     .slice(0, maxItems);
 }
 
@@ -83,6 +92,7 @@ export function crossVerifyItems(items) {
   const urlMap = new Map();
   items.forEach(item => {
     const normalized = normalizeUrl(item.url);
+    if (!normalized) return;
     if (!urlMap.has(normalized)) urlMap.set(normalized, []);
     urlMap.get(normalized).push(item);
   });
@@ -90,7 +100,10 @@ export function crossVerifyItems(items) {
   return items.map(item => {
     const normalized = normalizeUrl(item.url);
     const sameUrlItems = urlMap.get(normalized) || [];
-    const sourceCount = sameUrlItems.length;
+    // 交叉验证计算独立来源数；同一来源重复抓取/转载不能抬高可信度。
+    const sourceCount = normalized
+      ? new Set(sameUrlItems.map(entry => String(entry.source || '').trim()).filter(Boolean)).size
+      : 0;
 
     // 计算交叉验证分数
     let crossVerifyScore = 0;
@@ -106,6 +119,7 @@ export function crossVerifyItems(items) {
     return {
       ...item,
       crossVerifyScore,
+      independentSourceCount: sourceCount,
       sourceWeight,
       // 综合质量分数 = 交叉验证分数 * 有效源权重（桥接源乘 BRIDGED_WEIGHT_FACTOR） * 10
       qualityScore: Math.round((crossVerifyScore * effectiveWeight) * 10) / 10
@@ -287,7 +301,7 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
 
     const rawAll = [...poolItems, ...customItems];
     const cleaned = applyBlockedWords(rawAll, blocked)
-      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+      .sort(compareByRecency);
     blockedCount = rawAll.length - cleaned.length;
 
     // 去重 + 每源上限 + 全局上限（按时间取最新 MAX_NEWS_ITEMS 条），再交叉验证
@@ -300,13 +314,31 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
       if (qualityDiff !== 0) return qualityDiff;
       const gradeDiff = (b.sourceGrade || 0) - (a.sourceGrade || 0);
       if (gradeDiff !== 0) return gradeDiff;
-      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      return compareByRecency(a, b);
     });
+
+    // 影子模式：MERIDIAN_RANKER_V2=1 时启用统一排序内核（ranker-v2.1）。
+    // 默认关闭——先在影子报表里证明四象限优于旧排序，再谈切换默认值。
+    if (process.env.MERIDIAN_RANKER_V2 === '1') {
+      fullItems = rankItems(fullItems, { lane: 'public', now: Date.now() });
+    }
 
     // 初始化统计
     resetMediaStats();
     resetGlobalImageUsage();
     mediaStats.totalItems = fullItems.length;
+
+    // P4 信源动态表现统计（只读累积，不影响本响应；sourceTrust 信号在样本 ≥10 后自动启用）
+    recordTopHits(fullItems.map(item => item.source).filter(Boolean));
+    {
+      const visible = new Set(cleaned);
+      recordBlockedHits(rawAll.filter(item => !visible.has(item)).map(item => item.source).filter(Boolean));
+    }
+    recordCorroborations(
+      fullItems
+        .filter(item => Number.isFinite(item.independentSourceCount) && item.independentSourceCount >= 2)
+        .map(item => ({ source: item.source, count: item.independentSourceCount })),
+    );
 
     // 去重RSS图片，防止同一图片在多个资讯中重复出现
     const rssImageUsage = new Map();

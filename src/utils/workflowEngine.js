@@ -10,6 +10,7 @@ import {
   isWorkflowSkillId,
   formatWorkflowNodeConfig
 } from '../constants/workflowConstants.js';
+import { hasItemId } from './itemIdentity.js';
 
 export function buildWorkbenchContext(prompt, {
   scopedAgentItems = [],
@@ -25,7 +26,7 @@ export function buildWorkbenchContext(prompt, {
   const getCategoryLabel = (id) => categories.find(c => c.id === id)?.label || id || '未分类';
   const mediaItems = scopedAgentItems.filter(item => item.imageUrl || item.videoUrl);
   const savedScopedItems = scopedAgentItems.filter(item =>
-    bookmarks.some(b => b.itemId === item.id) || materials.some(m => m.originalItemId === item.id)
+    hasItemId(bookmarks, 'itemId', item.id) || hasItemId(materials, 'originalItemId', item.id)
   );
   const formatItemLink = (item) => `${item.title}（${item.source || '未知来源'}）${item.url ? `\n   ${item.url}` : ''}`;
   const formatItemLine = (item, i) => `${i + 1}. ${item.title}｜${item.source || '未知来源'}｜${getCategoryLabel(item.category)}｜推荐分 ${Math.round(item.mustReadScore || 0)}`;
@@ -80,8 +81,7 @@ export function buildMediaAudit(items) {
 }
 
 export function buildMaterialExtraction(items, materials, existingMaterials = []) {
-  const existingIds = new Set([...(existingMaterials || []).map(m => m.originalItemId).filter(Boolean)]);
-  const candidates = items.filter(item => !existingIds.has(item.id)).slice(0, 5);
+  const candidates = items.filter(item => !hasItemId(existingMaterials, 'originalItemId', item.id)).slice(0, 5);
   const typeMap = { '图文素材': item => item.imageUrl, '观点素材': item => (item.summary || '').length > 120, '线索素材': () => true };
   const lines = candidates.map((item, i) => {
     let type = '线索素材';
@@ -102,7 +102,7 @@ export function buildProfileMemory(items, profile, tracked, bookmarks, materials
     ...items.slice(0, 3).map(item => item.category)
   ])].filter(Boolean).slice(0, 8);
   const savedCount = items.filter(item =>
-    bookmarks.some(b => b.itemId === item.id) || materials.some(m => m.originalItemId === item.id)
+    hasItemId(bookmarks, 'itemId', item.id) || hasItemId(materials, 'originalItemId', item.id)
   ).length;
 
   // Phase 1.3 Task 13: write AI suggestions to pendingSuggestions via ctx.
@@ -208,9 +208,9 @@ function runLocalNode(node, previousOutput, ctx) {
 
   const getCategoryLabel = (id) => categories.find(c => c.id === id)?.label || id || '未分类';
   const savedScopedItems = scopedAgentItems.filter(item =>
-    bookmarks.some(b => b.itemId === item.id) || materials.some(m => m.originalItemId === item.id)
+    hasItemId(bookmarks, 'itemId', item.id) || hasItemId(materials, 'originalItemId', item.id)
   );
-  const materialCandidates = scopedAgentItems.filter(item => !materials.some(m => m.originalItemId === item.id)).slice(0, 5);
+  const materialCandidates = scopedAgentItems.filter(item => !hasItemId(materials, 'originalItemId', item.id)).slice(0, 5);
   const formatItemLine = (item, i) => `${i + 1}. ${item.title}｜${item.source || '未知来源'}｜${getCategoryLabel(item.category)}｜推荐分 ${Math.round(item.mustReadScore || 0)}`;
 
   const workflowMetrics = {

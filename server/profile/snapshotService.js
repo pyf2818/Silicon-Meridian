@@ -11,9 +11,10 @@ import { createProfileRepository } from './profileRepository.js';
 import { getNews } from '../news/services/newsService.js';
 import { insertSnapshot, getSnapshotByDate } from './snapshotRepository.js';
 import { clusterEvents, buildRecommendation, selectBriefingLanes } from '../../src/domain/intelligence/recommendationEngine.js';
-import { buildAlgorithmBriefing, mergeAiBriefing } from '../../src/domain/intelligence/briefingEngine.js';
+import { buildAlgorithmBriefing, mergeAiBriefing, applyItemScoresToLanes } from '../../src/domain/intelligence/briefingEngine.js';
 import { buildAiInsightsPrompt } from '../http/aiHandlers.js';
 import { callAiBriefingGenerator } from './briefingLlmHelper.js';
+import { requestChatCompletion } from '../agent/llmClient.js';
 
 const ALGORITHM_VERSION = 2;
 
@@ -28,55 +29,30 @@ export function selectItemsForAiInsights(lanes) {
 }
 
 /**
- * 内部：调 ai-insights LLM（直接 fetch，不经过 HTTP handler）
+ * 内部：通过共享安全传输调 ai-insights LLM
  */
 async function callAiInsightsInternal({ items, personaSummary, llmConfig }) {
   if (!llmConfig?.baseUrl || !llmConfig?.selectedModel) {
     throw new Error('llmConfig missing baseUrl or selectedModel');
   }
   const prompt = buildAiInsightsPrompt(items, personaSummary);
-  const cleanBaseUrl = String(llmConfig.baseUrl).replace(/\/+$/, '');
-  const apiUrl = /\/v[1-4]$/.test(cleanBaseUrl) ? `${cleanBaseUrl}/chat/completions` : `${cleanBaseUrl}/v1/chat/completions`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45_000);
-
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(llmConfig.apiKey ? { Authorization: `Bearer ${llmConfig.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: llmConfig.selectedModel,
-        messages: [
-          { role: 'system', content: '你是科技趋势分析师' },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 2500,
-        temperature: 0.5,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`ai-insights failed: ${response.status} ${errText.slice(0, 200)}`);
-    }
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    let cleaned = content.trim();
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start === -1 || end === -1 || end <= start) {
-      throw new Error('ai-insights returned no JSON object');
-    }
-    return JSON.parse(cleaned.slice(start, end + 1));
-  } catch (err) {
-    clearTimeout(timeout);
-    throw err;
+  const data = await requestChatCompletion(llmConfig, {
+    messages: [
+      { role: 'system', content: '你是科技趋势分析师' },
+      { role: 'user', content: prompt },
+    ],
+    max_tokens: 2500,
+    temperature: 0.5,
+  }, { timeoutMs: 45_000 });
+  const content = data.choices?.[0]?.message?.content || '';
+  let cleaned = content.trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('ai-insights returned no JSON object');
   }
+  return JSON.parse(cleaned.slice(start, end + 1));
 }
 
 function defaultLlmConfig() {
@@ -194,6 +170,19 @@ export async function preheatForUser({ userId, personaSummary = null, today, opt
     }
   }
 
+  // 6.5 卡片级 AI 评分落卡（**零新增 LLM 成本**）：
+  //     第 5 步的 aiInsights.itemScores 已经对 TOP-30 事件算好了 {id, score, label, reason}，
+  //     但此前它只挂在返回值上、从不落卡 —— 等于每天白付一次 LLM 调用。
+  //     这里把它合并进 lanes 条目随快照持久化，字段对齐既有前端契约
+  //     （aiScore/aiLabel/aiReason/aiRelevanceScore，NewsItem 徽章与 ×0.3 排序零改动）。
+  let aiCurationStatus = 'not_requested';
+  if (aiInsights && Array.isArray(aiInsights.itemScores) && aiInsights.itemScores.length) {
+    const merged = applyItemScoresToLanes(lanes, aiInsights.itemScores);
+    lanes.public = merged.lanes.public;
+    lanes.personal = merged.lanes.personal;
+    aiCurationStatus = `merged:${merged.mergedCount}`;
+  }
+
   // 7. 写入三表
   await insertSnapshot({
     userId,
@@ -206,5 +195,5 @@ export async function preheatForUser({ userId, personaSummary = null, today, opt
     aiStatus,
   });
 
-  return { lanes, briefing: mergedBriefing, aiInsights, aiStatus, cached: false };
+  return { lanes, briefing: mergedBriefing, aiInsights, aiStatus, aiCurationStatus, cached: false };
 }

@@ -1,140 +1,66 @@
-import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
-import { installExternalFixtures } from './fixtures.js';
+import { dismissOnboarding, installExternalFixtures, openNav } from './fixtures.js';
 
-const asset = {
-  id: 'creative-asset-1',
-  originalItemId: 'source-creative-1',
-  title: 'Creative source material',
-  content: 'Evidence paragraph from fixture.',
-  fullContent: 'Evidence paragraph from fixture.',
-  source: 'Fixture Lab',
-  tags: ['fixture'],
-  citation: {
-    id: 'creative-asset-1',
-    title: 'Creative source material',
-    source: 'Fixture Lab',
-    url: 'https://example.test/source',
-    publishedAt: '2026-07-14T01:00:00Z',
-  },
-  createdAt: '2026-07-14T01:00:00Z',
-  updatedAt: '2026-07-14T01:00:00Z',
-};
+/**
+ * 素材链路 E2E（原 creative.spec.js 重写）。
+ *
+ * 为什么重写：旧用例断言的是 CreativeWorkspace（"Creative asset workspace" / "Export local" /
+ * .creative-asset-list）——该组件在 App.jsx 只有 import、没有渲染点，创作能力由 AI 工作站承接，
+ * studio 入口现在渲染素材仓库（MaterialsPage）。断言已删除的界面只会永远红灯。
+ *
+ * 本文件验证「资讯 → 素材 → 创作资产」的真实链路，以及云同步的 UUID 契约：
+ * 素材转资产的 id 必须是纯 UUID，否则 syncNow 会静默丢弃（见 assetModel.js 的历史 BUG 注释）。
+ */
 
-const baseDocument = {
-  id: 'creative-doc-1',
-  title: 'Creative draft',
-  draftContent: '# Original baseline\n\nEvidence paragraph from fixture.',
-  status: 'draft',
-  assetIds: ['creative-asset-1'],
-  citations: [asset.citation],
-  createdAt: '2026-07-14T01:00:00Z',
-  updatedAt: '2026-07-14T01:00:00Z',
-  versionNumber: 1,
-};
-
-const baseVersion = {
-  id: 'creative-version-1',
-  documentId: 'creative-doc-1',
-  number: 1,
-  title: 'Creative draft',
-  content: '# Original baseline\n\nEvidence paragraph from fixture.',
-  assetIds: ['creative-asset-1'],
-  citations: [asset.citation],
-  reason: 'manual',
-  clientOperationId: 'creative-op-1',
-  createdAt: '2026-07-14T01:00:00Z',
-};
+const CREATIVE_KEYS = [
+  'materials',
+  'creativeAssets:v1',
+  'creativeDocuments:v1',
+  'creativeVersions:v1',
+  'creativeWorkspaceMigration:v1',
+  'creativeWorkspaceUuidMigration:v1',
+];
 
 async function openApp(page, seed = null) {
   await installExternalFixtures(page);
-  await page.addInitScript(seedState => {
-    for (const key of [
-      'materials',
-      'creativeAssets:v1',
-      'creativeDocuments:v1',
-      'creativeVersions:v1',
-      'creativeWorkspaceMigration:v1',
-    ]) {
-      localStorage.removeItem(key);
+  // addInitScript 的函数会被序列化到浏览器执行——只能通过单个 arg 传参，不能引用闭包变量
+  await page.addInitScript(({ keys, seedJson }) => {
+    for (const key of keys) localStorage.removeItem(key);
+    if (seedJson) {
+      const seed = JSON.parse(seedJson);
+      localStorage.setItem('creativeAssets:v1', JSON.stringify(seed.assets || []));
+      localStorage.setItem('creativeDocuments:v1', JSON.stringify(seed.documents || []));
+      localStorage.setItem('creativeVersions:v1', JSON.stringify(seed.versions || {}));
+      localStorage.setItem('creativeWorkspaceMigration:v1', JSON.stringify({ done: true }));
     }
-    if (!seedState) return;
-    localStorage.setItem('creativeAssets:v1', JSON.stringify(seedState.assets || []));
-    localStorage.setItem('creativeDocuments:v1', JSON.stringify(seedState.documents || []));
-    localStorage.setItem('creativeVersions:v1', JSON.stringify(seedState.versions || {}));
-    localStorage.setItem('creativeWorkspaceMigration:v1', JSON.stringify({ done: true }));
-  }, seed);
+  }, { keys: CREATIVE_KEYS, seedJson: seed ? JSON.stringify(seed) : null });
   await page.goto('/');
+  await dismissOnboarding(page);
 }
 
-async function openStudio(page) {
-  await page.locator('.nav-primary-item').filter({ hasText: '智创' }).click();
-  await expect(page.locator('main[data-nav="studio"]')).toBeVisible();
-}
-
-test('turns a news card into a creative asset and document with provenance', async ({ page }) => {
+test('turns a news card into a material and shows it in the repository', async ({ page }) => {
   await openApp(page);
-  await page.locator('.nav-primary-item').filter({ hasText: '动态' }).click();
+  await openNav(page, 'all');
+
   const allPage = page.locator('main[data-nav="all"]');
   await expect(allPage.locator('.feed-list')).toContainText('OpenAI releases new Agent platform');
-
   await allPage.locator('.feed-list .add-material-btn').first().click();
-  await openStudio(page);
 
-  await expect(page.locator('.creative-asset-list')).toContainText('OpenAI releases new Agent platform');
-  await expect(page.locator('.creative-asset-provenance')).toContainText('TechCrunch');
-  await expect(page.locator('.creative-asset-provenance')).toContainText('https://techcrunch.com/openai-agent');
-
-  await page.getByRole('button', { name: 'Create from asset' }).click();
-  await expect(page.locator('.creative-document-panel')).toContainText('OpenAI releases new Agent platform draft');
-  await expect(page.locator('.creative-document-panel')).toContainText('1 linked assets');
+  await openNav(page, 'studio');
+  await expect(page.locator('main[data-nav="studio"] .repo-stats')).toContainText(/1 条素材/);
 });
 
-test('restores an older creative version as a new immutable snapshot', async ({ page }) => {
-  await openApp(page, {
-    assets: [asset],
-    documents: [baseDocument],
-    versions: { 'creative-doc-1': [baseVersion] },
-  });
-  await openStudio(page);
+test('material-derived creative assets carry syncable UUID ids', async ({ page }) => {
+  await openApp(page);
+  await openNav(page, 'all');
+  const allPage = page.locator('main[data-nav="all"]');
+  await allPage.locator('.feed-list .add-material-btn').first().click();
+  await openNav(page, 'studio');
 
-  await page.locator('.creative-proposal-panel textarea').fill('Second version paragraph [asset:creative-asset-1]');
-  await page.getByRole('button', { name: 'Insert as new version' }).click();
-  await expect(page.locator('.creative-document-panel')).toContainText('Second version paragraph');
-  await expect(page.locator('.creative-document-panel')).toContainText('2 versions');
-
-  await page.getByRole('button', { name: 'Restore v1' }).click();
-  await expect(page.locator('.creative-document-panel')).toContainText('Original baseline');
-  await expect(page.locator('.creative-document-panel')).toContainText('3 versions');
-});
-
-test('downloads markdown json and html exports with sources and escaped html', async ({ page }) => {
-  const hostileDocument = {
-    ...baseDocument,
-    draftContent: '# Export target\n\n<script>alert("x")</script>\n\nEvidence [asset:creative-asset-1]',
-  };
-  await openApp(page, {
-    assets: [asset],
-    documents: [hostileDocument],
-    versions: { 'creative-doc-1': [{ ...baseVersion, content: hostileDocument.draftContent }] },
-  });
-  await openStudio(page);
-
-  for (const format of ['md', 'json', 'html']) {
-    await page.locator('.creative-export-row select').selectOption(format);
-    const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Export local' }).click();
-    const download = await downloadPromise;
-    const path = await download.path();
-    const content = await readFile(path, 'utf8');
-
-    expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${format}$`));
-    expect(content).toContain('Creative source material');
-    expect(content).toContain('Fixture Lab');
-    expect(content).toContain('https://example.test/source');
-    if (format === 'html') {
-      expect(content).not.toContain('<script>alert("x")</script>');
-      expect(content).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;');
-    }
-  }
+  const assets = JSON.parse(await page.evaluate(() => localStorage.getItem('creativeAssets:v1') || '[]'));
+  expect(assets).toHaveLength(1);
+  // 云同步契约：id 必须是纯 UUID（syncNow 过滤非 UUID 资产——历史 BUG 是素材 id 冒充资产 id）
+  expect(assets[0].id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  // 来源链路保留：素材删除/恢复按 originalItemId 双匹配
+  expect(assets[0].originalItemId).toBeTruthy();
 });

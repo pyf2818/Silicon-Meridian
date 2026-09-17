@@ -1,3 +1,8 @@
+// 日期解析/排序的唯一实现（dev 端与 serverless 端共用）。本文件此前自带一份同样的
+// normalizeDate 副本，且解析失败会回退成「抓取时刻」= 伪造发布时间。
+import { compareByRecency, isEstimatedPublishTime, normalizeDate } from '../server/news/utils/dateUtils.js';
+import { stripBoilerplate } from '../server/news/utils/boilerplate.js';
+
 const RSSHUB_BASE = 'https://rsshub.rssforever.com';
 
 const TRENDING_SOURCES = [
@@ -42,7 +47,7 @@ async function fetchTrendingSource(source) {
     if (!response.ok) throw new Error(`${source.name} responded ${response.status}`);
 
     const xml = await response.text();
-    const items = parseFeed(xml).slice(0, 15);
+    const items = parseFeed(xml, new Date().toISOString()).slice(0, 15);
     return { source: source.name, items: items.map(item => ({ ...item, platform: source.platform })) };
   } catch (e) {
     return { source: source.name, items: [], error: e.message };
@@ -51,18 +56,21 @@ async function fetchTrendingSource(source) {
   }
 }
 
-function parseFeed(xml) {
+function parseFeed(xml, fetchedAt) {
   const itemPattern = /<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   const blocks = [...xml.matchAll(itemPattern)].map(m => m[2]);
-  return blocks.map((block, index) => normalizeItem(block, index)).filter(item => item.title && item.url);
+  return blocks
+    .map((block, index) => normalizeItem(block, index, fetchedAt))
+    .filter(item => item.title && item.url);
 }
 
-function normalizeItem(block, index) {
+function normalizeItem(block, index, fetchedAt) {
   const title = cleanText(pick(block, ['title']));
   const rawSummary = cleanText(pick(block, ['description', 'summary']));
   const bodyIntro = trimIntro(cleanText(pick(block, ['content:encoded', 'content'])));
   const summary = trimSummary(rawSummary || bodyIntro);
   const url = cleanText(pick(block, ['link'])) || pickAtomLink(block);
+  // 解析失败 → null（原先回退成抓取时刻，会把无日期条目伪装成"刚刚发布"）
   const publishedAt = normalizeDate(pick(block, ['pubDate', 'published', 'updated', 'dc:date']));
 
   return {
@@ -71,7 +79,9 @@ function normalizeItem(block, index) {
     summary,
     bodyIntro,
     url,
-    publishedAt
+    publishedAt,
+    publishedAtEstimated: isEstimatedPublishTime(publishedAt),
+    fetchedAt
   };
 }
 
@@ -98,19 +108,15 @@ function cleanText(value) {
 }
 
 function trimSummary(value) {
-  if (!value) return '暂无摘要';
-  return value.length > 160 ? `${value.slice(0, 160).trim()}...` : value;
+  const cleaned = stripBoilerplate(value);
+  if (!cleaned) return '暂无摘要';
+  return cleaned.length > 160 ? `${cleaned.slice(0, 160).trim()}...` : cleaned;
 }
 
 function trimIntro(value) {
   if (!value) return '';
   const compact = value.replace(/\s+/g, ' ').trim();
   return compact.length > 220 ? `${compact.slice(0, 220).trim()}...` : compact;
-}
-
-function normalizeDate(value) {
-  const time = new Date(cleanText(value)).getTime();
-  return Number.isFinite(time) ? new Date(time).toISOString() : new Date().toISOString();
 }
 
 function decodeEntities(value) {
@@ -150,7 +156,8 @@ export default async function handler(req, res) {
 
   const filtered = items
     .filter(item => /\b(ai|llm|gpt|model|大模型|人工智能|deep|neural|transformer|agent|chat|machine learning|nlp|diffusion)\b/i.test(`${item.title} ${item.summary}`))
-    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+    // 估计时间（无日期字段 / 未来时间）沉底，不再冒充"最新"
+    .sort(compareByRecency)
     .slice(0, 60);
 
   const payload = { updatedAt: new Date().toISOString(), items: filtered };

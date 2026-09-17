@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { showToast } from '../utils/toast.js';
+import { hasItemId } from '../utils/itemIdentity.js';
 
 /**
  * 智能体工作流「行动队列」管理（从 App.jsx 抽离）
@@ -42,7 +43,7 @@ export function useWorkflowActions({
       return titleWords[0] || item.category || item.source || '';
     };
     const materialItems = candidates
-      .filter(item => !materials.some(m => m.originalItemId === item.id))
+      .filter(item => !hasItemId(materials, 'originalItemId', item.id))
       .slice(0, 3);
     const termCandidates = [...new Set([
       ...candidates.flatMap(item => item.tags || []),
@@ -135,7 +136,7 @@ export function useWorkflowActions({
         showToast('未找到原始资讯，无法沉淀素材');
         return;
       }
-      if (!materials.some(m => m.originalItemId === item.id)) {
+      if (!hasItemId(materials, 'originalItemId', item.id)) {
         const newMaterial = {
           id: Date.now(),
           type: detectMaterialType(item),

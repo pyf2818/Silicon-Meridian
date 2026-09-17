@@ -3,6 +3,7 @@ import { ICONS, MATERIAL_TYPES } from '../constants/index.jsx';
 import MaterialGraph from './MaterialGraph.jsx';
 import { getSpaces, subscribeSpaces } from '../utils/workspaceStore.js';
 import { renderMarkdown } from '../utils/markdown.jsx';
+import { matchesSpaceId } from '../utils/itemIdentity.js';
 
 // v23：类型筛选直接派生自 MATERIAL_TYPES，避免再漏类型（此前漏过 project）
 const TYPE_OPTIONS = Object.entries(MATERIAL_TYPES).map(([id, label]) => ({ id, label }));
@@ -170,7 +171,7 @@ export default function MaterialsPage({
             <span className="repo-rail-item-label">不限空间</span>
           </button>
           {materialSpaces.map(space => {
-            const count = (materials || []).filter(m => m.spaceId === space.id).length;
+            const count = (materials || []).filter(m => matchesSpaceId(m.spaceId, space.id)).length;
             return (
               <div key={space.id} className={`repo-rail-item repo-rail-item-space ${materialSpaceFilter === String(space.id) ? 'active' : ''}`}>
                 {renamingSpaceId === space.id ? (
@@ -319,7 +320,7 @@ export default function MaterialsPage({
               {selectedMaterials.length > 0 && (
                 <div className="batch-actions">
                   <span className="batch-count">已选 {selectedMaterials.length} 项</span>
-                  <select className="batch-space-select" value="" onChange={e => { if (e.target.value) assignMaterialsToSpace(selectedMaterials, Number(e.target.value)); }}>
+                  <select className="batch-space-select" value="" onChange={e => { if (e.target.value) assignMaterialsToSpace(selectedMaterials, e.target.value); }}>
                     <option value="">移动到空间...</option>
                     {materialSpaces.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
@@ -529,7 +530,7 @@ export default function MaterialsPage({
                 <label>所属空间</label>
                 <select
                   value={detail.spaceId ?? ''}
-                  onChange={e => assignMaterialsToSpace([detail.id], e.target.value ? Number(e.target.value) : null)}
+                  onChange={e => assignMaterialsToSpace([detail.id], e.target.value || null)}
                 >
                   <option value="">不限空间</option>
                   {materialSpaces.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}

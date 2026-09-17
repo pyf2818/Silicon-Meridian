@@ -18,7 +18,7 @@ export function useNewsFilter(items, category, mode) {
         title: item.title,
         category: item.category,
         source: item.source || '',
-        time: item.publishedAt ? formatRelative(item.publishedAt) : '',
+        time: item.publishedAt ? formatRelative(item.publishedAt, { estimated: item.publishedAtEstimated }) : '',
         hot: (item.mustReadScore || 0) >= 60,
       }));
     }

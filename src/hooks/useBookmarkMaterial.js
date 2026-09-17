@@ -1,6 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { loadLS, saveLS } from '../utils/localStorage.js';
 import { showToast } from '../utils/toast.js';
+import { canonicalItemId, canonicalSpaceId, matchesSpaceId } from '../utils/itemIdentity.js';
+import { createStableId } from '../utils/stableId.js';
+import {
+  assignSpaceToMaterials,
+  detachMaterialsFromSpace,
+  normalizeStoredMaterials,
+  normalizeStoredSpaces,
+} from '../domain/creative/spaceMapping.js';
+import {
+  collectImportedMaterials,
+  mergeMaterials,
+  pullMaterialFromTrash,
+  purgeMaterialFromTrash,
+  pushMaterialsToTrash,
+  removeMaterialsByIds,
+} from '../domain/creative/materialLifecycle.js';
 
 /**
  * 书签与素材库状态管理 hook
@@ -33,8 +49,9 @@ export function useBookmarkMaterial({
   buildNewsCardInsight,
 } = {}) {
   const [bookmarks, setBookmarks] = useState(() => loadLS('bookmarks', []));
-  const [materials, setMaterials] = useState(() => loadLS('materials', []));
-  const [materialSpaces, setMaterialSpaces] = useState(() => loadLS('materialSpaces', []));
+  // 冷启动自愈：历史 spaceId 可能是数字 / 带空格字符串（NaN 已在落盘时变 null）→ 统一成字符串
+  const [materials, setMaterials] = useState(() => normalizeStoredMaterials(loadLS('materials', [])));
+  const [materialSpaces, setMaterialSpaces] = useState(() => normalizeStoredSpaces(loadLS('materialSpaces', [])));
   const [newSpaceName, setNewSpaceName] = useState('');
   // selectedMaterials 保留在 hook 内，selectAllMaterials 移到 App.jsx（依赖 filteredMaterials）
   const [selectedMaterials, setSelectedMaterials] = useState([]);
@@ -51,22 +68,24 @@ export function useBookmarkMaterial({
   }, [materialSpaces]);
 
   const isBookmarked = useCallback(
-    (itemId) => bookmarks.some(b => b.itemId === itemId),
+    (itemId) => { const key = canonicalItemId(itemId); return Boolean(key) && bookmarks.some(b => canonicalItemId(b.itemId) === key); },
     [bookmarks]
   );
 
   const isInMaterials = useCallback(
-    (itemId) => materials.some(m => m.originalItemId === itemId),
+    (itemId) => { const key = canonicalItemId(itemId); return Boolean(key) && materials.some(m => canonicalItemId(m.originalItemId) === key); },
     [materials]
   );
 
   const toggleBookmark = useCallback((item) => {
+    const itemId = canonicalItemId(item?.id);
+    if (!itemId) return;
     setBookmarks(prev => {
-      const exists = prev.find(b => b.itemId === item.id);
-      if (exists) return prev.filter(b => b.itemId !== item.id);
+      const exists = prev.find(b => canonicalItemId(b.itemId) === itemId);
+      if (exists) return prev.filter(b => canonicalItemId(b.itemId) !== itemId);
       return [...prev, {
-        id: Date.now(),
-        itemId: item.id,
+        id: createStableId('bookmark'),
+        itemId,
         title: item.title,
         url: item.url,
         source: item.source,
@@ -109,9 +128,12 @@ export function useBookmarkMaterial({
 
   // 素材库操作
   const toggleMaterial = useCallback((item, type = null, note = '') => {
+    if (!canonicalItemId(item?.id)) return;
     if (isInMaterials(item.id)) {
-      setMaterials(prev => prev.filter(m => m.originalItemId !== item.id));
-      creativeWorkspace?.removeAsset?.(item.id);
+      const key = canonicalItemId(item.id);
+      setMaterials(prev => prev.filter(m => canonicalItemId(m.originalItemId) !== key));
+      const removed = materials.find(m => canonicalItemId(m.originalItemId) === canonicalItemId(item.id));
+      creativeWorkspace?.removeAsset?.(removed?.id || item.id);
       const toast = document.createElement('div');
       toast.className = 'material-toast';
       toast.textContent = '已从素材库移除';
@@ -126,7 +148,7 @@ export function useBookmarkMaterial({
         item.category,
       ].filter(Boolean)));
       const newMaterial = {
-        id: Date.now(),
+        id: createStableId('material'),
         type: detectedType,
         title: item.title,
         content: item.summary || item.title,
@@ -137,7 +159,7 @@ export function useBookmarkMaterial({
         imageUrl: item.imageUrl || '',
         insight: item.insight || (buildNewsCardInsight ? buildNewsCardInsight(item) : null),
         metadata: item.metadata || null,
-        originalItemId: item.id,
+        originalItemId: canonicalItemId(item.id),
         note,
         createdAt: new Date().toISOString(),
       };
@@ -149,11 +171,11 @@ export function useBookmarkMaterial({
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 2000);
     }
-  }, [isInMaterials, detectMaterialType, creativeWorkspace, buildNewsCardInsight]);
+  }, [isInMaterials, detectMaterialType, creativeWorkspace, buildNewsCardInsight, materials]);
 
   const addManualMaterial = useCallback(({ title, content, type, source, url, tags, note, spaceId, imageUrl, fullContent, insight, metadata }) => {
     const newMaterial = {
-      id: Date.now(),
+      id: createStableId('material'),
       type,
       title,
       content,
@@ -162,7 +184,8 @@ export function useBookmarkMaterial({
       url: url || '',
       tags: Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : []),
       note,
-      spaceId: spaceId ? Number(spaceId) : null,
+      // 空间 ID 是不透明字符串：绝不做 Number() 强转（'space-xxxx' → NaN → 落盘变 null）
+      spaceId: canonicalSpaceId(spaceId) || null,
       imageUrl: imageUrl || '',
       insight: insight || null,
       metadata: metadata || null,
@@ -189,52 +212,46 @@ export function useBookmarkMaterial({
   }, [setNav, setCopilotPendingMessage]);
 
   // ===== 回收站：删除进回收站（软删除，可恢复/彻底清除），上限 30 条 =====
-  const [recentlyDeleted, setRecentlyDeleted] = useState(() => loadLS('recentlyDeletedMaterials', []));
+  // 自愈：历史 spaceId 可能是数字 / 带空格字符串
+  const [recentlyDeleted, setRecentlyDeleted] = useState(() => normalizeStoredMaterials(loadLS('recentlyDeletedMaterials', [])));
   useEffect(() => {
     saveLS('recentlyDeletedMaterials', recentlyDeleted);
   }, [recentlyDeleted]);
 
-  const moveToTrash = useCallback((materialsToTrash) => {
-    if (!materialsToTrash.length) return;
-    setRecentlyDeleted(prev => [
-      ...materialsToTrash.map(m => ({ ...m, deletedAt: new Date().toISOString() })),
-      ...prev,
-    ].slice(0, 30));
-  }, []);
-
+  // 恢复：先算出「要恢复哪条」，再分别做纯 state 更新与副作用。
+  // 不能在 updater 里调 setMaterials / addAsset —— StrictMode 下 updater 会被调用两次，素材会重复插入。
   const restoreMaterial = useCallback((id) => {
-    setRecentlyDeleted(prev => {
-      const target = prev.find(m => m.id === id);
-      if (!target) return prev;
-      const { deletedAt, ...rest } = target;
-      setMaterials(cur => [rest, ...cur]);
-      return prev.filter(m => m.id !== id);
-    });
-  }, []);
+    const { trash, item } = pullMaterialFromTrash(recentlyDeleted, id);
+    if (!item) return;
+    setRecentlyDeleted(trash);
+    setMaterials(prev => mergeMaterials(prev, [item], { front: true }));
+    creativeWorkspace?.addAsset?.(item);
+  }, [recentlyDeleted, creativeWorkspace]);
 
   const purgeMaterial = useCallback((id) => {
-    setRecentlyDeleted(prev => prev.filter(m => m.id !== id));
+    setRecentlyDeleted(prev => purgeMaterialFromTrash(prev, id));
   }, []);
 
   const emptyTrash = useCallback(() => setRecentlyDeleted([]), []);
 
   // 删除 = 进回收站（软删除），可恢复；彻底删除走 purgeMaterial
   const removeMaterial = useCallback((id) => {
-    setMaterials(prev => {
-      const target = prev.find(m => m.id === id);
-      if (target) moveToTrash([target]);
-      return prev.filter(m => m.id !== id);
-    });
-  }, [moveToTrash]);
+    const target = materials.find(m => m.id === id);
+    if (!target) return;
+    setMaterials(prev => removeMaterialsByIds(prev, [id]));
+    setRecentlyDeleted(prev => pushMaterialsToTrash(prev, [target]));
+    creativeWorkspace?.removeAsset?.(target.id);
+  }, [materials, creativeWorkspace]);
 
   const batchRemoveMaterials = useCallback((ids) => {
-    setMaterials(prev => {
-      const trashed = prev.filter(m => ids.includes(m.id));
-      moveToTrash(trashed);
-      return prev.filter(m => !ids.includes(m.id));
-    });
+    const targets = materials.filter(m => ids.includes(m.id));
+    if (targets.length) {
+      setMaterials(prev => removeMaterialsByIds(prev, ids));
+      setRecentlyDeleted(prev => pushMaterialsToTrash(prev, targets));
+      targets.forEach(m => creativeWorkspace?.removeAsset?.(m.id));
+    }
     setSelectedMaterials([]);
-  }, [moveToTrash]);
+  }, [materials, creativeWorkspace]);
 
   const updateMaterialTags = useCallback((id, tags) => {
     setMaterials(prev => prev.map(m => m.id === id ? { ...m, tags } : m));
@@ -256,13 +273,13 @@ export function useBookmarkMaterial({
   }, []);
 
   const assignMaterialsToSpace = useCallback((ids, spaceId) => {
-    setMaterials(prev => prev.map(m => ids.includes(m.id) ? { ...m, spaceId } : m));
+    setMaterials(prev => assignSpaceToMaterials(prev, ids, spaceId));
     setSelectedMaterials([]);
   }, []);
 
   const createMaterialSpace = useCallback(() => {
     if (!newSpaceName.trim()) return;
-    const newSpace = { id: Date.now(), name: newSpaceName.trim(), createdAt: new Date().toISOString() };
+    const newSpace = { id: createStableId('space'), name: newSpaceName.trim(), createdAt: new Date().toISOString() };
     setMaterialSpaces(prev => [...prev, newSpace]);
     setNewSpaceName('');
     setShowSpaceForm?.(false);
@@ -271,13 +288,14 @@ export function useBookmarkMaterial({
   const renameMaterialSpace = useCallback((id, name) => {
     const next = String(name || '').trim();
     if (!next) return;
-    setMaterialSpaces(prev => prev.map(s => s.id === id ? { ...s, name: next } : s));
+    setMaterialSpaces(prev => prev.map(s => matchesSpaceId(s?.id, id) ? { ...s, name: next } : s));
   }, []);
 
   const deleteMaterialSpace = useCallback((id) => {
-    setMaterialSpaces(prev => prev.filter(s => s.id !== id));
-    setMaterials(prev => prev.map(m => m.spaceId === id ? { ...m, spaceId: null } : m));
-    if (materialSpaceFilter === String(id)) setMaterialSpaceFilter?.('all');
+    setMaterialSpaces(prev => prev.filter(s => !matchesSpaceId(s?.id, id)));
+    // 严格相等会漏掉类型不一致的 spaceId，留下永远筛不出的孤儿归属
+    setMaterials(prev => detachMaterialsFromSpace(prev, id));
+    if (materialSpaceFilter !== 'all' && matchesSpaceId(materialSpaceFilter, id)) setMaterialSpaceFilter?.('all');
   }, [materialSpaceFilter, setMaterialSpaceFilter]);
 
   const toggleMaterialStar = useCallback((id) => {
@@ -301,10 +319,17 @@ export function useBookmarkMaterial({
       try {
         const imported = JSON.parse(e.target.result);
         if (Array.isArray(imported)) {
-          setMaterials(prev => [...prev, ...imported.map(m => ({ ...m, id: Date.now() + Math.random() }))]);
+          // 空间归属要按本机现有空间校验：导入的备份可能来自另一台设备
+          const spaceIds = new Set(materialSpaces.map(s => canonicalSpaceId(s.id)).filter(Boolean));
+          const { imported: valid, rejected } = collectImportedMaterials(imported, { spaceIds });
+          if (!valid.length) throw new Error('empty material list');
+          setMaterials(prev => mergeMaterials(prev, valid));
+          valid.forEach(material => creativeWorkspace?.addAsset?.(material));
           const toast = document.createElement('div');
           toast.className = 'material-toast';
-          toast.textContent = `✓ 成功导入 ${imported.length} 条素材`;
+          toast.textContent = rejected
+            ? `✓ 成功导入 ${valid.length} 条素材（跳过 ${rejected} 条无效）`
+            : `✓ 成功导入 ${valid.length} 条素材`;
           document.body.appendChild(toast);
           setTimeout(() => toast.remove(), 2000);
         }
@@ -313,7 +338,7 @@ export function useBookmarkMaterial({
       }
     };
     reader.readAsText(file);
-  }, []);
+  }, [creativeWorkspace, materialSpaces]);
 
   return {
     // state

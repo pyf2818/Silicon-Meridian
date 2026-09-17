@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { getWorkflowSkillMeta, WORKFLOW_CONDITION_METRICS } from '../constants/appConstants.jsx';
 import { useProfileStore } from '../store';
 import { buildProfileMemory } from '../utils/workflowEngine.js';
+import { hasItemId } from '../utils/itemIdentity.js';
 
 /**
  * 智能体工作流运行器（从 App.jsx 抽离）
@@ -147,9 +148,9 @@ export function useAgentWorkflowRunner({
     const trackedTerms = intelligenceProfile.tracked || [];
     const mediaItems = scopedAgentItems.filter(item => item.imageUrl || item.videoUrl);
     const savedScopedItems = scopedAgentItems.filter(item =>
-      bookmarks.some(b => b.itemId === item.id) || materials.some(m => m.originalItemId === item.id)
+      hasItemId(bookmarks, 'itemId', item.id) || hasItemId(materials, 'originalItemId', item.id)
     );
-    const materialCandidates = scopedAgentItems.filter(item => !materials.some(m => m.originalItemId === item.id)).slice(0, 5);
+    const materialCandidates = scopedAgentItems.filter(item => !hasItemId(materials, 'originalItemId', item.id)).slice(0, 5);
     const formatItemLine = (item, index) => {
       const score = Number.isFinite(item.mustReadScore) ? Math.round(item.mustReadScore) : 0;
       return `${index + 1}. ${item.title}｜${item.source || '未知来源'}｜${getCategoryLabel(item.category)}｜推荐分 ${score}`;

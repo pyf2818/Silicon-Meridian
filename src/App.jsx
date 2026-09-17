@@ -6,7 +6,7 @@ import ArticleEditor from './components/ArticleEditor.jsx';
 import CreativeWorkspace from './components/CreativeWorkspace.jsx';
 import ColorfulBubbles from './components/ColorfulBubbles.jsx';
 import AiChatPanel from './components/AiChatPanel.jsx';
-import { formatTime, formatRelative, getGradeColors, isEnglishText, isChineseText, isFreshNews } from './utils/format.js';
+import { formatTime, formatRelative, getGradeColors, isEnglishText, isChineseText } from './utils/format.js';
 import { validateWorkflowDraft } from './utils/workflowValidation.js';
 import { loadLS, saveLS, clearStaleLS } from './utils/localStorage.js';
 import { showToast } from './utils/toast.js';
@@ -49,21 +49,12 @@ import LanguageSwitcher from './components/LanguageSwitcher.jsx';
 import RecommendationFeed from './components/RecommendationFeed.jsx';
 import RecommendationDateRail from './components/RecommendationDateRail.jsx';
 import TodayNewspaper from './components/TodayNewspaper.jsx';
-import CommunityPage from './components/CommunityPage.jsx';
 import ChatPage from './components/ChatPage.jsx';
-import RecommendationsPage from './components/RecommendationsPage.jsx';
-import ProfilePage from './components/ProfilePage.jsx';
 import Topbar from './components/Topbar.jsx';
 import NewsPage from './components/NewsPage.jsx';
 import CustomUrlPage from './components/CustomUrlPage.jsx';
-import KnowledgeExportPage from './components/KnowledgeExportPage.jsx';
-import GithubPage from './components/GithubPage.jsx';
-import MonitorPage from './components/MonitorPage.jsx';
-import TrendingPage from './components/TrendingPage.jsx';
-import CanvasPage from './components/workflow/CanvasPage.jsx';
 import CalendarPage from './components/CalendarPage.jsx';
 import MaterialsPage from './components/MaterialsPage.jsx';
-import ReadingListPage from './components/ReadingListPage.jsx';
 import Lightbox from './components/Lightbox.jsx';
 import NewsPreviewPanel from './components/NewsPreviewPanel.jsx';
 import AuthModal from './components/AuthModal.jsx';
@@ -97,6 +88,15 @@ const GlobeView = lazy(() => import('./GlobeView.jsx'));
 const AiElf = lazy(() => import('./AiElf.jsx'));
 const SelectionTranslate = lazy(() => import('./components/aielf/SelectionTranslate.jsx'));
 const StockPage = lazy(() => import('./components/StockPage.jsx'));
+const CommunityPage = lazy(() => import('./components/CommunityPage.jsx'));
+const ProfilePage = lazy(() => import('./components/ProfilePage.jsx'));
+const GithubPage = lazy(() => import('./components/GithubPage.jsx'));
+const RecommendationsPage = lazy(() => import('./components/RecommendationsPage.jsx'));
+const TrendingPage = lazy(() => import('./components/TrendingPage.jsx'));
+const CanvasPage = lazy(() => import('./components/workflow/CanvasPage.jsx'));
+const KnowledgeExportPage = lazy(() => import('./components/KnowledgeExportPage.jsx'));
+const MonitorPage = lazy(() => import('./components/MonitorPage.jsx'));
+const ReadingListPage = lazy(() => import('./components/ReadingListPage.jsx'));
 
 import {
   PRODUCT_NAME, PRODUCT_TAGLINE, PRODUCT_DESCRIPTION,
@@ -2170,8 +2170,7 @@ ${materialLines || '暂无素材'}`;
           // 智创中心 = 素材仓库（静态引入的 MaterialsPage，无需预取 chunk）
           break;
         case 'square':
-          // 社区广场 lazy chunk + 帖子列表
-          import('./components/CommunityPage.jsx').catch(() => {});
+          // 社区页面当前与主壳共享状态，保持静态加载，避免无收益的重复动态导入。
           break;
         case 'recommendations':
           // 推荐页依赖 trending + briefing，已由 backgroundLoadedRef 预取
@@ -2382,6 +2381,7 @@ ${materialLines || '暂无素材'}`;
           {nav === 'studio' && renderMaterialsRepo()}
 
           {nav === 'canvas' && (
+            <Suspense fallback={<div className="empty-state"><p>加载工作流画布...</p></div>}>
             <CanvasPage
               draft={agentWorkflowDraft}
               updateDraft={updateWorkflowDraft}
@@ -2418,6 +2418,7 @@ ${materialLines || '暂无素材'}`;
                 showToast('模拟成果已存入素材库');
               }}
             />
+            </Suspense>
           )}
 
           {/* ALL NEWS */}
@@ -2466,11 +2467,14 @@ ${materialLines || '暂无素材'}`;
 
           {/* TRENDING */}
           {nav === 'trending' && (
-            <TrendingPage key="trending" viewMode={viewMode} trendingLoading={trendingLoading} trendingItems={trendingItems} isBookmarked={isBookmarked} isInMaterials={isInMaterials} toggleBookmark={toggleBookmark} toggleMaterial={toggleMaterial} setLightbox={setLightbox} translationOpen={translationOpen} setTranslationOpen={setTranslationOpen} requestTranslation={requestTranslation} translatingItems={translatingItems} getTranslation={getTranslation} trendingLoadingMore={trendingLoadingMore} trendingHasMore={trendingHasMore} loadTrending={loadTrending} trendingPlatform={trendingPlatform} trendingType={trendingType} onShareToChat={shareNewsToChat} />
+            <Suspense fallback={<div className="empty-state"><p>加载热点趋势...</p></div>}>
+              <TrendingPage key="trending" viewMode={viewMode} trendingLoading={trendingLoading} trendingItems={trendingItems} isBookmarked={isBookmarked} isInMaterials={isInMaterials} toggleBookmark={toggleBookmark} toggleMaterial={toggleMaterial} setLightbox={setLightbox} translationOpen={translationOpen} setTranslationOpen={setTranslationOpen} requestTranslation={requestTranslation} translatingItems={translatingItems} getTranslation={getTranslation} trendingLoadingMore={trendingLoadingMore} trendingHasMore={trendingHasMore} loadTrending={loadTrending} trendingPlatform={trendingPlatform} trendingType={trendingType} onShareToChat={shareNewsToChat} />
+            </Suspense>
           )}
 
           {/* SMART RECOMMENDATIONS - 当日满足用户关注/画像的资讯卡片流（右栏竖向时间线见 panel） */}
           {nav === 'recommendations' && (
+            <Suspense fallback={<div className="empty-state"><p>加载精准推荐...</p></div>}>
             <RecommendationsPage
               externalIntelligenceItems={externalIntelligenceItems}
               externalIntelligenceOpportunities={externalIntelligenceOpportunities}
@@ -2516,11 +2520,13 @@ ${materialLines || '暂无素材'}`;
               setLightbox={setLightbox}
               onShareToChat={shareNewsToChat}
             />
+            </Suspense>
           )}
           {/* recommendations-legacy 已删除（死代码，无导航入口） */}
 
           {/* GITHUB */}
           {nav === 'github' && (
+            <Suspense fallback={<div className="empty-state"><p>加载 GitHub 情报...</p></div>}>
             <GithubPage
               githubSince={githubSince}
               githubLoading={githubLoading}
@@ -2535,6 +2541,7 @@ ${materialLines || '暂无素材'}`;
               setLightbox={setLightbox}
               expandedAll={githubExpandedAll}
             />
+            </Suspense>
           )}
 
           {nav === 'stock' && (
@@ -2545,11 +2552,18 @@ ${materialLines || '暂无素材'}`;
             </SafeBoundary>
           )}
 
-          {nav === 'square' && <CommunityPage user={user} materials={materials} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} onShareToChat={share => { setPendingChatShare(share); setNav('chat'); }} />}
+          {nav === 'square' && (
+            <SafeBoundary name="社区广场" icon={ICONS.chat}>
+              <Suspense fallback={<div className="empty-state"><p>加载社区广场...</p></div>}>
+                <CommunityPage user={user} materials={materials} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} onShareToChat={share => { setPendingChatShare(share); setNav('chat'); }} />
+              </Suspense>
+            </SafeBoundary>
+          )}
 
           {nav === 'chat' && <ChatPage user={user} pendingShare={pendingChatShare} onConsumeShare={() => setPendingChatShare(null)} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} />}
 
           {nav === 'profile-center' && (
+            <Suspense fallback={<div className="empty-state"><p>加载画像中心...</p></div>}>
             <ProfilePage
               intelligenceProfile={intelligenceProfile}
               bookmarks={bookmarks}
@@ -2578,16 +2592,17 @@ ${materialLines || '暂无素材'}`;
               categories={categories}
               materials={materials}
             />
+            </Suspense>
           )}
 
           {/* READING LIST - 阅读列表 */}
           {nav === 'reading-list' && (
-            <ReadingListPage
+            <Suspense fallback={<div className="empty-state"><p>加载阅读列表...</p></div>}><ReadingListPage
               bookmarks={bookmarks}
               categories={categories}
               toggleRead={toggleRead}
               setBookmarks={setBookmarks}
-            />
+            /></Suspense>
           )}
 
           {/* CUSTOM URL - 自定义抓取 */}
@@ -2618,7 +2633,7 @@ ${materialLines || '暂无素材'}`;
 
           {/* MONITOR - 竞争情报监测（M5） */}
           {nav === 'monitor' && (
-            <MonitorPage items={items} />
+            <Suspense fallback={<div className="empty-state"><p>加载监测面板...</p></div>}><MonitorPage items={items} /></Suspense>
           )}
 
 
@@ -2630,7 +2645,7 @@ ${materialLines || '暂无素材'}`;
           <ArticleSpaceModal articleSpaceFormOpen={articleSpaceFormOpen} setArticleSpaceFormOpen={setArticleSpaceFormOpen} newArticleSpaceName={newArticleSpaceName} setNewArticleSpaceName={setNewArticleSpaceName} createArticleSpace={createArticleSpace} />
 
           {nav === 'knowledge-export' && (
-            <KnowledgeExportPage
+            <Suspense fallback={<div className="empty-state"><p>加载知识导出...</p></div>}><KnowledgeExportPage
               articles={filteredExportArticles}
               bookmarks={exportFilteredBookmarks}
               articleExportFilter={articleExportFilter}
@@ -2641,7 +2656,7 @@ ${materialLines || '暂无素材'}`;
               setExportRange={setExportRange}
               categories={categories}
               exportArticle={exportArticle}
-            />
+            /></Suspense>
           )}
 
           {/* Event Form Modal */}

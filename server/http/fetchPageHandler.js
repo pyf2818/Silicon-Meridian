@@ -1,6 +1,6 @@
 import { safeExternalFetch } from '../security/urlSafety.js';
 import { routeError, sendJsonResponse } from './httpUtils.js';
-import { decodeEntities } from '../utils/htmlEntities.js';
+import { extractMainContent } from './pageContentExtractor.js';
 
 /**
  * 从 Content-Type 和 HTML meta 标签检测字符编码
@@ -98,12 +98,14 @@ export async function handleFetchPageRequest(req, res) {
     const contentType = String(response.headers.get('content-type') || '');
     if (!/(text|html|xml|json)/i.test(contentType)) throw Object.assign(new Error('目标不是可读取的文本页面'), { code: 'UNSUPPORTED_PAGE_TYPE', status: 415 });
     const html = await readLimitedText(response);
+    // 只有配图抽取还需要原始（去掉 script/style 的）HTML；正文走容器抽取，见 pageContentExtractor.js
     const stripped = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-    // 必须在去标签后解码实体：网页正文普遍夹带 &nbsp;/&mdash;/&hellip;，
-    // 不解码会原样显示在资讯全文预览里（v26.9e 修复）。&nbsp; → 空格后被 \s+ 收敛。
-    const content = decodeEntities(stripped.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 15_000);
+    // 正文抽取：优先 <article> / itemprop=articleBody / article|post|entry 类容器，
+    // 并剔除导航、页脚、侧栏、相关阅读、广告等噪声；抓不到容器才退化为整页（extraction='fallback'）。
+    // 实体解码在 htmlToText 内部完成（&nbsp; → 空格后被 \s+ 收敛）。
+    const { content, extraction } = extractMainContent(stripped);
     const images = extractImages(stripped, target);
-    return sendJsonResponse(res, 200, { ok: true, content, images });
+    return sendJsonResponse(res, 200, { ok: true, content, images, extraction });
   } catch (error) {
     if (error?.name === 'AbortError') return routeError(res, Object.assign(new Error('网页读取超时'), { code: 'UPSTREAM_TIMEOUT', status: 504 }));
     return routeError(res, error);

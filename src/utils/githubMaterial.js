@@ -7,6 +7,14 @@ const GITHUB_PERIODS_FALLBACK = [
   { id: 'monthly', label: '月榜' },
 ];
 
+/** Stable identity shared by trending, search and materialization paths. */
+export function getGithubItemId(repo = {}) {
+  const explicit = repo.id ?? repo.nodeId;
+  if (explicit != null && String(explicit).trim()) return `github:${String(explicit).trim().toLowerCase()}`;
+  const url = String(repo.url || '').trim().replace(/\/+$/, '').toLowerCase();
+  return url ? `github:${url}` : (repo.fullName ? `github:${String(repo.fullName).trim().toLowerCase()}` : '');
+}
+
 export function inferGithubScenario(repo = {}) {
   const text = `${repo.fullName || ''} ${repo.description || ''} ${(repo.topics || []).join(' ')} ${repo.readmeIntro || ''}`.toLowerCase();
   const language = (repo.language || '').toLowerCase();
@@ -78,7 +86,7 @@ export function buildGithubMaterial(repo = {}, since = 'weekly', periods = GITHU
   ].filter(Boolean).join('\n');
 
   return {
-    id: repo.id,
+    id: getGithubItemId(repo),
     title: repo.fullName,
     url: repo.url,
     source: 'GitHub',

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { normalizeAsset } from '../domain/creative/assetModel.js';
+import {
+  dedupeAssets,
+  isUuidValue as isUuid,
+  migrateAssetIdsToUuid,
+  normalizeAsset,
+} from '../domain/creative/assetModel.js';
 import { exportDocument as exportCreativeDocument } from '../domain/creative/exportEngine.js';
 import {
   createDocument as createCreativeDocument,
@@ -13,6 +18,8 @@ export const CREATIVE_ASSETS_KEY = 'creativeAssets:v1';
 export const CREATIVE_DOCUMENTS_KEY = 'creativeDocuments:v1';
 export const CREATIVE_VERSIONS_KEY = 'creativeVersions:v1';
 export const CREATIVE_MIGRATION_KEY = 'creativeWorkspaceMigration:v1';
+/** 存量资产 id 迁移为 UUID 的独立开关（与 legacy 迁解耦，跑一次即可） */
+export const CREATIVE_UUID_MIGRATION_KEY = 'creativeWorkspaceUuidMigration:v1';
 
 function readJson(key, fallback) {
   try {
@@ -43,10 +50,8 @@ function uniqueById(items = []) {
   });
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function isUuid(value) {
-  return UUID_RE.test(String(value || ''));
+function uniqueByIdAndSource(items = []) {
+  return dedupeAssets(items);
 }
 
 function versionMapToList(map = {}) {
@@ -128,29 +133,47 @@ export function initializeCreativeWorkspace(now = new Date().toISOString()) {
   const migrated = readJson(CREATIVE_MIGRATION_KEY, null);
   const existingAssets = readJson(CREATIVE_ASSETS_KEY, []);
   const existingDocuments = readJson(CREATIVE_DOCUMENTS_KEY, []);
+  let state;
   if (migrated?.done) {
-    return { assets: existingAssets, documents: existingDocuments, migration: migrated };
+    state = { assets: existingAssets, documents: existingDocuments, migration: migrated };
+  } else {
+    const legacyMaterials = readJson('materials', []);
+    const legacyArticles = readJson('articles', []);
+    const next = migrateLegacyCreativeState({
+      legacyMaterials,
+      legacyArticles,
+      existingAssets,
+      existingDocuments,
+      now,
+    });
+    writeJson(CREATIVE_ASSETS_KEY, next.assets);
+    writeJson(CREATIVE_DOCUMENTS_KEY, next.documents);
+    const migration = {
+      done: true,
+      migratedAt: now,
+      materialCount: legacyMaterials.length,
+      articleCount: legacyArticles.length,
+    };
+    writeJson(CREATIVE_MIGRATION_KEY, migration);
+    state = { ...next, migration };
   }
 
-  const legacyMaterials = readJson('materials', []);
-  const legacyArticles = readJson('articles', []);
-  const next = migrateLegacyCreativeState({
-    legacyMaterials,
-    legacyArticles,
-    existingAssets,
-    existingDocuments,
-    now,
-  });
-  writeJson(CREATIVE_ASSETS_KEY, next.assets);
-  writeJson(CREATIVE_DOCUMENTS_KEY, next.documents);
-  const migration = {
-    done: true,
-    migratedAt: now,
-    materialCount: legacyMaterials.length,
-    articleCount: legacyArticles.length,
-  };
-  writeJson(CREATIVE_MIGRATION_KEY, migration);
-  return { ...next, migration };
+  // 存量资产 id → UUID（独立开关）：云同步只接受 UUID，素材来源的旧 id 会被静默丢弃
+  const uuidFlag = readJson(CREATIVE_UUID_MIGRATION_KEY, null);
+  if (!uuidFlag?.done) {
+    const result = migrateAssetIdsToUuid({
+      assets: state.assets,
+      documents: state.documents,
+      versions: versionMapToList(loadCreativeVersions()),
+    });
+    writeJson(CREATIVE_ASSETS_KEY, result.assets);
+    writeJson(CREATIVE_DOCUMENTS_KEY, result.documents);
+    writeJson(CREATIVE_VERSIONS_KEY, listToVersionMap(result.versions));
+    writeJson(CREATIVE_UUID_MIGRATION_KEY, { done: true, migratedAt: now, migratedCount: result.migratedCount });
+    state = { ...state, assets: result.assets, documents: result.documents };
+  }
+
+  return state;
 }
 
 export function useCreativeWorkspace({ syncEnabled = false } = {}) {
@@ -184,7 +207,7 @@ export function useCreativeWorkspace({ syncEnabled = false } = {}) {
   const mergeRemoteState = useCallback((state = {}) => {
     if (Array.isArray(state.assets)) {
       setAssets(prev => {
-        const next = uniqueById([...state.assets, ...prev]);
+        const next = uniqueByIdAndSource([...state.assets, ...prev]);
         persistAssets(next);
         return next;
       });
@@ -257,7 +280,8 @@ export function useCreativeWorkspace({ syncEnabled = false } = {}) {
   const addAsset = useCallback((input) => {
     const asset = normalizeAsset(input);
     setAssets(prev => {
-      const next = uniqueById([asset, ...prev]);
+      // 按 id + originalItemId 双重去重：同一素材/来源二次入库不产生重复资产
+      const next = uniqueByIdAndSource([asset, ...prev]);
       persistAssets(next);
       return next;
     });

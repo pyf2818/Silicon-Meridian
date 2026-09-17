@@ -62,14 +62,31 @@ export function scorePersonalFit(event = {}, context = {}) {
   };
 }
 
+import { rankItem } from '../../ranking/ranker.js';
+
+/** 影子模式开关：读在调用时而非模块加载时，测试可动态切换 */
+function rankerEnabled() {
+  return process.env.MERIDIAN_RANKER_V2 === '1';
+}
+
 export function applyPersonalScores(events = [], context = {}) {
   const hasContext = normalizeList(context.interests).length
     || normalizeList(context.follows || context.specialFollows).length
     || normalizeList(context.sourceTiers).length
     || normalizeList(context.learnedTopics || context.learned?.topics).length;
 
+  // 事件本身就是聚类：自带 independentSourceCount + firstSeenAt，velocity 信号因此有真实数据
+  const withRank = event => (rankerEnabled()
+    ? { ...rankItem(event, { lane: 'personal', now: context.now ?? Date.now(), hasProfile: hasContext, cluster: event }) }
+    : {});
+
   if (!hasContext) {
-    return events.map(event => ({ ...event, personalScore: event.personalScore || 0, personalReasons: event.personalReasons || [] }));
+    return events.map(event => ({
+      ...event,
+      personalScore: event.personalScore || 0,
+      personalReasons: event.personalReasons || [],
+      ...withRank(event),
+    }));
   }
 
   return events.map(event => {
@@ -78,8 +95,11 @@ export function applyPersonalScores(events = [], context = {}) {
       ...event,
       ...personal,
       intelligenceScore: Math.round(Math.min(100, (event.intelligenceScore || 0) * 0.72 + personal.personalScore * 0.28)),
+      ...withRank(event),
     };
   }).sort((a, b) => {
+    // 影子模式开启时优先按统一排序内核的分数排；否则保持原口径
+    if (a.rankScore != null && b.rankScore != null && a.rankScore !== b.rankScore) return b.rankScore - a.rankScore;
     const scoreDiff = (b.intelligenceScore || 0) - (a.intelligenceScore || 0);
     if (scoreDiff) return scoreDiff;
     return (b.personalScore || 0) - (a.personalScore || 0);

@@ -1,3 +1,5 @@
+import { isEstimatedPublishTime, normalizeDate } from '../../news/utils/dateUtils.js';
+
 const CATEGORY_LABELS = {
   'ai-models': 'Models',
   'ai-products': 'Products',
@@ -40,8 +42,9 @@ function cleanText(value, maxLength = 2000) {
 }
 
 function normalizePublishedAt(value) {
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? new Date(time).toISOString() : new Date().toISOString();
+  // 与 news 管线同规则：解析失败返回 null，不再用「当前时间」冒充发布时间。
+  // 下游 freshnessScore 已有 Number.isFinite 守卫，eventCluster 用 `|| 0` 兜底。
+  return normalizeDate(value);
 }
 
 function extractEntities(text) {
@@ -81,6 +84,7 @@ export function normalizeAiHotItem(item = {}) {
     category,
     categoryLabel: CATEGORY_LABELS[category] || 'Industry',
     publishedAt,
+    publishedAtEstimated: isEstimatedPublishTime(publishedAt),
     entities,
     tags: buildTags({ category, source }, entities),
     evidence: {
@@ -122,6 +126,8 @@ export function normalizeRssItem(item = {}) {
     category,
     categoryLabel: CATEGORY_LABELS[category] || 'Industry',
     publishedAt,
+    // 上游 news 管线已经判定过（无日期字段 / 未来时间）就直接沿用
+    publishedAtEstimated: item.publishedAtEstimated ?? isEstimatedPublishTime(publishedAt),
     entities,
     tags: [...new Set([...(item.tags || []), ...buildTags({ category, source }, entities)])].slice(0, 6),
     imageUrl: item.imageUrl || '',

@@ -193,7 +193,7 @@ export default function NewsPreviewPanel() {
           <button type="button" className="news-preview-close" onClick={close} title="关闭 (Esc)">{ICONS.x || '×'}</button>
           <div className="news-preview-meta">
             {item.source && <span className="news-preview-source">{item.source}</span>}
-            <span className="news-preview-time">{formatRelative(item.publishedAt)}</span>
+            <span className="news-preview-time" title={item.publishedAtEstimated ? '信源未提供可解析的发布时间' : undefined}>{formatRelative(item.publishedAt, { estimated: item.publishedAtEstimated })}</span>
           </div>
           <h2 className="news-preview-title">{displayTitle}</h2>
           <div className="news-preview-actions">

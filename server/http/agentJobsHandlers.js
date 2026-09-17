@@ -82,7 +82,11 @@ export async function handleAgentJobsRequest(req, res, pathname, method) {
     if (!userId) return sendJsonResponse(res, 401, { ok: false, error: 'UNAUTHORIZED' });
     const jobId = runsMatch[1];
     const url = new URL(req.url, 'http://x');
-    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const rawLimit = url.searchParams.get('limit');
+    if (rawLimit !== null && (!/^\d+$/.test(rawLimit) || Number(rawLimit) < 1 || Number(rawLimit) > 100)) {
+      return sendJsonResponse(res, 400, { ok: false, error: 'limit must be an integer between 1 and 100' });
+    }
+    const limit = rawLimit === null ? 20 : Number(rawLimit);
     const runs = await getJobRuns(jobId, userId, limit);
     return sendJsonResponse(res, 200, { ok: true, runs });
   }
@@ -92,7 +96,7 @@ export async function handleAgentJobsRequest(req, res, pathname, method) {
     const body = await readJsonBody(req);
     if (!body.cronExpr) return sendJsonResponse(res, 400, { ok: false, error: 'cronExpr is required' });
     try {
-      const next = nextCronRun(body.cronExpr, body.from ? new Date(body.from) : new Date());
+      const next = nextCronRun(body.cronExpr, body.from ? new Date(body.from) : new Date(), body.timezone || 'Asia/Shanghai');
       return sendJsonResponse(res, 200, { ok: true, nextRun: next.toISOString() });
     } catch (err) {
       return sendJsonResponse(res, 400, { ok: false, error: err.message });

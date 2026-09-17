@@ -7,41 +7,34 @@ import { runAgentOnce } from '../http/agentRunHandlers.js';
 // 例子：'0 8 * * *' (每天8点) / '*/30 * * * *' (每30分钟) / '0 9 * * 1-5' (工作日9点)
 
 function parseCronField(field, min, max) {
-  if (field === '*') {
-    const arr = [];
-    for (let i = min; i <= max; i++) arr.push(i);
-    return arr;
-  }
-  if (field.startsWith('*/')) {
-    const step = parseInt(field.slice(2), 10);
-    if (!step || step < 1) throw new Error(`invalid step: ${field}`);
-    const arr = [];
-    for (let i = min; i <= max; i += step) arr.push(i);
-    return arr;
-  }
-  const arr = [];
+  const values = new Set();
   for (const part of field.split(',')) {
-    if (part.includes('-')) {
-      const [start, end] = part.split('-').map(n => parseInt(n, 10));
-      if (isNaN(start) || isNaN(end) || start > end) throw new Error(`invalid range: ${part}`);
-      for (let i = start; i <= end; i++) arr.push(i);
-    } else {
-      const n = parseInt(part, 10);
-      if (isNaN(n) || n < min || n > max) throw new Error(`invalid value: ${part}`);
-      arr.push(n);
+    const match = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(part);
+    if (!match) throw new Error(`invalid value: ${part}`);
+    const [, range, stepText] = match;
+    const step = stepText === undefined ? 1 : Number(stepText);
+    if (!Number.isSafeInteger(step) || step < 1) throw new Error(`invalid step: ${part}`);
+    const [start, explicitEnd] = range === '*' ? [min, max] : range.split('-').map(Number);
+    const end = explicitEnd ?? (stepText === undefined ? start : max);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < min || end > max || start > end) {
+      throw new Error(`invalid range: ${part}`);
     }
+    for (let value = start; value <= end; value += step) values.add(value);
   }
-  return arr;
+  return values;
 }
 
 /**
  * 计算 cron 表达式的下一次执行时间
  * @param {string} cronExpr - 5字段 cron: "分 时 日 月 周"
  * @param {Date} from - 起始时间（默认 now）
- * @param {string} timezone - 时区（暂未实现，按服务器本地时区）
+ * @param {string} timezone - IANA 时区，独立于服务器时区
  * @returns {Date} 下次执行时间
  */
 export function nextCronRun(cronExpr, from = new Date(), timezone = 'Asia/Shanghai') {
+  if (typeof cronExpr !== 'string' || !(from instanceof Date) || !Number.isFinite(from.getTime())) {
+    throw new Error('invalid cron expression or start date');
+  }
   const parts = cronExpr.trim().split(/\s+/);
   if (parts.length !== 5) throw new Error(`cron expression must have 5 fields: ${cronExpr}`);
 
@@ -49,22 +42,32 @@ export function nextCronRun(cronExpr, from = new Date(), timezone = 'Asia/Shangh
   const hours = parseCronField(parts[1], 0, 23);
   const daysOfMonth = parseCronField(parts[2], 1, 31);
   const months = parseCronField(parts[3], 1, 12);
-  const daysOfWeek = parseCronField(parts[4], 0, 6);
+  const daysOfWeek = parseCronField(parts[4], 0, 7);
+  if (daysOfWeek.delete(7)) daysOfWeek.add(0);
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone, hourCycle: 'h23',
+    year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric',
+  });
 
   // 从 from + 1 分钟开始逐分钟扫描（最多扫 366 天）
   const start = new Date(from.getTime());
-  start.setSeconds(0, 0);
-  start.setMinutes(start.getMinutes() + 1);
+  start.setUTCSeconds(0, 0);
+  start.setUTCMinutes(start.getUTCMinutes() + 1);
 
   const maxIter = 366 * 24 * 60; // 最多扫一年
   for (let i = 0; i < maxIter; i++) {
     const t = new Date(start.getTime() + i * 60 * 1000);
+    const local = {};
+    for (const part of formatter.formatToParts(t)) {
+      if (part.type !== 'literal') local[part.type] = Number(part.value);
+    }
+    const weekday = new Date(Date.UTC(local.year, local.month - 1, local.day)).getUTCDay();
     if (
-      minutes.includes(t.getMinutes()) &&
-      hours.includes(t.getHours()) &&
-      daysOfMonth.includes(t.getDate()) &&
-      months.includes(t.getMonth() + 1) &&
-      daysOfWeek.includes(t.getDay())
+      minutes.has(local.minute) &&
+      hours.has(local.hour) &&
+      daysOfMonth.has(local.day) &&
+      months.has(local.month) &&
+      daysOfWeek.has(weekday)
     ) {
       return t;
     }
@@ -77,7 +80,7 @@ export function nextCronRun(cronExpr, from = new Date(), timezone = 'Asia/Shangh
 export async function createJob({ userId, agentId, name, description = '', cronExpr, timezone = 'Asia/Shanghai', missionPrompt }) {
   const pool = getPool();
   // 校验 cron 表达式
-  const nextRun = nextCronRun(cronExpr);
+  const nextRun = nextCronRun(cronExpr, new Date(), timezone);
   const result = await pool.query(
     `insert into agent_jobs (user_id, agent_id, name, description, cron_expr, timezone, mission_prompt, next_run_at)
      values ($1, $2, $3, $4, $5, $6, $7, $8) returning id, next_run_at`,
@@ -91,15 +94,22 @@ export async function updateJob(jobId, userId, patch) {
   const fields = [];
   const params = [];
   let idx = 1;
-  for (const key of ['name', 'description', 'cron_expr', 'timezone', 'mission_prompt', 'enabled']) {
+  // HTTP 使用 camelCase；旧的 snake_case 调用仍可兼容。
+  patch = { ...patch, cronExpr: patch.cronExpr ?? patch.cron_expr, missionPrompt: patch.missionPrompt ?? patch.mission_prompt };
+  for (const key of ['name', 'description', 'cronExpr', 'timezone', 'missionPrompt', 'enabled']) {
     if (patch[key] !== undefined) {
       const col = key === 'cronExpr' ? 'cron_expr' : key === 'missionPrompt' ? 'mission_prompt' : key;
       fields.push(`${col} = $${idx++}`);
       params.push(patch[key]);
     }
   }
-  if (patch.cronExpr) {
-    const nextRun = nextCronRun(patch.cronExpr);
+  if (patch.cronExpr !== undefined || patch.timezone !== undefined || patch.enabled === true) {
+    const current = await pool.query(
+      'select cron_expr, timezone from agent_jobs where id = $1 and user_id = $2',
+      [jobId, userId]
+    );
+    if (!current.rows.length) return { updated: 0 };
+    const nextRun = nextCronRun(patch.cronExpr ?? current.rows[0].cron_expr, new Date(), patch.timezone ?? current.rows[0].timezone);
     fields.push(`next_run_at = $${idx++}`);
     params.push(nextRun);
   }
@@ -136,12 +146,14 @@ export async function listJobs(userId) {
 
 export async function getJobRuns(jobId, userId, limit = 20) {
   const pool = getPool();
+  const parsedLimit = Number(limit);
+  const safeLimit = Number.isFinite(parsedLimit) ? Math.min(Math.max(Math.trunc(parsedLimit), 1), 100) : 20;
   const result = await pool.query(
     `select id, job_id, status, started_at, finished_at, duration_ms, output, error, tokens_used
      from agent_job_runs
      where job_id = $1 and user_id = $2
      order by started_at desc limit $3`,
-    [jobId, userId, Math.min(Math.max(limit, 1), 100)]
+    [jobId, userId, safeLimit]
   );
   return result.rows.map(r => ({
     id: r.id, jobId: r.job_id, status: r.status, startedAt: r.started_at,
@@ -241,7 +253,7 @@ async function executeJob(job) {
     // 计算下次执行时间
     let nextRun = null;
     try {
-      nextRun = nextCronRun(job.cron_expr, startedAt, job.timezone);
+      nextRun = nextCronRun(job.cron_expr, finishedAt, job.timezone);
     } catch (err) {
       console.error(`[executeJob] next cron calc failed:`, err.message);
     }
@@ -266,11 +278,12 @@ export function startCronDaemon(intervalMs = 60 * 1000) {
   }
   console.log(`[cron] daemon started, interval = ${intervalMs}ms`);
   // 启动后立即跑一次（扫描已过期任务）
-  setTimeout(() => tickCronJobs().catch(() => {}), 5000);
+  const initialTimer = setTimeout(() => tickCronJobs().catch(() => {}), 5000);
   cronTimer = setInterval(() => {
     tickCronJobs().catch(err => console.error('[cron tick] error:', err.message));
   }, intervalMs);
   return () => {
+    clearTimeout(initialTimer);
     if (cronTimer) {
       clearInterval(cronTimer);
       cronTimer = null;

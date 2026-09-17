@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decodeHtmlEntities, isEnglishText, isChineseText, formatStars, hexToRgba, isFreshNews } from '../format.js';
+import { decodeHtmlEntities, isEnglishText, isChineseText, formatStars, hexToRgba, formatRelative, isFreshNews } from '../format.js';
 
 describe('decodeHtmlEntities（展示层兜底，v26.9e）', () => {
   it('解开资讯里最常见的具名实体', () => {
@@ -58,5 +58,45 @@ describe('format.js 其他导出（回归护栏）', () => {
     expect(isFreshNews(new Date().toISOString())).toBe(true);
     expect(isFreshNews(new Date(Date.now() - 10 * 60 * 1000).toISOString())).toBe(false);
     expect(isFreshNews(null)).toBe(false);
+  });
+
+  it('isFreshNews 兼容旧的「直接传毫秒阈值」写法', () => {
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    expect(isFreshNews(tenMinAgo, 20 * 60 * 1000)).toBe(true);
+    expect(isFreshNews(tenMinAgo, 5 * 60 * 1000)).toBe(false);
+  });
+});
+
+describe('发布时间不可信时的展示（第1点修复）', () => {
+  const iso = ms => new Date(Date.now() - ms).toISOString();
+
+  it('estimated 标记的条目显示「时间未知」，绝不显示「刚刚」', () => {
+    // 这正是历史 BUG 的用户可见表现：无日期字段的条目（服务端曾伪造为抓取时刻）显示成「刚刚」
+    expect(formatRelative(new Date().toISOString(), { estimated: true })).toBe('时间未知');
+    expect(formatRelative(iso(3 * 60 * 60 * 1000), { estimated: true })).toBe('时间未知');
+  });
+
+  it('未来时间不参与「刚刚 / N分钟前」话术', () => {
+    const future = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+    expect(formatRelative(future)).toBe('时间未知');
+    expect(formatRelative(future, { estimated: true })).toBe('时间未知');
+  });
+
+  it('空值 / 非法值一律「时间未知」', () => {
+    expect(formatRelative(null)).toBe('时间未知');
+    expect(formatRelative(undefined)).toBe('时间未知');
+    expect(formatRelative('garbage')).toBe('时间未知');
+  });
+
+  it('正常时间仍按原来的分档显示', () => {
+    expect(formatRelative(new Date().toISOString())).toBe('刚刚');
+    expect(formatRelative(iso(20 * 60 * 1000))).toBe('20分钟前');
+    expect(formatRelative(iso(5 * 60 * 60 * 1000))).toBe('5小时前');
+  });
+
+  it('estimated 的条目永不打 NEW 角标（即便时间看起来很近）', () => {
+    expect(isFreshNews(new Date().toISOString(), { estimated: true })).toBe(false);
+    expect(isFreshNews(new Date(Date.now() + 60_000).toISOString())).toBe(false); // 未来
+    expect(isFreshNews('garbage')).toBe(false);
   });
 });

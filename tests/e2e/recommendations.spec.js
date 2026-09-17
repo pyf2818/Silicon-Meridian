@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { installExternalFixtures } from './fixtures.js';
+import { dismissOnboarding, installExternalFixtures } from './fixtures.js';
 
 async function openApp(page, view = 'recommendations', init) {
   await installExternalFixtures(page);
   if (init) await page.addInitScript(init);
   await page.goto(`/?view=${view}`);
+  // 首访引导蒙层会拦截所有指针事件，必须先关掉再交互
+  await dismissOnboarding(page);
 }
 
 test('renders newspaper structure from the selected recommendation snapshot', async ({ page }) => {
@@ -114,7 +116,9 @@ test('groups duplicate event clusters in all dynamics without losing sources', a
 
   const allPage = page.locator('main[data-nav="all"]');
   const cluster = allPage.locator('.event-cluster-card').filter({ hasText: 'OpenAI' }).first();
-  await expect(cluster).toBeVisible();
+  // 聚类卡片要等事件接口返回 + 前端聚类算完，默认 5s 在并行跑多份 spec 时会抖
+  //（实测同一用例第三轮通过、第四轮超时 → 超时偏紧，非产品回归）
+  await expect(cluster).toBeVisible({ timeout: 15_000 });
   await expect(cluster.locator('.cluster-count')).toContainText('2');
 
   await cluster.locator('.cluster-header').click();

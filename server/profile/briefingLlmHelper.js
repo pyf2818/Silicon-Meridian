@@ -6,6 +6,8 @@
  * 失败时抛错，由调用方决定如何处理（catch 后 aiStatus = 'ai_failed'）。
  */
 
+import { requestChatCompletion } from '../agent/llmClient.js';
+
 function safeJoin(arr, fallback = '无') {
   return Array.isArray(arr) && arr.length ? arr.join('、') : fallback;
 }
@@ -54,44 +56,18 @@ ${citationIds.join(', ') || '（无）'}
 3. oneLine 不能为空
 4. opportunities 和 risks 中的 itemId 必须在 citationIds 中`;
 
-  const cleanBaseUrl = String(llmConfig.baseUrl).replace(/\/+$/, '');
-  const apiUrl = /\/v[1-4]$/.test(cleanBaseUrl) ? `${cleanBaseUrl}/chat/completions` : `${cleanBaseUrl}/v1/chat/completions`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
-
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(llmConfig.apiKey ? { Authorization: `Bearer ${llmConfig.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: llmConfig.selectedModel,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1500,
-        temperature: 0.4,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`briefing generator failed: ${response.status} ${errText.slice(0, 200)}`);
-    }
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    let cleaned = content.trim();
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start === -1 || end === -1 || end <= start) {
-      throw new Error('briefing generator returned no JSON object');
-    }
-    return JSON.parse(cleaned.slice(start, end + 1));
-  } catch (err) {
-    clearTimeout(timeout);
-    throw err;
+  const data = await requestChatCompletion(llmConfig, {
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 1500,
+    temperature: 0.4,
+  }, { timeoutMs: 30_000 });
+  const content = data.choices?.[0]?.message?.content || '';
+  let cleaned = content.trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('briefing generator returned no JSON object');
   }
+  return JSON.parse(cleaned.slice(start, end + 1));
 }

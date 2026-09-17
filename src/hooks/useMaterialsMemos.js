@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { filterBySpaceId } from '../domain/creative/spaceMapping.js';
 
 /**
  * Derived material/article filter computations — extracted from App.jsx
@@ -21,10 +22,8 @@ export function useMaterialsMemos({
 }) {
   const filteredMaterials = useMemo(() => {
     let result = materials;
-    if (materialSpaceFilter !== 'all') {
-      const sid = Number(materialSpaceFilter);
-      result = result.filter(m => m.spaceId === sid);
-    }
+    // 空间筛选：历史上这里写的是 Number(filter)，对 'space-<uuid>' 会得到 NaN → 筛选恒空
+    if (materialSpaceFilter !== 'all') result = filterBySpaceId(result, materialSpaceFilter);
     if (materialFilter !== 'all') result = result.filter(m => m.type === materialFilter);
     if (materialTimeRange !== 'all') {
       const now = Date.now();
@@ -80,10 +79,7 @@ export function useMaterialsMemos({
 
   const filteredArticles = useMemo(() => {
     let result = [...articles];
-    if (articleSpaceFilter !== 'all') {
-      const sid = Number(articleSpaceFilter);
-      result = result.filter(a => a.spaceId === sid);
-    }
+    if (articleSpaceFilter !== 'all') result = filterBySpaceId(result, articleSpaceFilter);
     if (articleSearch) {
       const q = articleSearch.toLowerCase();
       result = result.filter(a =>

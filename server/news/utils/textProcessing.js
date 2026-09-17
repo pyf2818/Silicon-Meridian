@@ -1,5 +1,7 @@
 import { CATEGORY_RULES, TAG_RULES, CATEGORIES } from '../config/constants.js';
 import { decodeEntities } from '../../utils/htmlEntities.js';
+import { normalizeDate as normalizeDateImpl } from './dateUtils.js';
+import { stripBoilerplate } from './boilerplate.js';
 
 // 实体解码实现已抽到 server/utils/htmlEntities.js（零依赖），
 // 供 fetchPageHandler 等 serverless 入口复用而不必拖入 271 个源配置。
@@ -15,8 +17,10 @@ export function cleanText(value) {
 }
 
 export function trimSummary(value) {
-  if (!value) return '暂无摘要，请前往原文查看完整内容。';
-  return value.length > 160 ? `${value.slice(0, 160).trim()}...` : value;
+  // 先去站点模板/推广尾巴，再截断：否则 160 字会被「点击阅读原文」这类话术白占
+  const cleaned = stripBoilerplate(value);
+  if (!cleaned) return '暂无摘要，请前往原文查看完整内容。';
+  return cleaned.length > 160 ? `${cleaned.slice(0, 160).trim()}...` : cleaned;
 }
 
 export function trimIntro(value) {
@@ -27,8 +31,8 @@ export function trimIntro(value) {
 }
 
 export function normalizeDate(value) {
-  const time = new Date(cleanText(value)).getTime();
-  return Number.isFinite(time) ? new Date(time).toISOString() : new Date().toISOString();
+  // 唯一实现在 dateUtils.js（dev 端与 serverless 端共用；此处转出保持既有调用方不变）
+  return normalizeDateImpl(value);
 }
 
 export function detectCategory(text, fallback) {

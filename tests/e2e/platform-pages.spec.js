@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { installExternalFixtures } from './fixtures.js';
+import { installExternalFixtures, openNav } from './fixtures.js';
 
 async function openApp(page) {
   await installExternalFixtures(page);
@@ -48,36 +48,39 @@ async function openApp(page) {
 
 test('renders recommendation timeline and all dynamics from fixtures', async ({ page }) => {
   await openApp(page);
-  await page.getByText('推荐', { exact: true }).click();
+  await openNav(page, 'recommendations');
   await expect(page.locator('main[data-nav="recommendations"]')).toContainText(/推荐|Immutable|OpenAI/);
 
-  await page.getByText('动态', { exact: true }).click();
+  await openNav(page, 'all');
   await expect(page.locator('main[data-nav="all"]')).toContainText(/OpenAI|NVIDIA|全部/);
 });
 
 test('runs stock page algorithm mode from fixed market data', async ({ page }) => {
   await openApp(page);
-  await page.getByText('股市', { exact: true }).click();
+  await openNav(page, 'stock');
   const stockPage = page.locator('main[data-nav="stock"]');
   await expect(stockPage).toContainText(/贵州茅台|600519/);
   await page.getByRole('button', { name: /算法|生成/ }).first().click();
   await expect(stockPage).toContainText(/MA5|支撑|压力|算法/);
 });
 
-test('shows creative workspace provenance and export controls', async ({ page }) => {
+test('opens the materials repository from the studio entry', async ({ page }) => {
+  // 原用例断言的是 CreativeWorkspace（"Creative asset workspace" / "Export local"）。
+  // 该组件在 App.jsx 里仅剩 import、已无渲染点 —— 创作能力由 AI 工作站承接，
+  // studio 入口现在渲染素材仓库（MaterialsPage）。断言随产品现状改写。
   await openApp(page);
-  await page.getByText('智创', { exact: true }).click();
-  await expect(page.getByText('Creative asset workspace')).toBeVisible();
-  await expect(page.getByText('Fixture source material').first()).toBeVisible();
-  await expect(page.getByText('Fixture draft').first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Export local' })).toBeVisible();
+  await openNav(page, 'studio');
+  const studio = page.locator('main[data-nav="studio"]');
+  await expect(studio).toBeVisible();
+  await expect(studio.locator('.repo-stats')).toContainText(/条素材/);
+  await expect(studio.locator('.repo-rail-item').first()).toBeVisible();
 });
 
 test('opens community and profile pages without authentication', async ({ page }) => {
   await openApp(page);
-  await page.getByText('广场', { exact: true }).click();
+  await openNav(page, 'square');
   await expect(page.locator('main')).toContainText(/Community|广场|登录/);
 
-  await page.getByText('画像', { exact: true }).click();
+  await openNav(page, 'profile-center');
   await expect(page.locator('main')).toContainText(/Personal Intelligence Memory|画像|关注/);
 });

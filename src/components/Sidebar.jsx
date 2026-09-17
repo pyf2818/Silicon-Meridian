@@ -107,6 +107,9 @@ export default function Sidebar({ sidebarCollapsed, setSidebarCollapsed, mobileM
                     <div key={item.id} className={`nav-primary-entry ${isActive ? 'active' : ''}`}>
                       <button
                         className={`nav-item nav-primary-item ${isActive ? 'active' : ''}`}
+                        // 机器可读锚点：与 <main data-nav="..."> 同一套标识。
+                        // 侧栏已图标化、文案随 i18n 变化，E2E/探针不该靠中文文案定位。
+                        data-nav={item.nav}
                         onClick={() => {
                           goNav(item.nav);
                           addRecentVisit('nav', item.nav, item.label);

@@ -9,6 +9,7 @@ export default defineConfig({
       'src/**/*.test.{js,jsx}',
       'server/**/__tests__/**/*.test.{js,jsx}',
       'server/**/*.test.{js,jsx}',
+      'api/**/*.test.{js,jsx}',
     ],
     globals: true,
     coverage: {

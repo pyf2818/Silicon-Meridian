@@ -118,6 +118,10 @@ async function resolveLearnedPreferences(options) {
 
 function sortItems(items) {
   return [...items].sort((a, b) => {
+    // 影子模式开启时，事件带 rankScore（统一排序内核）→ 优先按它排
+    if (a.rankScore != null && b.rankScore != null && a.rankScore !== b.rankScore) {
+      return b.rankScore - a.rankScore;
+    }
     const scoreDiff = (b.intelligenceScore || 0) - (a.intelligenceScore || 0);
     if (scoreDiff) return scoreDiff;
     return (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0);

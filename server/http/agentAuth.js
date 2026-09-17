@@ -13,7 +13,7 @@ function getAuth() {
  * @returns {Promise<string|null>} userId 或 null（未登录）
  */
 export async function getUserIdFromRequest(req) {
-  const token = parseCookies(req.headers?.cookie || '').meridian_session || '';
+  const token = parseCookies(req).meridian_session || '';
   if (!token) return null;
   try {
     const auth = await getAuth();

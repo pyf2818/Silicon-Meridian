@@ -140,3 +140,43 @@ export async function installExternalFixtures(page, options = {}) {
     }));
   }
 }
+
+/**
+ * 等开场动画覆盖层退场。
+ *
+ * 「硅基启动」splash 是全屏 fixed 覆盖层（z-index 10000），起跑后约 3.6s 才卸载；
+ * 在它存在期间会拦截指针事件（报错形如 "…intercepts pointer events"），
+ * 于是紧跟 page.goto 的点击会随机失败——同一个 spec 里有的用例过、有的挂，就是这个竞态。
+ * `prefers-reduced-motion` 下 splash 直接不渲染，此时 waitFor 会立刻超时退出，属正常。
+ */
+export async function awaitStageReady(page) {
+  await page.locator('.entrance').waitFor({ state: 'detached', timeout: 15_000 }).catch(() => {});
+}
+
+/**
+ * 关闭首访「新用户引导」蒙层（并先等开场动画退场）。
+ *
+ * 必须在任何交互之前调用：该蒙层同样是全屏遮罩，会拦截指针事件，
+ * 于是后续所有 `click()` 都卡到超时（表现为「点击没反应」）。
+ * 侧栏导航、卡片、按钮全部受影响——症状是每个用例都 30s 超时。
+ */
+export async function dismissOnboarding(page) {
+  await awaitStageReady(page);
+  const onboarding = page.getByRole('dialog', { name: '新用户引导' });
+  if (await onboarding.isVisible().catch(() => false)) {
+    await onboarding.getByRole('button', { name: '跳过引导' }).click();
+    await onboarding.waitFor({ state: 'hidden' }).catch(() => {});
+  }
+}
+
+/**
+ * 按 nav 标识切换主导航。
+ *
+ * 侧栏是图标化的、文案随 i18n 变化，`getByText('股市')` / `hasText: '智创'` 这类定位
+ * 会永久失效。导航按钮与 `<main>` 共用同一套 `data-nav` 标识，用它定位稳定。
+ */
+export async function openNav(page, nav) {
+  await dismissOnboarding(page);
+  await page.locator(`[data-nav="${nav}"]`).click();
+  await expect(page.locator(`main[data-nav="${nav}"]`)).toBeVisible();
+}

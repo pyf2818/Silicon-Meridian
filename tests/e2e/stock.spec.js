@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { installExternalFixtures } from './fixtures.js';
+import { installExternalFixtures, openNav } from './fixtures.js';
 
 const quote = {
   code: '600519',
@@ -44,7 +44,8 @@ async function openStock(page, { realtimePayload = quote, klines = risingKlines 
     body: JSON.stringify({ code: '600519', name: '贵州茅台', klines }),
   }));
   await page.goto('/');
-  await page.getByText('股市', { exact: true }).click();
+  // 侧栏图标化后没有可见文案 → 按 data-nav 锚点定位；先关首访引导蒙层
+  await openNav(page, 'stock');
   return page.locator('main[data-nav="stock"]');
 }
 
