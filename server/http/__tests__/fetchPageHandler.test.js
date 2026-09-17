@@ -38,7 +38,7 @@ describe('handleFetchPageRequest（资讯全文预览的数据源）', () => {
     const res = makeRes();
     await handleFetchPageRequest(makeReq('/api/fetch-page?url=https://example.com/a'), res);
     expect(res.state.body.ok).toBe(true);
-    expect(res.state.body.content).toContain('OpenAI 发布新模型—重磅…');
+    expect(res.state.body.content).toContain('OpenAI 发布新模型—重磅…\n\n');
     expect(res.state.body.content).toContain('“引用”');
     expect(res.state.body.content).not.toContain('&nbsp;');
     expect(res.state.body.content).not.toContain('&mdash;');

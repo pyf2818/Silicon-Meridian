@@ -26,13 +26,28 @@ function looksLikeMarkdown(text) {
 }
 
 /** 抓取纯文本 → 段落数组（按句聚成 ~120 字，长文更可读） */
-function toParagraphs(text) {
+function mergeSentences(text, maxLen) {
   return (text || '').split(/(?<=[。！？.!?])\s+/).reduce((acc, sentence) => {
     const last = acc[acc.length - 1];
-    if (last && last.length < 110) acc[acc.length - 1] = `${last}${sentence}`;
+    if (last && last.length < maxLen) acc[acc.length - 1] = `${last}${sentence}`;
     else acc.push(sentence);
     return acc;
   }, []);
+}
+
+function toParagraphs(text) {
+  // 服务端（pageContentExtractor）现在保留 \n\n 段落边界：先按真实段落切，
+  // 超长段再按句子切成阅读块；旧格式（无换行）走原句子归并逻辑。
+  const blocks = (text || '').split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
+  if (blocks.length > 1) {
+    return blocks.flatMap(block => (block.length > 240 ? mergeSentences(block, 240) : [block]));
+  }
+  return mergeSentences(text || '', 110);
+}
+
+/** 标题启发式：短、无句末标点的独立段，按小节标题渲染 */
+function isHeadingLike(p) {
+  return p.length <= 40 && !/[。！？.,!?：:；;…—]$/.test(p);
 }
 
 /** 配图：懒加载 + 防盗链加载失败自动隐藏 + 点击新窗口打开 */
@@ -159,7 +174,7 @@ export default function NewsPreviewPanel() {
           {localParas.length > 0 ? (
             localParas.map((p, i) => (
               <Fragment key={i}>
-                <p className={`news-preview-para${i === 0 ? ' lede' : ''}`}>{p}</p>
+                <p className={`news-preview-para${i === 0 ? ' lede' : ''}${isHeadingLike(p) && i > 0 ? ' heading' : ''}`}>{p}</p>
                 {imgAfter(i) && <PreviewImage src={imgAfter(i)} />}
               </Fragment>
             ))
@@ -177,7 +192,7 @@ export default function NewsPreviewPanel() {
       <>
         {paragraphs.map((p, i) => (
           <Fragment key={i}>
-            <p className={`news-preview-para${i === 0 ? ' lede' : ''}`}>{p}</p>
+            <p className={`news-preview-para${i === 0 ? ' lede' : ''}${isHeadingLike(p) && i > 0 ? ' heading' : ''}`}>{p}</p>
             {imgAfter(i) && <PreviewImage src={imgAfter(i)} />}
           </Fragment>
         ))}

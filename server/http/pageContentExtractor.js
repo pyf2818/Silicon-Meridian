@@ -16,6 +16,7 @@
  * 后续若要更准，应换成 htmlparser2 之类的真实解析器。
  */
 import { decodeEntities } from '../utils/htmlEntities.js';
+import { stripBoilerplate } from '../news/utils/boilerplate.js';
 
 /** 结构性噪声：整块删除（这些标签内部几乎不可能是正文） */
 const NOISE_ELEMENT_PATTERN = /<(script|style|noscript|template|svg|iframe|form|button|select|textarea|nav|footer|header|aside)\b[^>]*>[\s\S]*?<\/\1>/gi;
@@ -54,11 +55,38 @@ export const MIN_CONTAINER_TEXT_LENGTH = 80;
 /** 正文长度上限（与既有行为一致） */
 export const MAX_CONTENT_LENGTH = 15_000;
 
-/** 去掉标签、解码实体、折叠空白 */
+/** 去掉标签、解码实体、折叠空白（单行文本——摘要用） */
 export function htmlToText(html) {
   return decodeEntities(String(html || '').replace(/<[^>]+>/g, ' '))
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * 块级感知版：把 </p>/</div>/<br>/</h1-6> 等块边界转成 \n\n **保留段落结构**。
+ *
+ * 为什么需要：旧实现把所有空白折叠成单空格，段落边界全部丢失 →
+ * 前端 toParagraphs 只能按句号启发式瞎切，排版效果差。
+ * 现在服务端把真实段落用 \n\n 送下来，前端按段渲染（段距/标题层级/图文对齐都有了）。
+ */
+export function htmlToBlocks(html) {
+  return decodeEntities(String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n\n')
+    .replace(/<\/(p|div|section|article|li|h[1-6]|pre|blockquote|figure|figcaption|tr|table)>/gi, '\n\n')
+    .replace(/<[^>]+>/g, ' '))
+    .replace(/[ \t\u00a0]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** 逐段做模板语/推广语剔除，再拼回段落文本（stripBoilerplate 是单段语义） */
+export function cleanBlocks(text) {
+  return String(text || '')
+    .split('\n\n')
+    .map(paragraph => stripBoilerplate(paragraph))
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 /** 删除 class/id 命中噪声模式的块级元素（逐个标签类型处理，非贪婪） */
@@ -115,7 +143,7 @@ export function extractMainContent(html) {
     let longest = '';
     for (const match of cleaned.matchAll(re)) {
       // 链接密度过滤**只在候选容器内部**做：在全页阶段做有误删整个正文容器的风险
-      const text = htmlToText(stripLinkHeavyBlocks(match[1]));
+      const text = htmlToBlocks(stripLinkHeavyBlocks(match[1]));
       if (text.length > longest.length) longest = text;
     }
     if (longest.length >= MIN_CONTAINER_TEXT_LENGTH) {
@@ -125,7 +153,7 @@ export function extractMainContent(html) {
   }
 
   const useContainer = best.text.length >= MIN_CONTAINER_TEXT_LENGTH;
-  const content = (useContainer ? best.text : htmlToText(stripLinkHeavyBlocks(cleaned))).slice(0, MAX_CONTENT_LENGTH);
+  const content = cleanBlocks((useContainer ? best.text : htmlToBlocks(stripLinkHeavyBlocks(cleaned))).slice(0, MAX_CONTENT_LENGTH * 2)).slice(0, MAX_CONTENT_LENGTH);
 
   return {
     content,

@@ -28290,7 +28290,16 @@ body {
 .news-preview-para { margin: 0 0 18px; font-size: 14px; line-height: 1.95; color: var(--text-primary); letter-spacing: .01em; text-align: justify; }
 .news-preview-para.lede { font-size: 15px; line-height: 1.85; color: var(--text-primary); padding: 12px 14px; border-left: 3px solid var(--accent-cyan); border-radius: 0 10px 10px 0; background: color-mix(in srgb, var(--accent-cyan) 6%, transparent); margin-bottom: 22px; }
 .news-preview-para.lede::first-letter { font-size: 1.1em; font-weight: 700; color: var(--accent-cyan); }
-/* v20：正文配图（懒加载 + 失败自动隐藏 + 点击看原图）；v21 加大与正文间距 */
+
+
+.news-preview-heading {
+  margin: 26px 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text-primary);
+  text-indent: 0;
+}/* v20：正文配图（懒加载 + 失败自动隐藏 + 点击看原图）；v21 加大与正文间距 */
 .news-preview-figure { margin: 8px 0 22px; border-radius: 10px; overflow: hidden; border: 1px solid var(--panel-border); background: var(--bg-elevated); }
 .news-preview-figure img { display: block; width: 100%; height: auto; max-height: 380px; object-fit: cover; cursor: zoom-in; min-height: 60px; }
 .news-preview-figure.hero img { max-height: 300px; }

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useUiStore, useLightboxStore, useWorkflowStore, useMaterialsStore, useProfileStore, useNewsStore, useRecommendStore, useBehaviorStore, useAiStore, useStockStore, useElfStore, useSourceStore } from './store/index.js';
 import SettingsModal from './components/SettingsModal.jsx';
 import ArticleEditor from './components/ArticleEditor.jsx';
-import CreativeWorkspace from './components/CreativeWorkspace.jsx';
 import ColorfulBubbles from './components/ColorfulBubbles.jsx';
 import AiChatPanel from './components/AiChatPanel.jsx';
 import { formatTime, formatRelative, getGradeColors, isEnglishText, isChineseText } from './utils/format.js';

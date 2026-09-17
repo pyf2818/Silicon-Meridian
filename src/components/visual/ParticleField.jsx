@@ -47,7 +47,7 @@ function readParticleCount() {
   const raw = parseInt(readCssVar('--particle-count', '60'), 10);
   let n = (Number.isFinite(raw) && raw > 0) ? raw : 60;
   // v26 可见性增强：粒子要透过半透明毛玻璃面板仍可感知，整体提量 20%
-  n = Math.round(n * 1.2);
+  n = Math.round(n * 1.05);
   if (window.innerWidth < 768) n = Math.max(16, Math.floor(n * 0.6));
   return n;
 }
@@ -84,12 +84,15 @@ function readParticleSizeRange(shape) {
   const max = parseFloat(readCssVar(maxName, String(fallback.max)));
   const mi = Number.isFinite(min) ? min : fallback.min;
   const ma = Number.isFinite(max) ? max : fallback.max;
-  // v26 可见性增强：粒子要透过半透明面板仍可感知，整体放大——
-  // 小形态（≤4px）×1.45+0.4，大形态（>4px）×1.15（保持各形态体量比例）
-  const boostMin = mi > 4 ? mi * 1.15 : mi * 1.45 + 0.4;
-  const boostMax = ma > 10 ? ma * 1.15 + 1.5 : ma * 1.45 + 0.8;
+  // 精致化调优（用户反馈：偏大粒子遮挡界面内容）：
+  // v26 的可见性放大 overshoot（×1.45/×1.15+1.5 把 bubble/halo/aurora 全吹大），
+  // 收敛为温和系数，并对大形态设**绝对上限**——遮挡感主要来自大尺寸形态。
+  const boostMin = mi > 4 ? mi * 1.05 : mi * 1.1 + 0.2;
+  let boostMax = ma > 12 ? ma * 0.92 : ma * 1.08;
+  const CAPS = { bubble: 11, halo: 15, aurora: 32 };
+  if (CAPS[shape] !== undefined) boostMax = Math.min(boostMax, CAPS[shape]);
   return {
-    min: boostMin,
+    min: Math.min(boostMin, boostMax),
     max: boostMax,
   };
 }
@@ -351,11 +354,11 @@ export default function ParticleField({ enableMouseInfluence = true }) {
     // 辉光底光：径向渐变大光晕（3.2 倍半径），近景粒子更亮 —— 一次性每帧绘制，不叠加
     function drawGlow(p) {
       const c = p.colorIdx === 0 ? configRef.current.colors.c1 : configRef.current.colors.c2;
-      const r = Math.max(p.r * 3.2, 8);
+      const r = Math.max(p.r * 2.4, 8);
       const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
       g.addColorStop(0, c);
       g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.globalAlpha = 0.5 * p.depth;
+      ctx.globalAlpha = 0.35 * p.depth;
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);

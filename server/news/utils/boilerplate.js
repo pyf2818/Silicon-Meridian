@@ -62,7 +62,7 @@ export const FULL_BOILERPLATE_PATTERN = /^(点击|请|欢迎)?\s*(阅读原文|�
  * 注意：绝不含「。！？，,.;:」这类句读——正文的句号是合法内容，
  * 第一版把它一起剥掉，导致「未命中规则的文本」也被改动（测试立刻抓到）。
  */
-const TRAILING_JUNK = /[\s|·\-—–>»…⋯]+$/;
+const TRAILING_JUNK = /[\s|·\-—–>»]+$/;
 
 /** 连续重复的分隔符（切除后常见） */
 const REPEATED_SEPARATORS = /([|·\-—–])\s*\1+/g;
