@@ -207,21 +207,20 @@ async function toolSearchNews(args, ctx) {
   if (items.length === 0) {
     try {
       const intRes = await withTimeout(
-        `/api/intelligence/events?take=80&storage=auto&q=${encodeURIComponent(keyword)}`,
+        `/api/intelligence/events?take=80&storage=auto`,
         {},
         10000,
       );
       if (intRes.ok) {
         const intData = await intRes.json();
         if (intData?.ok && Array.isArray(intData.events)) {
-          const kw = keyword.toLowerCase();
-          // intelligence 返回的事件字段是 {id, title, summary, source, url, sources[], entities[], category, ...}
-          // 客户端按关键词命中过滤（title/summary/entities），并按 intelligenceScore 排序取 pageSize
+          // 分词 OR：整词 includes 会让自然语言关键词全灭（如"值得关注 资讯"）
+          const kws = keyword.toLowerCase().split(/\s+/).filter(Boolean);
           const matched = intData.events
             .filter(ev => {
-              if (kw.length === 0) return true;
+              if (kws.length === 0) return true;
               const text = `${ev.title || ''} ${ev.summary || ''} ${(ev.entities || []).join(' ')}`.toLowerCase();
-              return text.includes(kw);
+              return kws.some(t => text.includes(t));
             })
             .sort((a, b) => (b.intelligenceScore || 0) - (a.intelligenceScore || 0))
             .slice(0, pageSize)
@@ -251,16 +250,22 @@ async function toolSearchNews(args, ctx) {
         const retryData = await retryRes.json();
         if (retryData?.ok) {
           const allItems = Array.isArray(retryData.items) ? retryData.items : [];
-          // 客户端关键词匹配 fallback
-          const kw = keyword.toLowerCase();
-          items = allItems.filter(item =>
-            (item.title || '').toLowerCase().includes(kw) ||
-            (item.summary || '').toLowerCase().includes(kw)
-          ).slice(0, pageSize);
+          const kws = keyword.toLowerCase().split(/\s+/).filter(Boolean);
+          items = allItems.filter(item => {
+            const txt = `${item.title || ''} ${item.summary || ''}`.toLowerCase();
+            return kws.length === 0 || kws.some(t => txt.includes(t));
+          }).slice(0, pageSize);
         }
       }
     } catch { /* ignore */ }
   }
+  // 兜底 2.5（联网之前）：关键词太具体时，退回「今日情报概览」——
+  // 资讯库里有内容但关键词没命中，直接联网等于放弃站内数据。
+  const overview = await toolReadIntelligenceFocus({ take: 6 });
+  if (overview && !/^(未找到|今日暂无|错误)/.test(overview.slice(0, 12))) {
+    return `资讯库中未找到与 "${keyword}" 完全相关的内容。以下是今日站内情报概览（可用 read_intelligence_focus 深入某主题，或调用 web_search 联网补充）：\n\n${overview}`;
+  }
+
   if (items.length === 0) {
     // 最后 fallback：尝试联网搜索
     // 注意：与「联网搜索（web_search）」工具不同，此处不携带用户在设置中配置的
