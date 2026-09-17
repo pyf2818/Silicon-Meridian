@@ -14,6 +14,7 @@ import {
   resetGlobalImageUsage, resolveImageWithScrapling
 } from '../images/imageResolver.js';
 import { isGoodImageUrl, normalizeImageKey } from '../images/imageProcessing.js';
+import { backfillItemImages } from '../images/imageBackfill.js';
 
 // ============================================================================
 // 架构（2026-08-18 重构）：
@@ -327,6 +328,26 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
     resetMediaStats();
     resetGlobalImageUsage();
     mediaStats.totalItems = fullItems.length;
+
+    // 配图回填（fire-and-forget）：对视野内无图条目抓文章页补 og:image，
+    // 结果写回「当前缓存对象 + 持久池」——首次浏览后几分钟内逐步补齐，绝不阻塞响应。
+    if (process.env.MERIDIAN_IMAGE_BACKFILL !== '0') {
+      const missing = fullItems.filter(item => !item.imageUrl && item.url).slice(0, 24);
+      if (missing.length) {
+        backfillItemImages(missing).then(({ resolved }) => {
+          if (!resolved.size) return;
+          let applied = 0;
+          for (const item of missing) {
+            const imageUrl = resolved.get(item.url);
+            if (!imageUrl || item.imageUrl) continue;
+            item.imageUrl = imageUrl;                     // 当前缓存对象（引用共享，下个请求即生效）
+            const pooled = itemPool.get(poolKey(item));
+            if (pooled && !pooled.imageUrl) { pooled.imageUrl = imageUrl; applied += 1; }
+          }
+          if (applied) console.log(`[imageBackfill] 本轮回填 ${applied} 张首图`);
+        }).catch(() => {});
+      }
+    }
 
     // P4 信源动态表现统计（只读累积，不影响本响应；sourceTrust 信号在样本 ≥10 后自动启用）
     recordTopHits(fullItems.map(item => item.source).filter(Boolean));
