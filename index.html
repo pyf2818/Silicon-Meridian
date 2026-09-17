@@ -46,6 +46,38 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- 预开场帧：纯 CSS、零 bundle 依赖，HTML 到达即显示（消灭 bundle 编译期的白屏/突兀）。
+         React 挂载 EntranceSplash 时会移除它。只动 transform/opacity，合成器渲染不卡顿。 -->
+    <style>
+      #boot-splash {
+        position: fixed; inset: 0; z-index: 9999;
+        background: #020509; color: #eafcff;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 18px; font-family: 'Rajdhani', 'Share Tech Mono', monospace;
+        opacity: 1; transition: opacity 0.35s ease;
+      }
+      #boot-splash.boot-splash--out { opacity: 0; }
+      #boot-splash .bs-line {
+        width: min(320px, 60vw); height: 1px; overflow: hidden;
+        background: rgba(95, 232, 255, 0.14); position: relative;
+      }
+      #boot-splash .bs-line::after {
+        content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 42%;
+        background: linear-gradient(90deg, transparent, rgba(95, 232, 255, 0.9), transparent);
+        animation: bs-sweep 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      #boot-splash .bs-brand { letter-spacing: 0.5em; text-indent: 0.5em; font-size: 13px; opacity: 0.82; }
+      #boot-splash .bs-sub { font-size: 10px; letter-spacing: 0.3em; opacity: 0.4; }
+      @keyframes bs-sweep { from { transform: translateX(-120%); } to { transform: translateX(340%); } }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-splash .bs-line::after { animation: none; opacity: 0.4; }
+      }
+    </style>
+    <div id="boot-splash" aria-hidden="true">
+      <div class="bs-line"></div>
+      <div class="bs-brand">万般硅川</div>
+      <div class="bs-sub">SILICON MERIDIAN</div>
+    </div>
     <script>
       window.onerror = function (message, source, line, column, error) {
         const root = document.getElementById('root');

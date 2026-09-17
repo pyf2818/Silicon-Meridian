@@ -26,7 +26,6 @@ const FONT_HREF =
 const REVEAL_AT = 3400;    // 起跑后：开始离场、内容升起
 const DONE_AT = 4380;      // 起跑后：完全离场、卸载
 const SKIP_FADE = 520;     // 跳过时离场过渡时长
-const FONT_WAIT_MAX = 600; // 品牌字最多等这么久，超时直接起跑
 
 // 四幕时间轴（与 entrance.css 中的 animation-delay 保持一致）
 const A_END = 950;   // 一线完成
@@ -96,6 +95,15 @@ export default function EntranceSplash({ onReveal, onDone }) {
     }
   };
 
+  /* ---------- 预开场帧交接：移除 index.html 的内联 boot-splash ---------- */
+  useEffect(() => {
+    const boot = document.getElementById('boot-splash');
+    if (!boot) return undefined;
+    boot.classList.add('boot-splash--out');
+    const timer = setTimeout(() => boot.remove(), 400);
+    return () => boot.remove();
+  }, []);
+
   /* ---------- 光河引擎：一线 → 万川 → 归一 → 入境（拖尾轨迹） ---------- */
   useEffect(() => {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -120,6 +128,23 @@ export default function EntranceSplash({ onReveal, onDone }) {
     const streams = [];
     let t0 = 0;
     let rafId = 0;
+
+    // 流畅性修复①：辉光预渲染成贴图。此前每帧对 ~115 条流各建一次 createRadialGradient，
+    // 是主线程卡顿的最大来源；drawImage 贴图让每帧成本降一个数量级。
+    const glowSprites = colors.map(color => {
+      const size = 64;
+      const c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      const g = c.getContext('2d');
+      const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      grad.addColorStop(0, `rgba(${color},1)`);
+      grad.addColorStop(0.35, `rgba(${color},0.45)`);
+      grad.addColorStop(1, `rgba(${color},0)`);
+      g.fillStyle = grad;
+      g.fillRect(0, 0, size, size);
+      return { canvas: c, color };
+    });
+    const spriteFor = color => glowSprites.find(s => s.color === color) || glowSprites[0];
 
     const spawn = () => {
       const depth = 0.35 + Math.random() * 0.65; // 远近层次：近=快/亮/粗
@@ -177,9 +202,9 @@ export default function EntranceSplash({ onReveal, onDone }) {
         ctx.fill();
       }
 
-      // B 幕「万川」：支流按进度渐次汇入光河
+      // B 幕「万川」：支流按进度渐次汇入光河（流畅性修复②：115 → 64 条，肉眼无差、帧预算减半）
       if (!burst && t >= A_END && t < B_END) {
-        const target = Math.floor(115 * Math.min(1, (t - A_END) / 900));
+        const target = Math.floor(64 * Math.min(1, (t - A_END) / 900));
         while (streams.length < target) streams.push(spawn());
       }
 
@@ -222,15 +247,12 @@ export default function EntranceSplash({ onReveal, onDone }) {
           if (s.x > w + 24) { streams[i] = spawn(); continue; }
         }
         if (s.alpha <= 0.02) { streams.splice(i, 1); continue; }
-        // 绘制：辉光底 + 亮点芯
+        // 绘制：辉光底（预渲染贴图）+ 亮点芯
         const glowR = s.size * 4;
-        const g2 = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, glowR);
-        g2.addColorStop(0, `rgba(${s.color},${Math.min(1, s.alpha)})`);
-        g2.addColorStop(1, `rgba(${s.color},0)`);
-        ctx.fillStyle = g2;
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, glowR, 0, Math.PI * 2);
-        ctx.fill();
+        const sprite = spriteFor(s.color);
+        ctx.globalAlpha = Math.min(1, s.alpha);
+        ctx.drawImage(sprite.canvas, s.x - glowR, s.y - glowR, glowR * 2, glowR * 2);
+        ctx.globalAlpha = 1;
         ctx.fillStyle = `rgba(${s.color},${Math.min(1, s.alpha * 1.25)})`;
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
@@ -278,22 +300,11 @@ export default function EntranceSplash({ onReveal, onDone }) {
         }, DONE_AT),
       ];
     };
-    const fallback = setTimeout(begin, FONT_WAIT_MAX);
-    const ready = injectFont()
-      .then(() =>
-        Promise.all([
-          document.fonts.load('64px "Ma Shan Zheng"', '万般硅川'),
-          document.fonts.load('700 24px "Orbitron"', 'SILICON'),
-          document.fonts.load('900 24px "Noto Serif SC"', '印'),
-        ])
-      )
-      .catch(() => {});
-    ready.then(() => {
-      clearTimeout(fallback);
-      begin();
-    });
+    // 流畅性修复③：不再等 Google Fonts（网络抖动直接推迟起跑，字体换入还会闪跳）。
+    // 字体注入保留但非阻塞——品牌字由 font-display 自动换入，最坏情况前几帧是系统字体。
+    injectFont();
+    begin();
     return () => {
-      clearTimeout(fallback);
       cancelAnimationFrame(raf.current);
       timers.current.forEach(clearTimeout);
     };
