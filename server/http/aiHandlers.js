@@ -32,6 +32,12 @@ function enforceRateLimit(req, isAgentLoop = false) {
 
 function cleanText(value, max) { return String(value || '').slice(0, max); }
 
+// 环境变量解析：正整数或回落默认值（Number('')=0、Number('abc')=NaN 均视为无效）
+function parsePositiveIntEnv(name, fallback) {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+
 // 系统提示词上限：工作站的 system prompt 组装了证据/素材/工具能力/会话状态等多个段，
 // 此前 10_000 上限会静默截掉末尾的工具能力段（buildSystemPrompt 注入在末尾）——上下文越丰富
 // 模型越容易先丢工具使用指引。提高到 60_000 并在真截断时向客户端下发告警。
@@ -138,8 +144,9 @@ function buildMessages(body) {
 }
 
 /* 流式聊天：向上游发 stream:true，解析 SSE delta 转发给前端。
-   前端断开（停止）时通过 req.on('close') 中止上游请求。 */
-async function handleAiStreamRequest(req, res, body) {
+   前端断开（停止）时通过 req.on('close') 中止上游请求。
+   导出仅为可测性（__tests__ 直接调用，绕过 readJsonBody/限流）。 */
+export async function handleAiStreamRequest(req, res, body) {
   const baseUrl = cleanText(body.baseUrl, 2000).replace(/\/+$/, '');
   const model = cleanText(body.model, 200);
   if (!baseUrl || !model) {
@@ -159,12 +166,29 @@ async function handleAiStreamRequest(req, res, body) {
 
   // 流式读取阶段的「静默看门狗」：上游连着但不再吐字节时中止，避免连接永久挂起。
   // 注意这是**静默**超时而非总时长超时——每收到一个 chunk 就续期，长回答不会被误杀。
-  const STREAM_STALL_MS = 60_000;
+  //
+  // 2026-09-18 重构为三段式（实测 bug：设置页「测试连接」是 50 token 的 "Hello" 非流式
+  // 小请求，秒回成功；而真实生成 = 长 systemPrompt + 全对话历史 + stream:true，推理模型
+  // 思考/慢网关的首包普遍 >60s → 旧版 60s 看门狗把真实生成全部杀掉，报「上游 60 秒无响应」，
+  // 形成「测试成功但生成必败」的割裂）：
+  //   1) 首包看门狗 AI_STREAM_FIRST_TOKEN_MS（默认 180s）：覆盖「建连完成 → 首个上游字节」。
+  //      注意 undici 默认 bodyTimeout=300s 是更底层的天花板，需要更久请同时评估该限制。
+  //   2) 首包保活 AI_STREAM_KEEPALIVE_MS（默认 15s）：首包到达前，周期性向客户端写一行
+  //      SSE 注释帧（`: ka`，协议内合法的无操作帧）。前端解析器会跳过注释，但「收到字节」
+  //      足以续期客户端自己的静默看门狗（agentLoopCore 在 reader.read() 返回即续期）——
+  //      推理模型长思考不再被客户端 90s 看门狗误杀。首包到达后必须停止保活：此后静默
+  //      就是真卡死，保活反而会掩盖故障。
+  //   3) 流中静默看门狗 AI_STREAM_STALL_MS（默认 90s，与前端 agentLoopCore 的 90s 对齐，
+  //      修复「服务端 60s 比客户端 90s 先超时」导致客户端看门狗沦为死代码的问题）。
+  const FIRST_TOKEN_MS = parsePositiveIntEnv('AI_STREAM_FIRST_TOKEN_MS', 180_000);
+  const STALL_MS = parsePositiveIntEnv('AI_STREAM_STALL_MS', 90_000);
+  const KEEPALIVE_MS = parsePositiveIntEnv('AI_STREAM_KEEPALIVE_MS', 15_000);
   let stalled = false;
+  let stalledAfterMs = 0; // 触发时所在阶段的看门狗时长，用于生成准确的错误文案
   let stallTimer = null;
-  const armStall = () => {
+  const armStall = (ms) => {
     if (stallTimer) clearTimeout(stallTimer);
-    stallTimer = setTimeout(() => { stalled = true; controller.abort(); }, STREAM_STALL_MS);
+    stallTimer = setTimeout(() => { stalled = true; stalledAfterMs = ms; controller.abort(); }, ms);
   };
   const clearStall = () => { if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; } };
 
@@ -190,6 +214,19 @@ async function handleAiStreamRequest(req, res, body) {
   for (const warning of collectGatewayWarnings(body)) {
     res.write(`data: ${JSON.stringify({ ok: true, gatewayWarning: warning })}\n\n`);
   }
+
+  // 首包保活（详见上方三段式说明）：从建连前就开跑（覆盖上游建连 + 模型思考整段静默期），
+  // 收到第一个上游字节即停（读取循环内 stopKeepalive）。建连失败的提前 return 分支里显式
+  // 停止；读取阶段的正常完成/异常/用户断开由末尾 finally 兜底清理，防止定时器泄漏。
+  // ⚠️ 不能放进建连 try 的 finally——finally 在成功路径也会执行，会把首包等待期的保活停掉。
+  let keepaliveTimer = null;
+  if (KEEPALIVE_MS < FIRST_TOKEN_MS) {
+    keepaliveTimer = setInterval(() => {
+      if (res.writableEnded || res.destroyed) return;
+      try { res.write(': ka\n\n'); } catch { /* 客户端已断开，等 close 分支收尾 */ }
+    }, KEEPALIVE_MS);
+  }
+  const stopKeepalive = () => { if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; } };
 
   let upstream;
   try {
@@ -226,10 +263,12 @@ async function handleAiStreamRequest(req, res, body) {
       const friendlyMsg = isRateLimited
         ? '模型服务繁忙（429），请稍候再试，或更换模型'
         : `模型服务返回 ${upstream.status}${errText ? ': ' + errText.slice(0, 200) : ''}`;
+      stopKeepalive(); // 提前 return 的失败分支：保活到此为止（成功路径不在这停，首包等待期还需要它）
       res.write(`data: ${JSON.stringify({ ok: false, error: friendlyMsg, errorCode })}\n\n`);
       return res.end();
     }
   } catch (err) {
+    stopKeepalive(); // 建连失败的提前 return：同上
     const isAbort = err?.name === 'AbortError';
     const isRateLimited = err?.code === 'UPSTREAM_RATE_LIMITED';
     const msg = isAbort
@@ -245,12 +284,14 @@ async function handleAiStreamRequest(req, res, body) {
   const reader = upstream.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
-  armStall(); // 进入读取循环即开始静默计时；有数据就续期
+  let gotFirstChunk = false;
+  armStall(FIRST_TOKEN_MS); // 进入读取循环即开始首包计时；有数据就切换到流中静默计时
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      armStall(); // 收到数据即续期：只有「持续静默」才判定卡死
+      if (!gotFirstChunk) { gotFirstChunk = true; stopKeepalive(); } // 首包到达：停保活，此后静默=真卡死
+      armStall(STALL_MS); // 收到数据即续期：只有「持续静默」才判定卡死
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
@@ -290,7 +331,9 @@ async function handleAiStreamRequest(req, res, body) {
     const clientGone = err?.name === 'AbortError' && !stalled;
     if (!clientGone && !res.writableEnded) {
       const msg = stalled
-        ? `上游 ${Math.round(STREAM_STALL_MS / 1000)} 秒无响应，已中断本次生成`
+        ? (gotFirstChunk
+          ? `上游 ${Math.round(stalledAfterMs / 1000)} 秒无响应，已中断本次生成`
+          : `模型 ${Math.round(stalledAfterMs / 1000)} 秒未返回首包数据，已中断本次生成`)
         : (err?.message || '流式读取失败');
       const errorCode = stalled ? 'UPSTREAM_TIMEOUT' : 'AI_GATEWAY_ERROR';
       res.write(`data: ${JSON.stringify({ ok: false, error: msg, errorCode })}\n\n`);
@@ -298,6 +341,7 @@ async function handleAiStreamRequest(req, res, body) {
     res.end();
   } finally {
     clearStall();
+    stopKeepalive();
     clearTimeout(connectTimeout);
     res.off('close', onClientGone);
   }
