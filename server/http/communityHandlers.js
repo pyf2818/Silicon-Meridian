@@ -39,6 +39,10 @@ export async function handleCommunityRequest(req, res, { path = [], service, aut
         }
         const data = await community.listPosts({
           viewerId: user?.id, cursor: url.searchParams.get('cursor'), limit: url.searchParams.get('limit'), authorId,
+          // B1：频道过滤 / 关键词搜索 / 关注流
+          channel: url.searchParams.get('channel'),
+          q: url.searchParams.get('q'),
+          followingOnly: url.searchParams.get('following') === '1',
         });
         return sendJsonResponse(res, 200, { ok: true, data });
       }
@@ -65,7 +69,7 @@ export async function handleCommunityRequest(req, res, { path = [], service, aut
         if (method === 'GET') return sendJsonResponse(res, 200, { ok: true, data: { comments: await community.listComments({ postId, viewerId: user?.id }) } });
         if (method === 'POST') {
           rateLimit(`comment:${user.id}`, 30, 60 * 60 * 1000); const body = await readJsonBody(req);
-          return sendJsonResponse(res, 201, { ok: true, data: { comment: await community.createComment({ userId: user.id, postId, body: body.body, parentId: body.parentId }) } });
+          return sendJsonResponse(res, 201, { ok: true, data: { comment: await community.createComment({ userId: user.id, postId, body: body.body, parentId: body.parentId, kind: body.kind }) } });
         }
       }
       if ((parts[2] === 'like' || parts[2] === 'bookmark') && (method === 'PUT' || method === 'DELETE')) {

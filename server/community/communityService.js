@@ -1,11 +1,16 @@
 import { createCommunityRepository } from './communityRepository.js';
 import { createMemoryCommunityRepository } from './memoryCommunityRepository.js';
+import {
+  CHANNELS, DEFAULT_CHANNEL, COMMENT_KINDS, DEFAULT_COMMENT_KIND, extractSummary,
+} from './postFields.js';
 import { isDevMemoryMode } from '../db/devMemoryStore.js';
 import { isDevMemoryModeResolved } from '../db/devMemoryStore.js';
 
 const TYPES = new Set(['article', 'briefing', 'work', 'workflow']);
 const VISIBILITIES = new Set(['public', 'followers', 'private']);
 const STATUSES = new Set(['draft', 'published']);
+const CHANNEL_SET = new Set(CHANNELS);
+const COMMENT_KIND_SET = new Set(COMMENT_KINDS);
 
 function fail(code, message, status) { throw Object.assign(new Error(message), { code, status }); }
 function requiredUser(userId) { if (!userId) fail('UNAUTHORIZED', '请先登录', 401); }
@@ -34,6 +39,37 @@ function validatePost(input, { partial = false } = {}) {
     if (!STATUSES.has(output.status)) fail('INVALID_STATUS', '发布状态不支持', 400);
   }
   if (!partial || input.sourceRefs !== undefined) output.sourceRefs = Array.isArray(input.sourceRefs) ? input.sourceRefs.slice(0, 50) : [];
+  // B1 社区改版：频道 / 标签 / 封面 / 简介
+  if (!partial || input.channel !== undefined) {
+    output.channel = input.channel ? String(input.channel).trim() : DEFAULT_CHANNEL;
+    if (!CHANNEL_SET.has(output.channel)) fail('INVALID_CHANNEL', '频道不支持', 400);
+  }
+  if (!partial || input.tags !== undefined) {
+    const tags = Array.isArray(input.tags) ? input.tags.map(tag => String(tag ?? '').trim()).filter(Boolean) : [];
+    if (tags.length > 5) fail('INVALID_TAGS', '标签最多 5 个', 400);
+    if (tags.some(tag => tag.length > 24)) fail('INVALID_TAGS', '单个标签不超过 24 字', 400);
+    output.tags = tags;
+  }
+  if (!partial || input.cover !== undefined) {
+    const cover = input.cover ?? { kind: 'auto' };
+    if (typeof cover !== 'object') fail('INVALID_COVER', '封面格式不支持', 400);
+    const kind = String(cover.kind || 'auto');
+    if (!['auto', 'url', 'extracted'].includes(kind)) fail('INVALID_COVER', '封面类型不支持', 400);
+    if (kind === 'auto') {
+      output.cover = { kind: 'auto' };
+    } else {
+      const url = String(cover.url || '').trim();
+      // P0 安全闸：仅 https 外链（配合仓储 normalizeCover 双保险），阻断 javascript:/data:/内网地址
+      if (!/^https:\/\//i.test(url)) fail('INVALID_COVER', '封面图片需为 https 链接', 400);
+      output.cover = { kind, url };
+    }
+  }
+  if (!partial || input.summary !== undefined) {
+    const summary = text(input.summary);
+    if (summary.length > 120) fail('INVALID_SUMMARY', '简介不超过 120 字', 400);
+    // 摘要空则从正文自动提取（服务端口径为准，前端只读不再各算各的）
+    output.summary = summary || extractSummary(output.body ?? input.body);
+  }
   return output;
 }
 
@@ -47,9 +83,16 @@ export function createCommunityService(repository = (isDevMemoryMode() ? createM
     return post;
   }
   return {
-    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null } = {}) {
+    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null, channel = null, q = null, followingOnly = false } = {}) {
+      // 频道枚举校验（列表参数非法直接 400，不让脏值落查询）；关注流需登录态
+      if (channel != null && !CHANNEL_SET.has(String(channel))) fail('INVALID_CHANNEL', '频道不支持', 400);
+      if (followingOnly && !viewerId) fail('UNAUTHORIZED', '请先登录', 401);
       const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
-      const posts = await repository.listPosts({ viewerId, cursor, limit: safeLimit + 1, authorId });
+      const safeQuery = q ? String(q).trim().slice(0, 80) : null;
+      const posts = await repository.listPosts({
+        viewerId, cursor, limit: safeLimit + 1, authorId,
+        channel: channel || null, q: safeQuery, followingOnly: Boolean(followingOnly),
+      });
       const hasMore = posts.length > safeLimit;
       const items = posts.slice(0, safeLimit);
       return { items, nextCursor: hasMore ? items.at(-1)?.createdAt : null };
@@ -86,12 +129,13 @@ export function createCommunityService(repository = (isDevMemoryMode() ? createM
       await visiblePost(postId, viewerId);
       return repository.listComments(postId);
     },
-    async createComment({ userId, postId, body, parentId = null }) {
+    async createComment({ userId, postId, body, parentId = null, kind = DEFAULT_COMMENT_KIND }) {
       requiredUser(userId);
       await visiblePost(postId, userId);
       const value = text(body);
       if (!value || value.length > 2000) fail('INVALID_COMMENT', '评论长度需为 1-2000 字', 400);
-      return repository.createComment({ postId, authorId: userId, parentId: parentId || null, body: value });
+      const safeKind = COMMENT_KIND_SET.has(String(kind)) ? String(kind) : DEFAULT_COMMENT_KIND;
+      return repository.createComment({ postId, authorId: userId, parentId: parentId || null, body: value, kind: safeKind });
     },
     async setLike({ userId, postId, enabled }) {
       requiredUser(userId); await visiblePost(postId, userId); await repository.setLike(userId, postId, enabled);
