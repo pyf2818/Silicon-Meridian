@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用户社区模块改版设计方案 · Silicon Meridian</title>
+<style>
+  :root{
+    --bg:#f3f6fa; --card:#ffffff; --line:#e3e9f1; --ink:#0f172a; --muted:#5b6b7f;
+    --accent:#0891b2; --accent-deep:#0e7490; --accent-soft:#e0f7fb; --violet:#6d5ae6;
+    --ok:#059669; --ok-soft:#e7f6ef; --warn:#d97706; --warn-soft:#fdf3e3; --danger:#dc2626; --danger-soft:#fdecec;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.75;padding:32px 20px 80px}
+  .wrap{max-width:1080px;margin:0 auto}
+  a{color:var(--accent);text-decoration:none}
+  .doc-header{background:linear-gradient(135deg,#e8fbff 0%,#f5f3ff 100%);border:1px solid var(--line);border-radius:18px;padding:34px 38px;margin-bottom:26px}
+  .doc-header .kicker{font-size:12px;letter-spacing:.18em;color:var(--accent-deep);font-weight:700;text-transform:uppercase}
+  .doc-header h1{font-size:30px;margin:8px 0 6px;letter-spacing:.01em}
+  .doc-header .sub{color:var(--muted);font-size:14px}
+  .doc-header .meta{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap}
+  .pill{display:inline-block;font-size:12px;padding:3px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted)}
+  .pill.hot{background:var(--accent-soft);border-color:#b8e8f2;color:var(--accent-deep);font-weight:600}
+  .toc{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 30px}
+  .toc a{font-size:13px;padding:5px 14px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .toc a:hover{border-color:var(--accent);color:var(--accent-deep)}
+  section.block{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:30px 34px;margin-bottom:26px}
+  .sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+  .sec-no{font-size:12px;font-weight:800;color:var(--accent);letter-spacing:.1em}
+  .sec-head h2{font-size:21px}
+  .sec-sub{color:var(--muted);font-size:13.5px;margin-bottom:18px}
+  h3{font-size:16px;margin:22px 0 8px;padding-left:10px;border-left:3px solid var(--accent);line-height:1.4}
+  h4{font-size:14px;margin:16px 0 6px;color:var(--accent-deep)}
+  p{margin:8px 0}
+  ul,ol{padding-left:22px;margin:8px 0}
+  li{margin:4px 0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th{background:#f7fafc;text-align:left;font-weight:700;color:#334155}
+  th,td{border:1px solid var(--line);padding:8px 12px;vertical-align:top}
+  td .tag{font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;margin-right:4px;white-space:nowrap}
+  .t-p0{background:var(--danger-soft);color:var(--danger)} .t-p1{background:var(--warn-soft);color:var(--warn)}
+  .t-p2{background:#eef2f7;color:var(--muted)} .t-ok{background:var(--ok-soft);color:var(--ok)}
+  .t-cy{background:var(--accent-soft);color:var(--accent-deep)} .t-vi{background:#efedfd;color:var(--violet)}
+  code{font-family:Consolas,"JetBrains Mono",monospace;font-size:12.5px;background:#f1f5f9;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#0e7490}
+  pre{background:#0f172a;color:#d1f4fa;border-radius:10px;padding:16px 18px;overflow:auto;font-size:12.5px;line-height:1.7;margin:10px 0}
+  pre code{background:none;border:none;color:inherit;padding:0}
+  .callout{border:1px solid #b8e8f2;background:var(--accent-soft);border-radius:12px;padding:14px 18px;margin:14px 0;font-size:13.5px}
+  .callout b{color:var(--accent-deep)}
+  .callout.warn{border-color:#f3d9a4;background:var(--warn-soft)} .callout.warn b{color:var(--warn)}
+  .figure{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:16px 0;background:#fff}
+  .figure svg{display:block;width:100%;height:auto}
+  .figure .cap{font-size:12.5px;color:var(--muted);padding:9px 16px;border-top:1px solid var(--line);background:#fafcfe}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .mini-card{border:1px solid var(--line);border-radius:12px;padding:16px;background:#fbfdff}
+  .mini-card h4{margin-top:0}
+  .mascot-row{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:12px 0}
+  .mascot-chip{flex:1;min-width:220px;border:1px dashed #b8d8e8;border-radius:14px;padding:14px;display:flex;gap:12px;align-items:center;background:#f7fdff}
+  .mascot-chip p{font-size:12.5px;color:var(--muted);margin:0}
+  .mascot-chip b{color:var(--ink);font-size:13px}
+  .imgrow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+  .imgrow figure{margin:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .imgrow img{width:100%;display:block}
+  .imgrow figcaption{font-size:12.5px;color:var(--muted);padding:8px 12px;background:#fafcfe;border-top:1px solid var(--line)}
+  .imgrow .full{grid-column:1 / -1}
+  .footer{color:var(--muted);font-size:12.5px;text-align:center;margin-top:30px}
+  .kbd{font-size:12px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:0 6px;background:#fff}
+</style>
+</head>
+<body>
+<!-- 共享吉祥物矢量符号 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="mg-body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a5f3fc"/><stop offset="48%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <symbol id="mascot" viewBox="0 0 220 220">
+      <ellipse cx="110" cy="198" rx="48" ry="9" fill="#0f172a" opacity="0.08"/>
+      <path d="M88,38 Q82,20 94,9" stroke="#22d3ee" stroke-width="7" stroke-linecap="round" fill="none"/>
+      <path d="M107,34 Q105,15 116,7" stroke="#38bdf8" stroke-width="7" stroke-linecap="round" fill="none"/>
+      <path d="M126,38 Q132,22 124,11" stroke="#22d3ee" stroke-width="7" stroke-linecap="round" fill="none"/>
+      <ellipse cx="50" cy="162" rx="10" ry="15" fill="url(#mg-body)" transform="rotate(24 50 162)"/>
+      <ellipse cx="170" cy="162" rx="10" ry="15" fill="url(#mg-body)" transform="rotate(-24 170 162)"/>
+      <path d="M110,26 C146,66 172,102 172,138 A62,62 0 1 1 48,138 C48,102 74,66 110,26 Z" fill="url(#mg-body)" stroke="#0ea5e9" stroke-opacity="0.35" stroke-width="2"/>
+      <path d="M72,92 C82,68 94,54 108,44" stroke="#ffffff" stroke-width="11" stroke-linecap="round" opacity="0.32" fill="none"/>
+      <g stroke="#e0f2fe" stroke-width="2" opacity="0.65" fill="none">
+        <path d="M78,134 h22 v15 h16"/><path d="M140,118 v-16 h-14"/>
+      </g>
+      <circle cx="78" cy="134" r="3" fill="#f0f9ff"/><circle cx="116" cy="149" r="3" fill="#f0f9ff"/>
+      <circle cx="140" cy="118" r="3" fill="#f0f9ff"/><circle cx="126" cy="102" r="3" fill="#f0f9ff"/>
+      <ellipse cx="88" cy="128" rx="9" ry="11.5" fill="#164e63"/><circle cx="91.5" cy="123.5" r="3.4" fill="#ffffff"/>
+      <ellipse cx="132" cy="128" rx="9" ry="11.5" fill="#164e63"/><circle cx="135.5" cy="123.5" r="3.4" fill="#ffffff"/>
+      <circle cx="66" cy="149" r="8" fill="#fb7185" opacity="0.5"/><circle cx="154" cy="149" r="8" fill="#fb7185" opacity="0.5"/>
+      <path d="M99,151 Q110,161 121,151" stroke="#164e63" stroke-width="4" stroke-linecap="round" fill="none"/>
+      <path d="M192,44 C199,55 205,62 205,70 A13,13 0 1 1 179,70 C179,62 185,55 192,44 Z" fill="#a5f3fc" opacity="0.95"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+<header class="doc-header">
+  <div class="kicker">Silicon Meridian · Community Redesign Proposal</div>
+  <h1>用户社区模块改版设计方案</h1>
+  <div class="sub">用户广场 · 用户发布 · 内容详情 · 联系人 —— 四模块统一结构 / 功能划分 / 界面方案 + 产品吉祥物「川川」</div>
+  <div class="meta">
+    <span class="pill hot">v1 提案 · 待拍板</span>
+    <span class="pill">2026-09-18 · 小安</span>
+    <span class="pill">对标：炉子（布局范式）· 不抄皮肤，只借骨架</span>
+    <span class="pill">现状已按代码核实（CommunityPage / useCommunity / communityService / communityRepository / ChatPage）</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#s1">1 现状诊断</a><a href="#s2">2 信息架构</a><a href="#s3">3 用户广场</a><a href="#s4">4 用户发布</a>
+  <a href="#s5">5 内容详情</a><a href="#s6">6 联系人</a><a href="#s7">7 吉祥物·川川</a><a href="#s8">8 视觉与组件规范</a>
+  <a href="#s9">9 数据层改造</a><a href="#s10">10 对抗性审查</a><a href="#s11">11 关键决策 A/B</a><a href="#s12">12 实施批次</a>
+</nav>
+
+<!-- ============ 1 现状诊断 ============ -->
+<section class="block" id="s1">
+  <div class="sec-head"><span class="sec-no">01</span><h2>现状诊断（代码核实，非过时审计）</h2></div>
+  <p class="sec-sub">结论先行：当前社区是「内容列表」，不是「社区」——缺分类导航、缺视觉层次、缺身份表达、缺发布动机。</p>
+  <table>
+    <tr><th style="width:130px">模块</th><th>现状（已核实）</th><th style="width:44%">核心问题</th></tr>
+    <tr><td><b>用户广场</b><br><code>CommunityPage</code></td>
+      <td>单列文字卡片流（类型徽章+标题+纯文本摘要+操作行）；3 个 tab（广场/我的作品/我的收藏）；无频道、无搜索、无关注流入口</td>
+      <td>① 无分门别类 → 内容多了必然淹死；② 卡片无封面 → 扫读效率低、视觉单调；③ 「关注作者」散落在卡片操作行，没有关注聚合页</td></tr>
+    <tr><td><b>用户发布</b><br><code>composer</code></td>
+      <td>内嵌裸表单：类型下拉 + 可见性下拉 + 标题 + 正文；保留「素材库 / AI 工作站成果导入」</td>
+      <td>① 无封面、无摘要、无标签 → 发布物在 feed 里没有「脸」；② 表单无分区引导 → 新用户不知道该填什么；③ 导入特性是差异化优势，但藏得太深</td></tr>
+    <tr><td><b>内容详情</b><br><code>CommunityPostDetail</code></td>
+      <td>右侧窄抽屉：作者行 + Markdown 正文 + 评论列表；深链 <code>?post=</code> 已支持</td>
+      <td>① 无封面 hero、无标签、无数据行 → 详情页没有「作品感」；② 评论不分好评/吐槽/问答 → 讨论质量不可辨识；③ 抽屉太窄，长文阅读体验差</td></tr>
+    <tr><td><b>联系人</b><br><code>ChatPage</code></td>
+      <td>三栏（会话/聊天/联系人）；从社区发现用户、建群、邀请码加入</td>
+      <td>① 视觉与其余三模块完全脱节（无头像体系、无未读徽章层次）；② 分享到聊天只是纯文本 → 与广场无联动感；③ 关注关系与联系人两套体系互不相通</td></tr>
+    <tr><td><b>后端</b><br><code>communityService</code></td>
+      <td>posts 表仅 <code>type/title/body/source_refs/visibility/status</code>；comments 无类型；PG + memory 双仓储</td>
+      <td>无 <code>channel/tags/cover/summary</code> 字段、评论无 <code>kind</code>、无频道过滤/关注流/搜索查询 → 数据层是所有界面问题的根</td></tr>
+  </table>
+</section>
+
+<!-- ============ 2 信息架构 ============ -->
+<section class="block" id="s2">
+  <div class="sec-head"><span class="sec-no">02</span><h2>目标信息架构：一壳四模块</h2></div>
+  <p class="sec-sub">「用户社区」= 社区域的统一外壳（频道导航 + 身份 + 消息），下面挂四个功能模块。参考炉子的「能力网络左栏」思想，但不复刻双层侧栏（见决策 #4）。</p>
+  <div class="figure">
+    <svg viewBox="0 0 960 430" font-family="inherit">
+      <rect width="960" height="430" fill="#f8fafc"/>
+      <!-- 顶层 -->
+      <rect x="330" y="18" width="300" height="46" rx="10" fill="#0f172a"/>
+      <text x="480" y="46" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">导航组 · 用户与社区</text>
+      <line x1="480" y1="64" x2="480" y2="84" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="130" y1="84" x2="830" y2="84" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="130" y1="84" x2="130" y2="102" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="363" y1="84" x2="363" y2="102" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="597" y1="84" x2="597" y2="102" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="830" y1="84" x2="830" y2="102" stroke="#94a3b8" stroke-width="1.5"/>
+      <!-- L1 四模块 -->
+      <g font-size="14" font-weight="700">
+        <rect x="28" y="102" width="204" height="42" rx="9" fill="#0891b2"/><text x="130" y="128" text-anchor="middle" fill="#fff">社区中心 · 广场</text>
+        <rect x="261" y="102" width="204" height="42" rx="9" fill="#6d5ae6"/><text x="363" y="128" text-anchor="middle" fill="#fff">用户发布 · 发布器</text>
+        <rect x="495" y="102" width="204" height="42" rx="9" fill="#0e7490"/><text x="597" y="128" text-anchor="middle" fill="#fff">内容详情 · 大抽屉</text>
+        <rect x="728" y="102" width="204" height="42" rx="9" fill="#475569"/><text x="830" y="128" text-anchor="middle" fill="#fff">联系人 · 会话</text>
+      </g>
+      <!-- L2 -->
+      <g font-size="12.5">
+        <rect x="28" y="160" width="204" height="150" rx="9" fill="#ffffff" stroke="#e3e9f1"/>
+        <text x="42" y="184" font-weight="700" fill="#0f172a">频道（分门别类）</text>
+        <text x="42" y="206" fill="#0891b2" font-weight="600">精选 · 讨论 · 测评 · 关注</text>
+        <text x="42" y="226" fill="#5b6b7f">问答（P2，先并入讨论）</text>
+        <text x="42" y="252" font-weight="700" fill="#0f172a">我的</text>
+        <text x="42" y="272" fill="#5b6b7f">个人主页 · 我的作品 · 我的收藏</text>
+        <text x="42" y="292" fill="#5b6b7f">搜索（帖子/用户）· 发布入口</text>
+
+        <rect x="261" y="160" width="204" height="150" rx="9" fill="#ffffff" stroke="#e3e9f1"/>
+        <text x="275" y="184" font-weight="700" fill="#0f172a">分区式表单</text>
+        <text x="275" y="206" fill="#5b6b7f">① 这是什么（类型+频道）</text>
+        <text x="275" y="226" fill="#5b6b7f">② 封面与摘要（三档封面）</text>
+        <text x="275" y="246" fill="#5b6b7f">③ 正文（Markdown+导入）</text>
+        <text x="275" y="266" fill="#5b6b7f">④ 标签与可见性</text>
+        <text x="275" y="286" fill="#6d5ae6" font-weight="600">右侧实时预览卡片</text>
+
+        <rect x="495" y="160" width="204" height="150" rx="9" fill="#ffffff" stroke="#e3e9f1"/>
+        <text x="509" y="184" font-weight="700" fill="#0f172a">作品感详情</text>
+        <text x="509" y="206" fill="#5b6b7f">封面 hero + 标题 + 摘要</text>
+        <text x="509" y="226" fill="#5b6b7f">作者链 + 标签 + 数据行</text>
+        <text x="509" y="246" fill="#5b6b7f">操作：赞同/收藏/分享/链接</text>
+        <text x="509" y="266" fill="#5b6b7f">评价区：好评/吐槽/问答</text>
+        <text x="509" y="286" fill="#0e7490" font-weight="600">保留列表上下文 · 深链直达</text>
+
+        <rect x="728" y="160" width="204" height="150" rx="9" fill="#ffffff" stroke="#e3e9f1"/>
+        <text x="742" y="184" font-weight="700" fill="#0f172a">三栏保留 · 视觉统一</text>
+        <text x="742" y="206" fill="#5b6b7f">会话（未读徽章/置顶）</text>
+        <text x="742" y="226" fill="#5b6b7f">聊天（帖子卡片直显封面）</text>
+        <text x="742" y="246" fill="#5b6b7f">联系人（搜索/广场发现）</text>
+        <text x="742" y="266" fill="#5b6b7f">头像体系 · 吉祥物空态</text>
+        <text x="742" y="286" fill="#475569" font-weight="600">关注 ↔ 联系人联动（P2）</text>
+      </g>
+      <!-- 数据层 -->
+      <line x1="480" y1="310" x2="480" y2="330" stroke="#94a3b8" stroke-width="1.5"/>
+      <rect x="28" y="330" width="904" height="72" rx="9" fill="#0f172a"/>
+      <text x="480" y="358" text-anchor="middle" font-size="13" font-weight="700" fill="#7dd3fc">数据层（B1 批次先行）：posts + channel / tags / cover / summary　·　comments + kind　·　user_follows 关注流</text>
+      <text x="480" y="382" text-anchor="middle" font-size="12" fill="#94a3b8">PG 迁移与内存仓储双实现同步对齐 · 老数据默认 channel=discussion 不空 feed</text>
+    </svg>
+    <div class="cap">图 2-1 · 社区域信息架构：统一外壳下四个模块各司其职，数据层一次性补齐字段</div>
+  </div>
+</section>
+
+<!-- ============ 3 用户广场 ============ -->
+<section class="block" id="s3">
+  <div class="sec-head"><span class="sec-no">03</span><h2>用户广场：按功能分门别类</h2></div>
+  <p class="sec-sub">对标炉子「广场」页的频道 tab + 场景 chips + 精选 hero + 封面卡片栅格；频道划分换成我们自己的内容生态。</p>
+
+  <h3>3.1 频道功能划分</h3>
+  <table>
+    <tr><th style="width:110px">频道</th><th>定位</th><th>数据来源</th><th style="width:26%">排序 / 特色</th></tr>
+    <tr><td><span class="tag t-cy">精选</span></td><td>默认 tab，运营 + 算法混合的头部内容</td><td>全部频道按热度加权</td><td>「本月最值得看」hero 卡 + 热门栅格</td></tr>
+    <tr><td><span class="tag t-cy">讨论</span></td><td>行业动态观点、求助、闲聊（含问答，P2 拆出独立频道）</td><td><code>channel=discussion</code></td><td>最新 + 热度双排序切换</td></tr>
+    <tr><td><span class="tag t-cy">测评</span></td><td>模型 / 工具 / 硬件评测，带结论（推荐 / 观望 / 避坑 徽章为 P2）</td><td><code>channel=review</code></td><td>按收藏数加权，鼓励深度长文</td></tr>
+    <tr><td><span class="tag t-vi">关注</span></td><td>已关注作者的内容流（未登录 → 吉祥物引导登录）</td><td><code>following=1</code> join user_follows</td><td>纯时间序</td></tr>
+    <tr><td><span class="tag t-p2">我的作品</span></td><td>平移现有 <code>mine</code> tab，含草稿管理</td><td><code>author=me</code></td><td>草稿置顶 + 继续编辑</td></tr>
+    <tr><td><span class="tag t-p2">我的收藏</span></td><td>平移现有 <code>bookmarks</code> tab</td><td><code>listBookmarkedPosts</code></td><td>最新收藏在前</td></tr>
+  </table>
+
+  <h3>3.2 内容卡片信息层级（解决「简单单调」的核心）</h3>
+  <ul>
+    <li><b>封面</b>（16:9）：三档来源见 4.2；无图帖子自动生成渐变封面（按 post.id 哈希选 5 组配色，取 --chart-1..5 派生），零存储成本；</li>
+    <li><b>频道徽章 + 类型徽章</b>：左上角叠加；<b>标题</b>最多 2 行；<b>摘要</b>最多 3 行（自动提取，正文前 180 字）；</li>
+    <li><b>作者行</b>：头像（色哈希/avatar_url）+ 昵称 + 徽章 + 时间；<b>数据行</b>：赞同 / 评论 / 收藏；hover 抬升 + 边框着色。</li>
+  </ul>
+
+  <div class="figure">
+    <svg viewBox="0 0 960 624" font-family="inherit">
+      <defs>
+        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient>
+        <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#f472b6"/></linearGradient>
+        <linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#fb923c"/></linearGradient>
+        <linearGradient id="g4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2dd4bf"/><stop offset="100%" stop-color="#34d399"/></linearGradient>
+      </defs>
+      <rect width="960" height="624" fill="#f1f5f9"/>
+      <rect x="8" y="8" width="944" height="608" rx="14" fill="#ffffff" stroke="#e3e9f1"/>
+      <!-- 顶栏 -->
+      <rect x="28" y="24" width="320" height="34" rx="17" fill="#f1f5f9"/>
+      <circle cx="50" cy="41" r="6" fill="none" stroke="#94a3b8" stroke-width="2"/><line x1="55" y1="46" x2="60" y2="51" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+      <text x="70" y="45" font-size="12.5" fill="#94a3b8">搜帖子、用户…</text>
+      <rect x="668" y="23" width="86" height="36" rx="9" fill="#0891b2"/><text x="711" y="46" text-anchor="middle" font-size="13.5" font-weight="700" fill="#fff">＋ 发布</text>
+      <rect x="764" y="23" width="72" height="36" rx="9" fill="#fff" stroke="#e3e9f1"/><text x="800" y="46" text-anchor="middle" font-size="13" fill="#334155">主页</text>
+      <rect x="846" y="23" width="86" height="36" rx="9" fill="#fff" stroke="#e3e9f1"/><text x="882" y="46" text-anchor="middle" font-size="13" fill="#334155">消息</text>
+      <circle cx="926" cy="24" r="9" fill="#ef4444"/><text x="926" y="28" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">4</text>
+      <!-- 标题行 -->
+      <text x="28" y="106" font-size="24" font-weight="800" fill="#0f172a">广场</text>
+      <rect x="740" y="82" width="192" height="32" rx="16" fill="#f8fafc" stroke="#e3e9f1"/><text x="758" y="102" font-size="12" fill="#94a3b8">搜广场</text>
+      <!-- 频道 tab -->
+      <g font-size="13.5">
+        <text x="28" y="142" font-weight="700" fill="#0891b2">精选</text><rect x="28" y="150" width="30" height="3" rx="1.5" fill="#0891b2"/>
+        <text x="106" y="142" fill="#64748b">讨论</text><text x="184" y="142" fill="#64748b">测评</text>
+        <text x="262" y="142" fill="#94a3b8">问答 <tspan font-size="10">P2</tspan></text><text x="348" y="142" fill="#64748b">关注</text>
+        <text x="426" y="142" fill="#64748b">我的作品</text><text x="526" y="142" fill="#64748b">我的收藏</text>
+      </g>
+      <line x1="28" y1="160" x2="932" y2="160" stroke="#e3e9f1"/>
+      <!-- chips -->
+      <text x="28" y="186" font-size="12" fill="#94a3b8">场景</text>
+      <g font-size="11.5">
+        <rect x="62" y="170" width="42" height="22" rx="11" fill="#e0f7fb"/><text x="83" y="185" text-anchor="middle" fill="#0e7490" font-weight="600">全部</text>
+        <rect x="112" y="170" width="76" height="22" rx="11" fill="#f1f5f9"/><text x="150" y="185" text-anchor="middle" fill="#475569">AI 厂商</text>
+        <rect x="196" y="170" width="76" height="22" rx="11" fill="#f1f5f9"/><text x="234" y="185" text-anchor="middle" fill="#475569">模型评测</text>
+        <rect x="280" y="170" width="76" height="22" rx="11" fill="#f1f5f9"/><text x="318" y="185" text-anchor="middle" fill="#475569">开源项目</text>
+        <rect x="364" y="170" width="76" height="22" rx="11" fill="#f1f5f9"/><text x="402" y="185" text-anchor="middle" fill="#475569">创作分享</text>
+        <rect x="448" y="170" width="76" height="22" rx="11" fill="#f1f5f9"/><text x="486" y="185" text-anchor="middle" fill="#475569">行业观点</text>
+      </g>
+      <!-- hero -->
+      <rect x="28" y="208" width="904" height="152" rx="12" fill="#fff" stroke="#e3e9f1"/>
+      <rect x="44" y="224" width="208" height="120" rx="8" fill="url(#g1)"/>
+      <text x="52" y="242" font-size="10" fill="#ffffff" opacity="0.9">自动封面</text>
+      <text x="148" y="292" text-anchor="middle" font-size="20" font-weight="800" fill="#ffffff" opacity="0.95">Qwen3</text>
+      <rect x="268" y="226" width="42" height="20" rx="10" fill="#e0f7fb"/><text x="289" y="240" text-anchor="middle" font-size="11" font-weight="700" fill="#0e7490">测评</text>
+      <text x="268" y="272" font-size="17" font-weight="800" fill="#0f172a">Qwen3-Max 深度测评：中文写作到底进步了多少</text>
+      <text x="268" y="296" font-size="12.5" fill="#64748b">覆盖 12 类中文任务实测，对比上一代与竞品，附完整测试集与复现脚本</text>
+      <circle cx="278" cy="326" r="10" fill="#a5f3fc"/><text x="278" y="330" text-anchor="middle" font-size="9" font-weight="700" fill="#0e7490">川</text>
+      <text x="294" y="330" font-size="12" fill="#334155">@川川官方</text>
+      <rect x="368" y="316" width="34" height="17" rx="8" fill="#fef3c7"/><text x="385" y="328" text-anchor="middle" font-size="10" font-weight="700" fill="#b45309">官方</text>
+      <text x="412" y="330" font-size="12" fill="#94a3b8">· 306 人跟读</text>
+      <text x="900" y="332" text-anchor="end" font-size="13" font-weight="700" fill="#0891b2">看看 →</text>
+      <text x="28" y="392" font-size="14" font-weight="800" fill="#0f172a">讨论 · 最新</text>
+      <text x="932" y="392" text-anchor="end" font-size="12" fill="#0891b2">全部 61 条 →</text>
+      <!-- 卡片栅格 -->
+      <g>
+        <rect x="28" y="406" width="290" height="188" rx="10" fill="#fff" stroke="#e3e9f1"/>
+        <rect x="40" y="418" width="266" height="82" rx="7" fill="url(#g2)"/>
+        <rect x="48" y="426" width="38" height="18" rx="9" fill="#0f172a" opacity="0.55"/><text x="67" y="439" text-anchor="middle" font-size="10" fill="#fff">作品</text>
+        <text x="40" y="522" font-size="13" font-weight="700" fill="#0f172a">用工作站跑通「论文追踪」智能体流水线</text>
+        <text x="40" y="542" font-size="11.5" fill="#64748b">从 arxiv 抓取到聚类摘要，全流程配置与踩坑记录…</text>
+        <circle cx="50" cy="570" r="9" fill="#c7d2fe"/><text x="50" y="574" text-anchor="middle" font-size="9" font-weight="700" fill="#4338ca">安</text>
+        <text x="64" y="574" font-size="11" fill="#475569">安安 · 2 小时前</text>
+        <text x="306" y="574" text-anchor="end" font-size="11" fill="#94a3b8">👍 12 · 💬 3</text>
+      </g>
+      <g>
+        <rect x="335" y="406" width="290" height="188" rx="10" fill="#fff" stroke="#e3e9f1"/>
+        <rect x="347" y="418" width="266" height="82" rx="7" fill="url(#g3)"/>
+        <rect x="355" y="426" width="38" height="18" rx="9" fill="#0f172a" opacity="0.55"/><text x="374" y="439" text-anchor="middle" font-size="10" fill="#fff">讨论</text>
+        <text x="347" y="522" font-size="13" font-weight="700" fill="#0f172a">开源模型本地部署的显存账，到底怎么算</text>
+        <text x="347" y="542" font-size="11.5" fill="#64748b">量化、上下文、批大小三件事，一张表讲清楚…</text>
+        <circle cx="357" cy="570" r="9" fill="#fbcfe8"/><text x="357" y="574" text-anchor="middle" font-size="9" font-weight="700" fill="#be185d">L</text>
+        <text x="371" y="574" font-size="11" fill="#475569">Linhao · 5 小时前</text>
+        <text x="613" y="574" text-anchor="end" font-size="11" fill="#94a3b8">👍 27 · 💬 9</text>
+      </g>
+      <g>
+        <rect x="642" y="406" width="290" height="188" rx="10" fill="#fff" stroke="#e3e9f1"/>
+        <rect x="654" y="418" width="266" height="82" rx="7" fill="url(#g4)"/>
+        <rect x="662" y="426" width="38" height="18" rx="9" fill="#0f172a" opacity="0.55"/><text x="681" y="439" text-anchor="middle" font-size="10" fill="#fff">测评</text>
+        <text x="654" y="522" font-size="13" font-weight="700" fill="#0f172a">三款 AI 记账工具横评：谁能真省事</text>
+        <text x="654" y="542" font-size="11.5" fill="#64748b">票据识别率、分类准确度、导出格式逐项打分…</text>
+        <circle cx="664" cy="570" r="9" fill="#bae6fd"/><text x="664" y="574" text-anchor="middle" font-size="9" font-weight="700" fill="#0369a1">G</text>
+        <text x="678" y="574" font-size="11" fill="#475569">Gstar · 8 小时前</text>
+        <text x="920" y="574" text-anchor="end" font-size="11" fill="#94a3b8">👍 8 · 💬 2</text>
+      </g>
+    </svg>
+    <div class="cap">图 3-1 · 用户广场界面稿：频道 tab + 场景 chips + 精选 hero + 封面卡片栅格（浅色 HUD 风、品牌青色，不照抄炉子橙色）</div>
+  </div>
+</section>
+
+<!-- ============ 4 用户发布 ============ -->
+<section class="block" id="s4">
+  <div class="sec-head"><span class="sec-no">04</span><h2>用户发布：分区式发布器 + 实时预览</h2></div>
+  <p class="sec-sub">对标炉子发布页的分区引导（「这是什么」「它能出什么」），保留并放大我们独有的「素材库 / AI 工作站成果导入」。</p>
+
+  <h3>4.1 表单分区与字段</h3>
+  <table>
+    <tr><th style="width:150px">分区</th><th>字段</th><th>规则</th></tr>
+    <tr><td><b>① 这是什么</b></td><td>类型 chips（文章/作品/工作流/速报）＋ 频道 chips（讨论/测评/分享/问答）</td><td>两组互斥单选；频道决定内容进广场哪个分区；默认 文章+讨论</td></tr>
+    <tr><td><b>② 封面与摘要</b></td><td>封面（16:9）＋ 简介（≤120 字）</td><td>封面三档来源（下表）；简介自动提取可改，带计数器</td></tr>
+    <tr><td><b>③ 正文</b></td><td>Markdown 正文 + 导入 chips</td><td>保留「素材库最近 30 条 / AI 工作站最近成果」一键导入（差异化特性）</td></tr>
+    <tr><td><b>④ 标签与可见性</b></td><td>标签 ≤5（预设+自定义）＋ 可见性（公开/仅关注者/仅自己）</td><td>预设标签来自频道（#模型评测/#开源项目/#创作分享…）；草稿随时保存</td></tr>
+  </table>
+
+  <h3>4.2 封面三档来源（关键设计：零上传基建）</h3>
+  <table>
+    <tr><th style="width:150px">来源</th><th>说明</th><th style="width:30%">成本</th></tr>
+    <tr><td><span class="tag t-cy">自动生成</span>（默认）</td><td>按 post.id 哈希选渐变 + 频道纹理 + 标题首词大字，前端纯 CSS/SVG 渲染</td><td>零存储、零接口</td></tr>
+    <tr><td><span class="tag t-cy">正文首图</span></td><td>自动提取正文第一张 Markdown 图片 URL，一键采用</td><td>零额外上传</td></tr>
+    <tr><td><span class="tag t-cy">图片 URL</span></td><td>粘贴外链（仅 https + 协议白名单 isSafeUrl）</td><td>零存储（后续接云存储再升级上传）</td></tr>
+  </table>
+
+  <div class="figure">
+    <svg viewBox="0 0 960 700" font-family="inherit">
+      <rect width="960" height="700" fill="#f1f5f9"/>
+      <rect x="8" y="8" width="944" height="684" rx="14" fill="#ffffff" stroke="#e3e9f1"/>
+      <text x="28" y="48" font-size="20" font-weight="800" fill="#0f172a">发布到广场</text>
+      <rect x="716" y="26" width="96" height="34" rx="9" fill="#fff" stroke="#e3e9f1"/><text x="764" y="48" text-anchor="middle" font-size="13" fill="#475569">保存草稿</text>
+      <rect x="824" y="26" width="108" height="34" rx="9" fill="#0891b2"/><text x="878" y="48" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">确认发布</text>
+      <!-- 分区① -->
+      <rect x="28" y="66" width="4" height="16" rx="2" fill="#dc2626"/><text x="40" y="80" font-size="13" font-weight="800" fill="#0f172a">这是什么 <tspan font-size="11" fill="#94a3b8" font-weight="400">决定内容以什么形态、进哪个频道</tspan></text>
+      <text x="40" y="104" font-size="11.5" fill="#94a3b8">类型</text>
+      <g font-size="12">
+        <rect x="76" y="90" width="52" height="24" rx="12" fill="#e0f7fb"/><text x="102" y="106" text-anchor="middle" fill="#0e7490" font-weight="700">文章</text>
+        <rect x="136" y="90" width="52" height="24" rx="12" fill="#f1f5f9"/><text x="162" y="106" text-anchor="middle" fill="#475569">作品</text>
+        <rect x="196" y="90" width="64" height="24" rx="12" fill="#f1f5f9"/><text x="228" y="106" text-anchor="middle" fill="#475569">工作流</text>
+        <rect x="268" y="90" width="52" height="24" rx="12" fill="#f1f5f9"/><text x="294" y="106" text-anchor="middle" fill="#475569">速报</text>
+      </g>
+      <text x="40" y="138" font-size="11.5" fill="#94a3b8">频道</text>
+      <g font-size="12">
+        <rect x="76" y="124" width="52" height="24" rx="12" fill="#f1f5f9"/><text x="102" y="140" text-anchor="middle" fill="#475569">讨论</text>
+        <rect x="136" y="124" width="52" height="24" rx="12" fill="#e0f7fb"/><text x="162" y="140" text-anchor="middle" fill="#0e7490" font-weight="700">测评</text>
+        <rect x="196" y="124" width="52" height="24" rx="12" fill="#f1f5f9"/><text x="222" y="140" text-anchor="middle" fill="#475569">分享</text>
+        <rect x="256" y="124" width="52" height="24" rx="12" fill="#f1f5f9"/><text x="282" y="140" text-anchor="middle" fill="#475569">问答</text>
+      </g>
+      <!-- 分区② -->
+      <rect x="28" y="166" width="4" height="16" rx="2" fill="#dc2626"/><text x="40" y="180" font-size="13" font-weight="800" fill="#0f172a">封面与摘要 <tspan font-size="11" fill="#94a3b8" font-weight="400">这一段就是详情页与卡片的「脸」</tspan></text>
+      <rect x="40" y="194" width="238" height="134" rx="8" fill="url(#g1)"/>
+      <text x="48" y="212" font-size="10" fill="#fff" opacity="0.9">自动封面 · 按 ID 生成</text>
+      <text x="159" y="268" text-anchor="middle" font-size="18" font-weight="800" fill="#fff" opacity="0.95">Qwen3</text>
+      <rect x="204" y="306" width="74" height="22" rx="11" fill="#fff" stroke="#e3e9f1"/><text x="241" y="321" text-anchor="middle" font-size="10.5" fill="#475569">↻ 换一版</text>
+      <g font-size="11.5">
+        <rect x="290" y="194" width="70" height="22" rx="11" fill="#e0f7fb"/><text x="325" y="209" text-anchor="middle" fill="#0e7490" font-weight="700">自动生成</text>
+        <rect x="368" y="194" width="70" height="22" rx="11" fill="#f1f5f9"/><text x="403" y="209" text-anchor="middle" fill="#475569">正文首图</text>
+        <rect x="446" y="194" width="70" height="22" rx="11" fill="#f1f5f9"/><text x="481" y="209" text-anchor="middle" fill="#475569">图片 URL</text>
+      </g>
+      <text x="290" y="242" font-size="11.5" fill="#94a3b8">简介 *（自动提取，可编辑）</text>
+      <rect x="290" y="252" width="306" height="76" rx="8" fill="#fff" stroke="#e3e9f1"/>
+      <text x="302" y="274" font-size="12" fill="#334155">覆盖 12 类中文任务实测，对比上一代与竞品，</text>
+      <text x="302" y="292" font-size="12" fill="#334155">附完整测试集与复现脚本，结论先行…</text>
+      <text x="302" y="316" font-size="10.5" fill="#94a3b8">86 / 120　<tspan fill="#0891b2">↻ 重新提取</tspan></text>
+      <!-- 分区③ -->
+      <rect x="28" y="348" width="4" height="16" rx="2" fill="#dc2626"/><text x="40" y="362" font-size="13" font-weight="800" fill="#0f172a">正文 <tspan font-size="11" fill="#94a3b8" font-weight="400">支持 Markdown（标题/列表/代码块/引用）</tspan></text>
+      <rect x="40" y="374" width="556" height="130" rx="8" fill="#fff" stroke="#e3e9f1"/>
+      <text x="54" y="398" font-size="12" fill="#334155">## 测试方法　…（正文内容区）</text>
+      <line x1="54" y1="416" x2="582" y2="416" stroke="#f1f5f9"/><line x1="54" y1="432" x2="540" y2="432" stroke="#f1f5f9"/>
+      <rect x="54" y="446" width="200" height="40" rx="6" fill="#0f172a"/><text x="66" y="464" font-size="10" fill="#7dd3fc" font-family="monospace">const score = eval(qwen3)</text><text x="66" y="478" font-size="10" fill="#94a3b8" font-family="monospace">// 12 类任务全部通过</text>
+      <rect x="40" y="514" width="120" height="24" rx="12" fill="#f1f5f9"/><text x="100" y="530" text-anchor="middle" font-size="11" fill="#475569">📎 素材库（26）</text>
+      <rect x="168" y="514" width="150" height="24" rx="12" fill="#f1f5f9"/><text x="243" y="530" text-anchor="middle" font-size="11" fill="#475569">🤖 AI 工作站成果</text>
+      <text x="596" y="530" text-anchor="end" font-size="11" fill="#94a3b8">12,482 / 100000</text>
+      <!-- 分区④ -->
+      <rect x="28" y="556" width="4" height="16" rx="2" fill="#dc2626"/><text x="40" y="570" font-size="13" font-weight="800" fill="#0f172a">标签与可见性</text>
+      <g font-size="12">
+        <rect x="40" y="582" width="84" height="24" rx="12" fill="#e0f7fb"/><text x="82" y="598" text-anchor="middle" fill="#0e7490">#模型评测</text>
+        <rect x="132" y="582" width="66" height="24" rx="12" fill="#f1f5f9"/><text x="165" y="598" text-anchor="middle" fill="#475569">#Qwen3</text>
+        <rect x="206" y="582" width="76" height="24" rx="12" fill="#f1f5f9"/><text x="244" y="598" text-anchor="middle" fill="#475569">#中文写作</text>
+        <rect x="290" y="582" width="70" height="24" rx="12" fill="#fff" stroke="#cbd5e1" stroke-dasharray="3 3"/><text x="325" y="598" text-anchor="middle" fill="#94a3b8">＋ 自定义</text>
+      </g>
+      <text x="40" y="632" font-size="11.5" fill="#94a3b8">可见范围</text>
+      <g font-size="12">
+        <rect x="100" y="618" width="52" height="24" rx="12" fill="#e0f7fb"/><text x="126" y="634" text-anchor="middle" fill="#0e7490" font-weight="700">公开</text>
+        <rect x="160" y="618" width="80" height="24" rx="12" fill="#f1f5f9"/><text x="200" y="634" text-anchor="middle" fill="#475569">仅关注者</text>
+        <rect x="248" y="618" width="64" height="24" rx="12" fill="#f1f5f9"/><text x="280" y="634" text-anchor="middle" fill="#475569">仅自己</text>
+      </g>
+      <!-- 右侧预览 -->
+      <rect x="620" y="66" width="312" height="330" rx="12" fill="#f8fafc" stroke="#e3e9f1"/>
+      <text x="636" y="92" font-size="12.5" font-weight="700" fill="#334155">发布预览（所见即所得）</text>
+      <rect x="636" y="104" width="280" height="270" rx="10" fill="#fff" stroke="#e3e9f1"/>
+      <rect x="648" y="116" width="256" height="120" rx="7" fill="url(#g1)"/>
+      <rect x="656" y="124" width="38" height="18" rx="9" fill="#0f172a" opacity="0.55"/><text x="675" y="137" text-anchor="middle" font-size="10" fill="#fff">测评</text>
+      <text x="648" y="262" font-size="13" font-weight="700" fill="#0f172a">Qwen3-Max 深度测评：中文写作到底进步了多少</text>
+      <text x="648" y="282" font-size="11" fill="#64748b">覆盖 12 类中文任务实测，对比上一代与竞品…</text>
+      <circle cx="658" cy="308" r="9" fill="#a5f3fc"/><text x="658" y="312" text-anchor="middle" font-size="9" font-weight="700" fill="#0e7490">川</text>
+      <text x="672" y="312" font-size="11" fill="#475569">川川官方 · 刚刚</text>
+      <text x="904" y="312" text-anchor="end" font-size="10.5" fill="#94a3b8">👍 0 · 💬 0</text>
+      <!-- 吉祥物提示 -->
+      <rect x="620" y="416" width="312" height="128" rx="12" fill="#f0fbff" stroke="#b8e8f2"/>
+      <svg x="636" y="436" width="86" height="86" viewBox="0 0 220 220"><use href="#mascot"/></svg>
+      <text x="736" y="462" font-size="12.5" font-weight="700" fill="#0e7490">川川发布小助手</text>
+      <text x="736" y="484" font-size="11.5" fill="#5b6b7f">带封面和摘要的内容，</text>
+      <text x="736" y="502" font-size="11.5" fill="#5b6b7f">在广场被点开的概率高得多。</text>
+      <text x="736" y="520" font-size="11.5" fill="#5b6b7f">交给我自动生成，也随时可换～</text>
+    </svg>
+    <div class="cap">图 4-1 · 发布器界面稿：左侧四分区表单（红条分区对标炉子），右侧实时预览卡 + 吉祥物助手提示</div>
+  </div>
+</section>
+
+<!-- ============ 5 内容详情 ============ -->
+<section class="block" id="s5">
+  <div class="sec-head"><span class="sec-no">05</span><h2>内容详情：大抽屉升级为「作品页」</h2></div>
+  <p class="sec-sub">保留抽屉形态（不打断浏览、深链已支持），宽度 420px → 68% 视口，内部结构对标炉子详情页：hero → 元信息 → 数据行 → 操作 → 评价区。</p>
+  <h3>5.1 页面结构（自上而下）</h3>
+  <ol>
+    <li><b>封面 hero</b>（高 ≤260px，自动封面或自选图）＋ 左上角频道/类型徽章；</li>
+    <li><b>标题 + 简介</b>；<b>作者链</b>：头像 + 昵称 + 徽章 + 关注按钮（对齐炉子「署名链·官方」）；</li>
+    <li><b>标签行</b> → <b>数据行</b>（赞同/收藏/评论/分享）+ 主操作（赞同·收藏·分享·复制链接）；</li>
+    <li><b>Tabs</b>：正文 / 评价（N）/ 引用来源（sourceRefs 平移）；</li>
+    <li><b>评价区</b>：输入框 + 类型 chips（好评/吐槽/问答）+ 评价列表（筛选 tabs 全部/好评/吐槽/问答，评论带 kind 徽章 + 点赞 + 回复）。</li>
+  </ol>
+  <div class="figure">
+    <svg viewBox="0 0 960 720" font-family="inherit">
+      <defs><linearGradient id="g5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient></defs>
+      <rect width="960" height="720" fill="#f1f5f9"/>
+      <!-- 左侧被遮罩的信息流 -->
+      <text x="28" y="60" font-size="13" font-weight="700" fill="#94a3b8">信息流（保持上下文，抽屉不挤占）</text>
+      <g opacity="0.45">
+        <rect x="28" y="80" width="240" height="90" rx="10" fill="#ffffff" stroke="#e3e9f1"/>
+        <rect x="40" y="92" width="120" height="12" rx="6" fill="#e2e8f0"/><rect x="40" y="114" width="200" height="10" rx="5" fill="#eef2f7"/><rect x="40" y="132" width="180" height="10" rx="5" fill="#eef2f7"/>
+        <rect x="28" y="182" width="240" height="90" rx="10" fill="#ffffff" stroke="#e3e9f1"/>
+        <rect x="40" y="194" width="140" height="12" rx="6" fill="#e2e8f0"/><rect x="40" y="216" width="200" height="10" rx="5" fill="#eef2f7"/><rect x="40" y="234" width="160" height="10" rx="5" fill="#eef2f7"/>
+        <rect x="28" y="284" width="240" height="90" rx="10" fill="#ffffff" stroke="#e3e9f1"/>
+        <rect x="40" y="296" width="100" height="12" rx="6" fill="#e2e8f0"/><rect x="40" y="318" width="200" height="10" rx="5" fill="#eef2f7"/>
+      </g>
+      <!-- 抽屉 -->
+      <rect x="296" y="8" width="656" height="704" rx="14" fill="#ffffff" stroke="#e3e9f1"/>
+      <rect x="296" y="8" width="656" height="704" rx="14" fill="none" stroke="#0f172a" stroke-opacity="0.06"/>
+      <text x="924" y="40" text-anchor="end" font-size="20" fill="#94a3b8">×</text>
+      <rect x="316" y="28" width="616" height="150" rx="10" fill="url(#g5)"/>
+      <rect x="328" y="40" width="42" height="20" rx="10" fill="#0f172a" opacity="0.55"/><text x="349" y="54" text-anchor="middle" font-size="11" fill="#fff">测评</text>
+      <text x="624" y="112" text-anchor="middle" font-size="24" font-weight="800" fill="#ffffff" opacity="0.95">Qwen3</text>
+      <text x="316" y="212" font-size="20" font-weight="800" fill="#0f172a">Qwen3-Max 深度测评：中文写作到底进步了多少</text>
+      <rect x="316" y="226" width="42" height="20" rx="10" fill="#e0f7fb"/><text x="337" y="240" text-anchor="middle" font-size="11" font-weight="700" fill="#0e7490">测评</text>
+      <rect x="366" y="226" width="42" height="20" rx="10" fill="#f1f5f9"/><text x="387" y="240" text-anchor="middle" font-size="11" fill="#475569">公开</text>
+      <text x="316" y="270" font-size="12.5" fill="#64748b">覆盖 12 类中文任务实测，对比上一代与竞品，附完整测试集与复现脚本</text>
+      <!-- 作者链 -->
+      <circle cx="332" cy="300" r="14" fill="#a5f3fc"/><text x="332" y="305" text-anchor="middle" font-size="11" font-weight="700" fill="#0e7490">川</text>
+      <text x="354" y="298" font-size="13" font-weight="700" fill="#0f172a">川川官方</text>
+      <rect x="424" y="286" width="34" height="17" rx="8" fill="#fef3c7"/><text x="441" y="298" text-anchor="middle" font-size="10" font-weight="700" fill="#b45309">官方</text>
+      <text x="466" y="298" font-size="11.5" fill="#94a3b8">· 9 月 17 日 21:40</text>
+      <rect x="872" y="282" width="60" height="28" rx="8" fill="#0891b2"/><text x="902" y="301" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">已关注</text>
+      <!-- 标签 -->
+      <g font-size="11.5">
+        <rect x="316" y="322" width="66" height="22" rx="11" fill="#f1f5f9"/><text x="349" y="337" text-anchor="middle" fill="#475569">#Qwen3</text>
+        <rect x="390" y="322" width="76" height="22" rx="11" fill="#f1f5f9"/><text x="428" y="337" text-anchor="middle" fill="#475569">#模型评测</text>
+        <rect x="474" y="322" width="76" height="22" rx="11" fill="#f1f5f9"/><text x="512" y="337" text-anchor="middle" fill="#475569">#中文写作</text>
+      </g>
+      <line x1="316" y1="360" x2="932" y2="360" stroke="#e3e9f1"/>
+      <!-- 数据行 + 操作 -->
+      <g font-size="16" font-weight="800" fill="#0f172a">
+        <text x="316" y="390">14</text><text x="366" y="390">4</text><text x="416" y="390">11</text><text x="466" y="390">2</text>
+      </g>
+      <g font-size="11" fill="#94a3b8">
+        <text x="316" y="406">赞同</text><text x="366" y="406">收藏</text><text x="416" y="406">评论</text><text x="466" y="406">分享</text>
+      </g>
+      <g font-size="12">
+        <rect x="620" y="372" width="72" height="30" rx="8" fill="#0891b2"/><text x="656" y="392" text-anchor="middle" fill="#fff" font-weight="700">👍 赞同</text>
+        <rect x="700" y="372" width="64" height="30" rx="8" fill="#fff" stroke="#e3e9f1"/><text x="732" y="392" text-anchor="middle" fill="#475569">☆ 收藏</text>
+        <rect x="772" y="372" width="64" height="30" rx="8" fill="#fff" stroke="#e3e9f1"/><text x="804" y="392" text-anchor="middle" fill="#475569">分享</text>
+        <rect x="844" y="372" width="30" height="30" rx="8" fill="#fff" stroke="#e3e9f1"/><text x="859" y="392" text-anchor="middle" fill="#475569">…</text>
+      </g>
+      <!-- tabs -->
+      <g font-size="13.5">
+        <text x="316" y="440" font-weight="700" fill="#0891b2">正文</text><rect x="316" y="448" width="34" height="3" rx="1.5" fill="#0891b2"/>
+        <text x="380" y="440" fill="#64748b">评价 11</text><text x="456" y="440" fill="#64748b">引用来源 3</text>
+      </g>
+      <line x1="316" y1="458" x2="932" y2="458" stroke="#e3e9f1"/>
+      <!-- 正文 -->
+      <text x="316" y="486" font-size="13" font-weight="700" fill="#0f172a">测试方法</text>
+      <text x="316" y="508" font-size="12" fill="#475569">选取 12 类高频中文写作任务，每类 30 条 prompt，温度 0.7…</text>
+      <rect x="316" y="522" width="616" height="56" rx="8" fill="#0f172a"/>
+      <text x="330" y="544" font-size="10.5" fill="#7dd3fc" font-family="monospace">const result = await evalModel("qwen3-max", tasks)</text>
+      <text x="330" y="562" font-size="10.5" fill="#94a3b8" font-family="monospace">// 输出：winRate 0.61 · tieRate 0.24 · loseRate 0.15</text>
+      <!-- 评价区 -->
+      <text x="316" y="610" font-size="13.5" font-weight="800" fill="#0f172a">评价 <tspan fill="#94a3b8" font-size="11.5">共 11 条</tspan></text>
+      <g font-size="11.5">
+        <rect x="404" y="596" width="56" height="20" rx="10" fill="#e7f6ef"/><text x="432" y="610" text-anchor="middle" fill="#059669" font-weight="700">好评 9</text>
+        <rect x="468" y="596" width="56" height="20" rx="10" fill="#f1f5f9"/><text x="496" y="610" text-anchor="middle" fill="#475569">吐槽 1</text>
+        <rect x="532" y="596" width="56" height="20" rx="10" fill="#f1f5f9"/><text x="560" y="610" text-anchor="middle" fill="#475569">问答 1</text>
+      </g>
+      <rect x="316" y="624" width="616" height="34" rx="17" fill="#f8fafc" stroke="#e3e9f1"/>
+      <circle cx="336" cy="641" r="10" fill="#c7d2fe"/><text x="336" y="645" text-anchor="middle" font-size="9" font-weight="700" fill="#4338ca">安</text>
+      <text x="354" y="645" font-size="12" fill="#94a3b8">写下你的想法，选择类型：好评 / 吐槽 / 问答</text>
+      <circle cx="341" cy="681" r="10" fill="#fbcfe8"/><text x="341" y="685" text-anchor="middle" font-size="9" font-weight="700" fill="#be185d">G</text>
+      <text x="358" y="678" font-size="12" font-weight="600" fill="#0f172a">Gstar</text>
+      <rect x="404" y="668" width="30" height="16" rx="8" fill="#fef9c3"/><text x="419" y="680" text-anchor="middle" font-size="9.5" fill="#a16207">Lv2</text>
+      <text x="442" y="678" font-size="11" fill="#94a3b8">3 小时前</text>
+      <rect x="512" y="668" width="34" height="16" rx="8" fill="#e7f6ef"/><text x="529" y="680" text-anchor="middle" font-size="9.5" font-weight="700" fill="#059669">好评</text>
+      <text x="358" y="700" font-size="12" fill="#334155">测试集太扎实了，直接抄作业 👍</text>
+      <text x="932" y="700" text-anchor="end" font-size="11" fill="#94a3b8">♡ 0 · 回复</text>
+    </svg>
+    <div class="cap">图 5-1 · 详情大抽屉界面稿：hero 封面 → 作者链/标签/数据行/操作 → 正文 tabs → 评价区（好评/吐槽/问答分型）</div>
+  </div>
+</section>
+
+<!-- ============ 6 联系人 ============ -->
+<section class="block" id="s6">
+  <div class="sec-head"><span class="sec-no">06</span><h2>联系人：三栏保留，视觉与联动统一</h2></div>
+  <p class="sec-sub">功能骨架不动（已验证可用），集中解决三件事：头像体系、分享卡片、广场联动。</p>
+  <ul>
+    <li><b>头像体系</b>：全社区统一 —— 有 avatar_url 用图，否则按昵称哈希取 8 色盘 + 首字；会话/联系人/广场/详情四处一致；</li>
+    <li><b>分享卡片</b>：聊天中分享帖子不再发纯文本链接，渲染为「帖子卡」：封面缩略 + 标题 + 作者 + 查看详情（点击走深链打开详情抽屉）；</li>
+    <li><b>未读与置顶</b>：会话行加未读徽章 + 最近消息摘要 + 时间；置顶会话分组；</li>
+    <li><b>联动（P2）</b>：广场「关注作者」自动进入联系人「关注」分组；聊天空态用吉祥物。</li>
+  </ul>
+  <div class="figure">
+    <svg viewBox="0 0 960 520" font-family="inherit">
+      <rect width="960" height="520" fill="#f1f5f9"/>
+      <rect x="8" y="8" width="944" height="504" rx="14" fill="#ffffff" stroke="#e3e9f1"/>
+      <text x="28" y="44" font-size="18" font-weight="800" fill="#0f172a">联系人</text>
+      <rect x="700" y="24" width="150" height="30" rx="8" fill="#f8fafc" stroke="#e3e9f1"/><text x="714" y="44" font-size="11.5" fill="#94a3b8">输入群邀请码</text>
+      <rect x="860" y="24" width="72" height="30" rx="8" fill="#fff" stroke="#e3e9f1"/><text x="896" y="44" text-anchor="middle" font-size="12" fill="#475569">加入群聊</text>
+      <!-- 栏1 会话 -->
+      <rect x="28" y="62" width="250" height="426" rx="10" fill="#f8fafc" stroke="#e3e9f1"/>
+      <text x="42" y="88" font-size="12.5" font-weight="700" fill="#334155">会话</text>
+      <rect x="222" y="72" width="42" height="20" rx="10" fill="#fff" stroke="#e3e9f1"/><text x="243" y="86" text-anchor="middle" font-size="10.5" fill="#475569">刷新</text>
+      <g>
+        <rect x="38" y="102" width="230" height="58" rx="8" fill="#e0f7fb"/>
+        <circle cx="62" cy="131" r="14" fill="#a5f3fc"/><text x="62" y="136" text-anchor="middle" font-size="11" font-weight="700" fill="#0e7490">川</text>
+        <text x="84" y="126" font-size="12" font-weight="700" fill="#0f172a">川川小队</text>
+        <text x="84" y="146" font-size="11" fill="#64748b">Gstar: 测评写完了，来看！</text>
+        <circle cx="252" cy="118" r="9" fill="#ef4444"/><text x="252" y="122" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">4</text>
+      </g>
+      <g>
+        <circle cx="62" cy="197" r="14" fill="#fbcfe8"/><text x="62" y="202" text-anchor="middle" font-size="11" font-weight="700" fill="#be185d">G</text>
+        <text x="84" y="192" font-size="12" font-weight="600" fill="#0f172a">Gstar</text>
+        <text x="84" y="212" font-size="11" fill="#94a3b8">[帖子] Qwen3-Max 深度测评</text>
+        <circle cx="252" cy="184" r="9" fill="#ef4444"/><text x="252" y="188" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">2</text>
+      </g>
+      <circle cx="62" cy="257" r="14" fill="#c7d2fe"/><text x="62" y="262" text-anchor="middle" font-size="11" font-weight="700" fill="#4338ca">安</text>
+      <text x="84" y="252" font-size="12" font-weight="600" fill="#0f172a">安安</text>
+      <text x="84" y="272" font-size="11" fill="#94a3b8">好的，明天对齐 👌</text>
+      <!-- 栏2 聊天 -->
+      <rect x="294" y="62" width="380" height="426" rx="10" fill="#ffffff" stroke="#e3e9f1"/>
+      <text x="310" y="88" font-size="12.5" font-weight="700" fill="#334155">川川小队 <tspan fill="#94a3b8" font-size="11">· 5 人</tspan></text>
+      <g>
+        <circle cx="322" cy="126" r="12" fill="#fbcfe8"/><text x="322" y="131" text-anchor="middle" font-size="10" font-weight="700" fill="#be185d">G</text>
+        <rect x="342" y="108" width="200" height="34" rx="10" fill="#f1f5f9"/>
+        <text x="354" y="130" font-size="12" fill="#334155">测评写完了，来看！</text>
+      </g>
+      <!-- 帖子分享卡 -->
+      <g>
+        <rect x="342" y="152" width="280" height="120" rx="10" fill="#fff" stroke="#b8e8f2" stroke-width="1.5"/>
+        <rect x="352" y="162" width="96" height="60" rx="6" fill="url(#g5)"/>
+        <text x="400" y="198" text-anchor="middle" font-size="11" font-weight="800" fill="#fff" opacity="0.95">Qwen3</text>
+        <text x="460" y="182" font-size="12" font-weight="700" fill="#0f172a">Qwen3-Max 深度测评</text>
+        <text x="460" y="202" font-size="10.5" fill="#64748b">中文写作到底进步了多少</text>
+        <text x="460" y="222" font-size="10.5" fill="#94a3b8">@川川官方 · 👍14</text>
+        <text x="612" y="258" text-anchor="end" font-size="11.5" font-weight="700" fill="#0891b2">查看详情 →</text>
+      </g>
+      <g>
+        <rect x="454" y="288" width="200" height="34" rx="10" fill="#d9f6fb"/>
+        <text x="466" y="310" font-size="12" fill="#0e7490">这就看，数据很硬核 👍</text>
+      </g>
+      <rect x="310" y="440" width="300" height="34" rx="17" fill="#f8fafc" stroke="#e3e9f1"/>
+      <text x="326" y="462" font-size="12" fill="#94a3b8">发消息，或拖入帖子/资讯卡片…</text>
+      <rect x="618" y="440" width="42" height="34" rx="10" fill="#0891b2"/><text x="639" y="462" text-anchor="middle" font-size="12" fill="#fff">➤</text>
+      <!-- 栏3 联系人 -->
+      <rect x="690" y="62" width="242" height="426" rx="10" fill="#f8fafc" stroke="#e3e9f1"/>
+      <rect x="704" y="76" width="214" height="30" rx="15" fill="#fff" stroke="#e3e9f1"/><text x="718" y="96" font-size="11.5" fill="#94a3b8">搜索联系人</text>
+      <rect x="704" y="116" width="214" height="30" rx="8" fill="#e0f7fb"/><text x="811" y="136" text-anchor="middle" font-size="12" font-weight="700" fill="#0e7490">🧭 从广场发现</text>
+      <g>
+        <circle cx="718" cy="182" r="14" fill="#fbcfe8"/><text x="718" y="187" text-anchor="middle" font-size="11" font-weight="700" fill="#be185d">G</text>
+        <circle cx="728" cy="172" r="4" fill="#22c55e"/>
+        <text x="740" y="178" font-size="12" font-weight="600" fill="#0f172a">Gstar</text>
+        <text x="740" y="196" font-size="10.5" fill="#94a3b8">@gstar · 在线</text>
+        <rect x="886" y="168" width="34" height="24" rx="7" fill="#fff" stroke="#e3e9f1"/><text x="903" y="184" text-anchor="middle" font-size="10.5" fill="#475569">聊天</text>
+      </g>
+      <g>
+        <circle cx="718" cy="236" r="14" fill="#fed7aa"/><text x="718" y="241" text-anchor="middle" font-size="11" font-weight="700" fill="#c2410c">陈</text>
+        <text x="740" y="232" font-size="12" font-weight="600" fill="#0f172a">陈chen</text>
+        <text x="740" y="250" font-size="10.5" fill="#94a3b8">@chenchen</text>
+        <rect x="886" y="222" width="34" height="24" rx="7" fill="#fff" stroke="#e3e9f1"/><text x="903" y="238" text-anchor="middle" font-size="10.5" fill="#475569">聊天</text>
+      </g>
+      <text x="704" y="292" font-size="11" fill="#94a3b8">＋ 新建群聊（勾选联系人）</text>
+      <!-- 标注 -->
+      <g font-size="11" fill="#0891b2" font-weight="600">
+        <text x="948" y="126" text-anchor="end">① 未读徽章 + 摘要</text>
+        <text x="948" y="300" text-anchor="end">② 分享卡片直显封面</text>
+        <text x="948" y="356" text-anchor="end">③ 头像色哈希体系统一</text>
+      </g>
+      <line x1="840" y1="300" x2="880" y2="296" stroke="#0891b2" stroke-width="1" stroke-dasharray="3 2"/>
+    </svg>
+    <div class="cap">图 6-1 · 联系人界面稿：功能骨架不动，统一头像体系 + 未读徽章 + 帖子分享卡片（封面直显、深链进详情抽屉）</div>
+  </div>
+</section>
+
+<!-- ============ 7 吉祥物 ============ -->
+<section class="block" id="s7">
+  <div class="sec-head"><span class="sec-no">07</span><h2>产品吉祥物 · 川川（Chuanchuan）</h2></div>
+  <p class="sec-sub">炉子有炉子小灶，我们有「川」——万般硅川的川之精灵。名字取自「硅川」，一字双关：硅（晶体内芯）+ 川（不息水流）。</p>
+
+  <div class="grid2">
+    <div class="mini-card">
+      <h4>角色设定</h4>
+      <ul style="margin:6px 0 0">
+        <li><b>身份</b>：一滴液态硅 —— 硅川之灵，身体里流淌发光的电路纹路；</li>
+        <li><b>外形记忆点</b>：头顶<b>三道川字鳍</b>（川 = 三笔，品牌锚点）+ 电路纹 + 珊瑚色腮红；</li>
+        <li><b>性格</b>：好奇、温和、可靠 —— 像一位随叫随到的资讯领航员；</li>
+        <li><b>口头禅</b>：「川流不息，资讯不停」；</li>
+        <li><b>色彩</b>：品牌青系（--accent-cyan 家族），深色主题下自动换深空版本。</li>
+      </ul>
+    </div>
+    <div class="mini-card">
+      <h4>应用场景清单</h4>
+      <table style="margin:6px 0 0">
+        <tr><th>场景</th><th>姿态</th></tr>
+        <tr><td>空态（广场/收藏/会话）</td><td>挥手「这里等你第一条内容」</td></tr>
+        <tr><td>加载中</td><td>思考（问号/放大镜）</td></tr>
+        <tr><td>发布成功</td><td>火箭升空 + 礼花</td></tr>
+        <tr><td>服务不可用 503</td><td>睡觉 Zzz「服务打个盹」</td></tr>
+        <tr><td>新手引导 / 登录卡</td><td>挥手欢迎</td></tr>
+        <tr><td>徽章体系（P2）</td><td>单色剪影做等级图标</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h3>7.1 概念图（AI 生成 · 三件套）</h3>
+  <div class="imgrow">
+    <figure><img src="assets/Character_design_sheet_of_a_cu_2026-09-18T03-49-15.png" alt="川川三视图与表情设定"><figcaption>① 角色设定：四视图 + 四表情（欢呼/思考/庆祝/犯困）</figcaption></figure>
+    <figure><img src="assets/Sticker_pack_of_six_poses_of_t_2026-09-18T03-49-15.png" alt="川川六姿势贴纸组"><figcaption>② 场景姿势集：欢迎/搜索/火箭发布/思考/庆祝/睡觉 —— 与产品状态一一对应</figcaption></figure>
+    <figure class="full"><img src="assets/Brand_hero_illustration__the_c_2026-09-18T03-49-20.png" alt="川川品牌主视觉"><figcaption>③ 品牌 Hero：川川乘着资讯之川—— 可用于登录页 / 社区精选头图 / 对外宣传</figcaption></figure>
+  </div>
+
+  <h3>7.2 矢量版（可直接进产品，随主题换色）</h3>
+  <div class="mascot-row">
+    <div class="mascot-chip"><svg width="104" height="104" viewBox="0 0 220 220"><use href="#mascot"/></svg><p><b>标准版</b><br>渐变 + 电路纹 + 川字鳍，用于空态/引导（≥64px）</p></div>
+    <div class="mascot-chip"><svg width="72" height="72" viewBox="0 0 220 220"><use href="#mascot"/></svg><p><b>小尺寸版</b><br>≤40px 时去除电路纹只留剪影，用于徽章/角标</p></div>
+    <div class="mascot-chip"><svg width="56" height="56" viewBox="0 0 220 220"><use href="#mascot"/></svg><p><b>使用规范</b><br>最小 24px；禁拉伸变形；安全边距 = 头鳍高度；单色版取 --accent-cyan 填充</p></div>
+  </div>
+  <div class="callout"><b>为什么是水滴而不是机器人/芯片？</b>—— 第一性拆解：项目名「万般硅川」的意象是<b>硅（固态）汇成川（流动）</b>，资讯聚合正是「无数源头汇成一条河」。水滴 = 流动的水 + 硅晶质感 + 电路内芯，三个品牌要素合一体；且圆润形态在浅色 HUD 界面里天然亲和，与炉子的「炉」一样，从名字里长出来。</div>
+</section>
+
+<!-- ============ 8 视觉与组件规范 ============ -->
+<section class="block" id="s8">
+  <div class="sec-head"><span class="sec-no">08</span><h2>视觉与组件规范（四模块统一）</h2></div>
+  <table>
+    <tr><th style="width:150px">要素</th><th>规范</th></tr>
+    <tr><td>设计令牌</td><td>全部取自现有体系：<code>--bg-primary/-secondary</code>、<code>--text-primary/-muted</code>、`--border-color`、`--accent-*`；语义/图表色用 `--status-*` / `--chart-1..5`（跨调色板固定）。社区新样式独立作用域类 `.community-page` 下，不污染全局。</td></tr>
+    <tr><td>头像体系</td><td>统一组件 <code>CommunityAvatar</code>：avatar_url → 图片；否则昵称哈希 → 8 色盘 + 首字；尺寸 24/32/40；在线点可选。</td></tr>
+    <tr><td>徽章</td><td>频道徽章（青底）、类型徽章（墨底半透明覆封面）、官方（金底）、等级 Lv（黄底）、评价 kind（好评绿/吐槽红/问答蓝）。</td></tr>
+    <tr><td>封面渲染</td><td><code>PostCover</code> 组件：kind=auto → 渐变（id 哈希 5 选 1）+ 频道纹理 + 标题首词；kind=url → <code>&lt;img&gt;</code> + https 白名单 + 懒加载 + 失败回退 auto。</td></tr>
+    <tr><td>空态</td><td>吉祥物 + 一句话 + 主行动按钮（发布/去广场逛逛）；503 错误态沿用现有重试交互，配睡觉川川。</td></tr>
+    <tr><td>交互反馈</td><td>卡片 hover 抬升 2px + 边框着色（过渡遵循 themes.css 位移过渡「夺回范式」，只对 left/top 放开）；点赞乐观更新 + 失败回滚（复用 updateRelationship 模式）。</td></tr>
+    <tr><td>i18n</td><td>新增文案全部走 <code>zh-CN.json</code> + key（频道/评价类型/空态文案），杜绝硬编码中文。</td></tr>
+  </table>
+</section>
+
+<!-- ============ 9 数据层 ============ -->
+<section class="block" id="s9">
+  <div class="sec-head"><span class="sec-no">09</span><h2>数据层与 API 改造清单（B1 先行）</h2></div>
+  <h3>9.1 Schema 迁移（向后兼容）</h3>
+  <pre><code>-- db/migrations 社区改版
+alter table posts    add column if not exists channel text not null default 'discussion';
+alter table posts    add column if not exists tags    jsonb not null default '[]';
+alter table posts    add column if not exists cover   jsonb not null default '{"kind":"auto"}';
+alter table posts    add column if not exists summary text  not null default '';
+alter table comments add column if not exists kind    text  not null default 'comment'; -- comment|praise|critique|question</code></pre>
+  <h3>9.2 查询与服务扩展</h3>
+  <ul>
+    <li><code>POST_VIEW</code> 扩列返回 channel/tags/cover/summary；<code>listPosts</code> 加 <code>channel</code> / <code>q</code>（ILIKE title+body）/ <code>following=1</code>（join user_follows）三个过滤参数；</li>
+    <li><code>validatePost</code> 扩展：channel ∈ 枚举、tags ≤5 且单项 ≤24 字、cover.kind ∈ {auto,url,extracted} 且 url 仅 https、summary ≤120（空则服务端从 body 自动提取）；</li>
+    <li>评论：POST body 支持 <code>kind</code>；GET 按 kind 分组计数返回；</li>
+    <li><b>memory 仓储同步实现全部新字段</b>（P0：参照 algorithmVersion 前科，双仓储字段必须对齐 + 单测断言）。</li>
+  </ul>
+</section>
+
+<!-- ============ 10 对抗性审查 ============ -->
+<section class="block" id="s10">
+  <div class="sec-head"><span class="sec-no">10</span><h2>对抗性审查（设计期主动打）</h2></div>
+  <table>
+    <tr><th>级别</th><th>攻击场景</th><th>触发条件</th><th>破坏</th><th>缓解 / 关闭方案</th></tr>
+    <tr><td><span class="tag t-p0">P0</span></td><td>双仓储字段漂移</td><td>PG 实现加了新字段、memory 忘了 → dev 模式发布的帖子丢封面/频道</td><td>数据</td><td>B1 单测硬断言两仓储返回字段集合一致；normalize 函数共享一份</td></tr>
+    <tr><td><span class="tag t-p0">P0</span></td><td>老数据空频道</td><td>迁移后旧帖 channel 为空值/null → 频道 tab 筛出空页</td><td>体验</td><td>DDL 默认 'discussion' + 服务层读取兜底（null→discussion），迁移后回归全频道列表</td></tr>
+    <tr><td><span class="tag t-p0">P0</span></td><td>封面 URL 注入</td><td>恶意用户提交 <code>javascript:</code> / data: / 私网 URL；或 style background 注入</td><td>安全</td><td>仅 https + isSafeUrl 协议白名单；渲染只用 &lt;img src&gt; 不用 CSS background；服务端入库前校验</td></tr>
+    <tr><td><span class="tag t-p1">P1</span></td><td>关注流越权/空态</td><td>未登录点「关注」tab → 401；关注 0 人 → 空白页</td><td>体验</td><td>前端 gate：未登录出吉祥物登录引导卡；空态给「去广场发现作者」行动点</td></tr>
+    <tr><td><span class="tag t-p1">P1</span></td><td>摘要口径不一致</td><td>前端 stripMarkdown 与服务端提取规则不同 → 卡片摘要与详情首段对不上</td><td>一致性</td><td>服务端 createPost 时统一提取入库；前端只读 summary 字段不再各算各的</td></tr>
+    <tr><td><span class="tag t-p1">P1</span></td><td>发布器状态丢失</td><td>用户填一半切 tab/误触关闭 → 内容全丢</td><td>数据</td><td>表单状态挂 beforeunload 提示 + 「保存草稿」显式化；B3 加 localStorage 草稿暂存（类型自愈清洗，防 persist 前科）</td></tr>
+    <tr><td><span class="tag t-p2">P2</span></td><td>搜索性能</td><td>ILIKE 全表扫，帖子上万后变慢</td><td>性能</td><td>当前量级可接受；后续 pg_trgm 索引或接 intelligence 检索</td></tr>
+    <tr><td><span class="tag t-p2">P2</span></td><td>评论点赞刷量</td><td>高频切换点赞写库</td><td>性能</td><td>与帖子点赞同一节流策略；P2 再做</td></tr>
+  </table>
+</section>
+
+<!-- ============ 11 关键决策 ============ -->
+<section class="block" id="s11">
+  <div class="sec-head"><span class="sec-no">11</span><h2>关键决策记录（为什么 A 不选 B）</h2></div>
+  <table>
+    <tr><th style="width:56px">#</th><th>决策 A（采纳）</th><th>方案 B（否决）</th><th>理由</th></tr>
+    <tr><td>1</td><td>新增 <code>channel</code> 字段做功能分区</td><td>复用 <code>type</code> 字段当频道</td><td>type 是内容形态（文章/作品/工作流），channel 是社区功能分区（讨论/测评）——正交维度。合并后「作品型测评」「文章型讨论」无法表达，筛选组合爆炸。</td></tr>
+    <tr><td>2</td><td>封面三档来源（自动/首图/URL）</td><td>引入文件上传 + 对象存储</td><td>生产端 Vercel serverless 无持久磁盘，上传基建是一整个新工程。三档覆盖 95% 场景且发布零摩擦；后续接云存储时加第四档即可，字段结构已预留。</td></tr>
+    <tr><td>3</td><td>详情保留抽屉、升级为大抽屉</td><td>改成独立路由详情页</td><td>抽屉保留列表上下文、深链 ?post= 已存在、改造量小；独立页的收益（SEO/外站分享落地）当前没有真实流量支撑。P2 有需求再路由化，组件内部结构已按「页」设计可平移。</td></tr>
+    <tr><td>4</td><td>社区页内用「频道条 + 场景 chips」</td><td>复刻炉子的页内左栏</td><td>全局已有图标侧栏，页内再加左栏 = 双层导航，HUD 三栏布局下横向空间不够。频道条达成同样的分门别类，不引入导航嵌套。</td></tr>
+    <tr><td>5</td><td>评论加 <code>kind</code> 分型（好评/吐槽/问答）</td><td>独立「评价体系」新表</td><td>复用 comments 表零迁移成本，交互范式已被炉子验证；问答/吐槽本质仍是评论，分型足够。未来需要评分维度再加扩展表。</td></tr>
+    <tr><td>6</td><td>吉祥物「川川」= 硅晶水滴</td><td>芯片机器人 / 仿炉子橙炉</td><td>从项目名第一性生长（硅+川），青色与品牌一致；抄炉子形象=给别家做嫁衣。水滴形态在深浅两套主题下都可换肤。</td></tr>
+  </table>
+</section>
+
+<!-- ============ 12 实施批次 ============ -->
+<section class="block" id="s12">
+  <div class="sec-head"><span class="sec-no">12</span><h2>实施批次（每批三件套全绿再提交）</h2></div>
+  <table>
+    <tr><th style="width:70px">批次</th><th>内容</th><th style="width:34%">验收标准</th></tr>
+    <tr><td><b>B1</b> 数据层</td><td>迁移 SQL + POST_VIEW 扩列 + memory 仓储对齐 + validatePost 扩展 + 关注流/频道/搜索查询</td><td>vitest：双仓储字段一致断言、默认值回归、可见性回归全绿</td></tr>
+    <tr><td><b>B2</b> 广场壳</td><td>频道条 + 场景 chips + 搜索框 + 封面卡片栅格 + 精选 hero + 吉祥物空态</td><td>Playwright 探针：频道切换/空态/深链打开详情 + 截图视觉验证</td></tr>
+    <tr><td><b>B3</b> 发布器</td><td>四分区表单 + 封面三档 + 摘要自动提取 + 标签 + 实时预览 + 草稿暂存</td><td>发布→卡片显示封面摘要标签；草稿恢复；XSS 用例注入被拦</td></tr>
+    <tr><td><b>B4</b> 详情页</td><td>大抽屉 hero + 数据行 + 操作行 + 评价区（kind 分型 + 筛选）</td><td>评论分型落库与筛选；深链直达；长文阅读截图验证</td></tr>
+    <tr><td><b>B5</b> 联系人 + 吉祥物贯穿</td><td>头像体系组件 + 未读徽章 + 帖子分享卡 + 吉祥物铺空态/加载/503</td><td>四模块视觉走查（浅/深主题）+ 全量回归（build + vitest + E2E 探针）</td></tr>
+  </table>
+  <div class="callout"><b>拍板点</b>：① 频道划分与命名是否 OK（讨论/测评/问答，精选+关注）；② 封面「零上传」三档方案是否接受；③ 吉祥物「川川」定名与水滴方向是否喜欢；④ 批次顺序 B1→B5 是否按此推进。确认后我从 B1 开跑。</div>
+</section>
+
+<div class="footer">Silicon Meridian · 用户社区模块改版设计方案 v1 · 2026-09-18 · 小安 🛠️（界面稿为示意稿，实现以设计令牌与真实数据为准）</div>
+</div>
+</body>
+</html>
