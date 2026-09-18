@@ -1,8 +1,8 @@
 /**
- * entrance-smoke.mjs — 入场动画 v4「万川归一」冒烟探针
+ * entrance-smoke.mjs — 入场动画 v5「星尘入川」冒烟探针
  *
- * 验证：光河 canvas 存在并绘制 → 品牌结构齐全 → 遥测推进 → 自动卸载；
- * 全程收集 pageerror 与 console 严重错误。
+ * 验证：星河 canvas 存在并绘制 → 深空氛围层（星层/噪点/经线）齐全 → 品牌结构齐全
+ * → 遥测推进 → 自动卸载；全程收集 pageerror 与 console 严重错误。
  *
  * 用法：node scripts/entrance-smoke.mjs [url]
  */
@@ -43,12 +43,17 @@ const structure = await page.evaluate(() => {
     riverPainting: painting,
     stage: q('.entrance__stage'),
     glows: document.querySelectorAll('.entrance__glow').length,
+    stars: document.querySelectorAll('.entrance__stars').length,
+    noise: q('.entrance__noise'),
+    meridian: q('.entrance__meridian'),
     brandChars: document.querySelectorAll('.entrance__brand-char').length,
     seal: q('.entrance__seal'),
     meter: q('.entrance__meter-fill'),
     flash: q('.entrance__flash'),
     lightMode: el ? el.classList.contains('entrance--light') : null,
-    noLegacy: !q('.entrance__grid') && !q('.entrance__sweep') && !q('.entrance__rail') && !q('.entrance__brandscan'),
+    // v4 遗物（光核/光环/横河时代的元素）不应存在
+    noLegacy: !q('.entrance__core') && !q('.entrance__ring') && !q('.entrance__grid')
+      && !q('.entrance__sweep') && !q('.entrance__rail') && !q('.entrance__brandscan'),
   };
 });
 
@@ -77,6 +82,7 @@ const bad =
   errors.length > 0 || consoleErrors.length > 0 ||
   !unmounted || !structure.stage || structure.brandChars !== 4 ||
   !structure.riverCanvas || !structure.noLegacy ||
+  !structure.noise || !structure.meridian || structure.stars !== 2 ||
   telemetry.isRun !== true;
 console.log(bad ? 'SMOKE: FAIL' : 'SMOKE: PASS');
 process.exit(bad ? 1 : 0);

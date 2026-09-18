@@ -1,66 +1,91 @@
 /* ============================================================
- * EntranceSplash v4「万川归一 · The Confluence」
- * 品牌叙事：万千数据之流汇成光河，百川归一，破幕入境。
+ * EntranceSplash v5「星尘入川 · Stardust into River」
+ * 品牌叙事：万般信息如星尘自天幕洒落，坠入地平线汇集成川，
+ * 河光之上浮现品牌——「万般硅川」的具象化。
  *
  * 四幕时间轴（与 EntranceSplash.jsx 常量一致）：
- *   A 起·一线   0–950ms        canvas 光脉
- *   B 流·万川   950–2400ms     canvas 支流汇河
- *   C 汇·归一   2400–3400ms    canvas 螺旋汇核 + DOM 品牌浮现
- *   D 入·入境   3400ms–        clip-path 圆形揭幕 + 爆发
+ *   A 星尘   0–1200ms      canvas 星雨渐密 + 远景星呼吸
+ *   B 成川   1200–2300ms   落点涟漪汇河，波光启动
+ *   C 题名   2300–3400ms   经线亮起 + 品牌逐字浮生
+ *   D 入境   3400ms–       星河加速 + 圆幕收拢揭出应用
  *
- * 丝滑原则：只动 transform / opacity / clip-path（合成器友好）；
- * 全部动画由 .is-run 门控；深浅主题经 --en-* 令牌分治。
+ * 丝滑原则：CSS 只动 transform / opacity / clip-path（合成器友好）；
+ * 全部动画由 .is-run 门控；深浅主题经 --en-* 令牌分治；
+ * 品牌区中心 --en-cy=46%，河面 --en-river=72%（canvas 同源）。
  * ============================================================ */
 
 .entrance {
   /* 深空令牌 */
-  --en-cy: 46%;
-  --en-bg: #04070d;
-  --en-glow-a: rgba(20, 110, 138, 0.30);
-  --en-glow-b: rgba(66, 48, 14, 0.24);
+  --en-cy: 46%;          /* 品牌区/揭幕圆心 */
+  --en-river: 72%;       /* 河面（与 canvas RIVER_RAT 对齐） */
+  --en-bg-top: #05080f;
+  --en-bg-mid: #0a1524;
+  --en-bg-deep: #030509;
+  --en-nebula-a: rgba(24, 116, 146, 0.14);
+  --en-nebula-b: rgba(64, 52, 96, 0.08);
+  --en-star: rgba(214, 238, 250, 0.85);
   --en-ink: #eaf6ff;
   --en-gold: #ffc46b;
   --en-cyan: #5fe8ff;
-  --en-char-shadow: 0 0 34px rgba(95, 232, 255, 0.35);
+  --en-brand-grad: linear-gradient(180deg, #f6fdff 12%, #cdeeff 46%, var(--en-cyan) 88%);
+  --en-brand-halo: drop-shadow(0 0 26px rgba(95, 232, 255, 0.30)) drop-shadow(0 2px 3px rgba(2, 8, 16, 0.6));
   --en-line: rgba(95, 232, 255, 0.45);
+  --en-meridian: rgba(95, 232, 255, 0.5);
   --en-seal: #c53a2e;
   --en-seal-bg: rgba(197, 58, 46, 0.12);
   --en-bar: rgba(8, 14, 22, 0.62);
   --en-border: rgba(95, 232, 255, 0.22);
   --en-muted: rgba(190, 214, 230, 0.66);
-  --en-vignette: rgba(0, 0, 0, 0.55);
+  --en-vignette: rgba(1, 3, 7, 0.6);
+  --en-noise-opacity: 0.08;
+  --en-noise-blend: overlay;
   --en-flash: rgba(210, 240, 255, 0.9);
+  --en-glow-blur: blur(28px);
 
   position: fixed;
   inset: 0;
   z-index: 10000;
   overflow: hidden;
   cursor: pointer;
-  background: var(--en-bg);
+  /* 深空底色：非纯黑——天顶到河底的多段呼吸渐变 */
+  background:
+    linear-gradient(180deg,
+      var(--en-bg-top) 0%,
+      var(--en-bg-mid) 46%,
+      var(--en-bg-deep) 100%);
+  /* 纯色兜底：渐变若在个别光栅路径下区域失画，也绝不透出底下 app 的灰白 */
+  background-color: var(--en-bg-top);
   font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   user-select: none;
 }
 
 .entrance--light {
-  /* 宣纸令牌 */
-  --en-bg: #f6f1e8;
-  --en-glow-a: rgba(196, 154, 60, 0.16);
-  --en-glow-b: rgba(118, 128, 142, 0.15);
+  /* 宣纸令牌：晨光宣纸上的金墨星尘与墨河 */
+  --en-bg-top: #f9f5ec;
+  --en-bg-mid: #efe7d6;
+  --en-bg-deep: #e3d9c4;
+  --en-nebula-a: rgba(196, 154, 60, 0.10);
+  --en-nebula-b: rgba(118, 128, 142, 0.07);
+  --en-star: rgba(72, 78, 88, 0.6);
   --en-ink: #22262b;
   --en-gold: #8a6a2f;
   --en-cyan: #3c6474;
-  --en-char-shadow: 0 2px 18px rgba(90, 70, 30, 0.18);
+  --en-brand-grad: linear-gradient(180deg, #2c3138 8%, #454e58 52%, #23505e 92%);
+  --en-brand-halo: drop-shadow(0 1px 2px rgba(90, 70, 30, 0.22));
   --en-line: rgba(70, 90, 100, 0.4);
+  --en-meridian: rgba(70, 90, 100, 0.4);
   --en-seal: #b03a2e;
   --en-seal-bg: rgba(176, 58, 46, 0.1);
   --en-bar: rgba(250, 246, 238, 0.72);
   --en-border: rgba(70, 90, 100, 0.25);
   --en-muted: rgba(70, 76, 84, 0.62);
-  --en-vignette: rgba(120, 100, 60, 0.14);
+  --en-vignette: rgba(120, 100, 60, 0.16);
+  --en-noise-opacity: 0.045;
+  --en-noise-blend: multiply;
   --en-flash: rgba(255, 250, 238, 0.95);
 }
 
-/* ---------- 光河画布 ---------- */
+/* ---------- 星雨 + 河画布 ---------- */
 .entrance__river {
   position: absolute;
   inset: 0;
@@ -69,45 +94,78 @@
   pointer-events: none;
 }
 
-/* ---------- 氛围层：辉光呼吸 + 暗角 ---------- */
+/* ---------- 深空氛围：星云辉光 + 远景星 + 噪点 + 暗角 ---------- */
 .entrance__glow {
   position: absolute;
   border-radius: 50%;
   pointer-events: none;
   opacity: 0;
+  filter: var(--en-glow-blur); /* 软化宽椭圆 radial 渐变的 8-bit banding */
   will-change: transform, opacity;
 }
+/* 天顶星云：星尘的来处 */
 .entrance__glow--a {
-  width: 72vw; height: 72vw;
-  left: -18vw; top: -28vw;
-  background: radial-gradient(circle, var(--en-glow-a) 0%, transparent 62%);
+  width: 88vw; height: 60vw;
+  left: 50%; top: -30vw;
+  margin-left: -44vw;
+  background: radial-gradient(ellipse, var(--en-nebula-a) 0%, transparent 70%);
 }
+/* 河谷辉光：星尘的去处 */
 .entrance__glow--b {
-  width: 80vw; height: 80vw;
-  right: -24vw; bottom: -34vw;
-  background: radial-gradient(circle, var(--en-glow-b) 0%, transparent 62%);
+  width: 76vw; height: 30vw;
+  left: 50%; bottom: -10vw;
+  margin-left: -38vw;
+  background: radial-gradient(ellipse, var(--en-nebula-b) 0%, transparent 68%);
 }
 .entrance.is-run .entrance__glow {
   animation: enGlow 4.6s ease-in-out both;
 }
-.entrance.is-run .entrance__glow--b { animation-delay: .5s; }
+.entrance.is-run .entrance__glow--b { animation-delay: .6s; }
 @keyframes enGlow {
-  0%   { opacity: 0; transform: scale(.85); }
+  0%   { opacity: 0; transform: scale(.88); }
   45%  { opacity: 1; transform: scale(1); }
-  100% { opacity: .8; transform: scale(1.06); }
+  100% { opacity: .82; transform: scale(1.05); }
+}
+
+/* 远景星：两层 box-shadow 星点，错相呼吸（JS 一次性生成坐标） */
+.entrance__stars {
+  position: absolute;
+  inset: 0 0 28% 0; /* 只布在天区（河面以上） */
+  pointer-events: none;
+  opacity: 0;
+  will-change: opacity;
+}
+.entrance.is-run .entrance__stars { animation: enStarBreath 3.2s ease-in-out both; }
+.entrance.is-run .entrance__stars--b { animation-delay: 1.6s; }
+@keyframes enStarBreath {
+  0%   { opacity: 0; }
+  30%  { opacity: .9; }
+  60%  { opacity: .45; }
+  100% { opacity: .85; }
+}
+
+/* 噪点颗粒：胶片质感（SVG feTurbulence data-uri，零资源请求） */
+.entrance__noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--en-noise-opacity);
+  mix-blend-mode: var(--en-noise-blend);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
 }
 
 .entrance__vignette {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at 50% var(--en-cy), transparent 46%, var(--en-vignette) 100%);
+  background: radial-gradient(ellipse at 50% var(--en-cy), transparent 44%, var(--en-vignette) 100%);
   opacity: 0;
 }
 .entrance.is-run .entrance__vignette { animation: enFadeIn 1.2s ease .2s both; }
 @keyframes enFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* ---------- 归一核心与品牌区 ---------- */
+/* ---------- 品牌区（C 幕登场）：经线 + 品牌字 + 装饰 ---------- */
 .entrance__center {
   position: absolute;
   left: 50%; top: var(--en-cy);
@@ -119,83 +177,74 @@
   pointer-events: none;
 }
 
-.entrance__core {
+/* 经线：一条自天顶贯入河面的子午光（Meridian 意象），品牌后景 */
+.entrance__meridian {
   position: absolute;
-  left: 50%; top: 34px;
-  width: 14px; height: 14px;
-  margin: -7px 0 0 -7px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--en-flash) 0%, var(--en-cyan) 46%, transparent 74%);
-  box-shadow: 0 0 26px 6px color-mix(in srgb, var(--en-cyan) 42%, transparent);
+  left: 50%; top: 0;
+  width: 2px;
+  height: var(--en-river); /* 天顶 → 河面 */
+  transform: translateX(-50%) scaleY(0);
+  transform-origin: top center;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--en-meridian) 26%, transparent) 14%,
+    var(--en-meridian) 52%,
+    color-mix(in srgb, var(--en-meridian) 60%, transparent) 96%,
+    transparent 100%);
+  filter: blur(0.4px);
   opacity: 0;
   will-change: transform, opacity;
 }
-.entrance.is-run .entrance__core { animation: enCore 1s cubic-bezier(.2,.9,.3,1.2) 2.3s both; }
-@keyframes enCore {
-  0%   { opacity: 0; transform: scale(.2); }
-  55%  { opacity: 1; }
-  100% { opacity: .92; transform: scale(1); }
-}
-
-.entrance__ring {
-  position: absolute;
-  left: 50%; top: 34px;
-  width: 130px; height: 130px;
-  margin: -65px 0 0 -65px;
-  border-radius: 50%;
-  border: 1px solid var(--en-line);
-  opacity: 0;
-  will-change: transform, opacity;
-}
-.entrance__ring--2 { border-style: dashed; border-color: color-mix(in srgb, var(--en-gold) 55%, transparent); }
-.entrance.is-run .entrance__ring--1 { animation: enRing 1.7s cubic-bezier(.16,1,.3,1) 2.45s both; }
-.entrance.is-run .entrance__ring--2 { animation: enRing 1.9s cubic-bezier(.16,1,.3,1) 2.6s both; }
-@keyframes enRing {
-  0%   { opacity: 0; transform: scale(.25); }
-  28%  { opacity: .9; }
-  100% { opacity: 0; transform: scale(2.3); }
+.entrance.is-run .entrance__meridian { animation: enMeridian 1.15s cubic-bezier(.16,1,.3,1) 2.18s both; }
+@keyframes enMeridian {
+  0%   { opacity: 0; transform: translateX(-50%) scaleY(0); }
+  38%  { opacity: .9; }
+  100% { opacity: .55; transform: translateX(-50%) scaleY(1); }
 }
 
 .entrance__brand {
   position: relative;
   display: flex;
-  gap: clamp(8px, 1.6vw, 18px);
-  margin-top: -6px;
+  gap: clamp(10px, 2vw, 26px);
 }
 .entrance__brand-char {
-  font-family: 'Ma Shan Zheng', 'Noto Serif SC', serif;
-  font-size: clamp(56px, 9vw, 92px);
-  line-height: 1.16;
-  color: var(--en-ink);
-  text-shadow: var(--en-char-shadow);
+  font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  font-weight: 900;
+  font-size: clamp(64px, 11vw, 122px);
+  line-height: 1.14;
+  background: var(--en-brand-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: var(--en-brand-halo);
   opacity: 0;
-  will-change: transform, opacity;
+  will-change: transform, opacity, filter;
 }
 .entrance.is-run .entrance__brand-char {
-  animation: enChar .64s cubic-bezier(.16,1,.3,1) both;
-  animation-delay: calc(2.38s + var(--idx) * .1s);
+  animation: enChar .78s cubic-bezier(.16,1,.3,1) both;
+  animation-delay: calc(2.3s + var(--idx) * .09s);
 }
 @keyframes enChar {
-  0%   { opacity: 0; transform: translateY(30px) scale(.92); }
-  60%  { opacity: 1; }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+  0%   { opacity: 0; transform: translateY(30px) scale(.94); filter: blur(10px); }
+  55%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
 }
 
 .entrance__rule {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 14px;
+  margin-top: 18px;
   opacity: 0;
   will-change: transform, opacity;
 }
-.entrance.is-run .entrance__rule { animation: enRise .6s ease-out 2.82s both; }
+.entrance.is-run .entrance__rule { animation: enRise .6s ease-out 2.78s both; }
 @keyframes enRise {
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .entrance__line {
-  width: clamp(40px, 7vw, 84px);
+  width: clamp(44px, 7.5vw, 92px);
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--en-line));
 }
@@ -215,7 +264,7 @@
 }
 
 .entrance__sub {
-  margin-top: 16px;
+  margin-top: 18px;
   font-family: 'Orbitron', sans-serif;
   font-weight: 500;
   font-size: 13px;
@@ -226,7 +275,7 @@
   will-change: transform, opacity;
 }
 .entrance__sub-cn {
-  margin-top: 8px;
+  margin-top: 9px;
   font-size: 12px;
   letter-spacing: .34em;
   text-indent: .34em;
@@ -234,8 +283,8 @@
   opacity: 0;
   will-change: transform, opacity;
 }
-.entrance.is-run .entrance__sub { animation: enRise .6s ease-out 2.94s both; }
-.entrance.is-run .entrance__sub-cn { animation: enRise .6s ease-out 3.04s both; }
+.entrance.is-run .entrance__sub { animation: enRise .6s ease-out 2.92s both; }
+.entrance.is-run .entrance__sub-cn { animation: enRise .6s ease-out 3.02s both; }
 
 /* ---------- 底部遥测条 ---------- */
 .entrance__bar {
@@ -255,6 +304,7 @@
   white-space: nowrap;
   opacity: 0;
   will-change: transform, opacity;
+  z-index: 3;
 }
 .entrance.is-run .entrance__bar { animation: enBar .7s ease .4s both; }
 @keyframes enBar {
