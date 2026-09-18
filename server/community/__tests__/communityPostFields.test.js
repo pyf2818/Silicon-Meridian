@@ -139,7 +139,7 @@ describe('memoryCommunityRepository B1 新字段（与 PG POST_VIEW 对齐）', 
   it('listPosts：channel 过滤 / q 关键词 / followingOnly 关注流', async () => {
     const repo = createMemoryCommunityRepository();
     const { alice, bob } = await seedUsers();
-    const review = await repo.createPost({ authorId: alice.id, type: 'article', title: 'Qwen3 测评', body: '深度实测', visibility: 'public', status: 'published', channel: 'review' });
+    const review = await repo.createPost({ authorId: alice.id, type: 'article', title: 'Qwen3 测评', body: '深度实测', visibility: 'public', status: 'published', channel: 'review', tags: ['#模型评测'] });
     const talk = await repo.createPost({ authorId: bob.id, type: 'article', title: '随便聊聊', body: '行业观察', visibility: 'public', status: 'published', channel: 'discussion' });
 
     const byChannel = await repo.listPosts({ viewerId: alice.id, channel: 'review' });
@@ -147,6 +147,10 @@ describe('memoryCommunityRepository B1 新字段（与 PG POST_VIEW 对齐）', 
 
     const byQuery = await repo.listPosts({ viewerId: alice.id, q: '行业' });
     expect(byQuery.map(p => p.id)).toEqual([talk.id]);
+
+    // 场景标签过滤（chips 数据源）：tags 含 '#模型评测' 的才命中
+    const byTag = await repo.listPosts({ viewerId: alice.id, tag: '#模型评测' });
+    expect(byTag.map(p => p.id)).toEqual([review.id]);
 
     // 关注流：未关注 → 空；关注 bob 后 → 只剩 bob 的内容
     const before = await repo.listPosts({ viewerId: alice.id, followingOnly: true });

@@ -19,7 +19,7 @@ const POST_VIEW = POST_VIEW_SQL;
 
 export function createCommunityRepository(db = getPool()) {
   return {
-    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null, channel = null, q = null, followingOnly = false } = {}) {
+    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null, channel = null, q = null, tag = null, followingOnly = false } = {}) {
       const parts = [];
       const params = [viewerId];
       // 自己的作品：包含草稿（排除已删除）；否则按可见范围 + 可选作者过滤
@@ -44,6 +44,11 @@ export function createCommunityRepository(db = getPool()) {
       if (q) {
         params.push(`%${String(q).replace(/[\\%_]/g, '\\$&')}%`);
         parts.push(`(p.title ilike $${params.length} or p.body ilike $${params.length})`);
+      }
+      // 场景标签过滤：jsonb 包含查询（tags 数组含该标签即命中）
+      if (tag) {
+        params.push(String(tag));
+        parts.push(`p.tags @> to_jsonb($${params.length}::text)`);
       }
       params.push(cursor);
       parts.push(`($${params.length}::timestamptz is null or p.created_at < $${params.length}::timestamptz)`);

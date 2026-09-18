@@ -5,11 +5,14 @@ process.env.SILICON_E2E = '1';
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || '';
 process.env.SCRAPLING_URL = '';
 
+// 沙盒里固定端口可能落入 Windows 排除段（EACCES），允许 E2E_PORT 换端口；默认保持 5176 兼容
+const port = Number(process.env.E2E_PORT) || 5176;
+
 const server = await createServer({
   configFile: 'vite.config.js',
   server: {
     host: '127.0.0.1',
-    port: 5176,
+    port,
     strictPort: true,
   },
 });

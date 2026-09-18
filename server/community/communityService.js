@@ -83,15 +83,16 @@ export function createCommunityService(repository = (isDevMemoryMode() ? createM
     return post;
   }
   return {
-    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null, channel = null, q = null, followingOnly = false } = {}) {
+    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null, channel = null, q = null, tag = null, followingOnly = false } = {}) {
       // 频道枚举校验（列表参数非法直接 400，不让脏值落查询）；关注流需登录态
       if (channel != null && !CHANNEL_SET.has(String(channel))) fail('INVALID_CHANNEL', '频道不支持', 400);
       if (followingOnly && !viewerId) fail('UNAUTHORIZED', '请先登录', 401);
       const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
       const safeQuery = q ? String(q).trim().slice(0, 80) : null;
+      const safeTag = tag ? String(tag).trim().slice(0, 24) : null;
       const posts = await repository.listPosts({
         viewerId, cursor, limit: safeLimit + 1, authorId,
-        channel: channel || null, q: safeQuery, followingOnly: Boolean(followingOnly),
+        channel: channel || null, q: safeQuery, tag: safeTag, followingOnly: Boolean(followingOnly),
       });
       const hasMore = posts.length > safeLimit;
       const items = posts.slice(0, safeLimit);

@@ -34,11 +34,18 @@ export async function copyPostShareLink(postId) {
 }
 
 /**
- * tab: 'square' 广场 | 'mine' 我的作品（含草稿） | 'bookmarks' 我的收藏
- * 每个 tab 独立游标分页（nextCursor），切换 tab 重新加载。
+ * B2 社区视图模型：
+ * view: 'featured' 精选(混合) | 'discussion' 讨论 | 'review' 测评 | 'following' 关注流
+ *       | 'mine' 我的作品（含草稿） | 'bookmarks' 我的收藏
+ * 频道内可叠加 tag（场景 chips）与 q（搜索）；切换 view 清空两者。
+ * 每个 view 独立游标分页（nextCursor）。
  */
+const VIEW_CHANNEL = { featured: null, discussion: 'discussion', review: 'review' };
+
 export function useCommunity() {
-  const [tab, setTab] = useState('square');
+  const [view, setView] = useState('featured');
+  const [activeTag, setActiveTag] = useState('');
+  const [activeQuery, setActiveQuery] = useState('');
   const [posts, setPosts] = useState([]);
   const [selectedPost, setSelectedPost] = useState(null);
   const [comments, setComments] = useState([]);
@@ -50,13 +57,24 @@ export function useCommunity() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const loadPosts = useCallback(async ({ tab: nextTab = 'square', reset = true } = {}) => {
-    const activeTab = nextTab;
+  const buildListPath = useCallback((nextView, { tag, q }) => {
+    if (nextView === 'mine') return 'posts?author=me&limit=20';
+    if (nextView === 'bookmarks') return 'bookmarks?limit=20';
+    const parts = ['posts?limit=20'];
+    const channel = VIEW_CHANNEL[nextView];
+    if (channel) parts.push(`channel=${encodeURIComponent(channel)}`);
+    if (nextView === 'following') parts.push('following=1');
+    if (tag) parts.push(`tag=${encodeURIComponent(tag)}`);
+    if (q) parts.push(`q=${encodeURIComponent(q)}`);
+    return parts.join('&');
+  }, []);
+
+  const loadPosts = useCallback(async ({ view: nextView = 'featured', reset = true, tag = '', q = '' } = {}) => {
     if (reset) { setLoading(true); setPosts([]); setCursor(null); setHasMore(false); }
     else setLoadingMore(true);
     setError('');
     try {
-      const path = activeTab === 'mine' ? 'posts?author=me&limit=20' : activeTab === 'bookmarks' ? 'bookmarks?limit=20' : 'posts?limit=20';
+      const path = buildListPath(nextView, { tag, q });
       const suffix = reset ? '' : `&cursor=${encodeURIComponent(cursor || '')}`;
       const data = await request(`${path}${suffix}`);
       const items = data.items || [];
@@ -67,17 +85,33 @@ export function useCommunity() {
       if (reset) setPosts([]);
       setError(requestError.message);
     } finally { setLoading(false); setLoadingMore(false); }
-  }, [cursor]);
+  }, [buildListPath, cursor]);
 
-  const switchTab = useCallback((nextTab) => {
-    setTab(nextTab);
-    loadPosts({ tab: nextTab, reset: true }).catch(() => {});
+  const switchView = useCallback((nextView) => {
+    setView(nextView);
+    setActiveTag('');
+    setActiveQuery('');
+    loadPosts({ view: nextView, reset: true }).catch(() => {});
   }, [loadPosts]);
+
+  const applyTag = useCallback((tag) => {
+    const nextTag = tag || '';
+    setActiveTag(nextTag);
+    setActiveQuery('');
+    loadPosts({ view, reset: true, tag: nextTag }).catch(() => {});
+  }, [loadPosts, view]);
+
+  const applySearch = useCallback((q) => {
+    const nextQuery = String(q || '').trim();
+    setActiveQuery(nextQuery);
+    setActiveTag('');
+    loadPosts({ view, reset: true, q: nextQuery }).catch(() => {});
+  }, [loadPosts, view]);
 
   const loadMore = useCallback(() => {
     if (!hasMore || loadingMore) return;
-    loadPosts({ tab, reset: false }).catch(() => {});
-  }, [hasMore, loadingMore, loadPosts, tab]);
+    loadPosts({ view, reset: false, tag: activeTag, q: activeQuery }).catch(() => {});
+  }, [activeQuery, activeTag, hasMore, loadPosts, loadingMore, view]);
 
   const openPost = useCallback(async (postId) => {
     setSelectedPostId(postId);
@@ -94,13 +128,13 @@ export function useCommunity() {
 
   const createPost = useCallback(async (input) => {
     const data = await request('posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
-    // 发布后回到广场并置顶新帖；当前在 mine 视角下也直接插入
+    // 发布后回到当前视图并置顶新帖（含 mine 视角）
     setPosts(previous => [data.post, ...previous]);
     return data.post;
   }, []);
 
-  const addComment = useCallback(async (postId, body, parentId = null) => {
-    const data = await request(`posts/${postId}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, parentId }) });
+  const addComment = useCallback(async (postId, body, parentId = null, kind = 'comment') => {
+    const data = await request(`posts/${postId}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, parentId, kind }) });
     setComments(previous => [...previous, data.comment]);
     setPosts(previous => previous.map(post => post.id === postId ? { ...post, commentCount: Number(post.commentCount || 0) + 1 } : post));
     if (selectedPost?.id === postId) setSelectedPost(previous => ({ ...previous, commentCount: Number(previous.commentCount || 0) + 1 }));
@@ -131,10 +165,10 @@ export function useCommunity() {
   }, [selectedPost?.authorId]);
 
   return {
-    tab, switchTab,
+    view, switchView, activeTag, activeQuery, applyTag, applySearch,
     posts, selectedPost, selectedPostId, comments, loading, loadingMore, hasMore, detailLoading, error,
     setSelectedPost, setComments, setError, setSelectedPostId,
-    loadPosts, loadMore, switchTabSafe: switchTab,
+    loadPosts, loadMore,
     openPost, createPost, addComment,
     setLike: (postId, enabled) => updateRelationship(postId, 'like', enabled),
     setBookmark: (postId, enabled) => updateRelationship(postId, 'bookmark', enabled),

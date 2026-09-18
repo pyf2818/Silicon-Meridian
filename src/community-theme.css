@@ -1,0 +1,179 @@
+/* ============================================================
+   community-theme.css · 社区改版 B2（广场频道壳）
+   作用域：.community-page 及 community- 前缀组件类；全部走设计令牌，浅/深主题自适应。
+   引入位置：main.jsx 在 motion.css 之后引入（表层覆盖）。
+   ============================================================ */
+
+/* ---- 头部：标题 + 搜索 + 发布 ---- */
+.community-page .community-header-sub {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.community-toolbar { display: flex; align-items: center; gap: 10px; }
+.community-search {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 240px; padding: 0 12px; height: 36px;
+  border: 1px solid var(--border-color); border-radius: 10px;
+  background: var(--bg-secondary); color: var(--text-muted);
+}
+.community-search:focus-within { border-color: var(--accent-cyan); }
+.community-search input {
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  color: var(--text-primary); font-size: 13px;
+}
+.community-search-clear {
+  border: none; background: transparent; color: var(--text-muted);
+  font-size: 15px; line-height: 1; cursor: pointer; padding: 2px 4px;
+}
+.community-search-clear:hover { color: var(--text-primary); }
+
+/* ---- 频道条 ---- */
+.community-channels {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  margin-top: 16px; padding-bottom: 2px;
+  border-bottom: 1px solid var(--border-color);
+}
+.community-channel-tab {
+  position: relative; border: none; background: transparent; cursor: pointer;
+  padding: 8px 14px 10px; color: var(--text-secondary);
+  font-size: 13.5px; font-weight: 600; letter-spacing: 0.02em;
+}
+.community-channel-tab:hover { color: var(--text-primary); }
+.community-channel-tab.active { color: var(--accent-cyan); font-weight: 800; }
+.community-channel-tab.active::after {
+  content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px;
+  border-radius: 2px; background: var(--accent-cyan);
+}
+
+/* ---- 场景 chips ---- */
+.community-chips {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 12px 0 2px; font-size: 12px;
+}
+.community-chips-label { color: var(--text-muted); margin-right: 2px; }
+.community-chip {
+  border: 1px solid var(--border-color); background: transparent; cursor: pointer;
+  border-radius: 999px; padding: 3px 13px; color: var(--text-secondary); font-size: 12px;
+}
+.community-chip:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.community-chip.active {
+  background: var(--accent-cyan-soft); border-color: transparent;
+  color: var(--accent-cyan); font-weight: 700;
+}
+.community-chips-query { color: var(--text-muted); margin-left: 4px; }
+
+/* ---- 封面卡片栅格 ---- */
+.community-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  gap: 14px; margin-top: 14px;
+}
+.community-card {
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--border-color); border-radius: 12px;
+  background: var(--bg-card); cursor: pointer; min-width: 0;
+}
+.community-card:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
+/* themes.css 全局过渡杀手夺回：仅卡片本体允许位移/阴影过渡 */
+html .community-page .community-card,
+html .community-page .community-hero {
+  transition-property: box-shadow, border-color, transform !important;
+  transition-duration: 0.16s !important;
+  transition-timing-function: ease;
+}
+.community-card:hover { border-color: var(--accent-cyan); box-shadow: 0 6px 20px rgba(8, 145, 178, 0.14); transform: translateY(-2px); }
+
+.community-card-cover {
+  position: relative; display: grid; place-items: center; overflow: hidden;
+  border-bottom: 1px solid var(--border-color); min-height: 96px;
+}
+.community-card-cover img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+}
+.community-card-cover-word {
+  color: rgba(255, 255, 255, 0.94); font-size: 26px; font-weight: 800; letter-spacing: 0.08em;
+  text-shadow: 0 2px 10px rgba(15, 23, 42, 0.25);
+}
+.community-card-cover-tag {
+  position: absolute; top: 8px; left: 8px;
+  padding: 2px 10px; border-radius: 999px;
+  background: rgba(15, 23, 42, 0.55); color: #fff; font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.community-card-body { display: flex; flex-direction: column; gap: 6px; padding: 11px 13px 12px; flex: 1; min-width: 0; }
+.community-card-meta { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11.5px; }
+.community-card-body h3 {
+  margin: 0; color: var(--text-primary); font-size: 14.5px; font-weight: 700; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.community-card-body p {
+  margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.6;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.community-card-author { display: flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 4px; color: var(--text-secondary); font-size: 12px; min-width: 0; }
+.community-card-author span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.community-card-author em { font-style: normal; color: var(--text-muted); font-size: 11px; }
+.community-card-following { font-style: normal; color: var(--accent-cyan); font-size: 11px; }
+
+/* ---- 统一头像 ---- */
+.community-user-avatar {
+  position: relative; display: inline-grid; place-items: center; flex: none;
+  border-radius: 50%; overflow: visible;
+  color: #fff; font-weight: 800; line-height: 1;
+}
+.community-user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.community-user-avatar-online {
+  position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--status-ok, #10b981); border: 2px solid var(--bg-card);
+}
+
+/* ---- 卡片操作行（沿用旧 testid，视觉收紧） ---- */
+.community-card .community-post-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
+.community-card .community-post-actions button {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-muted); font-size: 11.5px; padding: 3px 7px; border-radius: 7px;
+}
+.community-card .community-post-actions button:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.community-card .community-post-actions button.active { color: var(--accent-cyan); font-weight: 700; }
+.community-card .community-post-actions button.liked { color: #ef4444; }
+
+/* ---- 精选 hero ---- */
+.community-hero {
+  display: grid; grid-template-columns: 300px 1fr; overflow: hidden;
+  margin-top: 14px; border: 1px solid var(--border-color); border-radius: 14px;
+  background: var(--bg-card); cursor: pointer;
+}
+.community-hero:hover { border-color: var(--accent-cyan); box-shadow: 0 8px 26px rgba(8, 145, 178, 0.15); transform: translateY(-2px); }
+.community-hero .community-card-cover { border-bottom: none; border-right: 1px solid var(--border-color); border-radius: 0; }
+.community-hero-body { display: flex; flex-direction: column; gap: 7px; padding: 16px 20px 14px; min-width: 0; }
+.community-hero-kicker { color: var(--accent-cyan); font-size: 11px; font-weight: 800; letter-spacing: 0.14em; }
+.community-hero-body h2 {
+  margin: 0; color: var(--text-primary); font-size: 19px; font-weight: 800; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.community-hero-body p {
+  margin: 0; color: var(--text-muted); font-size: 12.5px; line-height: 1.7;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.community-hero-go { align-self: flex-end; color: var(--accent-cyan); font-size: 13px; font-weight: 700; }
+
+/* ---- 川川空态 ---- */
+.community-mascot-state {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 44px 20px 40px; text-align: center;
+  border: 1px dashed var(--border-color); border-radius: 14px; margin-top: 14px;
+}
+.community-mascot-state strong { color: var(--text-primary); font-size: 15px; }
+.community-mascot-state span { color: var(--text-muted); font-size: 12.5px; max-width: 420px; line-height: 1.7; }
+.community-mascot-state .ai-primary-action { margin-top: 6px; }
+
+/* ---- 响应式 ---- */
+@media (max-width: 860px) {
+  .community-hero { grid-template-columns: 1fr; }
+  .community-hero .community-card-cover { border-right: none; border-bottom: 1px solid var(--border-color); }
+  .community-search { min-width: 0; flex: 1; }
+  .community-toolbar { width: 100%; }
+  .community-header-compact { flex-wrap: wrap; }
+}

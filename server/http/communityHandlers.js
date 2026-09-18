@@ -39,9 +39,10 @@ export async function handleCommunityRequest(req, res, { path = [], service, aut
         }
         const data = await community.listPosts({
           viewerId: user?.id, cursor: url.searchParams.get('cursor'), limit: url.searchParams.get('limit'), authorId,
-          // B1：频道过滤 / 关键词搜索 / 关注流
+          // B1：频道过滤 / 关键词搜索 / 场景标签 / 关注流
           channel: url.searchParams.get('channel'),
           q: url.searchParams.get('q'),
+          tag: url.searchParams.get('tag'),
           followingOnly: url.searchParams.get('following') === '1',
         });
         return sendJsonResponse(res, 200, { ok: true, data });

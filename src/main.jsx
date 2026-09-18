@@ -15,6 +15,7 @@ import './entrance.css'; // 进场动画「水墨开卷」（在 motion.css 之�
 import './motion.css'; // C1 统一微交互与动效令牌（最后引入，优先级最高）
 import './settings.css'; // 墨仪·智控册页 设置设计系统（在 motion 之后，确保表层令牌覆盖）
 import './globe-screen.css'; // v25 全球大屏（gs- 前缀独立作用域，始终深空场景）
+import './community-theme.css'; // 社区改版 B2（广场频道壳，community- 前缀独立作用域）
 import BackgroundLayer from './components/visual/BackgroundLayer.jsx';
 import NoiseLayer from './components/visual/NoiseLayer.jsx';
 // ParticleField 懒加载：首屏先显示背景与噪点，粒子稍后出现，不阻塞首屏

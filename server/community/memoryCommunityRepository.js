@@ -70,7 +70,7 @@ function visibleTo(post, viewerId) {
 
 export function createMemoryCommunityRepository() {
   return {
-    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null, channel = null, q = null, followingOnly = false } = {}) {
+    async listPosts({ viewerId = null, cursor = null, limit = 20, authorId = null, channel = null, q = null, tag = null, followingOnly = false } = {}) {
       let rows = [...posts.values()];
       if (authorId && authorId === viewerId) {
         rows = rows.filter(p => p.authorId === authorId && p.status !== 'deleted');
@@ -86,6 +86,8 @@ export function createMemoryCommunityRepository() {
         const needle = String(q).toLowerCase();
         rows = rows.filter(p => String(p.title).toLowerCase().includes(needle) || String(p.body).toLowerCase().includes(needle));
       }
+      // 场景标签过滤（与 PG 的 jsonb @> 语义对齐：tags 数组包含该标签）
+      if (tag) rows = rows.filter(p => Array.isArray(p.tags) && p.tags.includes(String(tag)));
       if (cursor) rows = rows.filter(p => new Date(p.createdAt) < new Date(cursor));
       rows.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt) || String(b.id).localeCompare(String(a.id)));
       return rows.slice(0, limit).map(p => postView(p, viewerId));
