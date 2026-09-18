@@ -2559,7 +2559,7 @@ ${materialLines || '暂无素材'}`;
             </SafeBoundary>
           )}
 
-          {nav === 'chat' && <ChatPage user={user} pendingShare={pendingChatShare} onConsumeShare={() => setPendingChatShare(null)} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} />}
+          {nav === 'chat' && <ChatPage user={user} pendingShare={pendingChatShare} onConsumeShare={() => setPendingChatShare(null)} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} onOpenPost={postId => { try { window.history.replaceState({}, '', `/?post=${encodeURIComponent(postId)}`); } catch { /* 忽略 */ } setNav('square'); }} />}
 
           {nav === 'profile-center' && (
             <Suspense fallback={<div className="empty-state"><p>加载画像中心...</p></div>}>

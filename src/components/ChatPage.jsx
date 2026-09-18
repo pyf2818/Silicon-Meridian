@@ -1,5 +1,8 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { useChat } from '../hooks/useChat.js';
+import CommunityAvatar from './community/CommunityAvatar.jsx';
+import MascotState from './community/MascotState.jsx';
+import PostCover from './community/PostCover.jsx';
 
 const label = item => item?.displayName || item?.username || item?.title || '未命名会话';
 const DAY = 86400000;
@@ -28,7 +31,7 @@ function updateStreak(convId, messages) {
   return entry.count;
 }
 
-export default function ChatPage({ user, pendingShare, onConsumeShare, onRequireAuth }) {
+export default function ChatPage({ user, pendingShare, onConsumeShare, onRequireAuth, onOpenPost }) {
   const chat = useChat({ enabled: Boolean(user) });
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
@@ -52,7 +55,7 @@ export default function ChatPage({ user, pendingShare, onConsumeShare, onRequire
     const items = await chat.loadMessages(id);
     if (items) { updateStreak(id, items); setStreakTick(t => t + 1); }
   };
-  if (!user) return <section className="chat-page chat-empty"><h1>联系人</h1><p>登录后与联系人私聊或组建群组，把资讯与创作直接分享进会话。</p><button className="ai-primary-action" onClick={onRequireAuth}>登录开始聊天</button></section>;
+  if (!user) return <section className="chat-page chat-empty"><MascotState testId="chat-login-state" title="川川帮你传话" hint="登录后与联系人私聊或组建群组，把资讯与创作直接分享进会话。" actionLabel="登录开始聊天" onAction={onRequireAuth} /></section>;
 
   const send = async () => { const text = draft.trim(); if ((!text && !pendingShare) || !chat.activeId) return; const message = await chat.sendMessage({ body: text || '分享内容', kind: pendingShare ? 'share' : 'text', sharePayload: pendingShare || null }); setDraft(''); onConsumeShare?.(); updateStreak(chat.activeId, [...chat.messages, message]); setStreakTick(t => t + 1); };
   const startDirect = async contact => { const conversation = await chat.createConversation({ kind: 'direct', memberIds: [contact.id], title: label(contact) }); await openConversation(conversation.id); };
@@ -84,39 +87,39 @@ export default function ChatPage({ user, pendingShare, onConsumeShare, onRequire
       <aside className="chat-sidebar">
         <div className="chat-panel-title"><strong>会话</strong><button onClick={() => chat.load()}>刷新</button></div>
         {chat.loading && <div className="chat-muted">正在同步…</div>}
-        {chat.conversations.map(item => { const fire = streakOf(item.id); return <button key={item.id} className={`chat-conversation ${item.id === chat.activeId ? 'active' : ''}`} onClick={() => openConversation(item.id)}><span className="chat-avatar">{label(item).slice(0, 1)}</span><span><strong>{label(item)}{fire > 0 && <em className="chat-streak" title={`已连续聊天 ${fire} 天`}>🔥{fire}</em>}</strong><small>{item.lastMessage?.body || (item.kind === 'group' ? `${item.memberCount} 位成员` : '开始聊天')}</small></span></button>; })}
-        {!chat.conversations.length && <div className="chat-muted">还没有会话，从右侧联系人发起聊天。</div>}
+        {chat.conversations.map(item => { const fire = streakOf(item.id); return <button key={item.id} className={`chat-conversation ${item.id === chat.activeId ? 'active' : ''}`} onClick={() => openConversation(item.id)}><CommunityAvatar name={label(item)} src={item.avatar || item.avatarUrl || ''} size={34} /><span><strong>{label(item)}{fire > 0 && <em className="chat-streak" title={`已连续聊天 ${fire} 天`}>🔥{fire}</em>}</strong><small>{item.lastMessage?.body || (item.kind === 'group' ? `${item.memberCount} 位成员` : '开始聊天')}</small></span></button>; })}
+        {!chat.conversations.length && <MascotState size={72} title="还没有会话" hint="从右侧联系人发起第一场聊天，或用邀请码加入群组。" />}
       </aside>
       <main className="chat-main">
         {active ? <>
           <div className="chat-main-head"><div><strong>{label(active)}{streakOf(active.id) > 0 && <em className="chat-streak">🔥{streakOf(active.id)} 天火花</em>}</strong><span>{active.kind === 'group' ? `${active.memberCount} 位成员` : '私聊'}</span></div><code>{active.inviteCode || ''}</code></div>
           <div className="chat-messages">
-            {chat.messages.map(message => <article key={message.id} className={`chat-message ${message.senderId === user.id ? 'mine' : ''}`}><div className="chat-message-meta">{message.senderName || (message.senderId === user.id ? '我' : '成员')} · {new Date(message.createdAt).toLocaleString()}</div>{message.kind === 'share' && <div className="chat-share-card"><span>分享内容</span><strong>{message.sharePayload?.title || message.body}</strong><small>{message.sharePayload?.type || '资讯'}</small></div>}<p>{message.body}</p></article>)}
-            {!chat.messages.length && <div className="chat-muted">发送第一条消息，开始协作。</div>}
+            {chat.messages.map(message => <article key={message.id} className={`chat-message ${message.senderId === user.id ? 'mine' : ''}`}><div className="chat-message-meta">{message.senderName || (message.senderId === user.id ? '我' : '成员')} · {new Date(message.createdAt).toLocaleString()}</div>{message.kind === 'share' && message.sharePayload?.type === 'community-post' && <div className="chat-share-card chat-post-card" data-testid="chat-post-card"><PostCover post={{ id: message.sharePayload.id || 'share', title: message.sharePayload.title || '', channel: 'discussion', cover: { kind: 'auto' } }} height={92} /><div className="chat-post-card-body"><strong>{message.sharePayload.title || message.body}</strong><small>@{message.sharePayload.author || '社区作者'} · 来自用户广场</small>{onOpenPost && <button type="button" onClick={() => onOpenPost(message.sharePayload.id)}>在广场查看 →</button>}</div></div>}{message.kind === 'share' && message.sharePayload?.type !== 'community-post' && <div className="chat-share-card"><span>分享内容</span><strong>{message.sharePayload?.title || message.body}</strong><small>{message.sharePayload?.type || '资讯'}</small></div>}<p>{message.body}</p></article>)}
+            {!chat.messages.length && <MascotState size={72} title="发送第一条消息" hint="开始协作，也可以把广场内容分享进来。" />}
           </div>
           <div className="chat-composer">
             {pendingShare && <div className="chat-share-pending">待分享：{pendingShare.title || '一条内容'} <button onClick={onConsumeShare}>取消</button></div>}
             <textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send().catch(err => chat.setError(err.message)); } }} placeholder="输入消息，Enter 发送" />
             <button className="ai-primary-action" onClick={() => send().catch(err => chat.setError(err.message))}>发送</button>
           </div>
-        </> : <div className="chat-muted chat-no-active">选择一个会话，或从右侧联系人发起聊天。</div>}
+        </> : <MascotState size={80} title="选择一个会话" hint="从右侧联系人发起聊天，或从广场发现有趣的作者。" />}
       </main>
       <aside className="chat-contacts">
         <div className="chat-panel-title"><strong>联系人</strong><button className={discoverOpen ? 'active' : ''} onClick={loadDiscover}>从社区发现</button></div>
         <input className="chat-contact-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索联系人" />
         {discoverOpen && <div className="chat-discover">
           <div className="chat-discover-title">社区活跃作者</div>
-          {discoverLeft.map(item => <div key={item.id} className="chat-discover-item"><span className="chat-avatar">{label(item).slice(0, 1)}</span><span><strong>{label(item)}</strong><small>@{item.username}</small></span><button onClick={() => chat.addContact(item.id).catch(e => chat.setError(e.message))}>添加</button></div>)}
+          {discoverLeft.map(item => <div key={item.id} className="chat-discover-item"><CommunityAvatar name={label(item)} src={item.avatar || ''} size={30} /><span><strong>{label(item)}</strong><small>@{item.username}</small></span><button onClick={() => chat.addContact(item.id).catch(e => chat.setError(e.message))}>添加</button></div>)}
           {!discoverLeft.length && <div className="chat-muted">暂无可添加的社区作者，去广场发布或互动后再来。</div>}
           <div className="chat-discover-title">按用户 ID 添加</div>
           <div className="chat-discover-manual"><input value={manualId} onChange={e => setManualId(e.target.value)} placeholder="粘贴用户 ID" /><button onClick={() => addById()}>添加</button></div>
         </div>}
         {chat.contacts.filter(item => !search || `${item.displayName}${item.username}`.includes(search)).map(contact => <div key={contact.id} className={`chat-contact ${confirmDeleteId === contact.id ? 'confirming' : ''}`}>
-          <span className="chat-avatar">{label(contact).slice(0, 1)}</span>
+          <CommunityAvatar name={label(contact)} src={contact.avatar || contact.avatarUrl || ''} size={34} online />
           <span><strong>{label(contact)}</strong><small>@{contact.username}</small></span>
           {confirmDeleteId === contact.id ? <><button className="chat-danger-btn" onClick={() => deleteContact(contact.id).catch(e => { chat.setError(e.message); setConfirmDeleteId(''); })}>确认删除</button><button onClick={() => setConfirmDeleteId('')}>取消</button></> : <><button onClick={() => startDirect(contact).catch(e => chat.setError(e.message))}>聊天</button><button className="chat-icon-btn" title="删除好友" onClick={() => setConfirmDeleteId(contact.id)}>✕</button></>}
         </div>)}
-        {!chat.contacts.length && !search && <div className="chat-muted">还没有联系人，试试「从社区发现」。</div>}
+        {!chat.contacts.length && !search && !discoverOpen && <MascotState size={72} title="还没有联系人" hint="试试「从社区发现」，川川把活跃作者带给你。" />}
         <div className="chat-group-create">
           <strong>创建群聊</strong>
           <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="群名称" />

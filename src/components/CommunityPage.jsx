@@ -3,6 +3,7 @@ import { useCommunity, copyPostShareLink } from '../hooks/useCommunity.js';
 import CommunityPostDetail from './CommunityPostDetail.jsx';
 import CommunityAvatar from './community/CommunityAvatar.jsx';
 import MascotState from './community/MascotState.jsx';
+import PostComposer from './community/PostComposer.jsx';
 import PostCover from './community/PostCover.jsx';
 import { CHANNEL_LABELS, stripMarkdown } from '../domain/community/visualIdentity.js';
 import { showToast } from '../utils/toast.js';
@@ -42,9 +43,6 @@ function emptyStateCopy(view) {
 export default function CommunityPage({ user, onRequireAuth, onShareToChat, materials = [] }) {
   const community = useCommunity();
   const [composerOpen, setComposerOpen] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [form, setForm] = useState({ type: 'article', title: '', body: '', visibility: 'public' });
-  const [pickerOpen, setPickerOpen] = useState(null); // null | 'materials' | 'workbench'
   const [searchDraft, setSearchDraft] = useState('');
   const agentWorkflowResult = useWorkflowStore(s => s.agentWorkflowResult);
 
@@ -71,23 +69,10 @@ export default function CommunityPage({ user, onRequireAuth, onShareToChat, mate
     if (!user) { onRequireAuth(); return; }
     setComposerOpen(true);
   };
-  const importIntoForm = (source) => {
-    if (!source) return;
-    setForm(prev => ({
-      ...prev,
-      type: 'article',
-      title: prev.title || String(source.title || '').slice(0, 120),
-      body: source.body || source.content || '',
-    }));
-    setPickerOpen(null);
-    showToast('已导入到发布器，可编辑后发布');
-  };
-  const publish = async () => {
-    setPublishing(true); community.setError('');
-    try {
-      await community.createPost(form);
-      setForm({ type: 'article', title: '', body: '', visibility: 'public' }); setComposerOpen(false);
-    } catch (error) { community.setError(error.message); } finally { setPublishing(false); }
+  const handlePublished = async input => {
+    const post = await community.createPost(input);
+    setComposerOpen(false);
+    return post;
   };
   const protectedAction = async action => {
     if (!user) { onRequireAuth(); return; }
@@ -168,43 +153,17 @@ export default function CommunityPage({ user, onRequireAuth, onShareToChat, mate
         </div>
       )}
 
+      {/* B3：发布器升级为独立组件（四分区 + 封面三档 + 实时预览 + 草稿暂存） */}
       {composerOpen && (
-        <section className="community-composer" data-testid="community-composer">
-          <div className="community-composer-head"><h2>发布到广场</h2><button type="button" onClick={() => { setComposerOpen(false); setPickerOpen(null); }} aria-label="关闭发布器">×</button></div>
-          <div className="community-compose-options">
-            <select value={form.type} onChange={event => setForm(previous => ({ ...previous, type: event.target.value }))}>{Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            <select value={form.visibility} onChange={event => setForm(previous => ({ ...previous, visibility: event.target.value }))}><option value="public">公开</option><option value="followers">仅关注者</option><option value="private">仅自己</option></select>
-            <span className="community-compose-hint">正文支持 Markdown 语法（标题、列表、代码块、引用）</span>
-          </div>
-          {/* v24 #2：丰富发布来源——一键引用素材库 / AI 工作站成果，简化创作发布流程 */}
-          <div className="community-compose-import">
-            <span>从已有积累导入：</span>
-            <button type="button" className={pickerOpen === 'materials' ? 'active' : ''} onClick={() => setPickerOpen(pickerOpen === 'materials' ? null : 'materials')}>素材库（{(materials || []).length}）</button>
-            <button type="button" className={pickerOpen === 'workbench' ? 'active' : ''} disabled={!workbenchDeliverable} title={workbenchDeliverable ? '导入最近一次工作流成果' : '先在无限画布运行一次工作流'}>AI 工作站成果</button>
-          </div>
-          {pickerOpen === 'materials' && (
-            <div className="community-compose-picker custom-scrollbar">
-              {importableMaterials.length === 0 && <p className="community-empty-copy">素材库还是空的，先在「素材管理」里收藏或创建素材。</p>}
-              {importableMaterials.map(item => (
-                <button key={item.id} type="button" className="community-picker-item" onClick={() => importIntoForm({ title: item.title, body: item.fullContent || item.content || '' })}>
-                  <b>{item.title || '（无标题）'}</b>
-                  <small>{stripMarkdown(item.fullContent || item.content || '').slice(0, 60)}</small>
-                </button>
-              ))}
-            </div>
-          )}
-          {pickerOpen === 'workbench' && workbenchDeliverable && (
-            <div className="community-compose-picker custom-scrollbar">
-              <button type="button" className="community-picker-item" onClick={() => importIntoForm(workbenchDeliverable)}>
-                <b>{workbenchDeliverable.title}</b>
-                <small>{stripMarkdown(workbenchDeliverable.content).slice(0, 80)}</small>
-              </button>
-            </div>
-          )}
-          <input data-testid="community-title-input" value={form.title} maxLength={180} onChange={event => setForm(previous => ({ ...previous, title: event.target.value }))} placeholder="标题" />
-          <textarea data-testid="community-body-input" value={form.body} maxLength={100000} onChange={event => setForm(previous => ({ ...previous, body: event.target.value }))} placeholder="正文。清楚说明事实、判断依据和结论。" />
-          <div className="community-compose-footer"><span>{form.body.length} / 100000</span><button type="button" data-testid="community-submit-post" disabled={publishing || !form.title.trim() || !form.body.trim()} onClick={() => publish().catch(() => {})}>{publishing ? '发布中...' : '确认发布'}</button></div>
-        </section>
+        <PostComposer
+          user={user}
+          materials={materials}
+          workbenchDeliverable={agentWorkflowResult?.content
+            ? { title: agentWorkflowResult.missionId ? `工作流成果：${agentWorkflowResult.missionId}` : 'AI 工作站最新成果', content: agentWorkflowResult.content }
+            : null}
+          onClose={() => setComposerOpen(false)}
+          onPublished={handlePublished}
+        />
       )}
 
       {community.error && <div className="community-error" data-testid="community-error"><strong>社区服务不可用</strong><span>{community.error}</span><button type="button" onClick={() => community.loadPosts({ view: community.view, reset: true, tag: community.activeTag, q: community.activeQuery })}>重试</button></div>}
@@ -288,7 +247,7 @@ export default function CommunityPage({ user, onRequireAuth, onShareToChat, mate
           <CommunityPostDetail
             post={community.selectedPost} comments={community.comments} loading={community.detailLoading}
             user={user} onRequireAuth={onRequireAuth} onClose={() => { community.setSelectedPost(null); community.setComments([]); }}
-            onComment={body => protectedAction(() => community.addComment(community.selectedPost.id, body))}
+            onComment={(body, kind) => protectedAction(() => community.addComment(community.selectedPost.id, body, null, kind))}
             onLike={enabled => protectedAction(() => community.setLike(community.selectedPost.id, enabled))}
             onBookmark={enabled => protectedAction(() => community.setBookmark(community.selectedPost.id, enabled))}
             onFollow={enabled => protectedAction(() => community.setFollow(community.selectedPost.authorId, enabled))}
