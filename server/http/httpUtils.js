@@ -1,4 +1,6 @@
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
+// 上传请求体上限（video 25MB + multipart 开销余量），超出直接 413
+const MAX_UPLOAD_BODY_BYTES = 30 * 1024 * 1024;
 
 export function sendJsonResponse(res, status, payload, headers = {}) {
   if (typeof res.status === 'function' && typeof res.json === 'function') {
@@ -33,6 +35,18 @@ export async function readJsonBody(req) {
   } catch {
     throw Object.assign(new Error('Invalid JSON body'), { code: 'INVALID_JSON', status: 400 });
   }
+}
+
+/** 二进制读体（multipart 上传用）：累计超限即断流并 413，避免恶意大包撑爆内存 */
+export async function readRawBody(req, maxBytes = MAX_UPLOAD_BODY_BYTES) {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) throw Object.assign(new Error('上传内容过大'), { code: 'BODY_TOO_LARGE', status: 413 });
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 export function parseCookies(req) {

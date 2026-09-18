@@ -2,6 +2,7 @@ import { createCommunityRepository } from './communityRepository.js';
 import { createMemoryCommunityRepository } from './memoryCommunityRepository.js';
 import {
   CHANNELS, DEFAULT_CHANNEL, COMMENT_KINDS, DEFAULT_COMMENT_KIND, extractSummary,
+  MAX_MEDIA_ITEMS, MAX_ATTACHMENT_ITEMS, normalizeCover, normalizeMedia, normalizeAttachments,
 } from './postFields.js';
 import { isDevMemoryMode } from '../db/devMemoryStore.js';
 import { isDevMemoryModeResolved } from '../db/devMemoryStore.js';
@@ -54,14 +55,21 @@ function validatePost(input, { partial = false } = {}) {
     const cover = input.cover ?? { kind: 'auto' };
     if (typeof cover !== 'object') fail('INVALID_COVER', '封面格式不支持', 400);
     const kind = String(cover.kind || 'auto');
-    if (!['auto', 'url', 'extracted'].includes(kind)) fail('INVALID_COVER', '封面类型不支持', 400);
+    if (!['auto', 'url', 'extracted', 'uploaded'].includes(kind)) fail('INVALID_COVER', '封面类型不支持', 400);
     if (kind === 'auto') {
       output.cover = { kind: 'auto' };
     } else {
       const url = String(cover.url || '').trim();
-      // P0 安全闸：仅 https 外链（配合仓储 normalizeCover 双保险），阻断 javascript:/data:/内网地址
-      if (!/^https:\/\//i.test(url)) fail('INVALID_COVER', '封面图片需为 https 链接', 400);
-      output.cover = { kind, url };
+      if (kind === 'uploaded') {
+        // C3 任务 3：本地上传档——URL 必须是本站上传物（normalizeCover 双保险），外链走 url 档
+        const normalized = normalizeCover({ kind, url });
+        if (normalized.kind !== 'uploaded') fail('INVALID_COVER', '封面需为本站上传图片', 400);
+        output.cover = normalized;
+      } else {
+        // P0 安全闸：仅 https 外链（配合仓储 normalizeCover 双保险），阻断 javascript:/data:/内网地址
+        if (!/^https:\/\//i.test(url)) fail('INVALID_COVER', '封面图片需为 https 链接', 400);
+        output.cover = { kind, url };
+      }
     }
   }
   if (!partial || input.summary !== undefined) {
@@ -69,6 +77,19 @@ function validatePost(input, { partial = false } = {}) {
     if (summary.length > 120) fail('INVALID_SUMMARY', '简介不超过 120 字', 400);
     // 摘要空则从正文自动提取（服务端口径为准，前端只读不再各算各的）
     output.summary = summary || extractSummary(output.body ?? input.body);
+  }
+  // C3 任务 3：效果图/效果视频（≤9）与附件资料（≤10）——url 只认本站上传物
+  if (!partial || input.media !== undefined) {
+    const media = Array.isArray(input.media) ? input.media : [];
+    if (media.length > MAX_MEDIA_ITEMS) fail('INVALID_MEDIA', `效果图与视频最多 ${MAX_MEDIA_ITEMS} 项`, 400);
+    output.media = normalizeMedia(media);
+    if (output.media.length !== media.length) fail('INVALID_MEDIA', '存在无效的媒体引用', 400);
+  }
+  if (!partial || input.attachments !== undefined) {
+    const attachments = Array.isArray(input.attachments) ? input.attachments : [];
+    if (attachments.length > MAX_ATTACHMENT_ITEMS) fail('INVALID_ATTACHMENTS', `附件最多 ${MAX_ATTACHMENT_ITEMS} 个`, 400);
+    output.attachments = normalizeAttachments(attachments);
+    if (output.attachments.length !== attachments.length) fail('INVALID_ATTACHMENTS', '存在无效的附件引用', 400);
   }
   return output;
 }

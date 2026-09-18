@@ -18,6 +18,25 @@ export function buildPostShareLink(postId) {
   return `${base}?post=${encodeURIComponent(postId)}`;
 }
 
+/**
+ * C3 任务 3：本地上传（效果图 / 效果视频 / 附件资料）。
+ * multipart 单文件直传；成功返回 { id, url, kind, mime, name, size }。
+ * 与 request() 分开：不能让 fetch 自动设置 JSON 头，FormData 的 boundary 由浏览器生成。
+ */
+export async function uploadCommunityMedia(file) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const response = await fetch('/api/community/uploads', { method: 'POST', body: form, credentials: 'include' });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ok === false) {
+    const error = new Error(payload?.error?.message || '上传失败，请稍后再试');
+    error.status = response.status;
+    error.code = payload?.error?.code;
+    throw error;
+  }
+  return payload.data.uploads[0];
+}
+
 export async function copyPostShareLink(postId) {
   const link = buildPostShareLink(postId);
   try {

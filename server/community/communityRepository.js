@@ -1,12 +1,15 @@
 import { getPool } from '../db/client.js';
-import { normalizeChannel, normalizeCover, normalizeSummary, normalizeTags, DEFAULT_COMMENT_KIND } from './postFields.js';
+import { normalizeChannel, normalizeCover, normalizeSummary, normalizeTags, normalizeMedia, normalizeAttachments, DEFAULT_COMMENT_KIND } from './postFields.js';
 
 // 导出供测试做「双仓储字段对齐」断言（列别名集合 ↔ 内存仓储输出键集合）
 export const POST_VIEW_SQL = `
   select p.id, p.author_id as "authorId", p.type, p.title, p.body, p.source_refs as "sourceRefs",
     p.visibility, p.status, p.created_at as "createdAt", p.updated_at as "updatedAt",
     p.channel as "channel", p.tags as "tags", p.cover as "cover", p.summary as "summary",
+    p.media as "media", p.attachments as "attachments",
     u.username, u.display_name as "displayName", u.avatar_url as "avatar",
+    (select v.type from user_verifications v where v.user_id = p.author_id and v.status = 'approved'
+       order by case v.type when 'creator' then 0 when 'enterprise' then 1 else 2 end limit 1) as "authorBadge",
     (select count(*)::int from post_likes l where l.post_id = p.id) as "likeCount",
     (select count(*)::int from post_bookmarks b where b.post_id = p.id) as "bookmarkCount",
     (select count(*)::int from comments c where c.post_id = p.id and c.status = 'published') as "commentCount",
@@ -75,11 +78,12 @@ export function createCommunityRepository(db = getPool()) {
     },
     async createPost(input) {
       const { rows } = await db.query(
-        `insert into posts(author_id, type, title, body, source_refs, visibility, status, channel, tags, cover, summary)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11) returning id`,
+        `insert into posts(author_id, type, title, body, source_refs, visibility, status, channel, tags, cover, summary, media, attachments)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12::jsonb,$13::jsonb) returning id`,
         [
           input.authorId, input.type, input.title, input.body, JSON.stringify(input.sourceRefs || []), input.visibility, input.status,
           normalizeChannel(input.channel), JSON.stringify(normalizeTags(input.tags)), JSON.stringify(normalizeCover(input.cover)), normalizeSummary(input.summary),
+          JSON.stringify(normalizeMedia(input.media)), JSON.stringify(normalizeAttachments(input.attachments)),
         ],
       );
       return this.getPost(rows[0].id, input.authorId);
@@ -89,6 +93,7 @@ export function createCommunityRepository(db = getPool()) {
         `update posts set title = coalesce($2,title), body = coalesce($3,body), type = coalesce($4,type),
          source_refs = coalesce($5,source_refs), visibility = coalesce($6,visibility), status = coalesce($7,status),
          channel = coalesce($8,channel), tags = coalesce($9::jsonb,tags), cover = coalesce($10::jsonb,cover), summary = coalesce($11,summary),
+         media = coalesce($12::jsonb,media), attachments = coalesce($13::jsonb,attachments),
          updated_at = now()
          where id = $1`,
         [
@@ -98,6 +103,8 @@ export function createCommunityRepository(db = getPool()) {
           input.tags === undefined ? null : JSON.stringify(normalizeTags(input.tags)),
           input.cover === undefined ? null : JSON.stringify(normalizeCover(input.cover)),
           input.summary === undefined ? null : normalizeSummary(input.summary),
+          input.media === undefined ? null : JSON.stringify(normalizeMedia(input.media)),
+          input.attachments === undefined ? null : JSON.stringify(normalizeAttachments(input.attachments)),
         ],
       );
     },

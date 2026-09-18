@@ -1,4 +1,5 @@
 import { createAuthService, getAuthService } from '../auth/authService.js';
+import { getIdentityService } from '../auth/identityRepository.js';
 import { parseCookies, readJsonBody, routeError, sendJsonResponse, sessionCookie } from './httpUtils.js';
 
 const loginWindows = new Map();
@@ -85,6 +86,22 @@ export async function handleAuthRequest(req, res, { action, service } = {}) {
       const stats = await auth.getStats(token);
       if (!stats) return sendJsonResponse(res, 401, { ok: false, error: { code: 'UNAUTHORIZED', message: '未登录' } });
       return sendJsonResponse(res, 200, { ok: true, data: { stats } });
+    }
+    // C3 任务 4：身份扩展——展示唯一 ID / 绑定 / 认证（identityService 自带鉴权）
+    if (action === 'identity' && method === 'GET') {
+      const identity = await getIdentityService();
+      const data = await identity.getIdentity(token);
+      return sendJsonResponse(res, 200, { ok: true, data });
+    }
+    if (action === 'bindings' && method === 'POST') {
+      const identity = await getIdentityService();
+      const data = await identity.bindAccount(token, await readJsonBody(req));
+      return sendJsonResponse(res, 200, { ok: true, data });
+    }
+    if (action === 'verifications' && method === 'POST') {
+      const identity = await getIdentityService();
+      const data = await identity.submitVerification(token, await readJsonBody(req));
+      return sendJsonResponse(res, 200, { ok: true, data });
     }
     if ((action === 'profile' || action === 'interests') && method === 'POST') {
       const body = await readJsonBody(req);

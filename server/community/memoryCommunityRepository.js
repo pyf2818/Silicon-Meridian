@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { __memoryStore } from '../auth/memoryAuthRepository.js';
-import { normalizeChannel, normalizeCommentKind, normalizeCover, normalizeSummary, normalizeTags } from './postFields.js';
+import { bestBadgeFor } from '../auth/identityMemoryStore.js';
+import { normalizeChannel, normalizeCommentKind, normalizeCover, normalizeSummary, normalizeTags, normalizeMedia, normalizeAttachments } from './postFields.js';
 
 /**
  * 开发态内存版广场（社区）仓储（v22 简化登录配套）。
@@ -46,11 +47,16 @@ function postView(post, viewerId) {
     tags: normalizeTags(post.tags),
     cover: normalizeCover(post.cover),
     summary: normalizeSummary(post.summary),
+    // C3 任务 3：效果图/视频 + 附件（老行无键 → 空数组兜底）
+    media: normalizeMedia(post.media),
+    attachments: normalizeAttachments(post.attachments),
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
     username: author?.username || '未知用户',
     displayName: author?.display_name || author?.username || '未知用户',
     avatar: author?.avatar_url || '',
+    // C3 任务 4：作者最高认证徽章（creator > enterprise > individual；无认证为空）
+    authorBadge: bestBadgeFor(post.authorId),
     ...counts(post.id),
     liked: viewerId ? likes.has(`${viewerId}:${post.id}`) : false,
     bookmarked: viewerId ? bookmarks.has(`${viewerId}:${post.id}`) : false,
@@ -124,6 +130,8 @@ export function createMemoryCommunityRepository() {
         tags: normalizeTags(input.tags),
         cover: normalizeCover(input.cover),
         summary: normalizeSummary(input.summary),
+        media: normalizeMedia(input.media),
+        attachments: normalizeAttachments(input.attachments),
         createdAt: now,
         updatedAt: now,
       });
@@ -143,6 +151,8 @@ export function createMemoryCommunityRepository() {
       if (input.tags !== undefined) post.tags = normalizeTags(input.tags);
       if (input.cover !== undefined) post.cover = normalizeCover(input.cover);
       if (input.summary !== undefined) post.summary = normalizeSummary(input.summary);
+      if (input.media !== undefined) post.media = normalizeMedia(input.media);
+      if (input.attachments !== undefined) post.attachments = normalizeAttachments(input.attachments);
       post.updatedAt = new Date().toISOString();
     },
 

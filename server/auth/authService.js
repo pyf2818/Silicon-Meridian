@@ -46,6 +46,7 @@ export function publicUser(user) {
     avatar: user.avatar_url || user.avatar || '',
     signature: user.signature || '',
     interests: Array.isArray(user.interests) ? user.interests : [],
+    publicId: user.public_id || '', // C3 任务 4：展示唯一 ID
     createdAt: user.created_at || user.createdAt,
   };
 }

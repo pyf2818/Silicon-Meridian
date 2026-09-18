@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import CommunityAvatar from './community/CommunityAvatar.jsx';
 import PostCover from './community/PostCover.jsx';
+import { VerifiedBadge } from './community/ChuanChuanV2.jsx';
 import { CHANNEL_LABELS } from '../domain/community/visualIdentity.js';
 import { renderMarkdown } from '../utils/markdown.jsx';
 
@@ -12,6 +13,13 @@ const KIND_META = {
 };
 const KIND_ORDER = ['comment', 'praise', 'critique', 'question'];
 const VISIBILITY_LABELS = { public: '公开', followers: '仅关注者', private: '仅自己' };
+
+function formatBytes(size) {
+  if (!Number.isFinite(size) || size <= 0) return '';
+  if (size < 1024) return `${size}B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)}KB`;
+  return `${(size / 1024 / 1024).toFixed(1)}MB`;
+}
 
 function formatDate(value) {
   if (!value) return '';
@@ -28,6 +36,7 @@ export default function CommunityPostDetail({ post, comments, loading, user, onC
   const [commentKind, setCommentKind] = useState('comment');
   const [kindFilter, setKindFilter] = useState('all');
   const [sending, setSending] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState(''); // C3 任务 3：点缩略图放大预览
 
   const kindCounts = useMemo(() => {
     const counts = { all: comments.length, comment: 0, praise: 0, critique: 0, question: 0 };
@@ -80,6 +89,7 @@ export default function CommunityPostDetail({ post, comments, loading, user, onC
           <CommunityAvatar name={post.displayName || post.username} src={post.avatar} size={38} />
           <div className="community-detail-author-name">
             <strong>{post.displayName || post.username}</strong>
+            <VerifiedBadge badge={post.authorBadge} compact />
             <span>@{post.username}</span>
           </div>
           {user?.id !== post.authorId && (
@@ -116,10 +126,42 @@ export default function CommunityPostDetail({ post, comments, loading, user, onC
         </div>
 
         {tab === 'body' && (
-          <div
-            className={`community-detail-body${post.type === 'article' ? ' md-body' : ''}`}
-            {...(post.type === 'article' ? { dangerouslySetInnerHTML: { __html: renderMarkdown(post.body) } } : { children: post.body })}
-          />
+          <>
+            <div
+              className={`community-detail-body${post.type === 'article' ? ' md-body' : ''}`}
+              {...(post.type === 'article' ? { dangerouslySetInnerHTML: { __html: renderMarkdown(post.body) } } : { children: post.body })}
+            />
+            {/* C3 任务 3：效果图 / 效果视频（预览窗缩小：视频 420px，图片缩略格点击放大） */}
+            {Array.isArray(post.media) && post.media.length > 0 && (
+              <div className="detail-media" data-testid="detail-media">
+                {post.media.filter(item => item.kind === 'image').length > 0 && (
+                  <div className="detail-media-grid">
+                    {post.media.filter(item => item.kind === 'image').map(item => (
+                      <button key={item.url} type="button" className="detail-media-thumb" onClick={() => setLightboxUrl(item.url)} aria-label="放大查看图片">
+                        <img src={item.url} alt={item.name || '效果图'} loading="lazy" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {post.media.filter(item => item.kind === 'video').map(item => (
+                  <video key={item.url} className="detail-media-video" src={item.url} controls preload="metadata" playsInline />
+                ))}
+              </div>
+            )}
+            {/* 附件资料：图标 + 文件名 + 大小，点击下载 */}
+            {Array.isArray(post.attachments) && post.attachments.length > 0 && (
+              <div className="detail-attachments" data-testid="detail-attachments">
+                <strong>附件资料（{post.attachments.length}）</strong>
+                {post.attachments.map(item => (
+                  <a key={item.url} className="detail-attachment" href={item.url} download={item.name || ''}>
+                    <span className="detail-attachment-icon">📎</span>
+                    <span className="detail-attachment-name">{item.name || '附件'}</span>
+                    <em>{formatBytes(item.size)}</em>
+                  </a>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {tab === 'sources' && Array.isArray(post.sourceRefs) && (
@@ -189,6 +231,12 @@ export default function CommunityPostDetail({ post, comments, loading, user, onC
           </section>
         )}
       </div>
+      {lightboxUrl && (
+        <div className="detail-lightbox" data-testid="detail-lightbox" onClick={() => setLightboxUrl('')} role="dialog" aria-label="图片放大预览">
+          <img src={lightboxUrl} alt="" />
+          <button type="button" aria-label="关闭预览">×</button>
+        </div>
+      )}
     </aside>
   );
 }

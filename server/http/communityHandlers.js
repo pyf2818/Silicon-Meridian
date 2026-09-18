@@ -1,6 +1,8 @@
 import { getAuthService } from '../auth/authService.js';
 import { getCommunityService } from '../community/communityService.js';
-import { parseCookies, readJsonBody, routeError, sendJsonResponse } from './httpUtils.js';
+import { getUploadRepository, classifyUpload, assertUploadSize, MAX_UPLOADS_PER_REQUEST } from '../community/uploads.js';
+import { parseCookies, readJsonBody, readRawBody, routeError, sendJsonResponse } from './httpUtils.js';
+import { parseMultipart } from './multipart.js';
 
 const writeWindows = new Map();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -84,6 +86,40 @@ export async function handleCommunityRequest(req, res, { path = [], service, aut
     if (parts[0] === 'users' && parts[1] && parts[2] === 'follow' && (method === 'PUT' || method === 'DELETE')) {
       const user = await viewer(req, auth, true);
       return sendJsonResponse(res, 200, { ok: true, data: await community.setFollow({ userId: user.id, followedId: requireUuid(parts[1]), enabled: method === 'PUT' }) });
+    }
+    // C3 任务 3：本地上传（multipart）。登录 + 限流；校验（mime 白名单 + 魔法数嗅探 + 分级大小）后 bytea/内存入库
+    if (parts[0] === 'uploads' && parts.length === 1 && method === 'POST') {
+      const user = await viewer(req, auth, true);
+      rateLimit(`upload:${user.id}`, 30, 60 * 60 * 1000);
+      const contentType = req.headers?.['content-type'] || '';
+      if (!/multipart\/form-data/i.test(contentType)) throw Object.assign(new Error('请使用 multipart/form-data 上传'), { code: 'INVALID_MULTIPART', status: 400 });
+      const body = await readRawBody(req);
+      const { files } = parseMultipart(body, contentType);
+      if (!files.length) throw Object.assign(new Error('未收到任何文件'), { code: 'UPLOAD_EMPTY', status: 400 });
+      if (files.length > MAX_UPLOADS_PER_REQUEST) throw Object.assign(new Error(`单次最多上传 ${MAX_UPLOADS_PER_REQUEST} 个文件`), { code: 'UPLOAD_TOO_MANY', status: 400 });
+      const repository = await getUploadRepository();
+      const results = [];
+      for (const file of files) {
+        const { kind, mime } = classifyUpload(file.filename, file.contentType, file.data);
+        assertUploadSize(kind, file.data.length);
+        const record = await repository.createUpload({ ownerId: user.id, kind, mime, name: file.filename, size: file.data.length, data: file.data });
+        results.push({ ...record, url: `/api/community/uploads/${record.id}` });
+      }
+      return sendJsonResponse(res, 201, { ok: true, data: { uploads: results } });
+    }
+    // 上传物公开读：帖子里的图/视频要能匿名查看（id 为 uuid，防遍历注入）
+    if (parts[0] === 'uploads' && parts.length === 2 && method === 'GET') {
+      const upload = await (await getUploadRepository()).getUpload(requireUuid(parts[1]));
+      if (!upload) throw Object.assign(new Error('文件不存在或已被删除'), { code: 'UPLOAD_NOT_FOUND', status: 404 });
+      const isMedia = upload.kind === 'image' || upload.kind === 'video';
+      const safeName = String(upload.name || '').replace(/[^\w.\-\u4e00-\u9fa5]+/g, '_').slice(0, 120) || 'download';
+      res.statusCode = 200;
+      res.setHeader('Content-Type', upload.mime);
+      res.setHeader('Content-Length', upload.data.length);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Content-Disposition', `${isMedia ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+      res.end(upload.data);
+      return undefined;
     }
     return sendJsonResponse(res, 404, { ok: false, error: { code: 'COMMUNITY_ROUTE_NOT_FOUND', message: '社区接口不存在' } });
   } catch (error) {

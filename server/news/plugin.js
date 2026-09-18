@@ -166,6 +166,16 @@ export function newsPlugin() {
           const action = requestUrl.pathname.endsWith('/interests') ? 'interests' : 'profile';
           return handleAuthRequest(req, res, { action });
         }
+        // C3 任务 4：身份扩展（唯一 ID / 绑定 / 认证）
+        if (requestUrl.pathname === '/api/user/identity') {
+          return handleAuthRequest(req, res, { action: 'identity' });
+        }
+        if (requestUrl.pathname === '/api/user/bindings') {
+          return handleAuthRequest(req, res, { action: 'bindings' });
+        }
+        if (requestUrl.pathname === '/api/user/verifications') {
+          return handleAuthRequest(req, res, { action: 'verifications' });
+        }
         if (requestUrl.pathname.startsWith('/api/chat/')) {
           const path = requestUrl.pathname.slice('/api/chat/'.length).split('/');
           return handleChatRequest(req, res, { path });

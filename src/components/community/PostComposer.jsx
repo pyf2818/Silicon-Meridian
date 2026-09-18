@@ -3,9 +3,10 @@ import CommunityAvatar from './CommunityAvatar.jsx';
 import PostCover from './PostCover.jsx';
 import { MascotFigure } from './MascotState.jsx';
 import {
-  clearComposerDraft, emptyDraft, isDraftMeaningful, loadComposerDraft, normalizeDraft, saveComposerDraft,
+  clearComposerDraft, emptyDraft, isDraftMeaningful, loadComposerDraft, normalizeDraft, saveComposerDraft, UPLOAD_URL_PATTERN,
 } from '../../domain/community/composerDraft.js';
 import { CHANNEL_LABELS, stripMarkdown } from '../../domain/community/visualIdentity.js';
+import { uploadCommunityMedia } from '../../hooks/useCommunity.js';
 import { showToast } from '../../utils/toast.js';
 
 const TYPE_OPTIONS = [
@@ -24,6 +25,25 @@ const SCENE_TAGS = ['AI厂商', '模型评测', '开源项目', '创作分享', 
 const MAX_TAGS = 5;
 const MAX_TAG_LENGTH = 24;
 const MAX_SUMMARY = 120;
+/** C3 任务 3 上传配额：图片+视频共 9 项（视频≤2），附件≤10；与服务端 MAX_MEDIA_ITEMS / MAX_ATTACHMENT_ITEMS 对齐 */
+const MAX_IMAGES = 9;
+const MAX_VIDEOS = 2;
+const MAX_ATTACHMENTS = 10;
+
+function formatBytes(size) {
+  if (!Number.isFinite(size) || size <= 0) return '';
+  if (size < 1024) return `${size}B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)}KB`;
+  return `${(size / 1024 / 1024).toFixed(1)}MB`;
+}
+
+/** 前端分流：决定文件进哪个列表（服务端按内容嗅探做权威校验） */
+export function classifyFile(file) {
+  const ext = /\.([a-z0-9]+)$/i.exec(String(file?.name || ''))?.[1]?.toLowerCase() || '';
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return 'image';
+  if (['mp4', 'webm'].includes(ext)) return 'video';
+  return 'file';
+}
 
 /** 从正文提取第一张 Markdown 图片 URL（封面第二档来源） */
 export function extractFirstImage(body) {
@@ -53,7 +73,10 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
   const [pickerOpen, setPickerOpen] = useState(null); // null | 'materials' | 'workbench'
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [dragOverUpload, setDragOverUpload] = useState(false);
   const restoredRef = useRef(false);
+  const uploadInputRef = useRef(null);
 
   // 打开发布器：恢复草稿（类型自愈在 normalizeDraft 里兜底）
   useEffect(() => {
@@ -94,9 +117,63 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
     ? { kind: 'auto' }
     : { kind: form.cover.kind, url: form.cover.url };
 
+  // C3 任务 3：上传状态派生
+  const imageItems = form.media.filter(item => item.kind === 'image');
+  const videoItems = form.media.filter(item => item.kind === 'video');
+  const firstImageUrl = imageItems[0]?.url || '';
+  const quota = { image: MAX_IMAGES - imageItems.length, video: MAX_VIDEOS - videoItems.length, file: MAX_ATTACHMENTS - form.attachments.length };
+
+  const uploadFiles = async fileList => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const accepted = [];
+    for (const file of files) {
+      const kind = classifyFile(file);
+      if (quota[kind] <= 0) {
+        showToast(kind === 'image' ? `效果图最多 ${MAX_IMAGES} 张` : kind === 'video' ? `效果视频最多 ${MAX_VIDEOS} 个` : `附件最多 ${MAX_ATTACHMENTS} 个`);
+        continue;
+      }
+      if (kind === 'file' && file.size > 10 * 1024 * 1024) { showToast('附件不能超过 10MB'); continue; }
+      accepted.push({ file, kind });
+      quota[kind] -= 1;
+    }
+    if (!accepted.length) return;
+    setUploadingCount(count => count + accepted.length);
+    try {
+      for (const { file, kind } of accepted) {
+        try {
+          const record = await uploadCommunityMedia(file);
+          setForm(previous => (kind === 'file'
+            ? { ...previous, attachments: [...previous.attachments, record] }
+            : { ...previous, media: [...previous.media, record] }));
+        } catch (error) {
+          showToast(error.message || '上传失败，请稍后再试');
+        }
+      }
+    } finally {
+      setUploadingCount(count => Math.max(0, count - accepted.length));
+    }
+  };
+
+  const removeMedia = url => {
+    setForm(previous => ({
+      ...previous,
+      media: previous.media.filter(item => item.url !== url),
+      // 被删的正好是上传封面 → 封面回落自动档
+      cover: previous.cover.kind === 'uploaded' && previous.cover.url === url ? { kind: 'auto', url: '' } : previous.cover,
+    }));
+  };
+  const removeAttachment = url => {
+    setForm(previous => ({ ...previous, attachments: previous.attachments.filter(item => item.url !== url) }));
+  };
+
   const publish = async () => {
-    if (!form.title.trim() || !form.body.trim() || publishing) return;
-    if (form.cover.kind !== 'auto' && form.cover.url && !/^https:\/\//i.test(form.cover.url)) {
+    if (!form.title.trim() || !form.body.trim() || publishing || uploadingCount > 0) return;
+    if (form.cover.kind === 'uploaded' && !UPLOAD_URL_PATTERN.test(form.cover.url)) {
+      setPublishError('本地上传封面已失效，请重新选择');
+      return;
+    }
+    if (form.cover.kind !== 'auto' && form.cover.kind !== 'uploaded' && form.cover.url && !/^https:\/\//i.test(form.cover.url)) {
       setPublishError('封面图片需为 https 链接');
       return;
     }
@@ -111,6 +188,8 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
         tags: form.tags,
         cover: form.cover.kind === 'auto' || !form.cover.url ? { kind: 'auto' } : { kind: form.cover.kind, url: form.cover.url.trim() },
         visibility: form.visibility,
+        media: form.media,
+        attachments: form.attachments,
       });
       clearComposerDraft();
       showToast('发布成功，川川帮你顶上去～');
@@ -175,6 +254,8 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
             <div className="composer-cover-options">
               <div className="composer-chip-row" role="radiogroup" aria-label="封面来源">
                 <button type="button" className={`composer-chip ${form.cover.kind === 'auto' ? 'active' : ''}`} onClick={() => patch({ cover: { kind: 'auto', url: '' } })}>自动生成</button>
+                <button type="button" className={`composer-chip ${form.cover.kind === 'uploaded' ? 'active' : ''}`} disabled={!firstImageUrl} title={firstImageUrl ? '采用本地上传的效果图' : '先在下方上传效果图'}
+                  onClick={() => firstImageUrl && patch({ cover: { kind: 'uploaded', url: firstImageUrl } })}>本地上传</button>
                 <button type="button" className={`composer-chip ${form.cover.kind === 'extracted' ? 'active' : ''}`} disabled={!extractedImage} title={extractedImage ? '采用正文第一张图' : '正文里还没有 https 图片'}
                   onClick={() => extractedImage && patch({ cover: { kind: 'extracted', url: extractedImage } })}>正文首图</button>
                 <button type="button" className={`composer-chip ${form.cover.kind === 'url' ? 'active' : ''}`} onClick={() => patch({ cover: { kind: 'url', url: form.cover.url } })}>图片 URL</button>
@@ -227,7 +308,63 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
             </div>
           )}
 
-          <SectionTitle index="4" title="标签与可见性" hint="标签最多 5 个，帮助内容被对的人看到" />
+          <SectionTitle index="4" title="效果图 / 视频 / 附件" hint="图片最多 9 张、视频最多 2 个（单图 5MB / 视频 25MB / 附件 10MB）" />
+          <div
+            className={`composer-upload ${dragOverUpload ? 'drag-over' : ''}`}
+            data-testid="composer-upload"
+            onDragOver={event => { event.preventDefault(); setDragOverUpload(true); }}
+            onDragLeave={() => setDragOverUpload(false)}
+            onDrop={event => {
+              event.preventDefault();
+              setDragOverUpload(false);
+              uploadFiles(event.dataTransfer?.files).catch(() => {});
+            }}
+          >
+            <div className="composer-upload-actions">
+              <button type="button" data-testid="composer-upload-image" className={`composer-chip ${quota.image <= 0 ? 'maxed' : ''}`} disabled={quota.image <= 0 || uploadingCount > 0} onClick={() => { if (uploadInputRef.current) { uploadInputRef.current.dataset.accept = 'image/jpeg,image/png,image/webp,image/gif'; uploadInputRef.current.click(); } }}>＋ 效果图（{imageItems.length}/{MAX_IMAGES}）</button>
+              <button type="button" className={`composer-chip ${quota.video <= 0 ? 'maxed' : ''}`} disabled={quota.video <= 0 || uploadingCount > 0} onClick={() => { if (uploadInputRef.current) { uploadInputRef.current.dataset.accept = 'video/mp4,video/webm'; uploadInputRef.current.click(); } }}>＋ 效果视频（{videoItems.length}/{MAX_VIDEOS}）</button>
+              <button type="button" className={`composer-chip ${quota.file <= 0 ? 'maxed' : ''}`} disabled={quota.file <= 0 || uploadingCount > 0} onClick={() => { if (uploadInputRef.current) { uploadInputRef.current.dataset.accept = '.pdf,.zip,.txt,.md,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx'; uploadInputRef.current.click(); } }}>＋ 附件（{form.attachments.length}/{MAX_ATTACHMENTS}）</button>
+              <input
+                ref={uploadInputRef}
+                type="file"
+                hidden
+                data-testid="composer-upload-input"
+                onChange={event => {
+                  uploadFiles(event.target.files).catch(() => {});
+                  event.target.value = '';
+                }}
+              />
+              {uploadingCount > 0 && <span className="composer-upload-busy" data-testid="composer-upload-busy">上传中（{uploadingCount}）…</span>}
+            </div>
+            {form.media.length === 0 && form.attachments.length === 0 && (
+              <p className="composer-upload-hint">拖文件到这里，或点击上方按钮。支持图片 / MP4·WebM / 常见文档。</p>
+            )}
+            {form.media.length > 0 && (
+              <div className="composer-upload-media" data-testid="composer-upload-media">
+                {form.media.map(item => (
+                  <figure key={item.url} className="composer-upload-thumb">
+                    {item.kind === 'image'
+                      ? <img src={item.url} alt={item.name || '效果图'} loading="lazy" />
+                      : <video src={item.url} muted playsInline preload="metadata" />}
+                    <button type="button" aria-label="移除" onClick={() => removeMedia(item.url)}>×</button>
+                    {item.kind === 'video' && <figcaption>视频 {formatBytes(item.size)}</figcaption>}
+                  </figure>
+                ))}
+              </div>
+            )}
+            {form.attachments.length > 0 && (
+              <div className="composer-upload-files" data-testid="composer-upload-files">
+                {form.attachments.map(item => (
+                  <span key={item.url} className="composer-upload-file-chip">
+                    📎 {item.name || '附件'} <em>{formatBytes(item.size)}</em>
+                    <button type="button" aria-label={`移除附件 ${item.name}`} onClick={() => removeAttachment(item.url)}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <SectionTitle index="5" title="标签与可见性" hint="标签最多 5 个，帮助内容被对的人看到" />
           <div className="composer-tags">
             {SCENE_TAGS.map(tag => (
               <button key={tag} type="button" className={`composer-chip ${form.tags.includes(tag) ? 'active' : ''}`}
@@ -286,8 +423,8 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
         <span>{form.body.length} / 100000 · 草稿自动保存</span>
         <div className="composer-footer-actions">
           <button type="button" data-testid="composer-save-draft" onClick={() => { saveComposerDraft(form); showToast(isDraftMeaningful(form) ? '草稿已保存，下次打开发布器自动恢复' : '表单还是空的，没什么可保存的'); }}>保存草稿</button>
-          <button type="button" data-testid="community-submit-post" disabled={publishing || !form.title.trim() || !form.body.trim()} onClick={() => publish().catch(() => {})}>
-            {publishing ? '发布中...' : '确认发布'}
+          <button type="button" data-testid="community-submit-post" disabled={publishing || uploadingCount > 0 || !form.title.trim() || !form.body.trim()} onClick={() => publish().catch(() => {})}>
+            {publishing ? '发布中...' : uploadingCount > 0 ? '等文件传完…' : '确认发布'}
           </button>
         </div>
       </div>

@@ -2,7 +2,7 @@ import { getPool } from '../db/client.js';
 
 const USER_COLUMN_NAMES = [
   'id', 'username', 'email', 'password_hash', 'password_salt', 'password_params',
-  'display_name', 'avatar_url', 'signature', 'interests', 'status', 'created_at', 'updated_at',
+  'display_name', 'avatar_url', 'signature', 'interests', 'status', 'public_id', 'created_at', 'updated_at',
 ];
 const USER_COLUMNS = USER_COLUMN_NAMES.join(', ');
 

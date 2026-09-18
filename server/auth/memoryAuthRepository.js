@@ -19,7 +19,7 @@ const sessions = new Map(); // tokenHash -> { userId, expiresAt, revokedAt }
 
 const USER_COLUMN_NAMES = [
   'id', 'username', 'email', 'password_hash', 'password_salt', 'password_params',
-  'display_name', 'avatar_url', 'signature', 'interests', 'status', 'created_at', 'updated_at',
+  'display_name', 'avatar_url', 'signature', 'interests', 'status', 'public_id', 'created_at', 'updated_at',
 ];
 
 function indexIdentity(value, id) {
@@ -43,6 +43,7 @@ function normalizeUser(row) {
     signature: row.signature,
     interests: row.interests,
     status: row.status,
+    public_id: row.public_id || null, // C3 任务 4：展示唯一 ID（identityRepository 懒分配）
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

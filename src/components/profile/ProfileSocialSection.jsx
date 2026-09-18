@@ -9,6 +9,7 @@ import { useMemo } from 'react';
 import { ICONS } from '../../constants/index.jsx';
 import { Panel, Tele, Brand } from './charts/AtlasShell.jsx';
 import { InfluenceGauge, ConfidenceRing } from './charts/InsightPanels.jsx';
+import IdentityPanel from './IdentityPanel.jsx';
 
 const WEIGHTS = { followers: 8, likesReceived: 2, posts: 5, following: 1 };
 
@@ -73,6 +74,9 @@ export default function ProfileSocialSection({
           {tele.map(t => <Tele key={t.label} {...t} />)}
         </div>
       </header>
+
+      {/* ============ C3 任务 4：身份卡（川川 v2 + 唯一 ID + 绑定/认证） ============ */}
+      <IdentityPanel user={user} />
 
       {/* ============ 主栅格：铭牌 + 影响力/覆盖 ============ */}
       <div className="pa-grid pa-grid-main">

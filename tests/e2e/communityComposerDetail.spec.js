@@ -117,8 +117,9 @@ test.describe('社区发布器与详情（B3/B4）', () => {
     const composer = page.getByTestId('community-composer');
     await expect(composer).toBeVisible();
 
-    // 四分区表单 + 川川发布小助手
-    await expect(composer.locator('.composer-section-title')).toHaveCount(4);
+    // 五分区表单（C3 任务 3 新增「效果图/视频/附件」分区）+ 川川发布小助手
+    await expect(composer.locator('.composer-section-title')).toHaveCount(5);
+    await expect(composer.getByTestId('composer-upload')).toBeVisible();
     await expect(composer.getByTestId('composer-mascot-tip')).toBeVisible();
     await expect(composer.getByTestId('composer-mascot-tip').locator('svg')).toBeVisible();
 

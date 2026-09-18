@@ -5,6 +5,7 @@ import CommunityAvatar from './community/CommunityAvatar.jsx';
 import MascotState from './community/MascotState.jsx';
 import PostComposer from './community/PostComposer.jsx';
 import PostCover from './community/PostCover.jsx';
+import { VerifiedBadge } from './community/ChuanChuanV2.jsx';
 import { CHANNEL_LABELS, stripMarkdown } from '../domain/community/visualIdentity.js';
 import { showToast } from '../utils/toast.js';
 import { useWorkflowStore } from '../store/workflowStore.js';
@@ -193,6 +194,7 @@ export default function CommunityPage({ user, onRequireAuth, onShareToChat, mate
                 <div className="community-card-author">
                   <CommunityAvatar name={heroPost.displayName || heroPost.username} src={heroPost.avatar} size={26} />
                   <span>{heroPost.displayName || heroPost.username}</span>
+                  <VerifiedBadge badge={heroPost.authorBadge} compact />
                   <em>· {relativeDate(heroPost.createdAt)}</em>
                 </div>
                 <span className="community-hero-go">看看 →</span>
@@ -216,6 +218,7 @@ export default function CommunityPage({ user, onRequireAuth, onShareToChat, mate
                     <div className="community-card-author">
                       <CommunityAvatar name={post.displayName || post.username} src={post.avatar} size={22} />
                       <span>{post.displayName || post.username}</span>
+                      <VerifiedBadge badge={post.authorBadge} compact />
                       {post.following && <em className="community-card-following">已关注</em>}
                     </div>
                     <div className="community-post-actions" onClick={event => event.stopPropagation()}>

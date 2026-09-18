@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  extractSummary, normalizeChannel, normalizeCommentKind, normalizeCover, normalizeTags, POST_CONTENT_FIELDS,
+  extractSummary, normalizeChannel, normalizeCommentKind, normalizeCover, normalizeTags, normalizeMedia, normalizeAttachments, POST_CONTENT_FIELDS,
 } from '../postFields.js';
 import { POST_VIEW_SQL } from '../communityRepository.js';
 import { createCommunityService } from '../communityService.js';
@@ -35,6 +35,35 @@ describe('postFields（B1 字段唯一事实源）', () => {
     expect(normalizeCover({ kind: 'url', url: 'javascript:alert(1)' })).toEqual({ kind: 'auto' });
     expect(normalizeCover({ kind: 'url', url: 'data:image/png;base64,x' })).toEqual({ kind: 'auto' });
     expect(normalizeCover(null)).toEqual({ kind: 'auto' });
+  });
+
+  it('normalizeCover（C3 任务 3）：uploaded 档只认本站上传 URL，外链/伪造一律回落 auto', () => {
+    const localUrl = '/api/community/uploads/3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+    expect(normalizeCover({ kind: 'uploaded', url: localUrl })).toEqual({ kind: 'uploaded', url: localUrl });
+    expect(normalizeCover({ kind: 'uploaded', url: 'https://evil.example.com/a.png' })).toEqual({ kind: 'auto' });
+    expect(normalizeCover({ kind: 'uploaded', url: '/api/community/uploads/../../etc/passwd' })).toEqual({ kind: 'auto' });
+    expect(normalizeCover({ kind: 'uploaded', url: '' })).toEqual({ kind: 'auto' });
+  });
+
+  it('normalizeMedia / normalizeAttachments：只收本站上传引用，超限截断（C3 任务 3）', () => {
+    const good = (kind) => ({ kind, url: `/api/community/uploads/3f2504e0-4f89-11d3-9a0c-0305e82c3301`, name: `文件-${kind}`, mime: 'image/png', size: 1024 });
+    const bad = [
+      { kind: 'image', url: 'https://cdn.example.com/x.png' },   // 外链
+      { kind: 'file', url: '/api/community/uploads/not-a-uuid' }, // 伪 id
+      { kind: 'audio', url: '/api/community/uploads/3f2504e0-4f89-11d3-9a0c-0305e82c3301' }, // 类型不收
+      null, 'string',
+    ];
+    const media = normalizeMedia([good('image'), good('video'), ...bad]);
+    expect(media).toHaveLength(2);
+    expect(media[0].kind).toBe('image');
+    expect(media[1].kind).toBe('video');
+    // attachments 只收 file
+    const attachments = normalizeAttachments([good('file'), good('image'), ...bad]);
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0].kind).toBe('file');
+    // 数量截断：media ≤9
+    const many = normalizeMedia(Array.from({ length: 15 }, () => good('image')));
+    expect(many).toHaveLength(9);
   });
 
   it('extractSummary：剥 Markdown 代码块/图片/链接/标题', () => {
@@ -94,14 +123,23 @@ describe('memoryCommunityRepository B1 新字段（与 PG POST_VIEW 对齐）', 
   it('service 层：摘要空则从正文自动提取；非法 channel/tags/cover/summary 被 400 拦截', async () => {
     const service = createCommunityService(createMemoryCommunityRepository());
     const { alice } = await seedUsers();
+    const localUrl = '/api/community/uploads/3f2504e0-4f89-11d3-9a0c-0305e82c3301';
     const ok = await service.createPost({
       userId: alice.id,
-      input: { type: 'article', title: '自动摘要', body: '# 标题行\n\n正文第一段就是摘要来源，包含足够长的内容用来验证提取。', visibility: 'public', status: 'published' },
+      input: {
+        type: 'article', title: '自动摘要', body: '# 标题行\n\n正文第一段就是摘要来源，包含足够长的内容用来验证提取。', visibility: 'public', status: 'published',
+        media: [{ kind: 'image', url: localUrl, name: '效果图.png', mime: 'image/png', size: 2048 }],
+        attachments: [{ kind: 'file', url: localUrl, name: '资料.pdf', mime: 'application/pdf', size: 4096 }],
+      },
     });
     expect(ok.summary).not.toBe('');
     expect(ok.summary).not.toContain('#');
     expect(ok.channel).toBe('discussion');
+    expect(ok.media).toEqual([{ kind: 'image', url: localUrl, name: '效果图.png', mime: 'image/png', size: 2048 }]);
+    expect(ok.attachments).toHaveLength(1);
+    expect(ok.attachments[0].name).toBe('资料.pdf');
 
+    // 同一个 media url 出现在附件里 → 附件档只收 file kind，被整项剔除后数量不符 → 400
     const expectFail = async (input, code) => {
       let caught = null;
       try { await service.createPost({ userId: alice.id, input }); } catch (error) { caught = error; }
@@ -111,6 +149,19 @@ describe('memoryCommunityRepository B1 新字段（与 PG POST_VIEW 对齐）', 
     await expectFail({ type: 'article', title: 't', body: 'b', tags: ['1', '2', '3', '4', '5', '6'] }, 'INVALID_TAGS');
     await expectFail({ type: 'article', title: 't', body: 'b', cover: { kind: 'url', url: 'http://x.com/a.png' } }, 'INVALID_COVER');
     await expectFail({ type: 'article', title: 't', body: 'b', summary: '长'.repeat(121) }, 'INVALID_SUMMARY');
+    await expectFail({ type: 'article', title: 't', body: 'b', media: [{ kind: 'image', url: 'https://cdn.example.com/x.png' }] }, 'INVALID_MEDIA');
+    await expectFail({ type: 'article', title: 't', body: 'b', cover: { kind: 'uploaded', url: 'https://evil.example.com/a.png' } }, 'INVALID_COVER');
+    await expectFail({
+      type: 'article', title: 't', body: 'b',
+      attachments: [{ kind: 'file', url: localUrl }, { kind: 'file', url: 'not-valid' }],
+    }, 'INVALID_ATTACHMENTS');
+
+    // uploaded 封面档：本站 URL 通过
+    const uploadedCover = await service.createPost({
+      userId: alice.id,
+      input: { type: 'article', title: '上传封面', body: '正文', visibility: 'public', status: 'published', cover: { kind: 'uploaded', url: localUrl } },
+    });
+    expect(uploadedCover.cover).toEqual({ kind: 'uploaded', url: localUrl });
 
     // 列表参数校验：非法频道 400；followingOnly 未登录 401
     let badChannel = null;
