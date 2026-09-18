@@ -12,6 +12,8 @@ import {
   WORKFLOW_CONDITION_METRICS,
   WORKFLOW_CONDITION_OPERATORS,
   getWorkflowSkillMeta,
+  deriveWorkflowExecutionOrder,
+  collectBranchReachable,
 } from '../constants/workflowConstants.js';
 
 export const SIM_DEFAULT_ITEM_COUNT = 12;
@@ -98,13 +100,14 @@ function runNode(node, ctx) {
 
 /**
  * 规划一次模拟运行
- * @param {Array} nodes 工作流节点（按数组顺序执行）
- * @param {Object} options { itemCount }
+ * @param {Array} nodes 工作流节点
+ * @param {Object} options { itemCount, edges }——edges 提供时按显式连线拓扑排序（v25 #2）
  * @returns {{ steps:Array, totalDuration:number, shortCircuitAt:number|null, ok:boolean }}
  */
 export function planSimulation(nodes, options = {}) {
   const itemCount = Number.isFinite(options.itemCount) ? options.itemCount : SIM_DEFAULT_ITEM_COUNT;
-  const enabled = (Array.isArray(nodes) ? nodes : []).filter(node => node.enabled !== false);
+  const edges = Array.isArray(options.edges) ? options.edges : [];
+  const orderPlan = deriveWorkflowExecutionOrder(nodes, edges);
   const ctx = {
     items: itemCount,
     media: Math.max(1, Math.round(itemCount / 4)),
@@ -117,9 +120,12 @@ export function planSimulation(nodes, options = {}) {
   const steps = [];
   let shortCircuitAt = null;
   let totalDuration = 0;
+  /** 分支短路集合：条件不通过时沿 pass 分支可达的节点被跳过（无分支边时保持旧的「其后全跳过」语义） */
+  let skipSet = null;
+  let skipReason = '';
 
-  enabled.forEach((node, index) => {
-    if (shortCircuitAt !== null) {
+  orderPlan.forEach(({ node, viaBranch }, index) => {
+    if (skipSet ? skipSet.has(node.id) : shortCircuitAt !== null) {
       steps.push({
         id: node.id,
         index,
@@ -128,7 +134,7 @@ export function planSimulation(nodes, options = {}) {
         status: 'skipped',
         duration: 0,
         output: '—',
-        note: '上游条件未通过，已短路',
+        note: skipReason || '上游条件未通过，已短路',
       });
       return;
     }
@@ -145,9 +151,25 @@ export function planSimulation(nodes, options = {}) {
       output: result.output,
       note: result.note || '',
       branch: result.branch,
+      viaBranch,
     });
-    // 条件节点判定为假 → 记录短路位置，后续节点整体跳过
-    if (node.type === 'condition' && result.branch === false) shortCircuitAt = index;
+    // 条件节点判定为假：
+    // - 带 pass/fail 分支边 → 只短路 pass 可达子树，fail 分支继续执行
+    // - 无分支边 → 旧语义：后续节点整体跳过
+    if (node.type === 'condition' && result.branch === false) {
+      const hasFailBranch = edges.some(e => e.from === node.id && (e.branch || '') === 'fail');
+      if (hasFailBranch) {
+        skipSet = collectBranchReachable(node.id, 'pass', edges);
+        skipReason = '条件未通过：通过(pass)分支已跳过，不通过(fail)分支继续';
+      } else {
+        shortCircuitAt = index;
+      }
+    }
+    if (node.type === 'condition' && result.branch === true && edges.some(e => e.from === node.id && (e.branch || '') === 'fail')) {
+      // 条件通过且配置了 fail 分支 → fail 可达子树标记跳过（与真实执行引擎一致）
+      skipSet = collectBranchReachable(node.id, 'fail', edges);
+      skipReason = '条件已通过：不通过(fail)分支已跳过';
+    }
   });
 
   return {

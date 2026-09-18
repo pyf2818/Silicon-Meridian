@@ -7,6 +7,14 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
   const isCompact = viewMode === 'compact';
   const isCard = viewMode === 'card';
   const hasMedia = item.imageUrl || item.videoUrl;
+  // 多图图廊：首图 + images 数组去重（二维码等无效图已在服务端过滤），最多展示 3 张
+  const galleryImages = (() => {
+    const seen = new Set();
+    return [item.imageUrl, ...(Array.isArray(item.images) ? item.images : [])]
+      .filter(Boolean)
+      .filter(url => { const key = url.split('?')[0]; if (seen.has(key)) return false; seen.add(key); return true; })
+      .slice(0, 3);
+  })();
   // 视口淡入：卡片进入视口时才触发 fadeUp 动画
   const itemRef = useRef(null);
   const [visible, setVisible] = useState(false);
@@ -202,10 +210,18 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
                     </div>
                   )}
                 </a>
-              ) : item.imageUrl && (
-                // 没有视频，显示图片
-                <div className="item-media-thumb" onClick={() => onOpenLightbox?.(item.imageUrl, item.title)}>
-                  <img src={item.imageUrl} alt="" loading="lazy" onError={e => { e.target.style.display = 'none'; }} />
+              ) : galleryImages.length > 0 && (
+                // 没有视频：主图 + 多图图廊（最多 3 张，点击进 lightbox）
+                <div className="item-media-gallery" data-image-count={galleryImages.length}>
+                  {galleryImages.map((url, imgIndex) => (
+                    <div
+                      key={url}
+                      className={`item-media-thumb ${imgIndex > 0 ? 'item-media-thumb-extra' : ''}`}
+                      onClick={() => onOpenLightbox?.(url, item.title)}
+                    >
+                      <img src={url} alt="" loading="lazy" onError={e => { e.target.closest('.item-media-thumb').style.display = 'none'; }} />
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

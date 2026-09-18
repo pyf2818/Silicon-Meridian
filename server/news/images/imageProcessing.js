@@ -46,6 +46,20 @@ export function isLikelySiteAsset(url, context = '') {
   return false;
 }
 
+export function isQrCodeLike(url, context = '') {
+  const urlText = String(url || '').toLowerCase();
+  const localContext = String(context || '').toLowerCase();
+  if (!urlText) return true;
+  // url/文件名特征：各类二维码生成接口与微信/企微/QQ 推广码
+  if (/qr[-_]?code|qrcode|qr[-_]?gen(erator)?\b|\/qr\/|qr\.(php|aspx|jsp|png)|wxa[-_]?qr|weixin[-_]?qr|wechat[-_]?qr|qq[-_]?qr|show[-_]?qrcode|get[-_]?qrcode|create[-_]?qrcode|二维码/.test(urlText)) return true;
+  // alt/title/周边文案特征：公众号文章最常见的「扫码引导图」
+  if (/(扫码|扫一扫|长按识别|二维码|加入群聊|微信咨询|扫码咨询|关注公众号|qr\s?code|scan[-_ ]?qr|wechat[-_ ]?pay)/i.test(localContext)) return true;
+  // 正方形小图 + 可疑命名（contact/card/group/code）：保守起见仅在双信号叠加时过滤
+  const { width, height } = getImageDimensionHint(context, url);
+  if (width && height && width === height && width <= 360 && /\/(qr|code|contact|card|group|wechat|weixin|wx)[-_./]/i.test(urlText)) return true;
+  return false;
+}
+
 export function parseSrcset(srcset) {
   const candidates = srcset.split(',').map(s => {
     const parts = s.trim().split(/\s+/);
@@ -99,6 +113,7 @@ export function optimizeImageUrl(url) {
 export function isGoodImageUrl(url, htmlSource) {
   if (!url) return false;
   if (IMAGE_BLACKLIST_RE.test(url)) return false;
+  if (isQrCodeLike(url, htmlSource)) return false;
   if (isLikelySiteAsset(url, htmlSource)) return false;
 
   const trackingDomains = /\/\/(gravatar\.|disqus\.|pixel\.|tracking\.|analytics\.|doubleclick\.|adsense\.|adnxs\.|moatads\.|chartbeat\.|newrelic\.|pingdom\.|taboola\.|outbrain\.|zemanta\.)/i;
@@ -176,7 +191,8 @@ export function collectStructuredImageCandidates(htmlSource = '', baseUrl = '') 
   return candidates;
 }
 
-function selectBestImageCandidate(candidates) {
+/** 候选图统一排名：去重 → 打分（内容分 + 来源加成）→ 过滤低分图 */
+function rankImageCandidates(candidates) {
   const seen = new Set();
   return candidates
     .filter(candidate => {
@@ -199,10 +215,11 @@ function selectBestImageCandidate(candidates) {
       return { ...candidate, score: score + sourceBonus, reasons };
     })
     .filter(candidate => candidate.score >= 20)
-    .sort((a, b) => b.score - a.score)[0]?.url || '';
+    .sort((a, b) => b.score - a.score);
 }
 
-export function extractImageUrl(block, rawContent) {
+/** 收集 RSS block + 正文 HTML 中的全部图片候选（enclosure / media / og / lazy / srcset / img） */
+function collectImageCandidates(block, rawContent) {
   const candidates = [];
 
   const enclosure = block.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["'][^"']*image[^"']*["']/i)
@@ -243,7 +260,19 @@ export function extractImageUrl(block, rawContent) {
     }
   });
 
-  return selectBestImageCandidate(candidates);
+  return candidates;
+}
+
+/** 提取原文中的多张有效内容图（默认最多 3 张）：二维码/logo/站点资产等无效图已被过滤 */
+export function extractImageUrls(block, rawContent, limit = 3) {
+  const max = Math.max(1, Math.min(Number(limit) || 3, 6));
+  return rankImageCandidates(collectImageCandidates(block, rawContent))
+    .slice(0, max)
+    .map(candidate => candidate.url);
+}
+
+export function extractImageUrl(block, rawContent) {
+  return extractImageUrls(block, rawContent, 1)[0] || '';
 }
 export function extractVideoUrl(block) {
   // 1. <enclosure> with video type

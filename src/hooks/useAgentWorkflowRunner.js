@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { getWorkflowSkillMeta, WORKFLOW_CONDITION_METRICS } from '../constants/appConstants.jsx';
+import { deriveWorkflowExecutionOrder, collectBranchReachable } from '../constants/workflowConstants.js';
 import { useProfileStore } from '../store';
 import { buildProfileMemory } from '../utils/workflowEngine.js';
 import { hasItemId } from '../utils/itemIdentity.js';
@@ -389,12 +390,46 @@ export function useAgentWorkflowRunner({
       const nodeOutputs = [];
       let haltedByCondition = null;
 
-      for (let index = 0; index < workflowNodes.length; index++) {
-        const node = workflowNodes[index];
+      // v25 #2：显式连线驱动的拓扑执行——无连线时与旧数组顺序完全一致（向后兼容）
+      const explicitEdges = (agentWorkflowDraft.edges || [])
+        .filter(e => workflowNodes.some(n => n.id === e?.from) && workflowNodes.some(n => n.id === e?.to) && e.from !== e.to);
+      const executionPlan = deriveWorkflowExecutionOrder(workflowNodes, explicitEdges);
+      const nodeOutputText = new Map();   // nodeId → 输出文本
+      const nodeStructuredMap = new Map(); // nodeId → structured
+      const branchOutputs = new Map();     // 'nodeId|branch' → 分支产物文本（分类器各桶）
+      const skipSet = new Set();           // 条件分支短路命中的节点
+      let skipReason = '';
+
+      for (let index = 0; index < executionPlan.length; index++) {
+        const { node, viaBranch } = executionPlan[index];
+
+        // 分支短路：条件判定的被淘汰子树标记跳过，不执行
+        if (skipSet.has(node.id)) {
+          setTraceStep(node.id, { status: 'skipped', detail: skipReason });
+          continue;
+        }
+
         activeNodeId = node.id;
         const inputKey = node.inputKey || (index === 0 ? 'context' : `step_${index}`);
         const outputKey = node.outputKey || `step_${index + 1}`;
-        const nodeInput = workflowVariables[inputKey] || previousOutput;
+
+        // 输入解析：有显式入边 → 沿边取上游（分支边优先取该分支产物）；无入边 → 保持变量链/顺序传递
+        const inEdges = explicitEdges.filter(e => e.to === node.id);
+        let nodeInput;
+        if (inEdges.length) {
+          const parts = inEdges.map(e => {
+            const branchText = (e.branch || '') ? branchOutputs.get(`${e.from}|${e.branch}`) : '';
+            if (branchText) return branchText;
+            const fromText = nodeOutputText.get(e.from);
+            if (fromText) return fromText;
+            const fromNode = workflowNodes.find(n => n.id === e.from);
+            return fromNode ? (workflowVariables[fromNode.outputKey] || '') : '';
+          }).filter(Boolean);
+          nodeInput = parts.length ? parts.join('\n\n---\n\n') : (workflowVariables[inputKey] || previousOutput);
+        } else {
+          nodeInput = workflowVariables[inputKey] || previousOutput;
+        }
+
         localTrace = localTrace.map(step => {
           if (step.nodeId === node.id) return { ...step, status: 'running' };
           if (step.status === 'running') return { ...step, status: 'completed' };
@@ -423,7 +458,7 @@ export function useAgentWorkflowRunner({
               action: 'chat',
               content: `工作流任务：${prompt}
 
-当前节点：${node.title}
+当前节点：${node.title}${viaBranch ? `（经由分支：${viaBranch}）` : ''}
 节点职责：${node.role}
 节点指令：${node.prompt}
 输入变量：${inputKey}
@@ -451,7 +486,15 @@ ${blueprintSummary}`,
         }
 
         workflowVariables[outputKey] = output;
-        nodeOutputs.push({ nodeId: node.id, title: node.title, type: node.type, inputKey, outputKey, input: nodeInput, output, structured });
+        nodeOutputText.set(node.id, output);
+        nodeStructuredMap.set(node.id, structured);
+        // 分类器：把每个分类桶登记为分支产物，供分支边下游节点取用（真实分流）
+        if (node.type === 'classifier' && structured?.buckets) {
+          Object.entries(structured.buckets).forEach(([label, items]) => {
+            branchOutputs.set(`${node.id}|${label}`, `【分类分支：${label}】\n${(items || []).join('；') || '暂无'}`);
+          });
+        }
+        nodeOutputs.push({ nodeId: node.id, title: node.title, type: node.type, inputKey, outputKey, input: nodeInput, output, structured, viaBranch });
         previousOutput = output;
         setTraceStep(node.id, {
           status: 'completed',
@@ -460,22 +503,35 @@ ${blueprintSummary}`,
           structured,
           inputKey,
           outputKey,
-          variablePreview: `${inputKey} → ${outputKey}`
+          variablePreview: `${inputKey} → ${outputKey}${viaBranch ? `（${viaBranch}）` : ''}`
         });
 
-        if (node.type === 'condition' && !shouldContinue) {
-          haltedByCondition = node;
-          localTrace = localTrace.map(step => {
-            if (step.status === 'queued') {
-              return { ...step, status: 'skipped', detail: '条件未通过，已跳过。' };
+        // v25 #2：条件节点短路——带分支边时只淘汰被否决的子树，其余路径继续执行
+        if (node.type === 'condition') {
+          const hasPassEdge = explicitEdges.some(e => e.from === node.id && (e.branch || '') === 'pass');
+          const hasFailEdge = explicitEdges.some(e => e.from === node.id && (e.branch || '') === 'fail');
+          if (shouldContinue && hasFailEdge) {
+            collectBranchReachable(node.id, 'fail', explicitEdges).forEach(id => skipSet.add(id));
+            skipReason = '条件已通过：不通过(fail)分支已跳过';
+          } else if (!shouldContinue) {
+            if (hasPassEdge || hasFailEdge) {
+              collectBranchReachable(node.id, 'pass', explicitEdges).forEach(id => skipSet.add(id));
+              skipReason = '条件未通过：通过(pass)分支已跳过';
+            } else {
+              haltedByCondition = node;
+              localTrace = localTrace.map(step => {
+                if (step.status === 'queued') {
+                  return { ...step, status: 'skipped', detail: '条件未通过，已跳过。' };
+                }
+                return step;
+              });
+              setAgentWorkflowRun(prev => ({
+                ...prev,
+                trace: prev.trace.map(step => step.status === 'queued' ? { ...step, status: 'skipped', detail: '条件未通过，已跳过。' } : step)
+              }));
+              break;
             }
-            return step;
-          });
-          setAgentWorkflowRun(prev => ({
-            ...prev,
-            trace: prev.trace.map(step => step.status === 'queued' ? { ...step, status: 'skipped', detail: '条件未通过，已跳过。' } : step)
-          }));
-          break;
+          }
         }
       }
 
@@ -574,7 +630,7 @@ ${blueprintSummary}`,
         actions: failedActions
       }, ...prev.filter(item => item.id !== runId)].slice(0, 12));
     }
-  }, [agents, intelligenceMissions, llmConfig, buildWorkbenchContext, enabledWorkflowNodes, agentWorkflowDraft.nodes, agentWorkflowDraft.name, scopedAgentItems, selectedNewsDate, agentWorkflowScope, intelligenceProfile.focusLabels, intelligenceProfile.tracked, bookmarks, materials, selectedInterests, createWorkflowActions]);
+  }, [agents, intelligenceMissions, llmConfig, buildWorkbenchContext, enabledWorkflowNodes, agentWorkflowDraft.nodes, agentWorkflowDraft.name, agentWorkflowDraft.edges, scopedAgentItems, selectedNewsDate, agentWorkflowScope, intelligenceProfile.focusLabels, intelligenceProfile.tracked, bookmarks, materials, selectedInterests, createWorkflowActions]);
 
   return runAgentWorkflow;
 }

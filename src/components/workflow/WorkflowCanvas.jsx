@@ -13,7 +13,9 @@
  * 纯 UI 层：坐标换算（screen↔world）为纯函数，业务提交全部通过回调上抛。
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { normalizeNodePosition } from '../../constants/workflowConstants.js';
+import {
+  getWorkflowNodePorts, normalizeNodePosition, workflowEdgeKey, workflowPortOffsetY,
+} from '../../constants/workflowConstants.js';
 
 export const WF_NODE_W = 240;
 export const WF_NODE_H = 118;
@@ -34,19 +36,19 @@ export function screenToWorld(clientX, clientY, rect, pan, zoom) {
   };
 }
 
-/** 贝塞尔连线 path（out 端口右侧 → in 端口左侧）；bend 为垂直弧度偏移（显式边用） */
-export function edgePath(from, to, bend = 0) {
+/** 贝塞尔连线 path（out 端口右侧 → in 端口左侧）；bend 为垂直弧度偏移，fromOffsetY 为分支口纵向偏移 */
+export function edgePath(from, to, bend = 0, fromOffsetY = WF_NODE_H / 2) {
   const x1 = from.x + WF_NODE_W;
-  const y1 = from.y + WF_NODE_H / 2;
+  const y1 = from.y + fromOffsetY;
   const x2 = to.x;
   const y2 = to.y + WF_NODE_H / 2;
   const midX = (x1 + x2) / 2;
   return `M ${x1} ${y1} C ${midX} ${y1 + bend}, ${midX} ${y2 + bend}, ${x2} ${y2}`;
 }
 
-/** 显式边中点（弧度手柄 / 断开按钮的锚点），与 edgePath(from,to,bend) 的 t=0.5 对应 */
-export function edgeMidpoint(from, to, bend = 0) {
-  const y1 = from.y + WF_NODE_H / 2;
+/** 显式边中点（弧度手柄 / 断开按钮的锚点），与 edgePath(from,to,bend,fromOffsetY) 的 t=0.5 对应 */
+export function edgeMidpoint(from, to, bend = 0, fromOffsetY = WF_NODE_H / 2) {
+  const y1 = from.y + fromOffsetY;
   const y2 = to.y + WF_NODE_H / 2;
   return {
     x: (from.x + WF_NODE_W + to.x) / 2,
@@ -77,9 +79,10 @@ export default function WorkflowCanvas({
   paletteOpen = true,         // 右侧节点面板开合（状态由 CanvasPage 持久化）
   onSetPaletteOpen = null,    // (open) → 开关节点面板；不提供则面板常驻
   edges = [],                 // v23 #3：显式连线（用户拖拽建立，覆盖顺序派生边）
-  onConnectEdge = null,       // (fromId, toId) → 建立显式连线
-  onDisconnectEdge = null,    // (fromId, toId) → 断开显式连线
-  onBendEdge = null,          // (fromId, toId, bend) → 调整连线弧度
+  onConnectEdge = null,       // (fromId, toId, branch) → 建立显式连线
+  onDisconnectEdge = null,    // (fromId, toId, branch) → 断开显式连线
+  onBendEdge = null,          // (fromId, toId, branch, bend) → 调整连线弧度
+  onReconnectEdge = null,     // v25 #2：(edge, { from?, to? }) → 端点拖拽重连（保留分支）
 }) {
   const viewportRef = useRef(null);
   const worldRef = useRef(null);
@@ -131,15 +134,16 @@ export default function WorkflowCanvas({
   const rect = useCallback(() => viewportRef.current?.getBoundingClientRect() || { left: 0, top: 0, width: 0, height: 0 }, []);
 
   /* ---------- v23 #3：显式连线交互（依赖 rect，必须在 rect 定义之后） ---------- */
-  const connectRef = useRef(null);   // 拖拽连线中：{ fromId, pointerId }
+  const connectRef = useRef(null);   // 拖拽连线中：{ fromId, branch, offsetY, pointerId }
   const tempEdgeRef = useRef(null);  // 拖拽中的临时连线路径（直写 DOM，不重渲染）
+  const reconnectRef = useRef(null); // v25 #2：端点重连中：{ edge, end: 'from'|'to', anchor:{x,y}, pointerId }
   const bendDragRef = useRef(null);  // 弧度手柄拖拽中：{ key, pointerId, startY, startBend }
   const bendPreviewRef = useRef(null); // finishBendDrag 读取最新预览值（避免闭包过期）
   /** v24 #4：当前所有边的几何快照（每次 render 刷新），拖拽节点时据此直写边路径 */
   const edgeGeometryRef = useRef([]);
   const [selectedEdgeKey, setSelectedEdgeKey] = useState(null);
   const [bendPreview, setBendPreview] = useState(null); // { key, bend } 拖拽中的弧度预览
-  const [connecting, setConnecting] = useState(false);  // 连线拖拽中（光标提示）
+  const [connecting, setConnecting] = useState(false);  // 连线/重连拖拽中（光标提示）
   bendPreviewRef.current = bendPreview;
 
   /* ---------- v24 #4：节点拖拽期间直写相连边的路径（边平滑跟随，不跳变） ---------- */
@@ -150,26 +154,42 @@ export default function WorkflowCanvas({
       if (edge.fromId !== nodeId && edge.toId !== nodeId) continue;
       const from = edge.fromId === nodeId ? { x, y } : edge.fromPos;
       const to = edge.toId === nodeId ? { x, y } : edge.toPos;
-      const d = edgePath(from, to, edge.bend || 0);
+      const d = edgePath(from, to, edge.bend || 0, edge.fromOffsetY);
       world.querySelectorAll(`[data-edge-key="${edge.key}"]`).forEach(el => el.setAttribute('d', d));
-      // 选中边的弧度手柄/断开按钮跟随中点
+      // 选中边的弧度手柄/断开按钮跟随中点；分支标签随主层边移动
       const overlayGroup = world.querySelector(`.wf-edge-overlay g[data-edge-key="${edge.key}"]`);
       if (overlayGroup) {
-        const mid = edgeMidpoint(from, to, edge.bend || 0);
+        const mid = edgeMidpoint(from, to, edge.bend || 0, edge.fromOffsetY);
         const handle = overlayGroup.querySelector('.wf-edge-bend-handle');
         if (handle) { handle.setAttribute('cx', mid.x); handle.setAttribute('cy', mid.y); }
         const del = overlayGroup.querySelector('.wf-edge-del');
         if (del) del.setAttribute('transform', `translate(${mid.x + 22}, ${mid.y - 22})`);
+        const endpoints = overlayGroup.querySelectorAll('.wf-edge-endpoint');
+        endpoints.forEach(el => {
+          if (el.dataset.end === 'from') {
+            el.setAttribute('cx', from.x + WF_NODE_W);
+            el.setAttribute('cy', from.y + edge.fromOffsetY);
+          } else {
+            el.setAttribute('cx', to.x);
+            el.setAttribute('cy', to.y + WF_NODE_H / 2);
+          }
+        });
+      }
+      const labelEl = world.querySelector(`.wf-edges g[data-edge-key="${edge.key}"] .wf-edge-branch-label`);
+      if (labelEl) {
+        const mid = edgeMidpoint(from, to, edge.bend || 0, edge.fromOffsetY);
+        labelEl.setAttribute('x', mid.x);
+        labelEl.setAttribute('y', mid.y - 12);
       }
     }
   }, []);
 
-  /** 从 out 端口按下：开始拖拽连线（捕获到视口，move/up 由视口统一处理） */
-  const onPortPointerDown = useCallback((event, nodeId) => {
+  /** 从分支输出口按下：开始拖拽连线（branch 标识口，捕获到视口，move/up 由视口统一处理） */
+  const onPortPointerDown = useCallback((event, nodeId, branch = '', offsetY = WF_NODE_H / 2) => {
     if (event.button !== 0 || spaceRef.current) return;
     event.stopPropagation();
     event.preventDefault();
-    connectRef.current = { fromId: nodeId, pointerId: event.pointerId };
+    connectRef.current = { fromId: nodeId, branch, offsetY, pointerId: event.pointerId };
     viewportRef.current?.setPointerCapture?.(event.pointerId);
     setConnecting(true);
   }, []);
@@ -186,7 +206,35 @@ export default function WorkflowCanvas({
       ? { x: parseFloat(fromEl.style.left) || 0, y: parseFloat(fromEl.style.top) || 0 }
       : { x: 0, y: 0 };
     const world = screenToWorld(event.clientX, event.clientY, r, v, v.z);
-    temp.setAttribute('d', edgePath(from, { x: world.x - WF_NODE_W / 2, y: world.y - WF_NODE_H / 2 }));
+    temp.setAttribute('d', edgePath(from, { x: world.x - WF_NODE_W / 2, y: world.y - WF_NODE_H / 2 }, 0, connect.offsetY));
+  }, [rect]);
+
+  /** v25 #2：选中边的端点按下 → 进入重连（锚定另一端，拖动被按端到新节点） */
+  const onEndpointPointerDown = useCallback((event, edge, end) => {
+    if (event.button !== 0 || spaceRef.current) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const anchor = end === 'from'
+      ? { x: edge.to.x, y: edge.to.y + WF_NODE_H / 2 }
+      : { x: edge.from.x + WF_NODE_W, y: edge.from.y + edge.fromOffsetY };
+    reconnectRef.current = { edge, end, anchor, pointerId: event.pointerId };
+    viewportRef.current?.setPointerCapture?.(event.pointerId);
+    setConnecting(true);
+  }, []);
+
+  /** 重连拖拽中：从锚定端画临时路径到光标 */
+  const updateReconnectTemp = useCallback((event) => {
+    const temp = tempEdgeRef.current;
+    const rec = reconnectRef.current;
+    if (!temp || !rec) return;
+    const r = rect();
+    const v = viewRef.current;
+    const world = screenToWorld(event.clientX, event.clientY, r, v, v.z);
+    const target = { x: world.x - WF_NODE_W / 2, y: world.y - WF_NODE_H / 2 };
+    const d = rec.end === 'from'
+      ? edgePath(target, rec.anchor, 0)
+      : edgePath(rec.anchor, target, 0);
+    temp.setAttribute('d', d);
   }, [rect]);
 
   /** 松手：命中目标节点则建立连线 */
@@ -203,8 +251,32 @@ export default function WorkflowCanvas({
     const el = document.elementFromPoint(event.clientX, event.clientY);
     const nodeEl = el?.closest?.('[data-node-id]');
     const targetId = nodeEl?.getAttribute('data-node-id');
-    if (targetId && targetId !== connect.fromId) onConnectEdge(connect.fromId, targetId);
+    if (targetId && targetId !== connect.fromId) onConnectEdge(connect.fromId, targetId, connect.branch || '');
   }, [onConnectEdge]);
+
+  /** v25 #2：端点重连收尾：拖到新节点 → 重定向被拖端（保留 branch），点空处取消 */
+  const finishReconnect = useCallback((event) => {
+    const rec = reconnectRef.current;
+    reconnectRef.current = null;
+    setConnecting(false);
+    viewportRef.current?.releasePointerCapture?.(event.pointerId);
+    if (tempEdgeRef.current) {
+      tempEdgeRef.current.setAttribute('d', '');
+      tempEdgeRef.current = null;
+    }
+    if (!rec || !onReconnectEdge) return;
+    const el = document.elementFromPoint(event.clientX, event.clientY);
+    const nodeEl = el?.closest?.('[data-node-id]');
+    const targetId = nodeEl?.getAttribute('data-node-id');
+    if (!targetId) return;
+    if (rec.end === 'from') {
+      if (targetId === rec.edge.fromId || targetId === rec.edge.toId) return;
+      onReconnectEdge(rec.edge, { from: targetId });
+    } else {
+      if (targetId === rec.edge.toId || targetId === rec.edge.fromId) return;
+      onReconnectEdge(rec.edge, { to: targetId });
+    }
+  }, [onReconnectEdge]);
 
   /** 弧度手柄按下：开始拖拽调整（记录起始 bend，move 中以预览态更新） */
   const onBendHandlePointerDown = useCallback((event, key, currentBend) => {
@@ -233,7 +305,7 @@ export default function WorkflowCanvas({
     if (!drag) return;
     const preview = bendPreviewRef.current;
     setBendPreview(null);
-    if (onBendEdge && preview) onBendEdge(drag.key.from, drag.key.to, Math.round(preview.bend));
+    if (onBendEdge && preview) onBendEdge(drag.key.from, drag.key.to, drag.key.branch || '', Math.round(preview.bend));
   }, [onBendEdge]);
 
   /* ---------- 平滑缩放动画（按钮/适应视图使用） ---------- */
@@ -387,6 +459,8 @@ export default function WorkflowCanvas({
   const onViewportPointerMove = useCallback((event) => {
     // v23 #3：拖拽连线中 → 直写临时路径
     if (connectRef.current) { updateTempEdge(event); return; }
+    // v25 #2：端点重连中 → 锚定端画临时路径
+    if (reconnectRef.current) { updateReconnectTemp(event); return; }
     // v23 #3：弧度手柄拖拽中 → 预览态更新
     if (bendDragRef.current) { updateBendDrag(event); return; }
     const drag = dragRef.current;
@@ -396,11 +470,12 @@ export default function WorkflowCanvas({
     if (Math.abs(event.clientX - drag.startX) + Math.abs(event.clientY - drag.startY) > 3) drag.moved = true;
     pendingRef.current = () => { viewRef.current = { ...viewRef.current, x: nx, y: ny }; };
     scheduleApply();
-  }, [scheduleApply, updateTempEdge, updateBendDrag]);
+  }, [scheduleApply, updateTempEdge, updateReconnectTemp, updateBendDrag]);
 
   const onViewportPointerUp = useCallback((event) => {
-    // v23 #3：连线 / 弧度拖拽收尾
+    // v23 #3 / v25 #2：连线、重连、弧度拖拽收尾
     if (connectRef.current) { finishConnect(event); return; }
+    if (reconnectRef.current) { finishReconnect(event); return; }
     if (bendDragRef.current) { finishBendDrag(event); return; }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
@@ -408,7 +483,7 @@ export default function WorkflowCanvas({
     viewportRef.current?.releasePointerCapture?.(event.pointerId);
     // 背景单击（未拖动）→ 取消选中
     if (drag.kind === 'pan' && !drag.moved && event.button === 0) { onSelect(null); setSelectedEdgeKey(null); }
-  }, [onSelect, finishConnect, finishBendDrag]);
+  }, [onSelect, finishConnect, finishReconnect, finishBendDrag]);
 
   /* ---------- 节点指针：拖拽移动（DOM 直写，松手提交） ---------- */
   const onNodePointerDown = useCallback((event, node) => {
@@ -499,13 +574,21 @@ export default function WorkflowCanvas({
   const explicitEdges = (edges || [])
     .filter(e => nodeById.has(e.from) && nodeById.has(e.to))
     .map((e) => {
-      const from = normalizeNodePosition(nodeById.get(e.from).position);
+      const fromNode = nodeById.get(e.from);
+      const from = normalizeNodePosition(fromNode.position);
       const to = normalizeNodePosition(nodeById.get(e.to).position);
-      const key = `${e.from}->${e.to}`;
-      const bend = bendPreview?.key?.from === e.from && bendPreview?.key?.to === e.to
+      const branch = e.branch || '';
+      const key = workflowEdgeKey(e);
+      const fromOffsetY = workflowPortOffsetY(fromNode, branch, WF_NODE_H);
+      const bend = bendPreview?.key?.from === e.from && bendPreview?.key?.to === e.to && (bendPreview?.key?.branch || '') === branch
         ? bendPreview.bend
         : (e.bend || 0);
-      return { from, to, key, bend, fromId: e.from, toId: e.to };
+      return {
+        from, to, key, bend, branch, fromOffsetY,
+        fromId: e.from, toId: e.to,
+        branchLabel: branch && (getWorkflowNodePorts(fromNode).find(port => port.id === branch)?.label || branch),
+        mid: edgeMidpoint(from, to, bend, fromOffsetY),
+      };
     });
   const explicitKeys = new Set(explicitEdges.map(e => e.key));
   const edgesList = [];
@@ -526,8 +609,8 @@ export default function WorkflowCanvas({
   }
   // v24 #4：几何快照（渲染期同步刷新），供节点拖拽时直写边路径
   edgeGeometryRef.current = [
-    ...edgesList.map(edge => ({ key: edge.id, fromId: edge.fromId, toId: edge.toId, fromPos: normalizeNodePosition(nodeById.get(edge.fromId).position), toPos: normalizeNodePosition(nodeById.get(edge.toId).position), bend: 0 })),
-    ...explicitEdges.map(edge => ({ key: edge.key, fromId: edge.fromId, toId: edge.toId, fromPos: edge.from, toPos: edge.to, bend: edge.bend })),
+    ...edgesList.map(edge => ({ key: edge.id, fromId: edge.fromId, toId: edge.toId, fromPos: normalizeNodePosition(nodeById.get(edge.fromId).position), toPos: normalizeNodePosition(nodeById.get(edge.toId).position), bend: 0, fromOffsetY: WF_NODE_H / 2 })),
+    ...explicitEdges.map(edge => ({ key: edge.key, fromId: edge.fromId, toId: edge.toId, fromPos: edge.from, toPos: edge.to, bend: edge.bend, fromOffsetY: edge.fromOffsetY })),
   ];
 
   const paletteTypes = Object.entries(nodeTypeMeta);
@@ -585,20 +668,23 @@ export default function WorkflowCanvas({
             </g>
           ))}
 
-          {/* v23 #3：显式连线层（用户拖拽建立；命中区可点选；控制件在节点层之上的覆盖 SVG 中） */}
+          {/* v23 #3 / v25 #2：显式连线层（用户拖拽建立；分支边带标签；命中区可点选；控制件在节点层之上的覆盖 SVG 中） */}
           {explicitEdges.map(edge => {
-            const d = edgePath(edge.from, edge.to, edge.bend);
+            const d = edgePath(edge.from, edge.to, edge.bend, edge.fromOffsetY);
             const isSelected = selectedEdgeKey === edge.key;
             return (
-              <g key={edge.key} className={`wf-edge-explicit-group ${isSelected ? 'selected' : ''}`}>
+              <g key={edge.key} className={`wf-edge-explicit-group ${isSelected ? 'selected' : ''} ${edge.branch ? 'has-branch' : ''}`}>
                 <path
                   className="wf-edge-hit"
                   d={d}
                   data-edge-key={edge.key}
                   onPointerDown={(e) => { e.stopPropagation(); setSelectedEdgeKey(isSelected ? null : edge.key); }}
-                  onDoubleClick={(e) => { e.stopPropagation(); if (onDisconnectEdge) onDisconnectEdge(edge.fromId, edge.toId); }}
+                  onDoubleClick={(e) => { e.stopPropagation(); if (onDisconnectEdge) onDisconnectEdge(edge.fromId, edge.toId, edge.branch); }}
                 />
                 <path className="wf-edge wf-edge-explicit" d={d} data-edge-key={edge.key} markerEnd="url(#wf-arrow)" />
+                {edge.branch && edge.branchLabel && (
+                  <text className="wf-edge-branch-label" x={edge.mid.x} y={edge.mid.y - 12} textAnchor="middle">{edge.branchLabel}</text>
+                )}
               </g>
             );
           })}
@@ -647,11 +733,19 @@ export default function WorkflowCanvas({
               {simOutputs[node.id] && <div className="wf-node-sim">{simOutputs[node.id]}</div>}
               {st === 'running' && <span className="wf-node-progress" aria-hidden="true" />}
               <span className="wf-port wf-port-in" aria-hidden="true" />
-              <span
-                className="wf-port wf-port-out"
-                title="拖到目标节点建立连线"
-                onPointerDown={(e) => onPortPointerDown(e, node.id)}
-              />
+              {(() => {
+                const ports = getWorkflowNodePorts(node);
+                const list = ports.length ? ports : [{ id: 'out', label: '' }];
+                return list.map((port, portIndex) => (
+                  <span
+                    key={port.id}
+                    className={`wf-port wf-port-out ${list.length > 1 ? 'wf-port-out-branch' : ''}`}
+                    style={{ top: `${((portIndex + 1) / (list.length + 1)) * 100}%` }}
+                    title={list.length > 1 ? `从「${port.label}」分支拖出连线` : '拖到目标节点建立连线'}
+                    onPointerDown={(e) => onPortPointerDown(e, node.id, list.length > 1 ? port.id : '', workflowPortOffsetY(node, list.length > 1 ? port.id : '', WF_NODE_H))}
+                  />
+                ));
+              })()}
               {node.enabled !== false && chainIndex === chain.length - 1 && chain.length > 1 && <span className="wf-flag-end">终</span>}
               {/* 节点快捷工具条：选中且非拖拽中时浮现在节点上方 */}
               {selectedId === node.id && !nodeDragActive && (onDuplicateNode || onRemoveNode) && (
@@ -668,10 +762,10 @@ export default function WorkflowCanvas({
           );
         })}
 
-        {/* v23 #3：选中显式边的控制层（弧度手柄 + 断开按钮）——渲染在节点之上，避免被节点遮挡 */}
+        {/* v23 #3 / v25 #2：选中显式边的控制层（弧度手柄 + 断开按钮 + 端点重连手柄）——渲染在节点之上，避免被节点遮挡 */}
         <svg className="wf-edge-overlay" width={WORLD_W} height={WORLD_H} aria-hidden="true">
           {explicitEdges.filter(edge => selectedEdgeKey === edge.key).map(edge => {
-            const mid = edgeMidpoint(edge.from, edge.to, edge.bend);
+            const mid = edge.mid;
             return (
               <g key={edge.key} data-edge-key={edge.key}>
                 <circle
@@ -679,7 +773,7 @@ export default function WorkflowCanvas({
                   cx={mid.x}
                   cy={mid.y}
                   r={7}
-                  onPointerDown={(e) => onBendHandlePointerDown(e, { from: edge.fromId, to: edge.toId }, edge.bend)}
+                  onPointerDown={(e) => onBendHandlePointerDown(e, { from: edge.fromId, to: edge.toId, branch: edge.branch }, edge.bend)}
                 >
                   <title>拖动调整弧度</title>
                 </circle>
@@ -687,12 +781,30 @@ export default function WorkflowCanvas({
                   className="wf-edge-del"
                   transform={`translate(${mid.x + 22}, ${mid.y - 22})`}
                   onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); if (onDisconnectEdge) onDisconnectEdge(edge.fromId, edge.toId); }}
+                  onClick={(e) => { e.stopPropagation(); if (onDisconnectEdge) onDisconnectEdge(edge.fromId, edge.toId, edge.branch); }}
                 >
                   <circle r={9} />
                   <text y={4} textAnchor="middle">×</text>
                   <title>断开连线</title>
                 </g>
+                <circle
+                  className="wf-edge-endpoint" data-end="from"
+                  cx={edge.from.x + WF_NODE_W}
+                  cy={edge.from.y + edge.fromOffsetY}
+                  r={6}
+                  onPointerDown={(e) => onEndpointPointerDown(e, edge, 'from')}
+                >
+                  <title>拖到新节点：重连起点</title>
+                </circle>
+                <circle
+                  className="wf-edge-endpoint" data-end="to"
+                  cx={edge.to.x}
+                  cy={edge.to.y + WF_NODE_H / 2}
+                  r={6}
+                  onPointerDown={(e) => onEndpointPointerDown(e, edge, 'to')}
+                >
+                  <title>拖到新节点：重连终点</title>
+                </circle>
               </g>
             );
           })}

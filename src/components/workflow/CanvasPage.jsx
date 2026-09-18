@@ -242,7 +242,7 @@ export default function CanvasPage({
 
   const runSimulation = useCallback(() => {
     if (sim.running) { stopSim(); return; }
-    const plan = planSimulation(draft.nodes);
+    const plan = planSimulation(draft.nodes, { edges: draft.edges });
     if (!plan.steps.length) return;
     cancelRef.current = false;
     setShowDeliverable(false);
@@ -332,25 +332,42 @@ export default function CanvasPage({
     setSelectedNodeId(copy.id);
   }, [draft.nodes, updateDraft, setSelectedNodeId]);
 
-  /* ---- v23 #3：显式连线的建立 / 断开 / 调整弧度（经 normalize 去重与清理） ---- */
-  const connectEdge = useCallback((fromId, toId) => {
+  /* ---- v23 #3 / v25 #2：显式连线的建立 / 断开 / 弧度 / 端点重连（经 normalize 去重与清理；branch 标识分支口） ---- */
+  const connectEdge = useCallback((fromId, toId, branch = '') => {
     const next = normalizeWorkflowEdges(
-      [...(draft.edges || []), { from: fromId, to: toId, bend: 0 }],
+      [...(draft.edges || []), { from: fromId, to: toId, branch: branch || '', bend: 0 }],
       draft.nodes
     );
     if (next.length === (draft.edges || []).length) return; // 重复/自环边：静默忽略
     updateDraft({ edges: next });
   }, [draft.edges, draft.nodes, updateDraft]);
 
-  const disconnectEdge = useCallback((fromId, toId) => {
-    updateDraft({ edges: (draft.edges || []).filter(e => !(e.from === fromId && e.to === toId)) });
-  }, [draft.edges, updateDraft]);
-
-  const bendEdge = useCallback((fromId, toId, bend) => {
+  const disconnectEdge = useCallback((fromId, toId, branch = '') => {
     updateDraft({
-      edges: (draft.edges || []).map(e => (e.from === fromId && e.to === toId ? { ...e, bend } : e)),
+      edges: (draft.edges || []).filter(e => !(e.from === fromId && e.to === toId && (e.branch || '') === (branch || ''))),
     });
   }, [draft.edges, updateDraft]);
+
+  const bendEdge = useCallback((fromId, toId, branch, bend) => {
+    updateDraft({
+      edges: (draft.edges || []).map(e => (e.from === fromId && e.to === toId && (e.branch || '') === (branch || '') ? { ...e, bend } : e)),
+    });
+  }, [draft.edges, updateDraft]);
+
+  /** v25 #2：端点拖拽重连——只改被拖端，保留分支与弧度；normalize 兜底去重/清悬空 */
+  const reconnectEdge = useCallback((edge, patch = {}) => {
+    if (!edge) return;
+    updateDraft({
+      edges: normalizeWorkflowEdges(
+        (draft.edges || []).map(e => (
+          e.from === edge.fromId && e.to === edge.toId && (e.branch || '') === (edge.branch || '')
+            ? { ...e, from: patch.from || e.from, to: patch.to || e.to }
+            : e
+        )),
+        draft.nodes
+      ),
+    });
+  }, [draft.edges, draft.nodes, updateDraft]);
 
   /* ---- AI 搭建：对话生成/修改节点 ---- */
   const applyAiPlan = useCallback((plan, mode) => {
@@ -476,6 +493,7 @@ export default function CanvasPage({
         onConnectEdge={connectEdge}
         onDisconnectEdge={disconnectEdge}
         onBendEdge={bendEdge}
+        onReconnectEdge={reconnectEdge}
       >
         {/* 画布内浮动：工作流切换器 + 名称（左上） */}
         <div className="canvas-float canvas-float-name" onMouseDown={e => e.stopPropagation()}>

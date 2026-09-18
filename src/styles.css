@@ -2556,6 +2556,16 @@ body {
 .item-media-play { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; background: rgba(0, 0, 0, .4); border-radius: 8px; color: white; }
 .item-media-play svg { width: 24px; height: 24px; }
 
+/* 多图图廊：主图 + 附加小图（原文有效图，二维码等已在服务端过滤） */
+.item-media-gallery { display: flex; flex-direction: column; gap: 6px; width: 140px; }
+.item-media-gallery .item-media-thumb-extra { width: 66px; height: 44px; }
+.item-media-gallery[data-image-count="1"] { width: 140px; }
+.item-media-gallery[data-image-count="1"] .item-media-thumb { width: 140px; height: 90px; }
+.item-media-gallery[data-image-count="2"] .item-media-thumb { width: 140px; height: 66px; }
+.item-media-gallery[data-image-count="3"] { flex-direction: column; }
+.item-media-gallery[data-image-count="3"] .item-media-thumb:first-child { width: 140px; height: 62px; }
+.item-media-gallery[data-image-count="3"] .item-media-thumb-extra { width: 140px; height: 42px; }
+
 /* 多图网格（2-4 张） */
 .item-media-play.video-play { background: rgba(0, 0, 0, .5); }
 .item-media-play.video-play svg { width: 32px; height: 32px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .3)); }
@@ -28759,6 +28769,14 @@ body {
   transform: translateY(-50%) scale(1.35);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-cyan) 25%, transparent);
 }
+/* v25 #2：多分支输出口（分类器各桶 / 条件通过与不通过 / 路由规则）——小一号、区分色 */
+.wf-port-out-branch { width: 11px; height: 11px; right: -5px; background: var(--status-info, #4aa3ff); }
+.wf-port-out-branch:hover { box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-info, #4aa3ff) 28%, transparent); }
+.wf-edge-overlay .wf-edge-branch-label { font-size: 11px; font-weight: 600; fill: var(--text-primary); paint-order: stroke; stroke: var(--bg-primary); stroke-width: 3px; }
+.wf-edges .wf-edge-branch-label { font-size: 10.5px; font-weight: 600; fill: var(--text-secondary); paint-order: stroke; stroke: var(--bg-primary); stroke-width: 3px; pointer-events: none; }
+/* v25 #2：选中边的端点重连手柄 */
+.wf-edge-overlay .wf-edge-endpoint { fill: var(--bg-primary); stroke: var(--accent-cyan); stroke-width: 2.5px; cursor: grab; }
+.wf-edge-overlay .wf-edge-endpoint:hover { stroke-width: 4px; }
 .wf-edge-overlay { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
 .wf-edge-overlay circle, .wf-edge-overlay g { pointer-events: all; }
 

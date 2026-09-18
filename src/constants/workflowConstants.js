@@ -478,8 +478,10 @@ export function normalizeWorkflowTemplate(workflow, fallback = DEFAULT_AGENT_WOR
 }
 
 /**
- * v23 #3 规范化显式边：{ from, to, bend? }。
- * 只保留两端节点都存在的边（节点删除后悬空边自动清理）；自环与重复边去重；
+ * v23 #3 规范化显式边：{ from, to, branch?, bend? }。
+ * v25 #2：branch 标识分支输出口（分类器=分类桶名、条件=pass/fail、路由=规则 id、其余空串）。
+ * 只保留两端节点都存在的边（节点删除后悬空边自动清理）；自环与完全重复边去重；
+ * 同一 from→to 允许多条边并存（不同分支各自连到同一节点是合法拓扑）；
  * bend 为弧度偏移（像素），限制在 ±160。
  */
 export function normalizeWorkflowEdges(rawEdges, nodes) {
@@ -492,13 +494,143 @@ export function normalizeWorkflowEdges(rawEdges, nodes) {
     const to = String(edge?.to || '');
     if (!from || !to || from === to) continue;
     if (!nodeIds.has(from) || !nodeIds.has(to)) continue; // 悬空边清理
-    const key = `${from}->${to}`;
+    const branch = String(edge?.branch || '').trim().slice(0, 32);
+    const key = `${from}|${branch}|${to}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const bend = Number(edge?.bend);
-    out.push({ from, to, bend: Number.isFinite(bend) ? Math.max(-160, Math.min(160, bend)) : 0 });
+    out.push({ from, to, branch, bend: Number.isFinite(bend) ? Math.max(-160, Math.min(160, bend)) : 0 });
   }
   return out;
+}
+
+/** 显式边的唯一键（去重 / DOM data-edge-key / 断开重连定位共用） */
+export function workflowEdgeKey(edge) {
+  return `${edge?.from || ''}|${String(edge?.branch || '').trim().slice(0, 32)}|${edge?.to || ''}`;
+}
+
+/**
+ * v25 #2：节点的分支输出口清单（真实区分节点类型，不再千篇一律单口）。
+ * - classifier：每个分类桶一个口（桶名即 branch）
+ * - condition：通过(pass) / 不通过(fail) 两个口
+ * - router：每条路由规则一个口 + 默认(default) 口
+ * - parallel：汇总(merge) 口
+ * - 其余类型：单一 out 口
+ */
+export function getWorkflowNodePorts(node) {
+  if (!node || node.enabled === false) return [];
+  switch (node.type) {
+    case 'classifier':
+      return String(node.classifierLabels || '必读,追踪,素材,创作,降噪')
+        .split(',')
+        .map(label => label.trim())
+        .filter(Boolean)
+        .slice(0, 8)
+        .map(label => ({ id: label, label }));
+    case 'condition':
+      return [{ id: 'pass', label: '通过' }, { id: 'fail', label: '不通过' }];
+    case 'router': {
+      const routes = Array.isArray(node.routes) ? node.routes : [];
+      return [
+        ...routes.map((rule, index) => ({ id: `route-${index}`, label: rule?.targetName || rule?.match?.value || `规则${index + 1}` })),
+        { id: 'default', label: '默认' },
+      ];
+    }
+    case 'parallel':
+      return [{ id: 'merge', label: '汇总' }];
+    default:
+      return [{ id: 'out', label: '' }];
+  }
+}
+
+/** 分支口在节点右缘的纵向偏移（像素）：多口时均匀分布，单口居中 */
+export function workflowPortOffsetY(node, branch, nodeHeight = 118) {
+  const ports = getWorkflowNodePorts(node);
+  if (ports.length <= 1) return nodeHeight / 2;
+  const index = ports.findIndex(port => port.id === (branch || ports[0].id));
+  const safeIndex = index < 0 ? 0 : index;
+  return (nodeHeight * (safeIndex + 1)) / (ports.length + 1);
+}
+
+/**
+ * v25 #2：按显式连线推导执行顺序（拓扑化）。
+ * - 无显式边 → 完全向后兼容：启用节点按数组顺序执行。
+ * - 起点 = 数组序首个没有入边的启用节点（找不到则第一个启用节点）；
+ *   从起点沿出边 DFS，出边按「输出口顺序」排列（分支语义：分类器各桶、条件通过/不通过）；
+ *   环路由 visiting 集合拦截；节点只执行一次。
+ * - 不可达的启用节点按数组顺序追加在尾部（仍会被执行，等价旧顺序兜底）。
+ * @returns {Array<{node:object, viaBranch:string}>}
+ */
+export function deriveWorkflowExecutionOrder(nodes, edges) {
+  const enabled = (Array.isArray(nodes) ? nodes : []).filter(node => node && node.enabled !== false);
+  if (!enabled.length) return [];
+  const nodeById = new Map(enabled.map(node => [node.id, node]));
+  const normEdges = (Array.isArray(edges) ? edges : [])
+    .filter(edge => nodeById.has(edge?.from) && nodeById.has(edge?.to) && edge.from !== edge.to);
+  if (!normEdges.length) return enabled.map(node => ({ node, viaBranch: '' }));
+
+  const outgoing = new Map();
+  const incoming = new Map();
+  for (const edge of normEdges) {
+    if (!outgoing.has(edge.from)) outgoing.set(edge.from, []);
+    outgoing.get(edge.from).push(edge);
+    if (!incoming.has(edge.to)) incoming.set(edge.to, []);
+    incoming.get(edge.to).push(edge);
+  }
+
+  const start = enabled.find(node => !incoming.has(node.id)) || enabled[0];
+  const order = [];
+  const visited = new Set();
+  const visiting = new Set();
+
+  const portOrderIndex = (node, branch) => {
+    const ports = getWorkflowNodePorts(node);
+    if (ports.length <= 1) return 0;
+    const idx = ports.findIndex(port => port.id === (branch || 'out'));
+    return idx < 0 ? ports.length : idx;
+  };
+
+  const visit = (nodeId, viaBranch) => {
+    if (visited.has(nodeId) || visiting.has(nodeId)) return;
+    visiting.add(nodeId);
+    const node = nodeById.get(nodeId);
+    if (node) {
+      visited.add(nodeId);
+      order.push({ node, viaBranch: viaBranch || '' });
+      const outs = (outgoing.get(nodeId) || [])
+        .slice()
+        .sort((a, b) => portOrderIndex(node, a.branch) - portOrderIndex(node, b.branch));
+      for (const edge of outs) visit(edge.to, edge.branch || '');
+    }
+    visiting.delete(nodeId);
+  };
+
+  visit(start.id, '');
+  for (const node of enabled) {
+    if (!visited.has(node.id)) visit(node.id, '');
+  }
+  return order;
+}
+
+/**
+ * v25 #2：从某节点沿指定分支口出发可达的节点集合（含下游整棵子树）。
+ * 条件节点短路 / 分支跳过时用它圈定需要标记 skipped 的节点。
+ */
+export function collectBranchReachable(startNodeId, branch, edges) {
+  const reachable = new Set();
+  const stack = [];
+  for (const edge of (Array.isArray(edges) ? edges : [])) {
+    if (edge?.from === startNodeId && (edge.branch || '') === (branch || '')) stack.push(edge.to);
+  }
+  while (stack.length) {
+    const nodeId = stack.pop();
+    if (reachable.has(nodeId)) continue;
+    reachable.add(nodeId);
+    for (const edge of (Array.isArray(edges) ? edges : [])) {
+      if (edge?.from === nodeId) stack.push(edge.to);
+    }
+  }
+  return reachable;
 }
 
 /** 画布坐标规范化：非法/缺失时按索引排成一列（x=90, y=60+idx*190） */

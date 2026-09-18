@@ -1,6 +1,6 @@
 import { cleanText, decodeEntities, trimSummary, trimIntro, normalizeDate, detectCategory, detectTags, detectMode, hash, escapeRegExp } from '../utils/textProcessing.js';
 import { isEstimatedPublishTime } from '../utils/dateUtils.js';
-import { extractImageUrl, extractVideoUrl } from '../images/imageProcessing.js';
+import { extractImageUrls, extractVideoUrl } from '../images/imageProcessing.js';
 
 export function parseFeed(xml, source, options = {}) {
   const fetchedAt = options.fetchedAt || new Date().toISOString();
@@ -24,7 +24,9 @@ export function normalizeItem(block, source, index, fetchedAt = new Date().toISO
   const category = detectCategory(text, source.defaultCategory);
   const tags = detectTags(text, category);
 
-  const imageUrl = extractImageUrl(block, rawContent);
+  // 多图提取（二维码/logo/站点资产已过滤）：imageUrl 取首图保持兼容，images 供卡片图廊
+  const images = extractImageUrls(block, rawContent);
+  const imageUrl = images[0] || '';
   const videoUrl = extractVideoUrl(block);
 
   return {
@@ -43,6 +45,7 @@ export function normalizeItem(block, source, index, fetchedAt = new Date().toISO
     fetchedAt,
     tags,
     imageUrl,
+    images,
     videoUrl
   };
 }
