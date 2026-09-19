@@ -707,8 +707,13 @@ async function toolGetStockQuote(args, ctx) {
   const res = await fetch(`/api/stock/realtime?code=${encodeURIComponent(code)}`);
   if (!res.ok) return `错误：行情接口返回 ${res.status}`;
   const data = await res.json();
-  if (!data?.ok) return `错误：${data?.error || '行情查询失败'}`;
-  const q = data.realtime || {};
+  // ⚠️ 后端契约：/api/stock/realtime 成功时直接返回扁平行情对象（{secid,code,name,price,...}），
+  // 失败返回 {ok:false,message}。没有 ok:true、也没有 realtime 包装层——
+  // 旧代码 `if (!data?.ok)` 把真实成功 100% 判成失败，`data.realtime` 则让全部字段显示 '-'。
+  if (!data || data.ok === false || data.error || data.message || data.price === undefined) {
+    return `错误：${data?.error || data?.message || '行情查询失败'}`;
+  }
+  const q = data.realtime || data;
   const lines = [
     `股票：${q.name || '-'} (${q.code || code})`,
     `现价：${q.price ?? '-'}  涨跌：${q.change ?? '-'} (${q.changePct ?? '-'}%)`,
@@ -734,8 +739,14 @@ async function toolGetStockKline(args, ctx) {
   const res = await fetch(`/api/stock/kline?code=${encodeURIComponent(code)}&period=${period}&count=${count}`);
   if (!res.ok) return `错误：K 线接口返回 ${res.status}`;
   const data = await res.json();
-  if (!data?.ok) return `错误：${data?.error || 'K 线查询失败'}`;
-  const klines = Array.isArray(data?.klineData?.klines) ? data.klineData.klines : [];
+  // ⚠️ 后端契约：/api/stock/kline 成功返回 {secid,code,name,klines}（无 ok，键名就是 klines），
+  // 失败返回 {ok:false,message}。旧代码双重断链：判 ok 恒失败 + 读不存在的 klineData 包装层。
+  if (!data || data.ok === false || data.error || data.message) {
+    return `错误：${data?.error || data?.message || 'K 线查询失败'}`;
+  }
+  const klines = Array.isArray(data?.klines)
+    ? data.klines
+    : (Array.isArray(data?.klineData?.klines) ? data.klineData.klines : []);
   if (klines.length === 0) return '未获取到 K 线数据';
   const lines = klines.slice(-count).map(k =>
     `${k.date}  开 ${k.open}  高 ${k.high}  低 ${k.low}  收 ${k.close}  量 ${k.volume || 0}`

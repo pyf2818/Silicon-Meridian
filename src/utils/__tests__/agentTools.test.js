@@ -62,11 +62,10 @@ describe('execute_command 工具（方案 C Phase 4）', () => {
     expect(r).toContain('news <keyword>');
   });
 
-  it('stock 子命令路由到 get_stock_quote（带 fetch mock）', async () => {
+  it('stock 子命令路由到 get_stock_quote（带 fetch mock，契约与真实后端一致：扁平对象无 ok/realtime 包装）', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true, json: async () => ({
-        ok: true,
-        realtime: { name: '贵州茅台', code: 'sh600519', price: 1700, change: 10, changePct: 0.6 }
+        secid: 'sh600519', code: 'sh600519', name: '贵州茅台', price: 1700, change: 10, changePct: 0.6
       })
     }));
     vi.stubGlobal('fetch', fetchMock);

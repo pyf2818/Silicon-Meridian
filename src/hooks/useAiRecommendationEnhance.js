@@ -29,9 +29,14 @@ export function useAiRecommendationEnhance({ items, llmConfig } = {}) {
         body: JSON.stringify({ items: top30 }),
       });
       const data = await resp.json();
+      // ⚠️ 服务端契约：itemScores/trends/correlations/signals 都包在 data.insights 里
+      // （server/http/profileHandlers.js 返回 { ok: true, insights }）。
+      // 旧代码直接读 data.itemScores/data.trends → 全 undefined：AI 评分永不回写，
+      // 且 RightPanel 用空 insights 覆盖原有列表（「重新分析」等于清空）。
+      const payload = data.insights || {};
       if (data.ok) {
         const scoreMap = new Map(
-          (data.itemScores || []).map(s => [s.id, s])
+          (payload.itemScores || []).map(s => [s.id, s])
         );
         const enhanced = items.map(item => {
           const score = scoreMap.get(item.id);
@@ -41,9 +46,9 @@ export function useAiRecommendationEnhance({ items, llmConfig } = {}) {
         });
         setEnhancedItems(enhanced);
         setInsights({
-          trends: data.trends || [],
-          correlations: data.correlations || [],
-          signals: data.signals || [],
+          trends: payload.trends || [],
+          correlations: payload.correlations || [],
+          signals: payload.signals || [],
         });
       } else {
         setError(normalizeError(data.error) || '分析失败');

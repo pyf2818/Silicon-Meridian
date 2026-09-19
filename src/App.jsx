@@ -1102,11 +1102,14 @@ function App() {
     // 全部动态 = 纯资讯热度排序（不叠加用户画像偏好，避免与「精准推荐」功能重复）
     // 排序策略：按资讯热度降序（qualityScore + mustReadScore + AI 评分加权），同热度时按发布时间倒序
     result.sort((a, b) => {
-      // 1. 热度分（后端 qualityScore + mustReadScore + AI 评分加权 0.3）
+      // 1. 热度分（后端 qualityScore + AI 评分加权 0.3）。
+      // ⚠️ 不加 mustReadScore：此处的 items 来自 newsStore（服务端原始数据），
+      // 该字段只在前端 enrichment（useRecommendationMemos/useWorkbenchMemos）之后才有值，
+      // 在这里恒为 0，只会让排序键看起来更丰富、实际毫无贡献。
       const aAi = (a.aiRelevanceScore || 0) * 0.3;
       const bAi = (b.aiRelevanceScore || 0) * 0.3;
-      const aQ = (a.qualityScore || 0) + (a.mustReadScore || 0) + aAi;
-      const bQ = (b.qualityScore || 0) + (b.mustReadScore || 0) + bAi;
+      const aQ = (a.qualityScore || 0) + aAi;
+      const bQ = (b.qualityScore || 0) + bAi;
       if (bQ !== aQ) return bQ - aQ;
       // 2. 同热度时按发布时间倒序（最新优先）
       return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
