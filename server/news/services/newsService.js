@@ -498,6 +498,9 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
   const pagedItems = filteredItems.slice(start, end);
 
   return {
+    // 与 /api/intelligence/* 对齐：显式带 ok。此前该 payload 没有 ok 字段，
+    // 调用方若按 data.ok 判定会静默全部落空（站内几百条资讯形同不存在）。
+    ok: true,
     updatedAt: new Date().toISOString(),
     items: pagedItems,
     total: filteredItems.length,

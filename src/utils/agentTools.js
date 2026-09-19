@@ -233,7 +233,10 @@ async function toolSearchNews(args, ctx) {
     const res = await withTimeout(`/api/news?${qs.toString()}`);
     if (res.ok) {
       const data = await res.json();
-      if (data?.ok) items = Array.isArray(data.items) ? data.items : [];
+      // ⚠️ 不要判 data.ok：/api/news 的 payload 历来没有 ok 字段（只有 updatedAt/items/total…），
+      // 曾经写成 if (data?.ok) 导致主路径 100% 拿不到资讯、每次都降级到 intelligence 的少量事件——
+      // 站内 500 条资讯形同不存在。这里按 items 是否数组判定，服务端缺失 ok 也不影响。
+      if (Array.isArray(data?.items)) items = data.items;
     }
   } catch (err) {
     if (/超时/.test(String(err?.message || ''))) newsTimedOut = true;
@@ -284,7 +287,7 @@ async function toolSearchNews(args, ctx) {
       const retryRes = await withTimeout(`/api/news?search=${encodeURIComponent(keyword)}&pageSize=40`, {}, 10000);
       if (retryRes.ok) {
         const retryData = await retryRes.json();
-        if (retryData?.ok) {
+        if (Array.isArray(retryData?.items)) { // 同上：不判 ok（/api/news 不返回 ok 字段）
           const allItems = Array.isArray(retryData.items) ? retryData.items : [];
           const kws = keyword.toLowerCase().split(/\s+/).filter(Boolean);
           items = allItems.filter(item => {
