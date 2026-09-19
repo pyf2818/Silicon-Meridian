@@ -11,6 +11,7 @@
 
 import { readFile, writeFile, deleteFile } from './workspace.js';
 import { indexFile, searchFiles, listRecentFiles } from './workspaceIndex.js';
+import { augmentWithSemantics, POOL_LIMIT } from '../domain/intelligence/newsSemanticIndex.js';
 import {
   registerTool, selectSchemasByName, executeTool, getToolMeta,
   loadCustomTools, getEnabledSchemas,
@@ -240,6 +241,24 @@ async function toolSearchNews(args, ctx) {
     }
   } catch (err) {
     if (/超时/.test(String(err?.message || ''))) newsTimedOut = true;
+  }
+
+  // 词法命中不足 → 语义补充召回（本地哈希向量，零 API 成本）：
+  // 子串匹配对自然语句很脆弱（问「值得关注的 AI 动态」时标题里没有这些字就全灭），
+  // 语义层让「共享实体/主题词」的条目也能进结果。仅在词法不足时才多发一次请求。
+  const semanticFloor = Math.max(3, Math.ceil(pageSize / 2));
+  if (items.length < semanticFloor && scope !== 'intelligence' && !newsTimedOut) {
+    try {
+      const poolRes = await withTimeout(`/api/news?pageSize=${POOL_LIMIT}`, {}, 10000);
+      if (poolRes.ok) {
+        const poolData = await poolRes.json();
+        const pool = Array.isArray(poolData?.items) ? poolData.items : [];
+        const { items: merged, added } = augmentWithSemantics(items, pool, keyword, { limit: pageSize });
+        if (added > 0) items = merged;
+      }
+    } catch {
+      // 语义补充失败不影响主流程
+    }
   }
 
   // 主路径（/api/news）结果为空或超时：降级到 intelligence 事件接口（已有聚类缓存，不依赖 RSS 冷启动）

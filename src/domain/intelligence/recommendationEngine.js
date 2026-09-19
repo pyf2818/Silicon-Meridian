@@ -157,7 +157,9 @@ function hashString(str) {
   return h >>> 0;
 }
 
-function hashEmbedding(text = '', dim = 256) {
+// 导出给语义检索复用（newsSemanticIndex）：本地哈希向量，零 API 成本，
+// 语义质量弱于真实 embeddings，但足以补抓「同义不同词」的条目。
+export function hashEmbedding(text = '', dim = 256) {
   const tokens = titleTokens(text);
   const vec = new Float64Array(dim);
   tokens.forEach(token => {
@@ -171,7 +173,7 @@ function hashEmbedding(text = '', dim = 256) {
   return vec;
 }
 
-function cosineSim(left, right) {
+export function cosineSim(left, right) {
   const n = Math.min(left.length, right.length);
   let dot = 0;
   for (let i = 0; i < n; i += 1) dot += left[i] * right[i];
