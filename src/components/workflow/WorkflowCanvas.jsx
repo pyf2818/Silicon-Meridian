@@ -590,13 +590,16 @@ export default function WorkflowCanvas({
         mid: edgeMidpoint(from, to, bend, fromOffsetY),
       };
     });
-  const explicitKeys = new Set(explicitEdges.map(e => e.key));
+  // 显式边存在时顺序派生边必须让位。⚠️ 这里必须按「节点对」判定（忽略 branch）：
+  // 显式边 key 形如 `a|必读|b`，顺序边 key 形如 `a->b`，直接比字符串永远不相等——
+  // 那正是分类节点除分支线外恒多出一条指向数组下一节点的灰线（看起来"只有一个出口"）的根因。
+  const explicitPairs = new Set(explicitEdges.map(e => `${e.fromId}->${e.toId}`));
   const edgesList = [];
   for (let i = 0; i < chain.length - 1; i += 1) {
     const from = normalizeNodePosition(chain[i].position, i);
     const to = normalizeNodePosition(chain[i + 1].position, i + 1);
     const seqKey = `${chain[i].id}->${chain[i + 1].id}`;
-    if (explicitKeys.has(seqKey)) continue; // 显式边覆盖该段，顺序边跳过避免重复
+    if (explicitPairs.has(seqKey)) continue; // 该节点对已有显式连线，顺序边跳过避免重复
     const state = flowEdge < 0 ? '' : i < flowEdge ? 'done' : i === flowEdge ? 'flow' : '';
     edgesList.push({
       id: seqKey,

@@ -827,16 +827,45 @@ export default function CanvasPage({
               </div>
             )}
 
-            {selectedNode.type === 'classifier' && (
-              <label>
-                <span>分类桶</span>
-                <input
-                  value={selectedNode.classifierLabels || '必读,追踪,素材,创作,降噪'}
-                  onChange={e => updateNode(selectedNode.id, { classifierLabels: e.target.value })}
-                  placeholder="例如 必读,追踪,素材,创作,降噪"
-                />
-              </label>
-            )}
+            {selectedNode.type === 'classifier' && (() => {
+              // 分类桶 = 分类节点的分支出口：每个桶在节点右缘引出一个输出口，
+              // 可各自连到不同的下游节点（执行时按桶登记产物、下游按分支取用）。
+              const buckets = String(selectedNode.classifierLabels || '必读,追踪,素材,创作,降噪')
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean);
+              const write = arr => updateNode(selectedNode.id, { classifierLabels: arr.join(',') });
+              return (
+                <div className="canvas-router-rules">
+                  <span className="canvas-node-section-title">分类桶（每个桶引出一条分支，可连到不同下游；最多 8 个）</span>
+                  {buckets.map((label, i) => (
+                    <div key={i} className="canvas-router-rule">
+                      <input
+                        value={label}
+                        placeholder="桶名（如 必读）"
+                        onChange={e => { const next = [...buckets]; next[i] = e.target.value; write(next); }}
+                      />
+                      <button
+                        type="button"
+                        className="canvas-router-remove"
+                        onClick={() => write(buckets.filter((_, j) => j !== i))}
+                        disabled={buckets.length <= 1}
+                        title={buckets.length <= 1 ? '至少保留一个分类桶' : '删除该桶'}
+                      >✕</button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="canvas-router-add"
+                    onClick={() => write([...buckets, `分类${buckets.length + 1}`].slice(0, 8))}
+                    disabled={buckets.length >= 8}
+                  >+ 添加分类桶</button>
+                  <small className="canvas-node-hint">
+                    桶名即分支标识：从节点右缘的对应端口拉线即可把该桶连到专属下游；执行时输入会按桶逐条归类并给出理由。
+                  </small>
+                </div>
+              );
+            })()}
 
             {selectedNode.type === 'router' && (
               <div className="canvas-router-rules">

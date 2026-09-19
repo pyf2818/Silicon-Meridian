@@ -46,16 +46,18 @@ const CAPABILITIES = {
   },
   search_news: {
     label: '检索资讯',
-    snippet: '在今日资讯库中搜索关键词，返回标题/摘要/来源',
+    snippet: '检索站内已沉淀的资讯库与情报事件（支持来源/时间/分类限定召回范围），站内命中优先',
     guidelines: [
-      '用户想查某主题的资讯、或需要引用资讯作为依据时使用',
-      '查询不到时工具会尝试联网搜索兜底',
+      '查资讯/动态/趋势类问题的第一选择：站内已沉淀全站信息源（不是只有对话里提到的素材），先检索这里，再考虑联网',
+      '用 sources / since / category / scope 限定召回范围：如只查官方来源（sources="OpenAI"）、只看近 3 天（since="3d"）',
+      '站内命中会直接返回；只有站内确实没有相关内容时工具才联网兜底——不要跳过站内检索直接调 web_search',
     ],
   },
   web_search: {
     label: '联网搜索',
-    snippet: '联网搜索互联网最新信息（豆包搜索 / Tavily / DuckDuckGo）',
+    snippet: '联网搜索互联网最新信息（豆包搜索 / Tavily / DuckDuckGo），站内检索无结果时的兜底手段',
     guidelines: [
+      '仅在站内检索（search_news / read_intelligence_focus / list_knowledge）确认没有相关内容后才使用',
       '需要训练数据之外的最新信息、或资讯库查不到时使用；结果可作补充依据',
       '用户关闭「联网搜索总开关」时不可用（工具会拒绝）',
     ],

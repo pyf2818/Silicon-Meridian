@@ -13,7 +13,16 @@ import { generateSessionSummary, retrieveRelevantMemories } from '../../utils/se
 import { observeReply, observeToolUsage } from '../../utils/profileLearning.js';
 import { evolveMemory } from '../../utils/memoryEvolver.js';
 import { extractTodos } from '../../utils/todoExtractor.js';
-import { executeAgentTool } from '../../utils/agentTools.js';
+import { createSkillDirect } from '../../utils/agentTools.js';
+import { depositExperience } from '../../domain/agent/agentEvolution.js';
+import {
+  PRECIPITATION_SYSTEM_SUFFIX,
+  buildPrecipitationPrompt,
+  parsePrecipitationDecision,
+  normalizeSkillDraft,
+  shouldAttemptPrecipitation,
+  MAX_SKILLS_PER_SESSION,
+} from '../../domain/agent/skillPrecipitation.js';
 import { getRootHandle } from '../../utils/workspaceHandleStore.js';
 import { buildSessionContextText, appendHistory } from '../../utils/sessionStore.js';
 import { rememberCompaction } from '../../utils/sessionMemory.js';
@@ -24,6 +33,9 @@ import {
   COMPLETION_MAX_TOKENS,
   AUX_COMPLETION_MAX_TOKENS,
 } from '../../constants/agentLoop.js';
+
+/** 会话级自主沉淀计数（防单次会话刷出多条技能）：模块生命周期内有效 */
+const precipitatedBySession = new Map();
 
 export { mergeToolCallDeltas } from './agentLoopCore.js';
 
@@ -293,74 +305,54 @@ export async function runAgentLoop({
   const extracted = extractTodos(finalFinalContent);
   if (extracted.length > 0) setAutoTodos(extracted);
 
-  // 自动技能沉淀：任务完成后，若有工具调用且输出有结构化内容，Agent 自我反思沉淀经验
-  // 这不是用户手动"存为技能"，而是 Agent 主动从工作过程中提炼方法论、步骤、决策点
+  // ── 自主技能沉淀（静默 + Agent 自主判断）──────────────────────────────
+  // 旧行为：用「有工具调用 + 输出够长」的粗糙阈值每轮都发起一次沉淀工具调用，
+  // 而 create_skill 作为 LLM 可调工具需用户审批 → 每轮对话结束都弹「是否创建沉淀技能」。
+  // 新行为：一次结构化复盘让模型自判「是否产生了可复用的方法/规则/经验」，
+  // 判定有价值才经内核静默通道落盘（不过审批闸门），并把结论同步进经验层（进化档案）。
   const hadToolCalls = toolCallTrace.length > 0;
-  const hadStructuredOutput = /\n\s*[#>*\-\d]/.test(finalFinalContent) || finalFinalContent.length > 500;
-  if (hadToolCalls && hadStructuredOutput) {
+  const sessionSkillCount = precipitatedBySession.get(targetId) || 0;
+  if (shouldAttemptPrecipitation({
+    hadToolCalls,
+    contentLength: finalFinalContent.length,
+    sessionSkillCount,
+    maxPerSession: MAX_SKILLS_PER_SESSION,
+  })) {
     try {
-      const skillPrecipitationPrompt = [
-        '你刚完成了一个任务。现在请反思并沉淀本次工作的经验为一个可复用的技能（Skill）。',
-        '',
-        '请按以下结构输出技能内容：',
-        '',
-        '# 技能标题：<用一句话概括这个技能能做什么>',
-        '',
-        '## 适用场景',
-        '- 什么时候应该使用这个技能？',
-        '- 典型的触发关键词是什么？',
-        '',
-        '## 工作流程与方法论',
-        '1. 第一步做什么，为什么',
-        '2. 第二步做什么，关键判断标准是什么',
-        '3. 第三步做什么，注意事项有哪些',
-        '',
-        '## 关键决策点',
-        '- 在哪些情况下需要调整策略？',
-        '- 有哪些常见的陷阱或误区？',
-        '',
-        '## 工具使用经验',
-        '- 本次用到了哪些工具？各自的作用是什么？',
-        '- 工具组合的最佳实践是什么？',
-        '',
-        '## 输出模板',
-        '- 最终交付物应该包含哪些部分？',
-        '- 格式/结构要求是什么？',
-      ].join('\n');
-
-      const precipitationMessages = [
-        ...baseMessages,
-        { role: 'user', content: userMessage.content },
-        { role: 'assistant', content: finalFinalContent, tool_calls: toolCallTrace.map(tc => ({ id: tc.id, function: { name: tc.name, arguments: JSON.stringify(tc.args || {}) } })) },
-        { role: 'user', content: skillPrecipitationPrompt },
-      ];
-
       const precipitationResponse = await fetchAuxCompletion('/api/ai-generate', {
         baseUrl: llmConfig.baseUrl,
         apiKey: llmConfig.apiKey,
         model: selectedModel,
         action: 'chat',
-        systemPrompt: `${systemPrompt}\n\n【技能沉淀模式】你正在进行工作反思。你的任务是把刚才完成的工作过程、方法论、经验教训沉淀为一个可复用的 Skill。重点描述过程和方法，而不是重复输出结果。`,
-        messages: precipitationMessages,
+        systemPrompt: `${systemPrompt}\n\n${PRECIPITATION_SYSTEM_SUFFIX}`,
+        messages: [
+          ...baseMessages,
+          { role: 'user', content: userMessage.content },
+          { role: 'assistant', content: finalFinalContent, tool_calls: toolCallTrace.map(tc => ({ id: tc.id, function: { name: tc.name, arguments: JSON.stringify(tc.args || {}) } })) },
+          { role: 'user', content: buildPrecipitationPrompt() },
+        ],
         max_tokens: AUX_COMPLETION_MAX_TOKENS,
-        tools: toolSchemas.filter(s => s.function?.name === 'create_skill'),
-        tool_choice: 'auto',
+        // 刻意不传 tools：让模型以 JSON 决策，而不是去调 create_skill（那会回到审批闸门弹卡）
       }, controller?.signal);
 
       if (precipitationResponse.ok) {
         const pData = await precipitationResponse.json();
-        // 如果 Agent 调用了 create_skill，技能已由工具执行层写入
-        // 如果没有调用工具，说明 Agent 判断本次工作不值得沉淀（正常情况）
-        if (Array.isArray(pData.tool_calls) && pData.tool_calls.length > 0) {
-          // 执行 create_skill 工具调用
-          for (const tc of pData.tool_calls) {
-            const toolName = tc?.function?.name;
-            let args = {};
-            try { args = JSON.parse(tc?.function?.arguments || '{}'); } catch { args = {}; }
-            if (toolName === 'create_skill') {
-              args.source = 'work'; // 强制标记为工作沉淀
-              const toolResult = await executeAgentTool(toolName, args, toolCtx);
-              // create_skill 内部已通过 onSkillCreated 回调通知前端刷新
+        const decision = parsePrecipitationDecision(
+          typeof pData?.content === 'string' ? pData.content : '',
+        );
+        if (decision.valuable) {
+          const draft = normalizeSkillDraft(decision.skill);
+          if (draft.ok) {
+            const toolResult = await createSkillDirect({ ...draft.skill, source: 'work' }, toolCtx);
+            if (!/^错误/.test(toolResult)) {
+              precipitatedBySession.set(targetId, sessionSkillCount + 1);
+              // 经验层同步：同一结论进「进化档案」（去重 + 封顶由 depositExperience 保证，
+              // 后续对话经 evolutionPromptSnippet 回注，形成越用越懂的闭环）
+              depositExperience(agent?.id || 'orchestrator', {
+                topic: draft.skill.title,
+                lesson: draft.skill.body.slice(0, 300),
+                source: 'skill',
+              });
             }
           }
         }

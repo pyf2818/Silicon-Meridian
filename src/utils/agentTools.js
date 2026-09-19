@@ -178,10 +178,43 @@ async function toolEditFile(args, ctx) {
   return '错误：必须提供 old_string+new_string（精准替换）或 content（全量重写）之一';
 }
 
+/** 时间窗口解析：'24h' / '3d' / '2w' / '1m' → 毫秒；'all'/空/非法 → 0（不限） */
+function parseSinceWindow(raw) {
+  const m = /^(\d+)\s*([hdwm])$/.exec(String(raw || '').trim().toLowerCase());
+  if (!m) return 0;
+  const n = Number(m[1]);
+  if (!(n > 0)) return 0;
+  const unit = { h: 3600e3, d: 86400e3, w: 7 * 86400e3, m: 30 * 86400e3 }[m[2]];
+  return n * unit;
+}
+
+/** 多值参数归一化（支持逗号/顿号分隔，去重去空） */
+function parseMultiValue(raw) {
+  return [...new Set(String(raw || '').split(/[,，、]/).map(s => s.trim()).filter(Boolean))];
+}
+
 async function toolSearchNews(args, ctx) {
   const keyword = String(args?.keyword || '').trim();
   if (!keyword) return '错误：keyword 参数不能为空';
+
+  // ── 召回范围（全部可选，默认 = 全站全时段）────────────────────────
+  // sources  ：来源名包含匹配（工具层过滤——服务端缓存 key 不含该维度，下推会稀释缓存命中）
+  // category ：分类精确匹配，下推服务端 interests（现成能力，零额外成本）
+  // since    ：时间窗口，工具层过滤
+  // scope    ：all=资讯+情报事件 / news=仅资讯 / intelligence=仅情报事件
+  const sourceFilters = parseMultiValue(args?.sources).map(s => s.toLowerCase());
+  const categoryFilters = parseMultiValue(args?.category);
+  const sinceMs = parseSinceWindow(args?.since);
+  const sinceFloor = sinceMs > 0 ? Date.now() - sinceMs : 0;
+  const scope = ['all', 'news', 'intelligence'].includes(args?.scope) ? args.scope : 'all';
   const pageSize = Math.max(1, Math.min(Number(args?.pageSize) || 8, 20));
+  // 带范围过滤时多取一些，过滤后仍能凑够 pageSize
+  const fetchSize = (sourceFilters.length || sinceFloor) ? 40 : Math.max(pageSize, 12);
+  const rangeNotes = [
+    sourceFilters.length ? `来源含 ${sourceFilters.join('/')}` : '',
+    sinceMs > 0 ? `时间近 ${String(args.since).trim()}` : '',
+    categoryFilters.length ? `分类 ${categoryFilters.join('/')}` : '',
+  ].filter(Boolean);
 
   // 防御 cold-cache：newsService 首次会并发抓 265 个 RSS 源（沙盒网络受限下可能 30s 都抓不完），
   // 给首次 fetch 加 10s 预算，超时立即降级到 /api/intelligence/events（事件聚类已缓存，无 RSS 冷启动）。
@@ -194,7 +227,10 @@ async function toolSearchNews(args, ctx) {
   let items = [];
   let newsTimedOut = false;
   try {
-    const res = await withTimeout(`/api/news?search=${encodeURIComponent(keyword)}&pageSize=${pageSize}`);
+    const qs = new URLSearchParams({ search: keyword, pageSize: String(fetchSize) });
+    // 分类筛选下推服务端（interests = category 白名单，逗号分隔）
+    if (categoryFilters.length) qs.set('interests', categoryFilters.join(','));
+    const res = await withTimeout(`/api/news?${qs.toString()}`);
     if (res.ok) {
       const data = await res.json();
       if (data?.ok) items = Array.isArray(data.items) ? data.items : [];
@@ -204,7 +240,7 @@ async function toolSearchNews(args, ctx) {
   }
 
   // 主路径（/api/news）结果为空或超时：降级到 intelligence 事件接口（已有聚类缓存，不依赖 RSS 冷启动）
-  if (items.length === 0) {
+  if (items.length === 0 && scope !== 'news') {
     try {
       const intRes = await withTimeout(
         `/api/intelligence/events?take=80&storage=auto`,
@@ -259,15 +295,42 @@ async function toolSearchNews(args, ctx) {
       }
     } catch { /* ignore */ }
   }
-  // 兜底 2.5（联网之前）：关键词太具体时，退回「今日情报概览」——
-  // 资讯库里有内容但关键词没命中，直接联网等于放弃站内数据。
-  const overview = await toolReadIntelligenceFocus({ take: 6 });
-  if (overview && !/^(未找到|今日暂无|错误)/.test(overview.slice(0, 12))) {
-    return `资讯库中未找到与 "${keyword}" 完全相关的内容。以下是今日站内情报概览（可用 read_intelligence_focus 深入某主题，或调用 web_search 联网补充）：\n\n${overview}`;
+  // ── 召回范围过滤（来源 / 时间）：必须在站内命中判定之前 ──────────────
+  const inRange = (item) => {
+    if (sourceFilters.length) {
+      const src = String(item.source || '').toLowerCase();
+      if (!sourceFilters.some(f => src.includes(f))) return false;
+    }
+    if (sinceFloor > 0) {
+      const ts = Date.parse(item.publishedAt || item.lastSeenAt || '');
+      if (!Number.isFinite(ts) || ts < sinceFloor) return false;
+    }
+    return true;
+  };
+  items = items.filter(inRange);
+  const rangeLabel = rangeNotes.length ? `（范围：${rangeNotes.join('，')}）` : '';
+
+  // ── 站内命中：直接返回（站内沉淀优先）─────────────────────────────
+  // ⚠️ 回归防线：本判定必须在「今日概览」与「联网兜底」之前。
+  // 旧实现把概览分支漏在 if 之外且无条件 return —— 只要当日有任何事件，
+  // 命中结果就被概览吞掉（检索形同虚设、被迫联网）。单测 search_news 管辖。
+  if (items.length > 0) {
+    const lines = items.slice(0, pageSize).map((item, i) =>
+      `${i + 1}. ${item.title}\n   来源：${item.source || '未知'} | ${item.publishedAt ? new Date(item.publishedAt).toLocaleString('zh-CN') : '时间未知'}\n   摘要：${String(item.summary || '').slice(0, 200)}`
+    );
+    return `站内命中 ${items.length} 条相关资讯${rangeLabel}：\n\n${lines.join('\n\n')}`;
   }
 
-  if (items.length === 0) {
-    // 最后 fallback：尝试联网搜索
+  // ── 站内没命中关键词：先给「今日概览」（库里有内容时概览优于直接联网）──
+  if (scope !== 'news') {
+    const overview = await toolReadIntelligenceFocus({ take: 6 });
+    if (overview && !/^(未找到|今日暂无|错误)/.test(overview.slice(0, 12))) {
+      return `站内未找到与 "${keyword}" 精确相关的内容${rangeLabel}。以下是今日站内情报概览（可换关键词，或用 read_intelligence_focus 深入某主题）：\n\n${overview}\n\n（若确需站外信息，可调用 web_search 联网补充）`;
+    }
+  }
+
+  // ── 站内确实无内容：联网兜底（最后手段，非首选）────────────────────
+  {
     // 注意：与「联网搜索（web_search）」工具不同，此处不携带用户在设置中配置的
     // 豆包/Tavily Key（仅当 Key 已配置到服务端环境变量时才可能成功）。
     let webData = null;
@@ -285,7 +348,7 @@ async function toolSearchNews(args, ctx) {
       const lines = webData.results.map((item, i) =>
         `${i + 1}. ${item.title || '(无标题)'}\n   链接：${item.url || ''}\n   摘要：${String(item.snippet || '').slice(0, 200)}`
       );
-      return `资讯库中未找到 "${keyword}"，已通过联网搜索补充 ${webData.results.length} 条结果：\n\n${lines.join('\n\n')}`;
+      return `站内未找到 "${keyword}"${rangeLabel}，已通过联网搜索补充 ${webData.results.length} 条结果：\n\n${lines.join('\n\n')}`;
     }
 
     // 联网兜底失败：给出友好引导，提示改用「联网搜索（web_search）」工具。
@@ -301,12 +364,8 @@ async function toolSearchNews(args, ctx) {
     } else {
       hint = '如需联网补充，请调用「联网搜索（web_search）」工具（需先在「设置 → 大模型配置」填入豆包搜索 API Key：火山引擎订阅「豆包搜索 Custom 版」，国内访问稳定，每月免费 500 次）。';
     }
-    return `本地资讯库中未找到与 "${keyword}" 相关的资讯，联网兜底暂不可用。${hint}`;
+    return `本地资讯库中未找到与 "${keyword}" 相关的资讯${rangeLabel}，联网兜底暂不可用。${hint}`;
   }
-  const lines = items.map((item, i) =>
-    `${i + 1}. ${item.title}\n   来源：${item.source || '未知'} | ${item.publishedAt ? new Date(item.publishedAt).toLocaleString('zh-CN') : '时间未知'}\n   摘要：${String(item.summary || '').slice(0, 200)}`
-  );
-  return `找到 ${items.length} 条相关资讯：\n\n${lines.join('\n\n')}`;
 }
 
 /**
@@ -471,6 +530,17 @@ async function toolCreateSkill(args, ctx) {
     return `错误：${err?.message || '创建失败'}`;
   }
 }
+
+/**
+ * 静默沉淀通道（内核专用，绕过工具审批闸门）。
+ *
+ * 为什么不直接用 executeAgentTool('create_skill')：
+ *   create_skill 作为「LLM 可调用的工具」时走审批（它写服务器文件系统、且技能会被
+ *   注入后续 prompt，是持久化注入通道，审批是必要的安全边界）。但「对话结束后的
+ *   自主沉淀」属于内核行为——由内核复盘判定后直接落盘，既不打扰用户，也不把
+ *   「静默写文件」的能力暴露到 LLM 的工具调用面上。
+ */
+export const createSkillDirect = toolCreateSkill;
 
 /**
  * 联网搜索：豆包搜索（火山引擎，国内首选） > Tavily > DuckDuckGo
@@ -1456,18 +1526,22 @@ const BUILTIN_TOOL_DEFS = [
       type: 'function',
       function: {
         name: 'search_news',
-        description: '搜索资讯库（支持关键词全文检索，返回标题/摘要/来源）',
+        description: '【站内检索·首选】检索平台已沉淀的资讯库与情报事件（含全部已接入信息源，非仅对话内素材）。支持按来源/时间/分类限定召回范围；站内命中即返回，只有站内确实没有才联网兜底。查资讯/动态/趋势类问题应优先用它，而不是直接 web_search',
         parameters: {
           type: 'object',
           properties: {
-            keyword: { type: 'string', description: '搜索关键词' },
+            keyword: { type: 'string', description: '搜索关键词（多词按 OR 命中，命中词多的排前）' },
+            sources: { type: 'string', description: '来源筛选（可选，逗号分隔，包含匹配）：如 "OpenAI,机器之心"' },
+            since: { type: 'string', description: '时间范围（可选）：24h / 3d / 7d / 1m；不传＝不限' },
+            category: { type: 'string', description: '分类筛选（可选，逗号分隔，精确匹配）：如 "ai-models,industry"' },
+            scope: { type: 'string', description: '检索范围：all（资讯+情报事件，默认）/ news（仅资讯）/ intelligence（仅情报事件）' },
             pageSize: { type: 'number', description: '返回条数（默认 8，最多 20）' }
           },
           required: ['keyword']
         }
       }
     },
-    meta: { label: '检索资讯', iconKey: 'search', description: '搜索资讯库', category: 'news' },
+    meta: { label: '检索资讯', iconKey: 'search', description: '检索站内资讯库（支持来源/时间/分类范围）', category: 'news' },
     executor: toolSearchNews,
   },
   {

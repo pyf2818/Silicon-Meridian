@@ -462,6 +462,18 @@ export function normalizeWorkflowTemplate(workflow, fallback = DEFAULT_AGENT_WOR
       inputKey: String(node?.inputKey || previousOutputKey).trim(),
       outputKey: String(node?.outputKey || (type === 'output' ? 'final_output' : `step_${index + 1}`)).trim(),
       enabled: node?.enabled !== false,
+      // ── 分支/编排类参数必须透传 ─────────────────────────────────────
+      // 这里是「字段白名单重建」：不在白名单里的参数会在 store 初始化 / 切模板 /
+      // 导入 / 重置（都会过 normalize）时被静默丢弃——表现为「配置完刷新就没了」。
+      routerRules: Array.isArray(node?.routerRules) ? node.routerRules : [],
+      parallelBranches: Array.isArray(node?.parallelBranches) ? node.parallelBranches : [],
+      parallelMerge: node?.parallelMerge || 'concat',
+      workflowId: node?.workflowId || '',
+      skillMode: node?.skillMode || '',
+      // 模板/引擎侧的等价字段（旧数据兼容）：仅在原值存在时透传，不凭空造空字段
+      ...(Array.isArray(node?.routes) ? { routes: node.routes } : {}),
+      ...(Array.isArray(node?.branches) ? { branches: node.branches } : {}),
+      ...(node?.mergeStrategy ? { mergeStrategy: node.mergeStrategy } : {}),
       // 画布坐标（无限画布）：旧数据无 position 时按序自动排布一列
       position: normalizeNodePosition(node?.position, index),
     };
@@ -530,9 +542,21 @@ export function getWorkflowNodePorts(node) {
     case 'condition':
       return [{ id: 'pass', label: '通过' }, { id: 'fail', label: '不通过' }];
     case 'router': {
-      const routes = Array.isArray(node.routes) ? node.routes : [];
+      // UI 写的是 routerRules（{ matchKey/matchValue/… }），模板/引擎侧用 routes —— 两者都认，
+      // 否则配置面板里加的路由规则不会长出输出口（节点看起来永远只有一个「默认」口）。
+      const rulesRaw = Array.isArray(node.routerRules) && node.routerRules.length
+        ? node.routerRules
+        : (Array.isArray(node.routes) ? node.routes : []);
       return [
-        ...routes.map((rule, index) => ({ id: `route-${index}`, label: rule?.targetName || rule?.match?.value || `规则${index + 1}` })),
+        ...rulesRaw.map((rule, index) => ({
+          id: `route-${index}`,
+          label: rule?.targetName
+            || rule?.label
+            || rule?.match?.value
+            || rule?.matchValue
+            || rule?.when
+            || `规则${index + 1}`,
+        })),
         { id: 'default', label: '默认' },
       ];
     }

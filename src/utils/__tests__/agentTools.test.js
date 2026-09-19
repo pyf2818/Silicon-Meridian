@@ -92,7 +92,7 @@ describe('execute_command 工具（方案 C Phase 4）', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
     const r = await executeAgentTool('execute_command', { command: 'news OpenAI' }, {});
-    expect(r).toContain('找到 1 条相关资讯');
+    expect(r).toContain('站内命中 1 条相关资讯');
     expect(r).toContain('OpenAI 发布新模型');
   });
 
@@ -350,5 +350,152 @@ describe('web_search 工具（联网搜索）', () => {
     }, {});
     expect(r).toContain('openai gpt 5');
     expect(r).toContain('T1');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// search_news 召回范围与站内优先
+// 背景：旧实现把「今日概览」兜底漏在 if 之外且无条件 return，导致只要当日
+// 有任何情报事件，真实命中结果永远被概览吞掉（站内检索形同虚设、被迫联网）。
+// 这里用回归用例把正确的兜底顺序钉死。
+// ────────────────────────────────────────────────────────────────────────────
+describe('search_news 工具（站内优先 + 召回范围）', () => {
+  const hoursAgo = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+
+  const newsItem = (over = {}) => ({
+    title: 'OpenAI 发布新模型',
+    source: 'OpenAI Blog',
+    summary: '新一代推理模型发布，支持长上下文',
+    publishedAt: hoursAgo(1),
+    ...over,
+  });
+
+  /** 按 URL 分派的 fetch mock：news / intelligence events / web-search 三路 */
+  const makeFetch = ({ news = [], events = [], web = [] } = {}) =>
+    vi.fn(async (url) => {
+      const u = String(url);
+      if (u.startsWith('/api/news')) return { ok: true, json: async () => ({ ok: true, items: news }) };
+      if (u.startsWith('/api/intelligence/events')) return { ok: true, json: async () => ({ ok: true, events }) };
+      if (u.startsWith('/api/web-search')) return { ok: true, json: async () => ({ ok: true, results: web }) };
+      return { ok: false, json: async () => ({ ok: false }) };
+    });
+
+  const eventItem = (over = {}) => ({
+    id: 'ev-1',
+    title: 'OpenAI 发布新模型',
+    summary: '多源交叉验证事件',
+    sources: ['TechCrunch'],
+    lastSeenAt: hoursAgo(2),
+    intelligenceScore: 80,
+    ...over,
+  });
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('【回归】站内有命中时必须返回命中内容，绝不被「今日概览」吞掉', async () => {
+    const fetchMock = makeFetch({
+      news: [newsItem()],
+      events: [eventItem()], // 当日有情报事件 → 旧实现会因此走概览分支吞掉命中
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const r = await executeAgentTool('search_news', { keyword: 'OpenAI' }, {});
+    expect(r).toContain('站内命中 1 条相关资讯');
+    expect(r).toContain('OpenAI 发布新模型');
+    expect(r).toContain('OpenAI Blog');
+    expect(r).not.toContain('未找到');
+    expect(r).not.toContain('情报概览');
+    // 命中路径不得触发联网
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/api/web-search'))).toBe(false);
+  });
+
+  it('站内有内容但关键词没命中：给今日概览兜底，不联网', async () => {
+    const fetchMock = makeFetch({
+      news: [],
+      events: [eventItem({ title: '完全不相关的标题', summary: '无关摘要' })],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const r = await executeAgentTool('search_news', { keyword: '量子计算突破' }, {});
+    expect(r).toContain('站内未找到');
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/api/web-search'))).toBe(false);
+  });
+
+  it('站内彻底无内容时，才走联网兜底', async () => {
+    const fetchMock = makeFetch({
+      news: [],
+      events: [],
+      web: [{ title: '站外结果', url: 'https://ex.com', snippet: '外部摘要' }],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const r = await executeAgentTool('search_news', { keyword: 'XYZ 不存在的主题' }, {});
+    expect(r).toContain('联网搜索补充 1 条结果');
+    expect(r).toContain('站外结果');
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/api/web-search'))).toBe(true);
+  });
+
+  it('sources 来源过滤：不匹配的来源被排除', async () => {
+    const fetchMock = makeFetch({
+      news: [
+        newsItem({ title: 'OpenAI 官方文章', source: 'OpenAI Blog' }),
+        newsItem({ title: 'OpenAI 第三方报道', source: '某科技媒体' }),
+      ],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const r = await executeAgentTool('search_news', { keyword: 'OpenAI', sources: 'openai' }, {});
+    expect(r).toContain('OpenAI 官方文章');
+    expect(r).not.toContain('第三方报道');
+    expect(r).toContain('来源含 openai');
+  });
+
+  it('since 时间过滤：超窗条目被排除', async () => {
+    const fetchMock = makeFetch({
+      news: [
+        newsItem({ title: '一小时内的新消息', publishedAt: hoursAgo(0.5) }),
+        newsItem({ title: '两天前的旧消息', publishedAt: hoursAgo(48) }),
+      ],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const r = await executeAgentTool('search_news', { keyword: 'OpenAI', since: '24h' }, {});
+    expect(r).toContain('一小时内的新消息');
+    expect(r).not.toContain('两天前的旧消息');
+  });
+
+  it('category 分类下推服务端 interests 参数', async () => {
+    const fetchMock = makeFetch({ news: [newsItem()] });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await executeAgentTool('search_news', { keyword: 'OpenAI', category: 'ai-models,industry' }, {});
+    const newsCall = fetchMock.mock.calls.find(c => String(c[0]).startsWith('/api/news'));
+    expect(String(newsCall[0])).toContain('interests=ai-models%2Cindustry');
+  });
+
+  it('scope=news 时不查情报事件接口', async () => {
+    const fetchMock = makeFetch({ news: [newsItem()] });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await executeAgentTool('search_news', { keyword: 'OpenAI', scope: 'news' }, {});
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('/api/intelligence/events'))).toBe(false);
+  });
+
+  it('范围不匹配导致命中为空时，文案带上范围说明', async () => {
+    const fetchMock = makeFetch({
+      news: [newsItem({ source: 'OpenAI Blog' })],
+      events: [],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const r = await executeAgentTool('search_news', { keyword: 'OpenAI', sources: '不存在的来源' }, {});
+    expect(r).toContain('未找到与 "OpenAI"');       // 站内为空才走到兜底（概览/联网）
+    expect(r).toContain('来源含 不存在的来源');      // 范围说明随结果回传，便于 agent 调整范围重试
+  });
+
+  it('schema 暴露召回范围参数', () => {
+    const schema = AGENT_TOOL_SCHEMAS.find(s => s.function.name === 'search_news');
+    const props = Object.keys(schema.function.parameters.properties);
+    expect(props).toEqual(expect.arrayContaining(['keyword', 'sources', 'since', 'category', 'scope', 'pageSize']));
   });
 });
