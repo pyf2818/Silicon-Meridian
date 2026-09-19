@@ -302,6 +302,12 @@ export async function runAgentLoop({
   // 画像学习与摘要（与流式路径一致）
   observeReply(finalFinalContent);
   setLearnedVersion(v => v + 1);
+  // 进化档案统计：runAgentLoop 路径此前从未记录 → 进化数值只被流式路径累加，
+  // 走本路径的对话完全不计入（用户「用了好久一点没增长」的根因）。
+  recordAgentRun(agent?.id || 'orchestrator', {
+    toolCalls: toolCallTrace.length,
+    skillsUsed: toolCallTrace.filter(tc => tc?.name === 'create_skill' || String(tc?.args || '').includes('"title"')).length,
+  });
   const extracted = extractTodos(finalFinalContent);
   if (extracted.length > 0) setAutoTodos(extracted);
 
