@@ -6,6 +6,11 @@ import { useProfileStore } from '../../store';
 import { buildToolCapabilitiesText } from '../../utils/toolCapabilities.js';
 import { untrustedDataPolicyText } from '../../session/untrusted.js';
 import { evolutionPromptSnippet } from '../../domain/agent/agentEvolution.js';
+import {
+  buildEvidenceCatalog,
+  CATALOG_LIMITS,
+  CATALOG_USAGE_HINT,
+} from './buildEvidenceCatalog.js';
 
 /**
  * @param {object} opts
@@ -49,11 +54,13 @@ export function buildSystemPrompt({
   const interests = (selectedInterests || [])
     .map(id => categories?.find(c => c.id === id)?.label || id)
     .join('、');
-  const evidenceItems = excludeAllEvidence ? [] : (intelligenceContext?.items || []).slice(0, 12);
-  const evidence = evidenceItems.map(item => {
-    const summary = String(item.summary || '').replace(/\s+/g, ' ').slice(0, 600);
-    return `[资讯:${item.id}] 标题：${item.title}；来源：${item.source || '未知'}；摘要：${summary || '无摘要'}`;
-  }).join('\n');
+  // 【目录层】情报条目不再注入正文摘要：旧版 12 条 × 600 字 ≈ 5K token，且 agent 只看得见 12 条。
+  // 改为最多 60 条「一行一条」的紧凑目录（≈1.5K token，固定成本不随库内总量增长），
+  // 正文一律交给工具按需取（见下方 CATALOG_USAGE_HINT）。
+  const evidenceItems = excludeAllEvidence
+    ? []
+    : (intelligenceContext?.items || []).slice(0, CATALOG_LIMITS.news);
+  const evidence = buildEvidenceCatalog({ items: evidenceItems }).text;
   // 完整用户画像注入：让 AI 真正认识用户
   const profile = intelligenceProfile || {};
   const profileLines = [
@@ -160,9 +167,9 @@ export function buildSystemPrompt({
     '当用户关注领域相关时，优先深入分析；对降权来源的资讯简要带过。回复必须使用中文。',
     '当需要展示数据时，请使用 markdown 表格。当需要展示趋势时，使用简洁的符号图表。',
     '【输出风格·硬性约束】禁止使用任何 emoji、颜文字或装饰性符号（包括但不限于 💡📊🚀✨🔍📌🎯✅❌⚡🔥💡等）。也不要在标题或列表项前加 emoji。保持专业、克制的文字表达，让信息密度本身成为可读性的来源。',
-    evidence ? `可用证据（仅限以下条目）：\n${evidence}` : '当前没有可用证据，不得生成未经证实的具体事实。',
-    (!excludeAllMaterials && materialContext.lines.length > 0)
-      ? `【素材库上下文】以下素材可用于延续研究，AI 精灵保存的素材优先代表跨页面拖拽分析后的交接记录：\n${materialContext.lines.join('\n')}`
+    evidence ? `可用证据目录（仅限以下条目；正文按需取）：\n${evidence}\n\n${CATALOG_USAGE_HINT}` : '当前没有可用证据，不得生成未经证实的具体事实。',
+    (!excludeAllMaterials && (materialContext?.selected?.length || materialContext?.lines?.length))
+      ? `【素材库目录】以下素材可用于延续研究（AI 精灵保存的素材优先代表跨页面拖拽分析后的交接记录；只列标题与元信息，正文用 list_knowledge / read_workspace_file 取）：\n${buildEvidenceCatalog({ materials: materialContext.selected || [] }).text || materialContext.lines.join('\n')}`
       : '',
     // 会话记忆：检索相关历史摘要，让 AI 跨对话不失忆
     relevantMemories.length > 0
@@ -171,10 +178,10 @@ export function buildSystemPrompt({
       : '',
     // 工作空间召回：自动检索相关历史文件注入上下文
     recalledFiles.length > 0
-      ? `【工作空间召回】以下是你之前沉淀的相关文件，可参考其中信息（以今日证据为准）：\n${recalledFiles.map(f => `[文件:${f.name}]\n${String(f.content || '').slice(0, 1500)}`).join('\n\n')}`
+      ? `【工作空间召回·目录】以下是你之前沉淀的相关文件（只列名称与一瞥，需要全文时用 read_workspace_file 按名读取）：\n${buildEvidenceCatalog({ files: recalledFiles }).text}`
       : '',
     workspaceFiles.length > 0
-      ? `用户从本地工作空间加入了以下文件作为分析上下文：\n${workspaceFiles.map(f => `[文件:${f.name}]\n${String(f.content || '').slice(0, 2000)}`).join('\n\n')}`
+      ? `用户从本地工作空间加入了以下文件作为分析上下文（用户显式指定，保留正文；已按条数与长度封顶）：\n${workspaceFiles.slice(0, 4).map(f => `[文件:${f.name}]\n${String(f.content || '').slice(0, 1200)}`).join('\n\n')}`
       : '',
     // Phase 1.3 Task 14: 预留"最近校准"段 —— 读取 pendingSuggestions 中近 7 天 accepted 的建议。
     // 当前 pendingSuggestions 永远没有 accepted 项（Phase 2 才有接受 UI），此段实际不输出内容，
