@@ -338,9 +338,9 @@ async function toolSearchNews(args, ctx) {
   // 命中结果就被概览吞掉（检索形同虚设、被迫联网）。单测 search_news 管辖。
   if (items.length > 0) {
     const lines = items.slice(0, pageSize).map((item, i) =>
-      `${i + 1}. ${item.title}\n   来源：${item.source || '未知'} | ${item.publishedAt ? new Date(item.publishedAt).toLocaleString('zh-CN') : '时间未知'}\n   摘要：${String(item.summary || '').slice(0, 200)}`
+      `${i + 1}. ${item.title}\n   来源：${item.source || '未知'} | ${item.publishedAt ? new Date(item.publishedAt).toLocaleString('zh-CN') : '时间未知'}${item.url ? `\n   原文：${item.url}` : ''}\n   摘要：${String(item.summary || '').slice(0, 200)}`
     );
-    return `站内命中 ${items.length} 条相关资讯${rangeLabel}：\n\n${lines.join('\n\n')}`;
+    return `站内命中 ${items.length} 条相关资讯${rangeLabel}：\n\n${lines.join('\n\n')}\n\n（需要深入分析某条时，用 fetch_page 抓取其「原文」链接读全文——RSS 摘要通常只有首段。）`;
   }
 
   // ── 站内没命中关键词：先给「今日概览」（库里有内容时概览优于直接联网）──
@@ -425,7 +425,7 @@ async function toolReadIntelligenceFocus(args, ctx) {
     const lines = events.map(ev => {
       const src = (ev.sources || []).length ? ev.sources.join('、') : (ev.source || '情报事件');
       const summary = String(ev.summary || '').replace(/\s+/g, ' ').slice(0, 400);
-      return `[资讯:${ev.id}] ${ev.title}\n  来源：${src}（${ev.independentSourceCount || 1} 个独立源，置信度 ${ev.confidence || 0}%）\n  摘要：${summary || '无'}`;
+      return `[资讯:${ev.id}] ${ev.title}\n  来源：${src}（${ev.independentSourceCount || 1} 个独立源，置信度 ${ev.confidence || 0}%）\n  摘要：${summary || '无'}${ev.url ? `\n  原文：${ev.url}` : ''}`;
     });
     const header = topic
       ? `聚焦主题 "${topic}" 的 ${events.length} 条情报事件（可直接以 [资讯:ID] 格式引用）：`
@@ -478,7 +478,8 @@ async function toolFetchPage(args, ctx) {
   const data = await res.json();
   if (!data?.ok) return `错误：${data?.error || '网页抓取失败'}`;
   const text = String(data.content || '');
-  const max = 12000;
+  // 深读正文是「分析讲解」的主要素材来源，给比 RSS 摘要大得多的预算
+  const max = 16000;
   if (text.length > max) {
     return text.slice(0, max) + `\n\n[正文过长，已截断，原长度 ${text.length} 字符]`;
   }

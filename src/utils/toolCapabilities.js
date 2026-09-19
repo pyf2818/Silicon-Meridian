@@ -64,8 +64,9 @@ const CAPABILITIES = {
   },
   fetch_page: {
     label: '抓取网页',
-    snippet: '抓取一个网页的正文文本（有 SSRF 保护）',
+    snippet: '抓取一个网页的正文文本（有 SSRF 保护），深读站内资讯正文的主要手段',
     guidelines: [
+      'search_news / read_intelligence_focus 的结果里带有「原文」链接——需要深入分析、讲解某条资讯时，用它抓原文全文（RSS 摘要通常只有首段）',
       '需要阅读某 URL 的完整内容时才使用，先确认 URL 可信；受沙箱出口白名单约束',
     ],
   },
