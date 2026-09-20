@@ -321,6 +321,9 @@ function App() {
   // ===== AI 助手与简报状态（迁移自 useState -> Zustand aiStore）=====
   const copilotPendingMessage = useAiStore(s => s.copilotPendingMessage);
   const setCopilotPendingMessage = useAiStore(s => s.setCopilotPendingMessage);
+  // 素材「发送到工作站」的置顶 ID：buildMaterialContext 据此把这些素材强制进上下文
+  const copilotMaterialIds = useAiStore(s => s.copilotMaterialIds);
+  const setCopilotMaterialIds = useAiStore(s => s.setCopilotMaterialIds);
   const showNewspaperOverlay = useUiStore(s => s.showNewspaperOverlay);
   const setShowNewspaperOverlay = useUiStore(s => s.setShowNewspaperOverlay);
   const showUserMenu = useUiStore(s => s.showUserMenu);
@@ -601,6 +604,7 @@ function App() {
     creativeWorkspace,
     setNav,
     setCopilotPendingMessage,
+    setCopilotMaterialIds,
     setShowAddMaterial,
     setShowSpaceForm,
     materialSpaceFilter,
@@ -2361,6 +2365,7 @@ ${materialLines || '暂无素材'}`;
               onOpenLlmConfig={() => setShowLlmQuickConfig(true)}
               pendingMessage={copilotPendingMessage}
               onMessageSent={() => setCopilotPendingMessage('')}
+              pinnedMaterialIds={copilotMaterialIds}
               intelligenceContext={{
                 date: selectedNewsDate,
                 briefing: algorithmBriefing,

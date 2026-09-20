@@ -34,6 +34,11 @@ export const useAiStore = create(
       // ===== Copilot 待发消息（不持久化）=====
       copilotPendingMessage: '',
       setCopilotPendingMessage: (v) => set({ copilotPendingMessage: v }),
+      // ===== 置顶素材（结构化引用，不持久化）=====
+      // 素材「发送到工作站」时登记 ID：buildMaterialContext 据此把这些素材
+      // 强制置顶进上下文（替代旧的 3500 字文本快照——正文由 agent 按需取）
+      copilotMaterialIds: [],
+      setCopilotMaterialIds: (ids) => set({ copilotMaterialIds: Array.isArray(ids) ? ids : [] }),
     }),
     {
       name: 'siliconstream-ai-store',

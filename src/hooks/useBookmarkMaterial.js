@@ -42,6 +42,7 @@ export function useBookmarkMaterial({
   creativeWorkspace,
   setNav,
   setCopilotPendingMessage,
+  setCopilotMaterialIds,
   setShowAddMaterial,
   setShowSpaceForm,
   materialSpaceFilter,
@@ -199,17 +200,16 @@ export function useBookmarkMaterial({
   const continueMaterialInWorkbench = useCallback((material) => {
     if (!material) return;
     setSelectedMaterials([material.id]);
-    setCopilotPendingMessage?.([
-      `请基于这条素材继续研究：${material.title || '未命名素材'}`,
-      '',
-      '【素材内容】',
-      String(material.fullContent || material.content || '').slice(0, 3500),
-      '',
-      '请输出：1）核心判断 2）证据缺口 3）下一步研究清单 4）可沉淀为文章的结构。',
-    ].join('\n'));
+    // 结构化引用：不再把 3500 字正文快照贴进消息——素材 ID 挂进 copilotMaterialIds，
+    // buildMaterialContext 会把该素材强制置顶进上下文；正文由 agent 用 read_material
+    // 按需取回（目录层已列 [素材:ID]，read_material 可读全文）。
+    setCopilotMaterialIds?.([material.id]);
+    setCopilotPendingMessage?.(
+      `请基于素材「${material.title || '未命名素材'}」（[素材:${material.id}]，已置顶进上下文）继续研究：先用 read_material 读取它的完整正文，再给出判断与建议。`,
+    );
     setNav?.('home');
     showToast('已发送到 AI 工作站继续研究');
-  }, [setNav, setCopilotPendingMessage]);
+  }, [setNav, setCopilotPendingMessage, setCopilotMaterialIds]);
 
   // ===== 回收站：删除进回收站（软删除，可恢复/彻底清除），上限 30 条 =====
   // 自愈：历史 spaceId 可能是数字 / 带空格字符串

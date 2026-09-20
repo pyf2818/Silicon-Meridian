@@ -77,6 +77,7 @@ export default function AiChatPanel({
   user,
   pendingMessage,
   onMessageSent,
+  pinnedMaterialIds,
   intelligenceContext,
   onOpenNewspaper,
   todayBriefing,
@@ -370,11 +371,12 @@ export default function AiChatPanel({
 
   // 素材库上下文（知识库联动）：按当前输入检索最相关素材，而非固定注入 top 6。
   // 输入为空时回退最近一条用户消息作查询；都空则走通用默认。
+  // pinnedIds：素材「发送到工作站」时登记的置顶 ID——强制入选且排最前（结构化引用）。
   const materialContext = useMemo(() => {
     const lastUser = [...messages].reverse().find(m => m.role === 'user')?.content || '';
     const query = (input || lastUser || '').slice(0, 120);
-    return buildMaterialContext(materials, { query, limit: 12 });
-  }, [materials, input, messages]);
+    return buildMaterialContext(materials, { query, limit: 12, pinnedIds: pinnedMaterialIds });
+  }, [materials, input, messages, pinnedMaterialIds]);
 
   // 上下文胶囊弹层数据：情报证据条目（与 system prompt 注入同源，≤12 条）
   const intelPeekItems = useMemo(() => (intelligenceContext?.items || []).slice(0, 12), [intelligenceContext]);

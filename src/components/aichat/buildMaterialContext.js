@@ -51,34 +51,43 @@ export function scoreMaterialsByQuery(normalized, query) {
 
 /**
  * 构造素材库上下文（知识库联动）：
+ * - pinnedIds：素材「发送到工作站」时登记的置顶 ID——强制入选并排最前（结构化引用，
+ *   不受关键词打分限制；正文由 agent 用 read_material 按需取回）
  * - query 提供时按相关性检索，取 top `limit` 条相关素材
- * - 无 query 或检索为空：回退「优先 + 收藏 + 最新」的通用 top 6（旧行为）
+ * - 无 query 或检索为空：回退「优先 + 收藏 + 最新」的通用列表
  *
- * @param {Array}  materials 素材列表
- * @param {string} [query]   当前问题/会话上下文（可选）
- * @param {number} [limit]   检索上限
- * @returns {{total, elfCount, selected, lines, hasElf, mode:'query'|'default'}}
+ * @param {Array}  materials  素材列表
+ * @param {string} [query]    当前问题/会话上下文（可选）
+ * @param {number} [limit]    检索上限
+ * @param {Array}  [pinnedIds] 置顶素材 ID（可选）
+ * @returns {{total, elfCount, selected, lines, hasElf, mode:'query'|'default'|'pinned'}}
  */
-export function buildMaterialContext(materials, { query = '', limit = 6 } = {}) {
+export function buildMaterialContext(materials, { query = '', limit = 12, pinnedIds = [] } = {}) {
   const materialList = Array.isArray(materials) ? materials : [];
   const normalized = materialList.flatMap((material) => {
     try { return [normalizeAsset(material)]; } catch { return []; }
   });
 
-  // 有 query 时按相关性检索
+  // 置顶素材：强制入选、排最前
+  const pinnedIdSet = new Set((Array.isArray(pinnedIds) ? pinnedIds : []).map(String));
+  const pinned = pinnedIdSet.size ? normalized.filter(m => pinnedIdSet.has(String(m.id))) : [];
+  const rest = pinnedIdSet.size ? normalized.filter(m => !pinnedIdSet.has(String(m.id))) : normalized;
+  const remaining = Math.max(1, limit - pinned.length);
+
   if (query) {
-    const scores = scoreMaterialsByQuery(normalized, query);
+    const scores = scoreMaterialsByQuery(rest.length ? rest : normalized, query);
     const ranked = [...scores.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
+      .slice(0, remaining)
       .map(([mat]) => mat);
-    const selected = ranked.length ? ranked : rankedDefault(normalized, limit);
-    return { ...buildLines(selected, normalized.length, limit), mode: ranked.length ? 'query' : 'default' };
+    const fallback = ranked.length ? ranked : rankedDefault(rest.length ? rest : normalized, remaining);
+    const selected = [...pinned, ...fallback].slice(0, limit);
+    return { ...buildLines(selected, normalized.length, limit), mode: pinned.length ? 'pinned' : (ranked.length ? 'query' : 'default') };
   }
 
-  // 无 query：默认「AI精灵 > 收藏 > 最新」
-  const selected = rankedDefault(normalized, limit);
-  return { ...buildLines(selected, normalized.length, limit), mode: 'default' };
+  // 无 query：置顶 + 「AI精灵 > 收藏 > 最新」
+  const selected = [...pinned, ...rankedDefault(rest, remaining)].slice(0, limit);
+  return { ...buildLines(selected, normalized.length, limit), mode: pinned.length ? 'pinned' : 'default' };
 }
 
 function rankedDefault(normalized, limit) {
