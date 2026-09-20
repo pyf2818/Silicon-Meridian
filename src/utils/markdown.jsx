@@ -72,10 +72,12 @@ export function renderMarkdown(text) {
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
   // Strikethrough
   html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
-  // Images（URL 过协议白名单；alt 已在转义阶段处理）
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => (
-    isSafeUrl(url) ? `<img src="${url}" alt="${alt}" loading="lazy" />` : alt
-  ));
+  // Images（URL 过协议白名单；alt 已在转义阶段处理；支持 |w=数字 控制宽度百分比）
+  html = html.replace(/!\[([^\]]*)\]\(([^)|]+)(?:\|w=(\d{1,3}))?\)/g, (match, alt, url, w) => {
+    if (!isSafeUrl(url)) return alt;
+    const widthStyle = w ? ` style="width:${Math.min(Number(w), 100)}%;height:auto;"` : '';
+    return `<img src="${url}" alt="${alt}" loading="lazy"${widthStyle} />`;
+  });
   // Links（同上；不安全协议降级为纯文本，不留可点击出口）
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, url) => (
     isSafeUrl(url) ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>` : label

@@ -66,7 +66,7 @@ function SectionTitle({ index, title, hint }) {
  * B3 发布器：分区式表单 + 封面三档 + 摘要自动提取 + 标签编辑 + 实时预览 + 草稿暂存。
  * 保留 v24 导入能力（素材库 / AI 工作站成果）。
  */
-export default function PostComposer({ user, materials = [], workbenchDeliverable = null, onClose, onPublished }) {
+export default function PostComposer({ user, materials = [], workbenchDeliverable = null, onClose, onPublished, editingPost = null, onPostUpdated }) {
   const [form, setForm] = useState(emptyDraft);
   const [draftBanner, setDraftBanner] = useState(null);
   const [tagInput, setTagInput] = useState('');
@@ -90,6 +90,24 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
       setDraftBanner(when ? `已恢复 ${when} 的未发布草稿` : '已恢复未发布草稿');
     }
   }, []);
+
+  // 编辑模式：预填已有帖子（草稿恢复让位于编辑预填）
+  useEffect(() => {
+    if (!editingPost) return;
+    restoredRef.current = true;
+    setForm(previous => ({
+      ...previous,
+      type: editingPost.type || previous.type,
+      channel: editingPost.channel || previous.channel,
+      title: editingPost.title || '',
+      body: editingPost.body || '',
+      summary: editingPost.summary || '',
+      tags: Array.isArray(editingPost.tags) ? editingPost.tags : previous.tags,
+      cover: editingPost.cover || previous.cover,
+      media: Array.isArray(editingPost.media) ? editingPost.media : previous.media,
+      visibility: editingPost.visibility || previous.visibility,
+    }));
+  }, [editingPost]);
 
   // 自动暂存：字段变化即写（脏数据在 saveComposerDraft 里 normalize 清洗）
   useEffect(() => { saveComposerDraft(form); }, [form]);
@@ -180,7 +198,7 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
     }
     setPublishing(true); setPublishError('');
     try {
-      const post = await onPublished({
+      const payload = {
         type: form.type,
         channel: form.channel,
         title: form.title.trim(),
@@ -191,9 +209,12 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
         visibility: form.visibility,
         media: form.media,
         attachments: form.attachments,
-      });
+      };
+      const post = editingPost
+        ? await onPostUpdated?.(editingPost.id, payload)
+        : await onPublished(payload);
       clearComposerDraft();
-      showToast('发布成功，川川帮你顶上去～');
+      showToast(editingPost ? '帖子已更新' : '发布成功，川川帮你顶上去～');
       return post;
     } catch (error) {
       setPublishError(error.message);
@@ -220,6 +241,12 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
         <h2>发布到广场</h2>
         <button type="button" onClick={onClose} aria-label="关闭发布器">×</button>
       </div>
+
+      {editingPost && (
+        <div className="composer-draft-banner" data-testid="composer-editing-banner">
+          <span>✏️ 正在编辑帖子：{editingPost.title || ''}（提交后更新原帖）</span>
+        </div>
+      )}
 
       {draftBanner && (
         <div className="composer-draft-banner" data-testid="composer-draft-banner">

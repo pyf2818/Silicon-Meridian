@@ -2569,7 +2569,7 @@ ${materialLines || '暂无素材'}`;
           {nav === 'square' && (
             <SafeBoundary name="社区广场" icon={ICONS.chat}>
               <Suspense fallback={<div className="empty-state"><p>加载社区广场...</p></div>}>
-                <CommunityPage user={user} materials={materials} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} onShareToChat={share => { setPendingChatShare(share); setNav('chat'); }} />
+                <CommunityPage user={user} materials={materials} onRequireAuth={() => { setAuthMode('login'); setShowAuthModal(true); }} onShareToChat={share => { setPendingChatShare(share); setNav('chat'); }} onSaveMaterial={addManualMaterial} />
               </Suspense>
             </SafeBoundary>
           )}

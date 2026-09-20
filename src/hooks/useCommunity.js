@@ -152,6 +152,14 @@ export function useCommunity() {
     return data.post;
   }, []);
 
+  // 编辑帖子（仅作者，服务端 PATCH /posts/:id 校验）：本地列表 + 详情同步
+  const updatePost = useCallback(async (postId, input) => {
+    const data = await request(`posts/${postId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    setPosts(previous => previous.map(post => post.id === postId ? data.post : post));
+    if (selectedPost?.id === postId) setSelectedPost(data.post);
+    return data.post;
+  }, [selectedPost]);
+
   const addComment = useCallback(async (postId, body, parentId = null, kind = 'comment') => {
     const data = await request(`posts/${postId}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, parentId, kind }) });
     setComments(previous => [...previous, data.comment]);
@@ -188,7 +196,7 @@ export function useCommunity() {
     posts, selectedPost, selectedPostId, comments, loading, loadingMore, hasMore, detailLoading, error,
     setSelectedPost, setComments, setError, setSelectedPostId,
     loadPosts, loadMore,
-    openPost, createPost, addComment,
+    openPost, createPost, updatePost, addComment,
     setLike: (postId, enabled) => updateRelationship(postId, 'like', enabled),
     setBookmark: (postId, enabled) => updateRelationship(postId, 'bookmark', enabled),
     setFollow,

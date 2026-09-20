@@ -41,9 +41,10 @@ function emptyStateCopy(view) {
   return { title: '还没有收藏任何内容', hint: '在内容上点击「收藏」，就能在这里找到。', action: '去广场逛逛' };
 }
 
-export default function CommunityPage({ user, onRequireAuth, onShareToChat, materials = [] }) {
+export default function CommunityPage({ user, onRequireAuth, onShareToChat, materials = [], onSaveMaterial }) {
   const community = useCommunity();
   const [composerOpen, setComposerOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState(null); // 编辑模式：Detail「编辑」→ 预填发布器
   const [searchDraft, setSearchDraft] = useState('');
   const agentWorkflowResult = useWorkflowStore(s => s.agentWorkflowResult);
 
@@ -154,7 +155,8 @@ export default function CommunityPage({ user, onRequireAuth, onShareToChat, mate
         </div>
       )}
 
-      {/* B3：发布器升级为独立组件（四分区 + 封面三档 + 实时预览 + 草稿暂存） */}
+      {/* B3：发布器升级为独立组件（四分区 + 封面三档 + 实时预览 + 草稿暂存）；
+          编辑模式：editingPost 存在时预填表单，提交走 PATCH */}
       {composerOpen && (
         <PostComposer
           user={user}
@@ -162,7 +164,13 @@ export default function CommunityPage({ user, onRequireAuth, onShareToChat, mate
           workbenchDeliverable={agentWorkflowResult?.content
             ? { title: agentWorkflowResult.missionId ? `工作流成果：${agentWorkflowResult.missionId}` : 'AI 工作站最新成果', content: agentWorkflowResult.content }
             : null}
-          onClose={() => setComposerOpen(false)}
+          editingPost={editingPost}
+          onPostUpdated={async (postId, payload) => {
+            const post = await community.updatePost(postId, payload);
+            setEditingPost(null);
+            return post;
+          }}
+          onClose={() => { setComposerOpen(false); setEditingPost(null); }}
           onPublished={handlePublished}
         />
       )}
@@ -250,6 +258,8 @@ export default function CommunityPage({ user, onRequireAuth, onShareToChat, mate
           <CommunityPostDetail
             post={community.selectedPost} comments={community.comments} loading={community.detailLoading}
             user={user} onRequireAuth={onRequireAuth} onClose={() => { community.setSelectedPost(null); community.setComments([]); }}
+            onEdit={(p) => { setEditingPost(p); setComposerOpen(true); }}
+            onSaveMaterial={onSaveMaterial}
             onComment={(body, kind) => protectedAction(() => community.addComment(community.selectedPost.id, body, null, kind))}
             onLike={enabled => protectedAction(() => community.setLike(community.selectedPost.id, enabled))}
             onBookmark={enabled => protectedAction(() => community.setBookmark(community.selectedPost.id, enabled))}

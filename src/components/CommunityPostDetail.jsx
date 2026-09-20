@@ -30,7 +30,7 @@ function formatDate(value) {
  * B4 详情大抽屉：hero 封面 → 标题/徽章 → 作者链 → 标签 → 数据行+操作 → Tabs（正文/评价/引用来源）。
  * 评价区分型（讨论/好评/吐槽/问答），kind 随评论落库。
  */
-export default function CommunityPostDetail({ post, comments, loading, user, onClose, onComment, onLike, onBookmark, onFollow, onRequireAuth, onShare }) {
+export default function CommunityPostDetail({ post, comments, loading, user, onClose, onComment, onLike, onBookmark, onFollow, onRequireAuth, onShare, onEdit, onSaveMaterial }) {
   const [tab, setTab] = useState('body');
   const [commentDraft, setCommentDraft] = useState('');
   const [commentKind, setCommentKind] = useState('comment');
@@ -125,6 +125,31 @@ export default function CommunityPostDetail({ post, comments, loading, user, onC
             <button type="button" role="tab" aria-selected={tab === 'sources'} className={`community-detail-tab ${tab === 'sources' ? 'active' : ''}`} onClick={() => setTab('sources')}>引用来源 {post.sourceRefs.length}</button>
           )}
         </div>
+
+        {/* 作者编辑入口 + 存为素材（反向打通帖子→素材库） */}
+        {(onEdit || onSaveMaterial) && (
+          <div className="community-detail-actions" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {onEdit && user?.id && String(post.authorId || '') === String(user.id) && (
+              <button type="button" className="community-detail-tab" onClick={() => onEdit(post)}>编辑此帖</button>
+            )}
+            {onSaveMaterial && (
+              <button
+                type="button"
+                className="community-detail-tab"
+                title="把这篇帖子的标题与正文保存到素材库"
+                onClick={() => onSaveMaterial({
+                  title: post.title || '未命名帖子',
+                  content: post.body || '',
+                  fullContent: post.body || '',
+                  source: '用户广场',
+                  type: 'post',
+                  url: post.url || '',
+                  tags: Array.isArray(post.tags) ? post.tags : [],
+                })}
+              >存为素材</button>
+            )}
+          </div>
+        )}
 
         {tab === 'body' && (
           <>
