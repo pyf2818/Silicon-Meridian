@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { runStockAnalysis } from '../useStockAi.js';
+import { runStockAnalysis, buildDiagnosisRecord } from '../useStockAi.js';
 
 const input = {
   stock: { name: '示例', code: 'TEST' },
@@ -64,4 +64,22 @@ it('adapts AI guidance for professional evidence review', async () => {
   // 欧奈尔止损铁律数字必须出现在专业版卖点剧本中
   expect(systemPrompt).toContain('7-8%');
   expect(systemPrompt).toContain('失效条件');
+});
+
+it('v29：诊断历史记录只留展示字段（code/评级/模式/现价/内容）', () => {
+  const record = buildDiagnosisRecord({
+    stock: { code: '600519', name: '贵州茅台' },
+    mode: 'ai', rating: '强势', risk: 'low',
+    metrics: { price: 1257.12 },
+    content: '## 操作判断\n持有，等待突破。',
+  });
+  expect(record.code).toBe('600519');
+  expect(record.name).toBe('贵州茅台');
+  expect(record.mode).toBe('ai');
+  expect(record.rating).toBe('强势');
+  expect(record.risk).toBe('low');
+  expect(record.price).toBeCloseTo(1257.12);
+  expect(record.content).toContain('操作判断');
+  expect(typeof record.at).toBe('number');
+  expect(record.id).toBeTruthy();
 });

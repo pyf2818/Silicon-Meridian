@@ -99,5 +99,6 @@ export function buildEvidenceCatalog({
 export const CATALOG_USAGE_HINT = [
   '【目录使用说明】以上是站内资讯/素材/文件的**目录**（只有标题与元信息，不是正文）。',
   '需要某条的详情时按序取用：search_news（关键词/范围检索站内资讯）→ read_intelligence_focus（按主题取聚焦事件与交叉验证）→ list_knowledge（检索工作空间知识库）→ read_workspace_file（按文件名读全文）。',
-  '回答中请用 [资讯:ID] / [素材:ID] 引用对应条目，不要复述正文——被引用条目的正文由前端展开。',
+  '回答中站内条目用 [资讯:ID] / [素材:ID] 引用，不要复述其正文——被引用条目的正文由前端展开；工具抓取的网页/检索摘要没有站内 ID，正常总结分析并在文中注明来源即可。',
+  '目录只是预置清单，不是证据边界：工具（search_news / fetch_page / web_search / read_intelligence_focus）本轮新获取的内容都是有效证据。绝不能因为「目录里没有」而否认刚刚检索到的内容，也不需要为此"修正引用"。',
 ].join('\n');

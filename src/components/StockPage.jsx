@@ -15,6 +15,7 @@ import { ResearchJournal, ResearchChecklist, BriefingContent } from './stock/Res
 import { PositionRiskTool, ScenarioAnalysisTool } from './stock/RiskTools.jsx';
 import { IntelligenceRadar, InvestorPolicyTool, DecisionEvidenceTool } from './stock/IntelligenceTools.jsx';
 import ProCharts from './stock/ProCharts.jsx';
+import DiagnosisDrawer from './stock/DiagnosisDrawer.jsx';
 import { useStockAiToolFill } from '../hooks/useStockAiToolFill.js';
 import { showToast } from '../utils/toast.js';
 
@@ -40,15 +41,15 @@ const BENCHMARK_OPTIONS = [
 
 export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMaterial }) {
   const pageRef = useRef(null);
-  const analysisRef = useRef(null);
   const { watchlist, inWatchlist, toggleStock, moveStock } = useStockWatchlist();
   const aiState = useStockAi(llmConfig);
   const aiFill = useStockAiToolFill(llmConfig);
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedCode, setSelectedCode] = useState('sh000001');
+  // v29：选中股票持久化——切页回来 selectedCode 能恢复，diagnosis 的 code 过滤才不会把已有分析判空
+  const [selectedCode, setSelectedCode] = useState(() => localStorage.getItem('stockSelectedCode') || 'sh000001');
   const ai = { ...aiState, diagnosis: aiState.diagnosis?.stock?.code === selectedCode ? aiState.diagnosis : null };
-  const [selectedName, setSelectedName] = useState('上证指数');
+  const [selectedName, setSelectedName] = useState(() => localStorage.getItem('stockSelectedName') || '上证指数');
   const [klineData, setKlineData] = useState(null);
   const [diagKlines, setDiagKlines] = useState([]); // 诊断用的日K序列（分时周期下也能让专业图表有数据）
   const [klineLoading, setKlineLoading] = useState(false);
@@ -62,11 +63,9 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
   const [period, setPeriod] = useState('timeline');
   const [adjust, setAdjust] = useState(() => localStorage.getItem('stockKlineAdjust') || '1');
   const [leftPanelOpen, setLeftPanelOpen] = useState(() => localStorage.getItem('stockLeftPanelOpen') !== 'false');
-  // 证据卡折叠：bullish/bearish/invalidation/risk 四张卡默认收起首条，>1 条时显示展开按钮
-  const [expandedThesis, setExpandedThesis] = useState({});
-  const toggleThesis = (key) => setExpandedThesis(prev => ({ ...prev, [key]: !prev[key] }));
+  // 证据卡折叠移入 DiagnosisDrawer；v29：底部分析 section 已迁移为右侧抽屉
+  const [showDiagDrawer, setShowDiagDrawer] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(() => localStorage.getItem('stockRightPanelOpen') !== 'false');
-  const [showAnalysis, setShowAnalysis] = useState(() => localStorage.getItem('stockShowAnalysis') !== 'false');
   const [experienceMode, setExperienceMode] = useState(() => localStorage.getItem('stockExperienceMode') || 'beginner');
   const [benchmarkCode, setBenchmarkCode] = useState(() => localStorage.getItem('stockBenchmarkCode') || 'sh000001');
   const [clockNow, setClockNow] = useState(() => Date.now());
@@ -78,7 +77,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
   useEffect(() => { localStorage.setItem('stockKlineAdjust', adjust); }, [adjust]);
   useEffect(() => { localStorage.setItem('stockLeftPanelOpen', String(leftPanelOpen)); }, [leftPanelOpen]);
   useEffect(() => { localStorage.setItem('stockRightPanelOpen', String(rightPanelOpen)); }, [rightPanelOpen]);
-  useEffect(() => { localStorage.setItem('stockShowAnalysis', String(showAnalysis)); }, [showAnalysis]);
+  useEffect(() => { localStorage.setItem('stockSelectedCode', selectedCode); localStorage.setItem('stockSelectedName', selectedName); }, [selectedCode, selectedName]);
   useEffect(() => { localStorage.setItem('stockExperienceMode', experienceMode); }, [experienceMode]);
   useEffect(() => { localStorage.setItem('stockBenchmarkCode', benchmarkCode); }, [benchmarkCode]);
   useEffect(() => {
@@ -577,6 +576,9 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
             {ICONS.document}<span>研究工具</span>
           </button>
         )}
+        <button className="stock-ai-action" onClick={() => setShowDiagDrawer(true)} title="打开 AI 诊断抽屉（买卖剧本 + 历史记录）">
+          {ICONS.sparkle}<span>AI 诊断</span>
+        </button>
         <button className="stock-ai-action" onClick={() => { setBriefingTab(ai.briefing ? 'current' : ai.briefingHistory.length ? 'history' : 'current'); setShowBriefing(true); }} title="生成或查看 AI 市场早报">
           {ICONS.sparkle}<span>AI 早报</span>
         </button>
@@ -655,7 +657,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
             <span>研究流程</span>
             <button type="button" onClick={() => scrollTo(pageRef)}><b>1</b>行情</button>
             <i>→</i>
-            <button type="button" onClick={() => scrollTo(analysisRef)}><b>2</b>证据分析</button>
+            <button type="button" onClick={() => setShowDiagDrawer(true)}><b>2</b>AI 诊断</button>
             <i>→</i>
             <button type="button" onClick={() => openResearchTools('risk')}><b>3</b>风险预算</button>
             <i>→</i>
@@ -673,7 +675,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
         <div className="stock-mode-guide-steps">
           {modeGuide.steps.map((step, index) => <div key={step}><b>{index + 1}</b><span>{step}</span></div>)}
         </div>
-        <button type="button" className="stock-mode-guide-ai" onClick={experienceMode === 'pro' ? runDiagnosis : () => { setBriefingTab('current'); setShowBriefing(true); }}>
+        <button type="button" className="stock-mode-guide-ai" onClick={experienceMode === 'pro' ? () => { setShowDiagDrawer(true); runDiagnosis(); } : () => { setBriefingTab('current'); setShowBriefing(true); }}>
           {ICONS.sparkle}<span>{experienceMode === 'pro' ? (ai.diagnosis ? '\u91cd\u65b0\u8fd0\u884c\u8bca\u65ad' : '\u8fd0\u884c AI \u8bca\u65ad') : '\u6253\u5f00 AI \u65e9\u62a5'}</span>
         </button>
       </section>
@@ -843,155 +845,22 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
         </aside>}
       </div>
 
-      {/* 算法技术分析始终可用，LLM 仅增强自然语言表述 */}
-      <section ref={analysisRef} className={`stock3-panel stock-ai-panel${showAnalysis ? '' : ' collapsed'}`}>
-        <div className="stock-ai-panel-head">
-          <div className="stock3-panel-label">
-            {ICONS.sparkle} {ai.diagnosis?.mode === 'ai' ? 'AI 增强分析' : '算法技术分析'}
-            {!ai.llmReady && <button type="button" className="stock-ai-unready" onClick={onOpenLlmConfig}>配置 AI 增强</button>}
-          </div>
-          <div className="stock-ai-panel-actions">
-            {ai.diagnosis && showAnalysis && (
-              <>
-                <button
-                  type="button"
-                  className="stock-ai-save"
-                  onClick={archiveDiagnosis}
-                  disabled={!onArchiveMaterial}
-                  title={onArchiveMaterial ? '保存完整诊断到素材库（含评级 / 指标 / 多空证据）' : '素材库暂不可用'}
-                >
-                  {ICONS.bookmark}<span>存素材库</span>
-                </button>
-                <button className="stock-ai-rerun" onClick={runDiagnosis} disabled={ai.diagnosing}>{ICONS.refresh}<span>重新分析</span></button>
-              </>
-            )}
-            {ai.diagnoseError && showAnalysis && (
-              <button className="stock-ai-rerun" onClick={runDiagnosis} disabled={ai.diagnosing}>{ICONS.refresh}<span>重新分析</span></button>
-            )}
-            <button
-              type="button"
-              className="stock-ai-toggle"
-              onClick={() => setShowAnalysis(v => !v)}
-              title={showAnalysis ? '收起分析' : '展开分析'}
-              aria-expanded={showAnalysis}
-            >
-              {showAnalysis ? '收起' : '展开'}
-            </button>
-          </div>
-        </div>
-        {showAnalysis && (
-          <>
-            {!ai.diagnosis && !ai.diagnosing && !ai.diagnoseError && (
-              <button className="stock-ai-run" onClick={runDiagnosis} disabled={!realtime || marketDataState.unavailable}>
-                {ICONS.sparkle}<span>{ai.llmReady ? '生成 AI 增强分析' : '生成算法分析'}</span>
-              </button>
-            )}
-            {ai.diagnosing && <div className="stock-ai-loading"><div className="spinner" /><span>正在计算技术指标…</span></div>}
-            {ai.diagnoseError && <div className="stock-ai-error">{ai.diagnoseError}<button onClick={runDiagnosis}>重试</button></div>}
-            {ai.diagnosis && (
-          <div className="stock-ai-result stock-analysis-result">
-            <div className="stock-analysis-summary">
-              <div><span>综合评级</span><strong>{ai.diagnosis.rating}</strong></div>
-              <div><span>风险等级</span><strong>{({ high: '高', medium: '中', low: '低', unknown: '--' })[ai.diagnosis.risk] || '--'}</strong></div>
-              <div><span>分析模式</span><strong>{ai.diagnosis.mode === 'ai' ? 'AI 增强' : '确定性算法'}</strong></div>
-            </div>
-            {ai.diagnosis.status === 'ready' && (
-              <div className="stock-analysis-metrics">
-                {[
-                  { key: 'trend', title: '均线 Trend', items: [
-                    ['MA5', ai.diagnosis.metrics.ma5], ['MA10', ai.diagnosis.metrics.ma10], ['MA20', ai.diagnosis.metrics.ma20], ['ATR14', ai.diagnosis.metrics.atr14],
-                  ] },
-                  { key: 'momentum', title: '动量 Momentum', items: [
-                    ['5日动量', ai.diagnosis.metrics.momentum5 == null ? null : `${ai.diagnosis.metrics.momentum5}%`],
-                    ['20期涨跌', ai.diagnosis.metrics.assetReturn20 == null ? null : `${ai.diagnosis.metrics.assetReturn20}%`],
-                    ['基准同期', ai.diagnosis.metrics.benchmarkReturn20 == null ? null : `${ai.diagnosis.metrics.benchmarkReturn20}%`],
-                    ['超额表现', ai.diagnosis.metrics.excessReturn20 == null ? null : `${ai.diagnosis.metrics.excessReturn20}%`],
-                  ] },
-                  { key: 'risk', title: '风险 Risk', items: [
-                    ['最大回撤', ai.diagnosis.metrics.drawdown == null ? null : `${ai.diagnosis.metrics.drawdown}%`],
-                    ['波动率', ai.diagnosis.metrics.volatility == null ? null : `${ai.diagnosis.metrics.volatility}%`],
-                    ['20期位置', ai.diagnosis.metrics.position20 == null ? null : `${ai.diagnosis.metrics.position20}%`],
-                    ['量能', ({ expanding: '放大', contracting: '收缩', stable: '平稳' })[ai.diagnosis.metrics.volumeTrend] || '--'],
-                  ] },
-                  { key: 'levels', title: '支撑压力 Levels', items: [
-                    ['支撑', ai.diagnosis.metrics.support], ['压力', ai.diagnosis.metrics.resistance],
-                  ] },
-                ].map(grp => (
-                  <section key={grp.key} className="stock-metrics-group">
-                    <h6 className="stock-metrics-group-title">{grp.title}</h6>
-                    <div className="stock-metrics-rows">
-                      {grp.items.map(([label, value]) => {
-                        // 涨跌语义：带 % 的数值，正=涨（红）、负=跌（绿），中文市场约定
-                        const pct = typeof value === 'string' && value.endsWith('%') ? parseFloat(value) : null;
-                        const tone = pct == null || Number.isNaN(pct) || pct === 0 ? '' : pct > 0 ? ' is-up' : ' is-down';
-                        return <div key={label}><span>{label}</span><strong className={tone.trim()}>{value ?? '--'}</strong></div>;
-                      })}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            )}
-            {ai.diagnosis.status === 'ready' && (
-              <div className="stock-thesis-grid">
-                {[
-                  { key: 'bullish', evidence: ai.diagnosis.bullCase, fallback: '当前序列没有形成明确支持', title: '支持当前判断', sub: '多方证据' },
-                  { key: 'bearish', evidence: ai.diagnosis.bearCase, fallback: '当前序列没有形成明确反向信号', title: '反向证据', sub: '空方证据' },
-                  { key: 'invalidation', evidence: ai.diagnosis.invalidation, fallback: null, title: '判断失效条件', sub: '必须复核' },
-                  { key: 'risk', evidence: ai.diagnosis.riskSignals, fallback: '当前样本未触发额外风险信号', title: '风险实验室', sub: `${ai.diagnosis.dataQuality?.bars || 0} 根 K 线` },
-                ].map(({ key, evidence, fallback, title, sub }) => {
-                  const items = Array.isArray(evidence) ? evidence : [];
-                  const expanded = !!expandedThesis[key];
-                  const showMore = items.length > 1;
-                  const visible = expanded ? items : items.slice(0, 1);
-                  return (
-                    <section key={key} className={`stock-thesis-block ${key}`}>
-                      <div className="stock-thesis-head">
-                        <strong>{title}</strong>
-                        <span className="stock-thesis-count" title={`${items.length} 条要点`}>{items.length}</span>
-                        <span className="stock-thesis-sub">{sub}</span>
-                        {showMore && (
-                          <button
-                            type="button"
-                            className="stock-thesis-toggle"
-                            onClick={() => toggleThesis(key)}
-                            aria-expanded={expanded}
-                          >
-                            {expanded ? '收起' : `展开 +${items.length - 1}`}
-                          </button>
-                        )}
-                      </div>
-                      {items.length > 0 ? (
-                        visible.map(item => <p key={item}>{item}</p>)
-                      ) : (
-                        fallback ? <p className="muted">{fallback}</p> : null
-                      )}
-                      {key === 'risk' && (
-                        <small>比较基准：{ai.diagnosis.dataQuality?.benchmark?.name || '不可用'}；仅基于价格与成交量，未包含财务、公告、资金流和全市场数据。</small>
-                      )}
-                    </section>
-                  );
-                })}
-              </div>
-            )}
-            {/* 专业模式：确定性数据图表区（走势/多空/基准对比） */}
-            {experienceMode === 'pro' && ai.diagnosis.status === 'ready' && (
-              <ProCharts klines={diagKlines.length ? diagKlines : (klineData?.klines || [])} diagnosis={ai.diagnosis} />
-            )}
-            {/* v24 #1：AI 大师叙述 Markdown 渲染（标题/表格/列表排版），无 AI 时退化为算法摘要纯文本 */}
-            {ai.diagnosis.mode === 'ai' && ai.diagnosis.aiNarrative ? (
-              <div className="stock-ai-text stock-ai-master" dangerouslySetInnerHTML={{ __html: renderMarkdown(ai.diagnosis.content || ai.diagnosis.aiNarrative) }} />
-            ) : (
-              <div className="stock-ai-text">{ai.diagnosis.content}</div>
-            )}
-            {ai.diagnosis.aiError && <div className="stock-analysis-fallback">AI 增强失败，当前保留算法结果：{ai.diagnosis.aiError}</div>}
-            <div className="stock-analysis-evidence">
-              {(ai.diagnosis.evidence || []).map(item => <span key={item.key}>{item.label}：{item.value}</span>)}
-            </div>
-          </div>
-        )}
-          </>
-        )}
-      </section>
+      {/* v29：AI 诊断右侧抽屉（原底部 section 迁移，含历史记录管理） */}
+      <DiagnosisDrawer
+        open={showDiagDrawer}
+        onClose={() => setShowDiagDrawer(false)}
+        ai={ai}
+        selectedName={selectedName}
+        selectedCode={selectedCode}
+        experienceMode={experienceMode}
+        diagKlines={diagKlines}
+        klineData={klineData}
+        runDiagnosis={runDiagnosis}
+        archiveDiagnosis={archiveDiagnosis}
+        onArchiveMaterial={onArchiveMaterial}
+        onOpenLlmConfig={onOpenLlmConfig}
+        canRun={!!realtime && !marketDataState.unavailable}
+      />
 
       {showResearchTools && (
         <div className="stock-modal-overlay" onClick={() => setShowResearchTools(false)}>

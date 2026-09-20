@@ -14,6 +14,9 @@ import { buildStockEvidencePacket, formatEvidencePacketForPrompt } from '../doma
 const COMPLIANCE_SUFFIX = '\n\n（以上内容由 AI 基于公开行情数据生成，仅供参考，不构成投资建议）';
 const BRIEFING_HISTORY_KEY = 'stockBriefingHistoryV1';
 const BRIEFING_HISTORY_LIMIT = 30;
+// v29 #4：个股诊断历史（localStorage 持久化——诊断本体在内存 store，切页/刷新会丢，历史兜底）
+const DIAG_HISTORY_KEY = 'stockDiagnosisHistoryV1';
+const DIAG_HISTORY_LIMIT = 30;
 
 function loadBriefingHistory() {
   try {
@@ -26,6 +29,34 @@ function loadBriefingHistory() {
 
 function persistBriefingHistory(records) {
   try { localStorage.setItem(BRIEFING_HISTORY_KEY, JSON.stringify(records)); } catch { /* storage unavailable */ }
+}
+
+function loadDiagnosisHistory() {
+  try {
+    const records = JSON.parse(localStorage.getItem(DIAG_HISTORY_KEY) || '[]');
+    return Array.isArray(records) ? records : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDiagnosisHistory(records) {
+  try { localStorage.setItem(DIAG_HISTORY_KEY, JSON.stringify(records)); } catch { /* storage unavailable */ }
+}
+
+/** 从一次诊断结果中抽取可持久化的历史记录（只留展示所需字段，不存 metrics 大对象） */
+export function buildDiagnosisRecord(result) {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    code: result.stock?.code || '',
+    name: result.stock?.name || '',
+    mode: result.mode || 'algorithm',
+    rating: result.rating || '--',
+    risk: result.risk || '',
+    price: result.metrics?.price ?? null,
+    content: result.content || result.summary || '',
+    at: Date.now(),
+  };
 }
 
 // 检查 LLM 是否可用
@@ -59,6 +90,7 @@ const store = {
     diagnosing: false, diagnosis: null, diagnoseError: '',
     briefingLoading: false, briefing: null, briefingError: '',
     briefingHistory: loadBriefingHistory(),
+    diagnosisHistory: loadDiagnosisHistory(),
     alertChecking: false, alertResults: [],
   },
   subscribers: new Set(),
@@ -191,7 +223,10 @@ export function useStockAi(llmConfig) {
         investorPolicy,
         llmConfig: store.state.llmConfig,
       });
-      store.setState({ diagnosis: { ...result, at: Date.now() }, diagnosing: false });
+      const record = buildDiagnosisRecord(result);
+      const nextHistory = [record, ...store.state.diagnosisHistory].slice(0, DIAG_HISTORY_LIMIT);
+      persistDiagnosisHistory(nextHistory);
+      store.setState({ diagnosis: { ...result, at: Date.now() }, diagnosing: false, diagnosisHistory: nextHistory });
     } catch (e) {
       store.setState({ diagnoseError: e.message || '行情分析失败', diagnosing: false });
     }
@@ -311,6 +346,16 @@ ${sectorText}
   }, []);
 
   const clearDiagnosis = useCallback(() => store.setState({ diagnosis: null, diagnoseError: '' }), []);
+  // 诊断历史管理（列表持久化在 localStorage；查看视图由组件层持有）
+  const deleteDiagnosisRecord = useCallback(id => {
+    const next = store.state.diagnosisHistory.filter(record => record.id !== id);
+    persistDiagnosisHistory(next);
+    store.setState({ diagnosisHistory: next });
+  }, []);
+  const clearDiagnosisHistory = useCallback(() => {
+    persistDiagnosisHistory([]);
+    store.setState({ diagnosisHistory: [] });
+  }, []);
   const clearBriefing = useCallback(() => store.setState({ briefing: null, briefingError: '' }), []);
   const openBriefing = useCallback(record => store.setState({ briefing: record, briefingError: '' }), []);
   const deleteBriefing = useCallback(id => {
@@ -332,7 +377,8 @@ ${sectorText}
     diagnosing: snapshot.diagnosing,
     diagnosis: snapshot.diagnosis,
     diagnoseError: snapshot.diagnoseError,
-    diagnoseStock, clearDiagnosis,
+    diagnosisHistory: snapshot.diagnosisHistory,
+    diagnoseStock, clearDiagnosis, deleteDiagnosisRecord, clearDiagnosisHistory,
     // 早报
     briefingLoading: snapshot.briefingLoading,
     briefing: snapshot.briefing,

@@ -106,4 +106,10 @@ describe('目录使用说明', () => {
     expect(CATALOG_USAGE_HINT).toContain('read_workspace_file');
     expect(CATALOG_USAGE_HINT).toContain('[资讯:ID]');
   });
+  it('v29：目录不是证据边界——工具新检索的内容是有效证据，不得否认', () => {
+    // 回归锁定：此前「仅限以下条目」措辞导致 agent 检索成功后仍以“目录里没有”为由拒答
+    expect(CATALOG_USAGE_HINT).toContain('不是证据边界');
+    expect(CATALOG_USAGE_HINT).toContain('有效证据');
+    expect(CATALOG_USAGE_HINT).not.toContain('仅限');
+  });
 });

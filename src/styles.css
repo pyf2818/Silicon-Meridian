@@ -14673,6 +14673,36 @@ body {
 .stock-briefing-history-delete:hover { border-color: rgba(239, 68, 68, .4); color: var(--signal-critical); }
 .stock-briefing-history-delete svg { width: 13px; height: 13px; }
 
+/* ===== v29：AI 诊断右侧抽屉（DiagnosisDrawer，样式语言对齐 monitor-drawer） ===== */
+.stock-diag-overlay { position: fixed; inset: 0; z-index: 900; background: rgba(0,0,0,.45); animation: fadeIn .18s ease; }
+.stock-diag-drawer {
+  position: absolute; top: 0; right: 0; height: 100%; width: min(560px, 94vw);
+  background: var(--bg-primary); border-left: var(--panel-border);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: -12px 0 40px rgba(0,0,0,.35);
+  animation: slideInRight .22s ease;
+}
+.stock-diag-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 20px 12px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+.stock-diag-title h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 16px; color: var(--text-primary); }
+.stock-diag-title h3 svg { width: 15px; height: 15px; color: var(--accent-cyan); }
+.stock-diag-sub { display: block; margin-top: 3px; font-size: 10px; letter-spacing: .04em; color: var(--text-muted); }
+.stock-diag-close { width: 30px; height: 30px; flex-shrink: 0; border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); border-radius: 8px; font-size: 18px; cursor: pointer; }
+.stock-diag-close:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.stock-diag-tabs { display: flex; gap: 6px; padding: 10px 20px 0; flex-shrink: 0; }
+.stock-diag-tabs button { padding: 6px 14px; border: 1px solid var(--border-color); border-bottom: none; border-radius: 8px 8px 0 0; background: transparent; color: var(--text-muted); font-size: 11.5px; cursor: pointer; }
+.stock-diag-tabs button.active { color: var(--accent-cyan); border-color: color-mix(in srgb, var(--accent-cyan) 45%, transparent); background: color-mix(in srgb, var(--accent-cyan) 7%, transparent); }
+.stock-diag-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+.stock-diag-report, .stock-diag-history, .stock-diag-viewing { display: flex; flex-direction: column; gap: 10px; }
+.stock-diag-report .stock-ai-panel-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.stock-diag-viewing-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10px; color: var(--text-muted); }
+.stock-diag-back { padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 10.5px; cursor: pointer; }
+.stock-diag-back:hover { color: var(--accent-cyan); border-color: color-mix(in srgb, var(--accent-cyan) 50%, transparent); }
+.stock-diag-viewing-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* 窄屏：抽屉全宽 */
+@media (max-width: 700px) {
+  .stock-diag-drawer { width: 100vw; }
+}
+
 /* 响应式 */
 
 @media (max-width: 700px) {
