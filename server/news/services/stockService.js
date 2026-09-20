@@ -30,7 +30,7 @@ const DEFAULT_HOT_STOCKS = [
   { secid: '1.688981', code: 'sh688981', name: '中芯国际' },
 ];
 
-// 缓存：单标的实时 8s，批量看板 30s，K线 10min，活跃股池 5min
+// 缓存：单标的实时 2s，批量看板 5s，K线 10min，活跃股池 5min
 const realtimeCache = new Map();
 const klineCache = new Map();
 const REALTIME_TTL = 2 * 1000;
@@ -223,7 +223,7 @@ export async function getRealtimeBatch(secids) {
   }
 }
 
-function parseRealtimeItem(d, secid) {
+export function parseRealtimeItem(d, secid) {
   // 东方财富价格需除以 100（f43 等是分）
   const price = (d.f43 || 0) / 100;
   const prevClose = (d.f60 || 0) / 100;
@@ -250,6 +250,14 @@ function parseRealtimeItem(d, secid) {
     dataSource: 'eastmoney',
     timestamp: nowMs(),
   };
+}
+
+// 读取最近一次成功缓存（忽略 TTL），供上游主源 + 降级源全失败时退化返回 stale 行情。
+// getRealtime 单标的查询的缓存键 = secid，故按 secid 直接命中。
+export function peekRealtime(secid) {
+  if (!secid) return null;
+  const cached = realtimeCache.get(secid);
+  return cached?.data?.[0] || null;
 }
 
 export function parseListItem(d, secids) {
@@ -450,7 +458,7 @@ export async function getDashboard() {
       label: dynamicStocks ? '沪深A股成交额活跃样本' : '固定热门样本（上游降级）',
       stockCount: stocks.length,
       targetCount: dynamicStocks ? MARKET_POOL_SIZE : DEFAULT_HOT_STOCKS.length,
-      realtimePollingSeconds: 30,
+      realtimePollingSeconds: 5,
       source: stocks[0]?.dataSource || 'unavailable',
     },
   };

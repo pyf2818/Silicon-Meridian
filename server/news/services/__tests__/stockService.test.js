@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getKline, parseListItem, parseMarketPoolItem, resolveSecid, searchStock } from '../stockService.js';
+import { getKline, parseListItem, parseMarketPoolItem, parseRealtimeItem, resolveSecid, searchStock } from '../stockService.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -68,6 +68,20 @@ describe('stockService quote normalization', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][0]).toContain('fqt=0');
     expect(fetchMock.mock.calls[1][0]).toContain('fqt=1');
+  });
+
+  it('keeps EastMoney single-quote amount at raw 元 scale (no ÷100)', () => {
+    // 真实探测验证：东方财富 stock/get 无 fltt 为 raw 模式，price 是分（×100）需 ÷100，
+    // 但 f48 成交额已是真实「元」值（与 volume×price 量级吻合），不得再 ÷100。
+    // 盲除 100 会把成交额砍成 1/100（如 31.4 亿 → 0.31 亿），属真实 bug。
+    const item = parseRealtimeItem({
+      f43: 125712, f44: 128000, f45: 124000, f46: 125000, f47: 24891,
+      f48: 3135849108, f57: '600519', f58: '贵州茅台', f60: 126698,
+    }, '1.600519');
+    expect(item.price).toBeCloseTo(1257.12);
+    expect(item.prevClose).toBeCloseTo(1266.98);
+    expect(item.volume).toBe(24891);
+    expect(item.amount).toBe(3135849108);
   });
 });
 

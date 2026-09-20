@@ -4,6 +4,7 @@ import {
   getRealtime,
   getSectors,
   getTimeline,
+  peekRealtime,
   resolveSecid,
   searchStock,
 } from '../../server/news/services/stockService.js';
@@ -38,10 +39,25 @@ export default async function handler(req, res) {
       const secid = resolveSecid(String(queryValue(req, 'code') || ''));
       if (!secid) return send(res, 400, { ok: false, error: { code: 'INVALID_STOCK_CODE' } });
       if (action === 'realtime') {
+        const isPrefetch = queryValue(req, 'prefetch') === '1';
         const data = await getRealtime([secid]);
-        return data[0]
-          ? send(res, 200, data[0])
-          : send(res, 503, { ok: false, error: { code: 'MARKET_DATA_UNAVAILABLE' } });
+        if (data[0]) {
+          // 预取请求：已填服务端缓存，返回轻量响应即可（前端 fire-and-forget，不消费完整报价）
+          if (isPrefetch) return send(res, 200, { ok: true, prefetched: true });
+          return send(res, 200, data[0]);
+        }
+        // 主源 + 降级源都失败：退化到最近一次缓存并标 stale，而非直接 503，
+        // 让前端"缓存行情"分支在生产环境可达（此前该分支仅 e2e mock 覆盖）。
+        const cached = peekRealtime(secid);
+        if (cached) {
+          return send(res, 200, {
+            ...cached,
+            stale: true,
+            source: 'cache',
+            timestamp: new Date(cached.timestamp).toISOString(),
+          });
+        }
+        return send(res, 503, { ok: false, error: { code: 'MARKET_DATA_UNAVAILABLE' } });
       }
       if (action === 'timeline') {
         const data = await getTimeline(secid);
