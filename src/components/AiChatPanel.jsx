@@ -1760,8 +1760,7 @@ export default function AiChatPanel({
               </div>
             )}
             <div className={`chat-bubble ${msg.error ? 'chat-bubble-error' : ''}${msg.toolCalls?.length ? ' chat-bubble-has-tools' : ''}`}>
-              {/* Agent 工具调用痕迹：agent loop 进行中与完成后均展示 */}
-              {/* v33：思考提示移出 toolCalls 条件——纯文本路径/首工具轮之前也要能看到阶段状态 */}
+              {/* v33：思考提示独立成块（不在工具卡片容器里）——agent loop 每一步都清晰分段 */}
               {msg.thinking && msg.loading && (
                 <div className="chat-tool-thinking">
                   <span className="chat-tool-thinking-dot" />
@@ -1771,7 +1770,7 @@ export default function AiChatPanel({
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <div className="chat-tool-calls">
                   {msg.toolCalls.map((tc, idx) => (
-                    <ToolCallCard key={tc.id || idx} tc={tc} />
+                    <ToolCallCard key={tc.id || idx} tc={tc} step={idx + 1} total={msg.toolCalls.length} />
                   ))}
                 </div>
               )}

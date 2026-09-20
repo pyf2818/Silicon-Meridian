@@ -12621,6 +12621,42 @@ body {
   50% { opacity: 1; transform: scale(1.15); }
 }
 
+/* ===== v33：agent 步骤流——每步独立卡片 + 序号徽章 + 展开详情 ===== */
+.chat-tool-calls { position: relative; gap: 8px; padding-left: 14px; }
+/* 左侧步骤连接线：贯穿所有卡片，形成"一步一步"的序列感 */
+.chat-tool-calls::before {
+  content: '';
+  position: absolute; left: 11px; top: 12px; bottom: 10px;
+  width: 2px; border-radius: 1px;
+  background: linear-gradient(to bottom,
+    color-mix(in srgb, var(--accent-cyan) 45%, transparent),
+    color-mix(in srgb, var(--border-subtle, rgba(128,128,128,.3)) 80%, transparent));
+}
+.tool-call-step-badge {
+  width: 18px; height: 18px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 10px; font-weight: 700;
+  background: color-mix(in srgb, var(--accent-cyan) 15%, transparent);
+  color: var(--accent-cyan);
+  position: relative; z-index: 1;
+  margin-left: -4px;
+}
+.tool-call-step-badge.running { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #f59e0b; }
+.tool-call-step-spinner {
+  width: 9px; height: 9px; border-radius: 50%;
+  border: 2px solid transparent; border-top-color: currentColor;
+  animation: toolStepSpin .7s linear infinite;
+}
+@keyframes toolStepSpin { to { transform: rotate(360deg); } }
+.tool-call.is-expanded { border-color: color-mix(in srgb, var(--accent-cyan) 40%, transparent); }
+.tool-call-header { cursor: pointer; user-select: none; }
+.tool-call-chevron { margin-left: auto; transition: transform .15s ease; }
+.tool-call-copy {
+  margin-left: auto; padding: 2px 8px; border-radius: 5px; cursor: pointer; font-size: 10px;
+  border: 1px solid var(--border-color); background: transparent; color: var(--text-muted);
+}
+.tool-call-copy:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+
 .tool-call {
   border: 1px solid var(--border-subtle, rgba(128, 128, 128, .25));
   border-radius: 8px;

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ICONS } from '../../constants/appConstants.jsx';
+import { showToast } from '../../utils/toast.js';
 
 /* 工具元信息：友好名称 + 简短图标，用于工具调用卡片展示 */
 const TOOL_META = {
@@ -109,8 +110,8 @@ function summarizeArgs(name, args) {
   } catch { return ''; }
 }
 
-/* 工具调用卡片：展示工具名 / 参数摘要 / 状态 / 可展开结果 */
-export function ToolCallCard({ tc }) {
+/* 工具调用卡片：步骤序号 + 工具名 / 参数摘要 / 状态，点击整行展开完整参数与结果 */
+export function ToolCallCard({ tc, step = 0, total = 0 }) {
   const [expanded, setExpanded] = useState(false);
   const meta = TOOL_META[tc.name] || { label: tc.name, iconKey: 'settings' };
   const summary = summarizeArgs(tc.name, tc.args);
@@ -120,9 +121,15 @@ export function ToolCallCard({ tc }) {
     /^(错误：|工具执行失败)/.test(tc.result.trim());
   const statusLabel = isRunning ? '执行中…' : (isError ? '出错' : '已完成');
   const statusClass = isError ? 'error' : tc.status;
+  const resultText = typeof tc.result === 'string' ? tc.result : (tc.result ? JSON.stringify(tc.result, null, 2) : '');
   return (
-    <div className={`tool-call tool-call-${statusClass}`}>
+    <div className={`tool-call tool-call-${statusClass}${expanded ? ' is-expanded' : ''}`}>
       <div className="tool-call-header" onClick={() => setExpanded(v => !v)} role="button" tabIndex={0}>
+        {step > 0 && (
+          <span className={`tool-call-step-badge${isRunning ? ' running' : ''}`} title={`第 ${step} / ${total || step} 步`}>
+            {isRunning ? <span className="tool-call-step-spinner" /> : step}
+          </span>
+        )}
         <span className="tool-call-icon">{ICONS[meta.iconKey] || ICONS.settings}</span>
         <span className="tool-call-name">{meta.label}</span>
         {summary && <span className="tool-call-arg-summary" title={summary}>{summary}</span>}
@@ -136,13 +143,24 @@ export function ToolCallCard({ tc }) {
       {expanded && (
         <div className="tool-call-body">
           <div className="tool-call-section">
-            <div className="tool-call-section-label">参数</div>
+            <div className="tool-call-section-label">输入参数</div>
             <pre className="tool-call-args">{JSON.stringify(tc.args || {}, null, 2)}</pre>
           </div>
-          {tc.result && (
+          {resultText && (
             <div className="tool-call-section">
-              <div className="tool-call-section-label">返回结果</div>
-              <pre className={`tool-call-result${isError ? ' tool-call-result-error' : ''}`}>{tc.result}</pre>
+              <div className="tool-call-section-label">
+                返回结果
+                <button
+                  type="button"
+                  className="tool-call-copy"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard?.writeText(resultText);
+                    showToast('结果已复制到剪贴板');
+                  }}
+                >复制</button>
+              </div>
+              <pre className={`tool-call-result${isError ? ' tool-call-result-error' : ''}`}>{resultText}</pre>
             </div>
           )}
         </div>
