@@ -15,6 +15,8 @@ import { rememberCompaction } from '../../utils/sessionMemory.js';
 import { runToolLoop } from '../aichat/agentLoopCore.js';
 import { createLlmSummarizer } from '../../session/llmSummarizer.js';
 import { ELF_MAX_ITERATIONS } from '../../constants/agentLoop.js';
+import { observeToolUsage } from '../../utils/profileLearning.js';
+import { recordAgentRun } from '../../domain/agent/agentEvolution.js';
 
 /**
  * @param {Object} params
@@ -73,6 +75,7 @@ export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas
   let finalContent = '';
   let toolCallTrace = [];
   let stopped = false;
+  let runUsage = null;
   try {
     const result = await runToolLoop({
       controller: abortController,
@@ -89,6 +92,19 @@ export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas
     finalContent = result.finalContent;
     toolCallTrace = result.toolCallTrace;
     stopped = result.aborted;
+    runUsage = result.usage || null;
+    // 画像观测：精灵此前从不调用 observeToolUsage / recordAgentRun，
+    // 导致画像学习与智能体进化系统对精灵路径完全失明（工具偏好/运行次数永不增长）。
+    // 此处补齐，与子代理/工作站路径对齐；观测失败独立 try/catch，不影响精灵回复。
+    try {
+      const toolNames = (result.toolCallTrace || []).map(tc => tc?.name).filter(Boolean);
+      observeToolUsage(toolNames);
+      recordAgentRun(activeAgentId, {
+        toolCalls: toolNames.length,
+        tokens: result.usage?.total_tokens || 0,
+        goalRounds: result.usage?.turns || 0,
+      });
+    } catch { /* 观测失败不影响精灵结果 */ }
   } catch (err) {
     // 任何错误：保留已完成的 toolCalls 痕迹，写入错误信息
     if (!finalContent) {
@@ -103,7 +119,7 @@ export async function runElfAgentLoop({ activeAgentId, baseMessages, toolSchemas
     content: finalContent,
     toolCalls: toolCallTrace.slice(),
     toolCallCount: toolCallTrace.length,
-    usage: null,
+    usage: runUsage,
     loading: false,
     stopped,
     timestamp: Date.now(),
