@@ -832,6 +832,16 @@ export default function AiChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
+  // v33：流式跟随——消息原地增长时（条数不变）也要持续滚动到底，
+  // 否则增量内容全部在视口外，观感就是"卡住不动，等完才出全文"
+  const lastMessage = messages[messages.length - 1];
+  const lastContentLen = isStreaming && lastMessage?.role === 'assistant' ? String(lastMessage.content || '').length : 0;
+  useEffect(() => {
+    if (lastContentLen > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    }
+  }, [lastContentLen]);
+
   // sessions 持久化由 sessionsStore.setState 自动处理（流式过程中持续写回）
 
   // Build system prompt：已抽离至 aichat/buildSystemPrompt.js
@@ -1751,29 +1761,30 @@ export default function AiChatPanel({
             )}
             <div className={`chat-bubble ${msg.error ? 'chat-bubble-error' : ''}${msg.toolCalls?.length ? ' chat-bubble-has-tools' : ''}`}>
               {/* Agent 工具调用痕迹：agent loop 进行中与完成后均展示 */}
+              {/* v33：思考提示移出 toolCalls 条件——纯文本路径/首工具轮之前也要能看到阶段状态 */}
+              {msg.thinking && msg.loading && (
+                <div className="chat-tool-thinking">
+                  <span className="chat-tool-thinking-dot" />
+                  {msg.thinking}
+                </div>
+              )}
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <div className="chat-tool-calls">
-                  {msg.thinking && msg.loading && (
-                    <div className="chat-tool-thinking">
-                      <span className="chat-tool-thinking-dot" />
-                      {msg.thinking}
-                    </div>
-                  )}
                   {msg.toolCalls.map((tc, idx) => (
                     <ToolCallCard key={tc.id || idx} tc={tc} />
                   ))}
                 </div>
               )}
               {msg.loading ? (
-                msg.toolCalls && msg.toolCalls.length > 0 ? (
-                  // agent loop 进行中：展示已有内容片段（可能为空），不再显示三点动画
-                  msg.content ? (
-                    <div
-                      className="chat-bubble-content is-streaming"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                    />
-                  ) : null
-                ) : (
+                // v33 修复流式观感：内核每 delta 都在更新 msg.content，但旧渲染在
+                // 「无工具调用」时只画三点动画——增量全部被吞，等完才一次性出全文。
+                // 现在只要有内容片段就逐字渲染；内容未到时依次显示 thinking 文案 / 三点。
+                msg.content ? (
+                  <div
+                    className="chat-bubble-content is-streaming"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                  />
+                ) : msg.thinking ? null : (
                   <div className="chat-typing"><span /><span /><span /></div>
                 )
               ) : (
