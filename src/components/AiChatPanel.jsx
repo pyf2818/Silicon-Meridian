@@ -373,7 +373,7 @@ export default function AiChatPanel({
   const materialContext = useMemo(() => {
     const lastUser = [...messages].reverse().find(m => m.role === 'user')?.content || '';
     const query = (input || lastUser || '').slice(0, 120);
-    return buildMaterialContext(materials, { query, limit: 6 });
+    return buildMaterialContext(materials, { query, limit: 12 });
   }, [materials, input, messages]);
 
   // 上下文胶囊弹层数据：情报证据条目（与 system prompt 注入同源，≤12 条）

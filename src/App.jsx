@@ -2364,7 +2364,9 @@ ${materialLines || '暂无素材'}`;
               intelligenceContext={{
                 date: selectedNewsDate,
                 briefing: algorithmBriefing,
-                items: [...externalIntelligenceItems, ...recommendationLanes.public, ...recommendationLanes.personal].slice(0, 16),
+                // 目录层（buildEvidenceCatalog）只注入「ID+标题+元信息」一行一条，
+                // 上限与 CATALOG_LIMITS.news 对齐 = 60：条目多了不爆上下文，agent 视野却大得多
+                items: [...externalIntelligenceItems, ...recommendationLanes.public, ...recommendationLanes.personal].slice(0, 60),
               }}
               onOpenNewspaper={() => setShowNewspaperOverlay(true)}
               todayBriefing={todayBriefing}
