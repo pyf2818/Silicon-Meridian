@@ -99,6 +99,37 @@ export async function restoreRootDirectory(key = HANDLE_KEY) {
   }
 }
 
+let workspaceHandleWatchInited = false;
+/**
+ * 应用启动时预恢复共享 rootHandle（权限仍 granted 的空间目录），并跟随空间切换。
+ *
+ * 为什么必须有它：恢复逻辑原先只挂在 WorkspacePanel 的挂载 effect 里——用户刷新后
+ * 直接进 AI 工作站（不点开工作空间 tab）时面板从未挂载，rootHandle 永远为空，
+ * agent 的读/写/改文件全部报「未连接工作空间」。
+ *
+ * 权限处于 prompt/denied 状态的 handle 仍需用户手势（面板中的「重新激活权限」按钮），
+ * 这里静默跳过，不打扰；面板打开后其自身的恢复流程照常接管。
+ */
+export function initWorkspaceHandleWatch() {
+  if (workspaceHandleWatchInited || !isFileSystemSupported()) return;
+  workspaceHandleWatchInited = true;
+  const restore = async () => {
+    try {
+      const [{ getRootHandle, setRootHandle }, { getActiveSpaceId }] = await Promise.all([
+        import('./workspaceHandleStore.js'),
+        import('./workspaceStore.js'),
+      ]);
+      if (getRootHandle()) return; // 面板已绑定（含待激活流程），不覆盖
+      const handle = await restoreRootDirectory(getActiveSpaceId());
+      if (handle) setRootHandle(handle);
+    } catch { /* 静默失败：面板打开后仍会恢复 */ }
+  };
+  restore();
+  import('./workspaceStore.js')
+    .then(({ subscribeSpaces }) => subscribeSpaces(() => restore()))
+    .catch(() => { /* ignore */ });
+}
+
 export async function clearRootDirectory(key = HANDLE_KEY) {
   const db = await openDB();
   await new Promise((resolve, reject) => {

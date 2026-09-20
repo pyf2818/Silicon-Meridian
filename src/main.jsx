@@ -18,8 +18,14 @@ import './globe-screen.css'; // v25 全球大屏（gs- 前缀独立作用域，�
 import './community-theme.css'; // 社区改版 B2（广场频道壳，community- 前缀独立作用域）
 import BackgroundLayer from './components/visual/BackgroundLayer.jsx';
 import NoiseLayer from './components/visual/NoiseLayer.jsx';
+import { initWorkspaceHandleWatch } from './utils/workspace.js';
 // ParticleField 懒加载：首屏先显示背景与噪点，粒子稍后出现，不阻塞首屏
 const ParticleField = lazy(() => import('./components/visual/ParticleField.jsx'));
+
+// 启动即预恢复工作空间 rootHandle（权限仍 granted 的空间目录），并跟随空间切换。
+// 让 agent 的读/写/改文件不依赖「工作空间面板是否被打开过」——刷新后直接进
+// AI 工作站也不会报「未连接工作空间」。prompt 状态的权限仍由面板按钮接管。
+initWorkspaceHandleWatch();
 
 // 全局兜底错误边界：复用 SafeBoundary（B2）。局部模块（GlobeView / AiElf / StockPage
 // 等懒加载 chunk）另有各自的 SafeBoundary 就近兜底；此处作为最后一道防线，避免任何
