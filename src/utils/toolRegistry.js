@@ -254,6 +254,14 @@ export async function executeTool(name, args, ctx) {
   if (parameters && typeof parameters === 'object') {
     const verdict = validateToolArgs(parameters, effectiveArgs);
     if (!verdict.ok) {
+      // 空参数 + 该工具声明了 required：大概率是「参数 JSON 被输出上限截断」——
+      // toolCallMerge 的卫生降级把非法（截断）参数替换成了 {}。给模型可执行的自愈路径，
+      // 而不是让它原样重试（长文件场景下重试必然再次截断，死循环）。
+      const isBlank = !effectiveArgs || (typeof effectiveArgs === 'object' && Object.keys(effectiveArgs).length === 0);
+      const hasRequired = Array.isArray(parameters.required) && parameters.required.length > 0;
+      if (isBlank && hasRequired) {
+        return `错误：工具 "${name}" 的参数没有收到（大概率是上次输出的参数 JSON 超过输出上限被截断，已安全降级为空）。请拆分操作后重试：把大文件分成 2~3 次写入（每次 content 控制在 800 字以内，先 write 前半、再用 edit_file 或再次 write 追加后半），或精简要写入的内容。`;
+      }
       return `错误：工具 "${name}" 参数校验失败：${verdict.error}。请修正参数后重新调用。`;
     }
     effectiveArgs = verdict.args;

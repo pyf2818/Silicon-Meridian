@@ -23,8 +23,12 @@ export const ELF_MAX_ITERATIONS = 6;
 /** 循环内核的默认轮数（调用方未显式传入时生效） */
 export const AGENT_DEFAULT_MAX_ITERATIONS = WORKSTATION_MAX_ITERATIONS;
 
-/** 对话补全的单次输出上限（token） */
-export const COMPLETION_MAX_TOKENS = 4000;
+/** 对话补全的单次输出上限（token）。
+ *  8000 而非 4000：agent 的核心场景「写一个完整的文件」的参数 JSON 很容易超过
+ *  4000 token（中文 content ≈ 1 字 1~2 token），一旦截断，toolCallMerge 的卫生降级
+ *  会把整个参数替换为 {}（安全失败），模型重试必然再次截断 → 写文件死循环。
+ *  服务端闸门是 >8000 才回落，8000 恰好通过。 */
+export const COMPLETION_MAX_TOKENS = 8000;
 
 /** 辅助产物的输出上限（如技能沉淀）：只需结构化要点，不需要长文，省额度 */
 export const AUX_COMPLETION_MAX_TOKENS = 3000;
