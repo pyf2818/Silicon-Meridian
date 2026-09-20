@@ -1,6 +1,7 @@
 import { selectToolSchemas } from '../../utils/agentTools.js';
 import { packConversation } from '../../session/contextManager.js';
 import { saveDropSnapshot } from '../../utils/articleFetcher.js';
+import { streamLlm } from '../../utils/llmStream.js';
 
 // 普通模式（无工具）上下文预算：超预算时中段本地摘要压缩，替代整段发送
 const PLAIN_CONTEXT_BUDGET = 40_000;
@@ -96,7 +97,7 @@ export function useSendMessage({
         return;
       }
 
-      // ===== 普通模式：无工具，单次请求（超预算时中段本地摘要压缩） =====
+      // ===== 普通模式：无工具，单次流式请求（超预算时中段本地摘要压缩） =====
       // 打包逻辑与 agent 工具循环、工作站流式路径共用 contextManager.packConversation
       const plainHistory = messages.slice(-40);
       const packed = await packConversation(plainHistory, {
@@ -108,26 +109,25 @@ export function useSendMessage({
       });
       const plainMessages = packed.messages;
 
-      const response = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: llmConfig.baseUrl,
-          apiKey: llmConfig.apiKey,
-          model: llmConfig.selectedModel,
-          action: 'chat',
-          content: messageText,
+      // v30：流式——先落一个 placeholder 消息，增量原地追加（与 agent loop 模式的 UX 对齐）
+      appendMessage({ role: 'assistant', content: '', loading: true, timestamp: Date.now() });
+      const streamIdx = -1; // placeholder 恒为最后一条
+      const patchStream = (full, extra = {}) => setMessages(prev => prev.map((m, idx) => (
+        idx === prev.length + streamIdx ? { ...m, content: full, ...extra } : m
+      )));
+      let full = '';
+      try {
+        const { content } = await streamLlm({
+          llmConfig,
+          userPrompt: messageText,
           systemPrompt,
           messages: plainMessages.map(msg => ({ role: msg.role, content: msg.content })),
-        }),
-      });
-
-      const data = await response.json();
-      appendMessage({
-        role: 'assistant',
-        content: data.error ? `分析失败: ${data.error}` : (data.content || '暂无分析结果'),
-        timestamp: Date.now(),
-      });
+          onDelta: (_delta, accumulated) => { full = accumulated; patchStream(accumulated, { loading: true }); },
+        });
+        patchStream(content || '暂无分析结果', { loading: false });
+      } catch (streamErr) {
+        patchStream(`分析失败: ${streamErr.message}`, { loading: false });
+      }
     } catch (e) {
       appendMessage({ role: 'assistant', content: `分析失败: ${e.message}`, timestamp: Date.now() });
     } finally {

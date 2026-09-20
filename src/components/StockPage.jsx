@@ -860,6 +860,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
         onArchiveMaterial={onArchiveMaterial}
         onOpenLlmConfig={onOpenLlmConfig}
         canRun={!!realtime && !marketDataState.unavailable}
+        streamText={ai.diagnosisStreamText || ''}
       />
 
       {showResearchTools && (
@@ -927,7 +928,14 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
                   ))}
                 </div>
               ) : ai.briefingLoading ? (
-                <div className="stock-ai-loading"><div className="spinner" /><span>正在生成早报…</span></div>
+                ai.briefingStreamText ? (
+                  <div className="stock-diag-streaming">
+                    <BriefingContent content={ai.briefingStreamText} />
+                    <div className="stock-diag-streaming-hint"><span className="stock-diag-streaming-dot" />早报正在逐字生成…</div>
+                  </div>
+                ) : (
+                  <div className="stock-ai-loading"><div className="spinner" /><span>正在生成早报…</span></div>
+                )
               ) : ai.briefingError ? (
                 <div className="stock-ai-error">{ai.briefingError}<button onClick={runBriefing}>重试</button></div>
               ) : ai.briefing ? (

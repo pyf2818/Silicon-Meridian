@@ -28,6 +28,7 @@ export default function DiagnosisDrawer({
   onArchiveMaterial,
   onOpenLlmConfig,
   canRun,
+  streamText = '',
 }) {
   const [tab, setTab] = useState('report'); // 'report' | 'history'
   const [viewing, setViewing] = useState(null); // 历史记录只读视图
@@ -137,7 +138,16 @@ export default function DiagnosisDrawer({
                   {ICONS.sparkle}<span>{ai.llmReady ? '生成 AI 增强分析' : '生成算法分析'}</span>
                 </button>
               )}
-              {ai.diagnosing && <div className="stock-ai-loading"><div className="spinner" /><span>正在计算技术指标…</span></div>}
+              {ai.diagnosing && (
+                streamText ? (
+                  <div className="stock-diag-streaming">
+                    <div className="stock-ai-text stock-ai-master" dangerouslySetInnerHTML={{ __html: renderMarkdown(streamText) }} />
+                    <div className="stock-diag-streaming-hint"><span className="stock-diag-streaming-dot" />AI 正在逐字生成，可直接阅读…</div>
+                  </div>
+                ) : (
+                  <div className="stock-ai-loading"><div className="spinner" /><span>正在计算技术指标…</span></div>
+                )
+              )}
               {ai.diagnoseError && <div className="stock-ai-error">{ai.diagnoseError}<button onClick={runDiagnosis}>重试</button></div>}
               {diagnosis && (
                 <div className="stock-ai-result stock-analysis-result">

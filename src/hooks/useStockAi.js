@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { analyzeStock } from '../domain/stock/algorithmAnalysis.js';
 import { buildStockEvidencePacket, formatEvidencePacketForPrompt } from '../domain/stock/evidencePacket.js';
+import { streamLlm } from '../utils/llmStream.js';
 
 const COMPLIANCE_SUFFIX = '\n\n（以上内容由 AI 基于公开行情数据生成，仅供参考，不构成投资建议）';
 const BRIEFING_HISTORY_KEY = 'stockBriefingHistoryV1';
@@ -64,23 +65,16 @@ function useLlmReady(llmConfig) {
   return Boolean(llmConfig?.baseUrl && llmConfig?.apiKey && llmConfig?.selectedModel);
 }
 
-// 统一调用 /api/ai-generate
-async function callLlm(llmConfig, systemPrompt, userPrompt) {
-  const res = await fetch('/api/ai-generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      baseUrl: llmConfig.baseUrl,
-      apiKey: llmConfig.apiKey,
-      model: llmConfig.selectedModel,
-      action: 'chat',
-      messages: [{ role: 'user', content: userPrompt }],
-      systemPrompt,
-    }),
+// 统一调用 /api/ai-generate（v30：流式——onDelta 存在时逐字回调，返回完整文本）
+async function callLlm(llmConfig, systemPrompt, userPrompt, onDelta = null) {
+  const { content } = await streamLlm({
+    llmConfig,
+    systemPrompt,
+    userPrompt,
+    onDelta: onDelta || undefined,
   });
-  const data = await res.json();
-  if (!data.content) throw new Error(data.message || 'AI 返回为空');
-  return data.content;
+  if (!content) throw new Error('AI 返回为空');
+  return content;
 }
 
 // ===== 模块级 store：组件 unmount 后任务继续，store 保持状态 =====
@@ -88,7 +82,9 @@ const store = {
   state: {
     llmConfig: null,
     diagnosing: false, diagnosis: null, diagnoseError: '',
+    diagnosisStreamText: '', // v30：诊断 AI 叙述流式槽（生成中逐字更新，完成即清）
     briefingLoading: false, briefing: null, briefingError: '',
+    briefingStreamText: '', // v30：早报流式槽
     briefingHistory: loadBriefingHistory(),
     diagnosisHistory: loadDiagnosisHistory(),
     alertChecking: false, alertResults: [],
@@ -99,7 +95,7 @@ const store = {
   setState(patch) { this.state = { ...this.state, ...patch }; this.notify(); },
 };
 
-export async function runStockAnalysis({ input, llmConfig, experienceMode = 'beginner', investorPolicy = null, callLlm: invokeLlm = callLlm }) {
+export async function runStockAnalysis({ input, llmConfig, experienceMode = 'beginner', investorPolicy = null, callLlm: invokeLlm = callLlm, onDelta = null }) {
   const algorithm = analyzeStock(input);
   const evidencePacket = buildStockEvidencePacket({ ...input, diagnosis: algorithm });
   const algorithmResult = {
@@ -187,7 +183,7 @@ RSI(14)：${metrics.rsi14 ?? '--'}；KDJ(K/D/J)：${metrics.kdjK ?? '--'}/${metr
 【研究证据包】
 ${formatEvidencePacketForPrompt(evidencePacket)}`;
   try {
-    const aiNarrative = await invokeLlm(llmConfig, systemPrompt, userPrompt);
+    const aiNarrative = await invokeLlm(llmConfig, systemPrompt, userPrompt, onDelta);
     return {
       ...algorithmResult,
       mode: 'ai',
@@ -213,22 +209,23 @@ export function useStockAi(llmConfig) {
   const [snapshot, setSnapshot] = useState(store.state);
   useEffect(() => store.subscribe(setSnapshot), []);
 
-  // ===== 模块 A：确定性算法分析 + 可选 AI 增强 =====
+  // ===== 模块 A：确定性算法分析 + 可选 AI 增强（v30：AI 叙述流式渲染） =====
   const diagnoseStock = useCallback(async ({ stock, kline, benchmarkKline, benchmark, realtime, sectors, experienceMode = 'beginner', investorPolicy = null }) => {
-    store.setState({ diagnosing: true, diagnoseError: '' });
+    store.setState({ diagnosing: true, diagnoseError: '', diagnosisStreamText: '' });
     try {
       const result = await runStockAnalysis({
         input: { stock, realtime, klines: kline?.klines || [], benchmarkKlines: benchmarkKline?.klines || [], benchmark, sectors },
         experienceMode,
         investorPolicy,
         llmConfig: store.state.llmConfig,
+        onDelta: (_delta, full) => store.setState({ diagnosisStreamText: full }),
       });
       const record = buildDiagnosisRecord(result);
       const nextHistory = [record, ...store.state.diagnosisHistory].slice(0, DIAG_HISTORY_LIMIT);
       persistDiagnosisHistory(nextHistory);
-      store.setState({ diagnosis: { ...result, at: Date.now() }, diagnosing: false, diagnosisHistory: nextHistory });
+      store.setState({ diagnosis: { ...result, at: Date.now() }, diagnosing: false, diagnosisStreamText: '', diagnosisHistory: nextHistory });
     } catch (e) {
-      store.setState({ diagnoseError: e.message || '行情分析失败', diagnosing: false });
+      store.setState({ diagnoseError: e.message || '行情分析失败', diagnosing: false, diagnosisStreamText: '' });
     }
   }, []);
 
@@ -239,7 +236,7 @@ export function useStockAi(llmConfig) {
       store.setState({ briefingError: '请先配置大模型' });
       return;
     }
-    store.setState({ briefingLoading: true, briefingError: '' });
+    store.setState({ briefingLoading: true, briefingError: '', briefingStreamText: '' });
     try {
       const stockRows = stocks || [];
       const sectorRows = sectors || [];
@@ -280,7 +277,7 @@ ${sectorText}
 
 请基于以上有限数据完成早报，并在"数据边界"中明确缺少全市场广度、财务、公告、新闻、资金流、估值与持仓数据。`;
 
-      const content = await callLlm(cfg, systemPrompt, userPrompt);
+      const content = await callLlm(cfg, systemPrompt, userPrompt, (_delta, full) => store.setState({ briefingStreamText: full }));
       const record = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         content: content + COMPLIANCE_SUFFIX,
@@ -290,6 +287,7 @@ ${sectorText}
       store.setState({
         briefing: record,
         briefingLoading: false,
+        briefingStreamText: '',
         briefingHistory: (() => {
           const next = [record, ...store.state.briefingHistory].slice(0, BRIEFING_HISTORY_LIMIT);
           persistBriefingHistory(next);
@@ -297,7 +295,7 @@ ${sectorText}
         })(),
       });
     } catch (e) {
-      store.setState({ briefingError: e.message || '早报生成失败', briefingLoading: false });
+      store.setState({ briefingError: e.message || '早报生成失败', briefingLoading: false, briefingStreamText: '' });
     }
   }, []);
 
@@ -377,12 +375,14 @@ ${sectorText}
     diagnosing: snapshot.diagnosing,
     diagnosis: snapshot.diagnosis,
     diagnoseError: snapshot.diagnoseError,
+    diagnosisStreamText: snapshot.diagnosisStreamText,
     diagnosisHistory: snapshot.diagnosisHistory,
     diagnoseStock, clearDiagnosis, deleteDiagnosisRecord, clearDiagnosisHistory,
     // 早报
     briefingLoading: snapshot.briefingLoading,
     briefing: snapshot.briefing,
     briefingError: snapshot.briefingError,
+    briefingStreamText: snapshot.briefingStreamText,
     briefingHistory: snapshot.briefingHistory,
     generateMorningBrief, clearBriefing, openBriefing, deleteBriefing, clearBriefingHistory,
     // 监控

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useElfStore } from '../../store/elfStore.js';
 import { useAiStore } from '../../store/aiStore.js';
 import { ICONS } from '../../constants/appConstants.jsx';
+import { streamLlm } from '../../utils/llmStream.js';
 
 /**
  * SelectionTranslate - 划词翻译与解释（v23 #1 / v26 手动触发改造）
@@ -82,24 +83,19 @@ export default function SelectionTranslate({ llmConfig }) {
         setLoading('');
         return;
       }
-      const response = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await streamLlm({
+        llmConfig,
+        userPrompt: text,
+        systemPrompt: kind === 'explain' ? EXPLAIN_SYSTEM_PROMPT : TRANSLATE_SYSTEM_PROMPT,
         signal: controller.signal,
-        body: JSON.stringify({
-          baseUrl: llmConfig.baseUrl,
-          apiKey: llmConfig.apiKey,
-          model: llmConfig.selectedModel,
-          action: 'chat',
-          content: text,
-          systemPrompt: kind === 'explain' ? EXPLAIN_SYSTEM_PROMPT : TRANSLATE_SYSTEM_PROMPT,
-          messages: [],
-        }),
+        onDelta: (_delta, full) => {
+          if (seq !== seqRef.current) return; // 已有更新请求，丢弃过期增量
+          setResult(full);
+          setLoading('');
+        },
       });
-      const data = await response.json();
       if (seq !== seqRef.current) return; // 已有更新请求，丢弃过期结果
-      if (data.error) setError(`请求失败: ${data.error}`);
-      else setResult(data.content || '暂无结果');
+      setResult(prev => prev || '暂无结果');
     } catch (e) {
       if (e?.name === 'AbortError') return;
       if (seq === seqRef.current) setError(`请求失败: ${e?.message || e}`);
