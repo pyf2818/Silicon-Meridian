@@ -71,6 +71,7 @@ it('v29：诊断历史记录只留展示字段（code/评级/模式/现价/内�
     stock: { code: '600519', name: '贵州茅台' },
     mode: 'ai', rating: '强势', risk: 'low',
     metrics: { price: 1257.12 },
+    usage: { total_tokens: 1234 },
     content: '## 操作判断\n持有，等待突破。',
   });
   expect(record.code).toBe('600519');
@@ -79,7 +80,21 @@ it('v29：诊断历史记录只留展示字段（code/评级/模式/现价/内�
   expect(record.rating).toBe('强势');
   expect(record.risk).toBe('low');
   expect(record.price).toBeCloseTo(1257.12);
+  expect(record.tokens).toBe(1234); // v31：token 用量随记录留存
   expect(record.content).toContain('操作判断');
   expect(typeof record.at).toBe('number');
   expect(record.id).toBeTruthy();
+});
+
+it('v31：AI 增强成功时透传上游 token 用量，无 mock usage 时为 null 不报错', async () => {
+  const callLlm = vi.fn().mockResolvedValue('AI 结论');
+  const result = await runStockAnalysis({
+    input,
+    experienceMode: 'pro',
+    llmConfig: { baseUrl: 'x', apiKey: 'x', selectedModel: 'x' },
+    callLlm,
+  });
+  expect(result.mode).toBe('ai');
+  expect(result.content).toContain('AI 结论');
+  expect(result.usage ?? null).toBeNull(); // mock 未回调 onUsage → null，UI 自动隐藏
 });

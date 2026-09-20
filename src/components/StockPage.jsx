@@ -940,7 +940,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
                 <div className="stock-ai-error">{ai.briefingError}<button onClick={runBriefing}>重试</button></div>
               ) : ai.briefing ? (
                 <>
-                  <div className="stock-briefing-meta"><span>{new Date(ai.briefing.at).toLocaleString('zh-CN')}</span><span>{ai.briefing.meta?.coverage || '行情样本'} · {ai.briefing.meta?.stockCount || 0} 只</span>{onArchiveMaterial && <button type="button" className="stock-ai-archive" onClick={archiveBriefing} title="把这份早报存入素材库">{ICONS.bookmark}<span>存档</span></button>}</div>
+                  <div className="stock-briefing-meta"><span>{new Date(ai.briefing.at).toLocaleString('zh-CN')}</span><span>{ai.briefing.meta?.coverage || '行情样本'} · {ai.briefing.meta?.stockCount || 0} 只</span>{ai.briefing.meta?.tokens != null && <span>Token {ai.briefing.meta.tokens}</span>}{onArchiveMaterial && <button type="button" className="stock-ai-archive" onClick={archiveBriefing} title="把这份早报存入素材库">{ICONS.bookmark}<span>存档</span></button>}</div>
                   <BriefingContent content={ai.briefing.content} />
                 </>
               ) : !ai.llmReady ? (

@@ -158,6 +158,9 @@ export default function MessageList({
             )}
             <div className="ai-elf-message-time">
               {new Date(msg.timestamp).toLocaleTimeString()}
+              {msg.role === 'assistant' && msg.usage?.total_tokens != null && (
+                <span className="ai-elf-msg-tokens" title="本次回复 token 用量"> · {msg.usage.total_tokens} tokens</span>
+              )}
             </div>
           </div>
         </div>

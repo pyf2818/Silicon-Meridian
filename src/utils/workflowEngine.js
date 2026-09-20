@@ -347,17 +347,19 @@ export class WorkflowEngine {
    * 引擎侧把增量实时写入 trace → 所有消费 UI 即时可见），否则保持原非流式路径
    * （引擎单测大量 mock fetch 返回完整 JSON，不走流式分支，零破坏）。
    * abort：两条路径都接 this.abortController.signal，停止按钮真取消。
+   * v31：返回 { content, usage }——usage 为上游 token 用量（缺失时 null）。
    */
   async _callChat(ctx, { systemPrompt, messages, onDelta }) {
     if (ctx?.stream === true) {
-      const { content } = await streamLlm({
+      const { content, usage } = await streamLlm({
         llmConfig: { baseUrl: ctx.llmConfig?.baseUrl, apiKey: ctx.llmConfig?.apiKey, selectedModel: ctx.llmConfig?.selectedModel },
         systemPrompt,
         messages,
         onDelta: onDelta || undefined,
         signal: this.abortController?.signal,
+        includeUsage: true,
       });
-      return content;
+      return { content, usage: usage || null };
     }
     const response = await fetch('/api/ai-generate', {
       method: 'POST',
@@ -374,7 +376,7 @@ export class WorkflowEngine {
     });
     const data = await response.json();
     if (data.error) throw new Error(data.error);
-    return data.content || '';
+    return { content: data.content || '', usage: data.usage || null };
   }
 
   /**
@@ -463,12 +465,14 @@ export class WorkflowEngine {
               ]
             : [{ role: 'user', content: `${node.prompt}\n\n${String(nodeInput).slice(-6000)}` }];
 
-          output = await this._callChat(ctx, {
+          const llmOut = await this._callChat(ctx, {
             systemPrompt,
             messages,
             // 流式：增量实时写入 trace，画布/运行面板即时可见
             onDelta: ctx?.stream === true ? (_delta, full) => setTrace(node.id, { status: 'running', output: full }) : null,
-          }) || `${node.title} 暂无输出`;
+          });
+          output = llmOut.content || `${node.title} 暂无输出`;
+          if (llmOut.usage?.total_tokens != null) setTrace(node.id, { tokens: llmOut.usage.total_tokens });
         } else if (node.type === 'skill' && node.skillMode === 'ai') {
           // v24 #4：skill AI 增强模式——本地规则引擎产出结构化底座，再交 LLM 深化（真实调用，非空壳）
           const localResult = runLocalNode(node, previousOutput, localCtxFrom(ctx));
@@ -487,7 +491,8 @@ export class WorkflowEngine {
               output: `【本地规则结果】\n${localOutput}\n\n【AI 深化】\n${full}`,
             }) : null,
           });
-          output = `【本地规则结果】\n${localOutput}\n\n【AI 深化】\n${deepened || '(AI 无输出)'}`;
+          output = `【本地规则结果】\n${localOutput}\n\n【AI 深化】\n${deepened.content || '(AI 无输出)'}`;
+          if (deepened.usage?.total_tokens != null) setTrace(node.id, { tokens: deepened.usage.total_tokens });
         } else {
           const localResult = runLocalNode(node, previousOutput, localCtxFrom(ctx));
           output = typeof localResult === 'string' ? localResult : localResult.output;
@@ -623,11 +628,11 @@ export class WorkflowEngine {
       const agent = (ctx.agents || []).find(a => a.id === branch.agentId) || (ctx.agents || [])[0];
       const systemPrompt = `${agent?.systemPrompt || '你是个人情报智能体。'}\n\n你在并行分支 "${branch.name}" 中工作，请基于输入独立给出该分支的结论。`;
       const messages = [{ role: 'user', content: `${branch.prompt || ''}\n\n${input.slice(-4000)}` }];
-      const branchOutput = await this._callChat(ctx, {
+      const branchOut = await this._callChat(ctx, {
         systemPrompt,
         messages,
       });
-      return { name: branch.name, output: branchOutput || '(无内容)' };
+      return { name: branch.name, output: branchOut.content || '(无内容)' };
     }));
 
     // 收集成功的分支结果（失败的保留错误信息）
@@ -652,7 +657,7 @@ export class WorkflowEngine {
         messages: [{ role: 'user', content: branchDigest.slice(-6000) }],
         onDelta: ctx?.stream === true ? (_delta, full) => setTrace(node.id, { status: 'running', detail: '并行分支汇总中…', output: full }) : null,
       });
-      mergedOutput = summarized || branchDigest;
+      mergedOutput = summarized.content || branchDigest;
     } else {
       // concat：默认拼接
       mergedOutput = completed.map((b, i) => `### 分支 ${i + 1}：${b.name}\n${b.output}`).join('\n\n---\n\n');

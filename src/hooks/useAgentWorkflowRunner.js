@@ -483,7 +483,8 @@ export function useAgentWorkflowRunner({
         let shouldContinue = true;
         if (node.type === 'llm') {
           // v30：流式执行——增量实时写入 trace，运行面板即时可见；点停止真取消
-          const { content } = await streamLlm({
+          // v31：includeUsage 捕获 token 用量，写入 trace 节点并累计到运行汇总
+          const { content, usage } = await streamLlm({
             llmConfig,
             systemPrompt,
             userPrompt: `工作流任务：${prompt}
@@ -503,6 +504,7 @@ ${blueprintSummary}`,
               { role: 'user', content: String(nodeInput).slice(-6000) }
             ],
             signal: controller.signal,
+            includeUsage: true,
             onDelta: (_delta, full) => {
               setAgentWorkflowRun(prev => ({
                 ...prev,
@@ -511,6 +513,14 @@ ${blueprintSummary}`,
             },
           });
           output = content || `${node.title} 暂无输出`;
+          if (usage?.total_tokens != null) {
+            const nodeTokens = usage.total_tokens;
+            setAgentWorkflowRun(prev => ({
+              ...prev,
+              tokensTotal: (prev.tokensTotal || 0) + nodeTokens,
+              trace: prev.trace.map(step => (step.nodeId === node.id ? { ...step, tokens: nodeTokens } : step))
+            }));
+          }
         } else {
           const localResult = await runLocalNode(node, nodeInput);
           output = typeof localResult === 'string' ? localResult : localResult.output;

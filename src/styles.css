@@ -7209,6 +7209,7 @@ body {
 .ai-elf-message-text hr { border: none; border-top: 1px solid var(--border-color); margin: 12px 0; }
 
 .ai-elf-message-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; padding: 0 4px; }
+.ai-elf-msg-tokens { opacity: .8; letter-spacing: .02em; }
 
 /* AI精灵消息操作按钮 */
 .ai-elf-message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; padding: 0 4px; }

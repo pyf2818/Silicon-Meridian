@@ -709,6 +709,7 @@ export default function CanvasPage({
                     <strong>{step.order}. {step.title}</strong>
                     <em>{step.status === 'running' ? '执行中' : step.status === 'completed' ? '完成' : step.status === 'failed' ? '失败' : step.status === 'skipped' ? '跳过' : step.status === 'blocked' ? '阻塞' : '排队中'}</em>
                     {step.output && <pre>{step.output.slice(-700)}</pre>}
+                    {step.tokens != null && <p>Token 消耗：{step.tokens}</p>}
                     {!step.output && step.detail && step.status !== 'queued' && <p>{step.detail}</p>}
                   </div>
                 ))}
@@ -719,7 +720,7 @@ export default function CanvasPage({
             {!isRealRunning && agentWorkflowRun && ['completed', 'failed', 'stopped', 'blocked'].includes(agentWorkflowRun.status) && (
               <div className="canvas-run-result custom-scrollbar">
                 <div className="canvas-run-result-head">
-                  <span>运行{agentWorkflowRun.status === 'completed' ? '完成' : agentWorkflowRun.status === 'stopped' ? '已停止' : agentWorkflowRun.status === 'blocked' ? '未就绪' : '失败'} · {agentWorkflowRun.missionLabel || ''}</span>
+                  <span>运行{agentWorkflowRun.status === 'completed' ? '完成' : agentWorkflowRun.status === 'stopped' ? '已停止' : agentWorkflowRun.status === 'blocked' ? '未就绪' : '失败'} · {agentWorkflowRun.missionLabel || ''}{agentWorkflowRun.tokensTotal != null ? ` · 共 ${agentWorkflowRun.tokensTotal} tokens` : ''}</span>
                   {agentWorkflowResult?.content && onExportDeliverable && (
                     <button
                       type="button"

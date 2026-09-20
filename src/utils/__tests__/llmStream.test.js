@@ -41,6 +41,17 @@ describe('llmStream streamLlm', () => {
     expect(body.content).toBe('你好');
   });
 
+  it('v31：默认不请求用量（兼容严格网关），显式 includeUsage:true 才携带', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(sseResponse([{ ok: true, delta: 'ok' }, '[DONE]']));
+    await streamLlm({ llmConfig: CFG, userPrompt: 'x', fetchImpl });
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(body.includeUsage).toBe(false); // 默认关闭，与后端保守策略对齐
+
+    const fetchImpl2 = vi.fn().mockResolvedValue(sseResponse([{ ok: true, delta: 'ok' }, '[DONE]']));
+    await streamLlm({ llmConfig: CFG, userPrompt: 'x', includeUsage: true, fetchImpl: fetchImpl2 });
+    expect(JSON.parse(fetchImpl2.mock.calls[0][1].body).includeUsage).toBe(true);
+  });
+
   it('跳过 SSE 注释帧（: ka 保活）与非法 JSON 行', async () => {
     const encoder = new TextEncoder();
     const text = ': ka\n\ndata: {"ok":true,"delta":"A"}\n\ndata: {broken json}\n\ndata: {"ok":true,"delta":"B"}\n\ndata: [DONE]\n\n';

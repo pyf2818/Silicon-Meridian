@@ -55,6 +55,7 @@ export function buildDiagnosisRecord(result) {
     rating: result.rating || '--',
     risk: result.risk || '',
     price: result.metrics?.price ?? null,
+    tokens: result.usage?.total_tokens ?? null, // v31：token 用量随记录留存
     content: result.content || result.summary || '',
     at: Date.now(),
   };
@@ -65,14 +66,16 @@ function useLlmReady(llmConfig) {
   return Boolean(llmConfig?.baseUrl && llmConfig?.apiKey && llmConfig?.selectedModel);
 }
 
-// 统一调用 /api/ai-generate（v30：流式——onDelta 存在时逐字回调，返回完整文本）
-async function callLlm(llmConfig, systemPrompt, userPrompt, onDelta = null) {
-  const { content } = await streamLlm({
+// 统一调用 /api/ai-generate（v30：流式——onDelta 逐字回调；v31：onUsage 捕获 token 用量）
+async function callLlm(llmConfig, systemPrompt, userPrompt, onDelta = null, onUsage = null) {
+  const { content, usage } = await streamLlm({
     llmConfig,
     systemPrompt,
     userPrompt,
     onDelta: onDelta || undefined,
+    includeUsage: true,
   });
+  if (usage && onUsage) onUsage(usage);
   if (!content) throw new Error('AI 返回为空');
   return content;
 }
@@ -183,11 +186,13 @@ RSI(14)：${metrics.rsi14 ?? '--'}；KDJ(K/D/J)：${metrics.kdjK ?? '--'}/${metr
 【研究证据包】
 ${formatEvidencePacketForPrompt(evidencePacket)}`;
   try {
-    const aiNarrative = await invokeLlm(llmConfig, systemPrompt, userPrompt, onDelta);
+    let usage = null;
+    const aiNarrative = await invokeLlm(llmConfig, systemPrompt, userPrompt, onDelta, u => { usage = u; });
     return {
       ...algorithmResult,
       mode: 'ai',
       aiNarrative,
+      usage, // v31：token 用量（测试 mock invokeLlm 时不带，UI 自动隐藏）
       algorithm,
       content: `${aiNarrative}${COMPLIANCE_SUFFIX}`,
     };
@@ -277,12 +282,13 @@ ${sectorText}
 
 请基于以上有限数据完成早报，并在"数据边界"中明确缺少全市场广度、财务、公告、新闻、资金流、估值与持仓数据。`;
 
-      const content = await callLlm(cfg, systemPrompt, userPrompt, (_delta, full) => store.setState({ briefingStreamText: full }));
+      let usage = null;
+      const content = await callLlm(cfg, systemPrompt, userPrompt, (_delta, full) => store.setState({ briefingStreamText: full }), u => { usage = u; });
       const record = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         content: content + COMPLIANCE_SUFFIX,
         at: Date.now(),
-        meta: { indexCount: indices?.length || 0, stockCount: stockRows.length, sectorCount: sectorRows.length, coverage: coverage?.label || '行情样本' },
+        meta: { indexCount: indices?.length || 0, stockCount: stockRows.length, sectorCount: sectorRows.length, coverage: coverage?.label || '行情样本', tokens: usage?.total_tokens ?? null },
       };
       store.setState({
         briefing: record,

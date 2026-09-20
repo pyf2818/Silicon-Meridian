@@ -116,15 +116,18 @@ export function useSendMessage({
         idx === prev.length + streamIdx ? { ...m, content: full, ...extra } : m
       )));
       let full = '';
+      let streamUsage = null;
       try {
-        const { content } = await streamLlm({
+        const { content, usage } = await streamLlm({
           llmConfig,
           userPrompt: messageText,
           systemPrompt,
           messages: plainMessages.map(msg => ({ role: msg.role, content: msg.content })),
+          includeUsage: true,
           onDelta: (_delta, accumulated) => { full = accumulated; patchStream(accumulated, { loading: true }); },
         });
-        patchStream(content || '暂无分析结果', { loading: false });
+        streamUsage = usage || null;
+        patchStream(content || '暂无分析结果', { loading: false, usage: streamUsage });
       } catch (streamErr) {
         patchStream(`分析失败: ${streamErr.message}`, { loading: false });
       }

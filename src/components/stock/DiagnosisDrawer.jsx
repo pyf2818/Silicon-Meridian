@@ -89,6 +89,7 @@ export default function DiagnosisDrawer({
                 <div><span>风险等级</span><strong>{RISK_LABEL[viewing.risk] || viewing.risk || '--'}</strong></div>
                 <div><span>分析模式</span><strong>{viewing.mode === 'ai' ? 'AI 增强' : '确定性算法'}</strong></div>
                 <div><span>当时现价</span><strong>{viewing.price ?? '--'}</strong></div>
+                {viewing.tokens != null && <div><span>Token 消耗</span><strong>{viewing.tokens}</strong></div>}
               </div>
               <div className="stock-ai-text stock-ai-master" dangerouslySetInnerHTML={{ __html: renderMarkdown(viewing.content) }} />
               <div className="stock-diag-viewing-actions">
@@ -155,6 +156,7 @@ export default function DiagnosisDrawer({
                     <div><span>综合评级</span><strong>{diagnosis.rating}</strong></div>
                     <div><span>风险等级</span><strong>{RISK_LABEL[diagnosis.risk] || '--'}</strong></div>
                     <div><span>分析模式</span><strong>{diagnosis.mode === 'ai' ? 'AI 增强' : '确定性算法'}</strong></div>
+                    {diagnosis.usage?.total_tokens != null && <div><span>Token 消耗</span><strong>{diagnosis.usage.total_tokens}</strong></div>}
                   </div>
                   {diagnosis.status === 'ready' && (
                     <div className="stock-analysis-metrics">
