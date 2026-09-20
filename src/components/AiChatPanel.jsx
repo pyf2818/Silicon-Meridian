@@ -15,7 +15,7 @@ import SessionSidebar from './SessionSidebar.jsx';
 import AgentPanel from './AgentPanel.jsx';
 import { retrieveRelevantMemories, rememberCompaction } from '../utils/sessionMemory.js';
 import { searchFiles } from '../utils/workspaceIndex.js';
-import { observeQuestion, observeReply, observeFeedback, getLearnedPreferences } from '../utils/profileLearning.js';
+import { observeQuestion, observeReply, observeFeedback, observeSessionEnd, getLearnedPreferences } from '../utils/profileLearning.js';
 import { evolveMemory, fetchPersonaSummary, fetchRelevantMemories } from '../utils/memoryEvolver.js';
 import { extractTodos } from '../utils/todoExtractor.js';
 import { selectToolSchemas } from '../utils/agentTools.js';
@@ -1264,6 +1264,7 @@ export default function AiChatPanel({
       // 会话记忆：异步生成摘要（不阻塞对话），累积 3 轮以上才生成
       const currentSession = sessions.find(s => s.id === targetId) || { ...session, id: targetId, messages: [...messages, userMessage, { role: 'assistant', content: finalContent }] };
       const totalRounds = currentSession.messages.filter(m => m.role === 'user').length;
+      observeSessionEnd(totalRounds);
       if (totalRounds >= 3) {
         generateSessionSummary(currentSession, { baseUrl: llmConfig.baseUrl, apiKey: llmConfig.apiKey, selectedModel }).then(mem => {
           if (mem) setMemoriesVersion(v => v + 1);

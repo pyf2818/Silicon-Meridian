@@ -10,7 +10,7 @@
 // 用户点"停止"时通过 controller.abort() 中断；已完成的 toolCalls 痕迹保留展示。
 
 import { generateSessionSummary, retrieveRelevantMemories } from '../../utils/sessionMemory.js';
-import { observeReply, observeToolUsage } from '../../utils/profileLearning.js';
+import { observeReply, observeToolUsage, observeSessionEnd } from '../../utils/profileLearning.js';
 import { evolveMemory } from '../../utils/memoryEvolver.js';
 import { extractTodos } from '../../utils/todoExtractor.js';
 import { createSkillDirect } from '../../utils/agentTools.js';
@@ -308,6 +308,8 @@ export async function runAgentLoop({
     toolCalls: toolCallTrace.length,
     skillsUsed: toolCallTrace.filter(tc => tc?.name === 'create_skill' || String(tc?.args || '').includes('"title"')).length,
   });
+  // 工具偏好与会话统计：此前从未接线（工具偏好/会话统计展示组件因数据恒空而永不渲染）
+  observeToolUsage(toolCallTrace.map(tc => tc?.name).filter(Boolean));
   const extracted = extractTodos(finalFinalContent);
   if (extracted.length > 0) setAutoTodos(extracted);
 
@@ -370,6 +372,7 @@ export async function runAgentLoop({
 
   const currentSession = sessions.find(s => s.id === targetId) || { id: targetId, messages: [...messages, userMessage, { role: 'assistant', content: finalFinalContent }] };
   const totalRounds = currentSession.messages.filter(m => m.role === 'user').length;
+  observeSessionEnd(totalRounds);
   if (totalRounds >= 3) {
     generateSessionSummary(currentSession, { baseUrl: llmConfig.baseUrl, apiKey: llmConfig.apiKey, selectedModel }).then(mem => {
       if (mem) setMemoriesVersion(v => v + 1);

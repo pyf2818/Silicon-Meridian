@@ -164,7 +164,9 @@ export function useRecommendationMemos({
           behaviorSignal: bookmarkIds.has(item.id)
             ? 10
             : Math.min(categoryReadCount * 1.5 + sourceReadCount, 10),
-          isNovel: !readIds.has(item.id),
+          // novelty 修复：此前恒 true（items 已过滤已读，!readIds.has 恒真）。
+          // 真正的「新颖」= 该分类最近没有阅读记录——同类读得多的新条目不再拿满新颖分
+          isNovel: !readIds.has(item.id) && categoryReadCount === 0,
           // Phase 3 Task B12: 注入 personaSummary + relevantMemories 供推荐算法可选使用
           personaSummary,
           relevantMemories,

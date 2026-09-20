@@ -15,6 +15,7 @@ import NewsItem from './components/NewsItem.jsx';
 import HexRadarChart from './components/HexRadarChart.jsx';
 import TrendLineChart from './components/TrendLineChart.jsx';
 import { useAuth } from './hooks/useAuth.js';
+import { useSnapshotPreheat } from './hooks/useSnapshotPreheat.js';
 import { useLlmConfig } from './hooks/useLlmConfig.js';
 import { useTrending } from './hooks/useTrending.js';
 import { useSourceManager } from './hooks/useSourceManager.js';
@@ -316,6 +317,9 @@ function App() {
   // 进场动画（水墨开卷）：控制 splash 显隐，及内容随帷幕升起的 .is-entered 标记
   const [showSplash, setShowSplash] = useState(true);
   const [entered, setEntered] = useState(false);
+  // Phase 3 Task B8：lazy 预热今日画像快照（此前 hook 存在但从未接线）。
+  // 自守卫：今日已有快照则跳过；未登录/失败静默（cron 6:00 还会再跑）
+  useSnapshotPreheat({ enabled: true, llmConfig });
 
   // profilePage 已从 useUiStore 订阅（见上方 UI 状态区）
   // ===== AI 助手与简报状态（迁移自 useState -> Zustand aiStore）=====
