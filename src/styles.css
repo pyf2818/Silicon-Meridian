@@ -11932,6 +11932,22 @@ body {
   cursor: not-allowed;
 }
 
+/* v33 修复：styles.css 后段 26838 行的群聊页宽选择器 `.chat-header-actions button`
+   （padding: 8px 11px，特异性 0,1,1）会覆盖本按钮（0,1,0）——不对称内边距把图标
+   挤到左上角（用户截图实证）。这里用更高特异性恢复方框居中形态。 */
+.chat-header-actions .chat-header-btn {
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface-workbench-action);
+}
+.chat-header-actions .chat-header-btn:hover {
+  background: var(--accent-cyan-softer);
+  border-color: var(--accent-cyan-border);
+}
+
 .chat-messages-wrap {
   flex: 1 1 0;
   min-height: 0;
