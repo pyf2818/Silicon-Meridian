@@ -7211,6 +7211,52 @@ body {
 .ai-elf-message-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; padding: 0 4px; }
 .ai-elf-msg-tokens { opacity: .8; letter-spacing: .02em; }
 
+/* ===== v32：资讯预览结构化正文（.news-preview-html） =====
+   服务端白名单消毒的正文 HTML；这里补齐排版：标题层级/列表/**代码块**/表格/引用/图。 */
+.news-preview-html { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.85; color: var(--text-primary); }
+.news-preview-html h1, .news-preview-html h2, .news-preview-html h3,
+.news-preview-html h4, .news-preview-html h5, .news-preview-html h6 {
+  margin: 6px 0 0; font-weight: 700; line-height: 1.4; color: var(--text-primary);
+}
+.news-preview-html h1 { font-size: 19px; }
+.news-preview-html h2 { font-size: 17px; }
+.news-preview-html h3 { font-size: 15.5px; }
+.news-preview-html h4, .news-preview-html h5, .news-preview-html h6 { font-size: 14px; }
+.news-preview-html p { margin: 0; }
+.news-preview-html ul, .news-preview-html ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.news-preview-html li { line-height: 1.75; }
+.news-preview-html a { color: var(--accent-cyan); text-decoration: none; }
+.news-preview-html a:hover { text-decoration: underline; }
+.news-preview-html strong, .news-preview-html b { font-weight: 700; color: var(--text-primary); }
+/* 代码块：缩进与换行原样保留 + 终端风底色 */
+.news-preview-html pre {
+  margin: 0; padding: 12px 14px; overflow-x: auto; border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-secondary, #16181d) 92%, transparent);
+  border: 1px solid var(--border-color);
+}
+.news-preview-html code {
+  font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
+  font-size: 12px; line-height: 1.7;
+}
+.news-preview-html pre code { display: block; background: transparent; padding: 0; color: var(--text-primary); white-space: pre; }
+.news-preview-html :not(pre) > code {
+  padding: 1px 6px; border-radius: 5px;
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+  color: var(--accent-cyan);
+}
+.news-preview-html blockquote {
+  margin: 0; padding: 8px 14px; border-left: 3px solid var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
+  border-radius: 0 8px 8px 0; color: var(--text-secondary);
+}
+.news-preview-html table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.news-preview-html th, .news-preview-html td { padding: 7px 10px; border: 1px solid var(--border-color); text-align: left; line-height: 1.6; }
+.news-preview-html th { background: color-mix(in srgb, var(--border-color) 35%, transparent); font-weight: 700; }
+.news-preview-html img { max-width: 100%; height: auto; border-radius: 10px; display: block; margin: 4px auto; }
+.news-preview-html figure { margin: 0; }
+.news-preview-html figcaption { font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 4px; }
+.news-preview-html hr { border: 0; border-top: 1px dashed var(--border-color); margin: 6px 0; }
+
 /* v31：素材详情 → 股市反向链路 */
 .repo-drawer-stock-link {
   border: 0; background: transparent; padding: 0; cursor: pointer;

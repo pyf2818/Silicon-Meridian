@@ -8,7 +8,7 @@
  */
 
 const CACHE_LIMIT = 40;
-const memoryCache = new Map(); // url → { text, images }
+const memoryCache = new Map(); // url → { text, images, html }
 
 export function getCachedPageContent(url) {
   if (!url) return null;
@@ -17,7 +17,11 @@ export function getCachedPageContent(url) {
 
 export function cachePageContent(url, content) {
   if (!url || !content) return;
-  cachePageDetail(url, { text: content, images: memoryCache.get(url)?.images || [] });
+  cachePageDetail(url, {
+    text: content,
+    images: memoryCache.get(url)?.images || [],
+    html: memoryCache.get(url)?.html || '',
+  });
 }
 
 function cachePageDetail(url, detail) {
@@ -30,32 +34,35 @@ function cachePageDetail(url, detail) {
 }
 
 /**
- * 抓取正文全文 + 配图列表（NewsPreviewPanel 用）
- * @returns {Promise<{text:string|null, images:string[]}>}
+ * 抓取正文全文 + 配图列表 + 结构化 HTML（NewsPreviewPanel 用）
+ * v32：html 为服务端白名单消毒后的正文 HTML（保留标题/段落/列表/代码块/表格结构），
+ *      预览面板优先渲染它；text 仍为纯文本（AI 分析/精灵链路用，形状不变）。
+ * @returns {Promise<{text:string|null, images:string[], html:string}>}
  */
 export async function fetchArticleDetail(url) {
-  if (!url) return { text: null, images: [] };
+  if (!url) return { text: null, images: [], html: '' };
   const cached = memoryCache.get(url);
-  if (cached) return { text: cached.text, images: cached.images || [] };
+  if (cached) return { text: cached.text, images: cached.images || [], html: cached.html || '' };
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await fetch(`/api/fetch-page?url=${encodeURIComponent(url)}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       const text = String(data?.content || '');
+      const html = String(data?.html || '');
       const images = Array.isArray(data?.images) ? data.images.filter(u => typeof u === 'string' && /^https?:\/\//.test(u)) : [];
       // 内容过短多为反爬拦截页：不缓存，再试一次；仍短则视为失败
       if (text.length > 80) {
-        cachePageDetail(url, { text, images });
-        return { text, images };
+        cachePageDetail(url, { text, images, html });
+        return { text, images, html };
       }
-      if (attempt === 1) return { text: null, images: [] };
+      if (attempt === 1) return { text: null, images: [], html: '' };
     } catch {
-      if (attempt === 1) return { text: null, images: [] };
+      if (attempt === 1) return { text: null, images: [], html: '' };
       await new Promise(resolve => setTimeout(resolve, 900));
     }
   }
-  return { text: null, images: [] };
+  return { text: null, images: [], html: '' };
 }
 
 /**

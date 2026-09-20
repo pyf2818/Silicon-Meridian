@@ -90,19 +90,87 @@ export function cleanBlocks(text) {
 }
 
 /** 删除 class/id 命中噪声模式的块级元素（逐个标签类型处理，非贪婪） */
-export function stripNoiseElements(html) {
+export function stripNoiseElements(html, { keepImages = false } = {}) {
   let out = String(html || '').replace(NOISE_ELEMENT_PATTERN, ' ');
   for (const tag of BLOCK_TAGS) {
     const pattern = new RegExp(`<${tag}\\b([^>]*)>([\\s\\S]*?)<\\/${tag}>`, 'gi');
     out = out.replace(pattern, (whole, attrs, inner) =>
       NOISE_ATTR_PATTERN.test(attrs) ? ' ' : whole);
   }
-  return out.replace(NOISE_VOID_TAG_PATTERN, ' ');
+  // v32：keepImages 时保留 <img>（结构化正文与配图抽取需要）；
+  // 默认路径照旧剥掉（纯文本输出不受影响——img 本身无文本内容）
+  const voidPattern = keepImages
+    ? /<(script|style|iframe|svg|input|button|link|meta)\b[^>]*>/gi
+    : NOISE_VOID_TAG_PATTERN;
+  return out.replace(voidPattern, ' ');
 }
 
 /** 链接占比超过这个阈值、且文本足够长的块，判为「导航/相关阅读/分享」噪声 */
 export const LINK_DENSITY_THRESHOLD = 0.6;
 export const LINK_DENSITY_MIN_TEXT = 40;
+
+/* ===== v32：结构化正文 HTML（保留标题/段落/列表/代码块/表格结构，供预览面板渲染） ===== */
+
+/** 结构化输出允许保留的标签——白名单外的一律剥标签留内容 */
+const ALLOWED_HTML_TAGS = new Set([
+  'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li',
+  'pre', 'code', 'blockquote', 'strong', 'b', 'em', 'i', 'u', 's',
+  'a', 'img', 'figure', 'figcaption', 'hr',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'span', 'div', 'article', 'section', 'main',
+]);
+
+/** 允许保留的属性（on 事件、style、class、id、data 属性一律删除——预览渲染安全边界） */
+const SAFE_ATTR_RE = /(href|src|alt|title|colspan|rowspan|loading)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+
+function cleanSafeAttrs(tagName, attrs) {
+  let out = '';
+  let m;
+  SAFE_ATTR_RE.lastIndex = 0;
+  while ((m = SAFE_ATTR_RE.exec(attrs || ''))) {
+    const name = m[1].toLowerCase();
+    const value = (m[2] ?? m[3] ?? m[4] ?? '').trim();
+    if ((name === 'href' || name === 'src') && /^\s*(javascript:|vbscript:|data:text)/i.test(value)) continue;
+    if (name === 'href' && tagName === 'a') { out += ` href="${value.replace(/"/g, '&quot;')}"`; continue; }
+    if (name === 'src' && tagName === 'img') { out += ` src="${value.replace(/"/g, '&quot;')}"`; continue; }
+    if ((name === 'alt' || name === 'title') && value) { out += ` ${name}="${value.replace(/"/g, '&quot;')}"`; continue; }
+    if (name === 'loading' && tagName === 'img') { out += ' loading="lazy"'; continue; }
+    if ((name === 'colspan' || name === 'rowspan') && tagName !== 'img') { out += ` ${name}="${value}"`; continue; }
+  }
+  return out;
+}
+
+/**
+ * 把容器 HTML 清洗为「排版安全」的文章 HTML：
+ *  - 白名单外的标签剥掉（保留内部内容，如 font/div 包裹的段落文字）
+ *  - 保留标题/段落/列表/表格/代码块/引用/图片的结构与层级
+ *  - 只留安全属性（href、src、alt、title、colspan、rowspan），on 事件属性与 style 全删
+ *  - 相对 URL 借助 baseUrl 绝对化（否则预览里图片/链接全是断的）
+ *  - 不做任何空白折叠：<pre><code> 的缩进与换行原样保留
+ */
+export function sanitizeArticleHtml(html, baseUrl = '') {
+  let out = String(html || '')
+    .replace(NOISE_ELEMENT_PATTERN, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
+  out = out.replace(/<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g, (whole, slash, rawTag, attrs) => {
+    const tag = rawTag.toLowerCase();
+    if (!ALLOWED_HTML_TAGS.has(tag)) return ' ';
+    if (slash) return `</${tag}>`;
+    if (tag === 'br' || tag === 'hr') return `<${tag}>`;
+    if (tag === 'img') return `<img${cleanSafeAttrs('img', attrs)} loading="lazy">`;
+    return `<${tag}${cleanSafeAttrs(tag, attrs)}>`;
+  });
+  // 空段落收敛（不动 pre 内部：这里只匹配标签结构）
+  out = out.replace(/(?:\s*<(?:p|div|span)>\s*<\/(?:p|div|span)>\s*)+/gi, ' ');
+  // 相对 URL 绝对化（图片断了最影响观感）
+  const base = String(baseUrl || '');
+  if (base) {
+    out = out.replace(/(href|src)="([^"]+)"/g, (whole, attr, value) => {
+      if (/^(https?:|mailto:|#)/i.test(value)) return whole;
+      try { return `${attr}="${new URL(value, base).href}"`; } catch { return whole; }
+    });
+  }
+  return out.trim();
+}
 
 /**
  * 删除**链接密集**的块。
@@ -130,33 +198,46 @@ export function stripLinkHeavyBlocks(html) {
 /**
  * 抽取网页正文。
  * @param {string} html 原始 HTML
- * @returns {{content: string, extraction: 'container'|'fallback', strategy: string, textLength: number}}
+ * @param {{baseUrl?: string}} [opts] baseUrl 用于结构化 HTML 的相对 URL 绝对化
+ * @returns {{content: string, html: string, extraction: 'container'|'fallback', strategy: string, textLength: number}}
+ *   content  = 纯文本（AI 分析用，结构丢失）
+ *   html     = 结构化正文（v32：预览面板渲染用，保留标题/段落/列表/代码块/表格；已白名单消毒）
  */
-export function extractMainContent(html) {
-  const cleaned = stripNoiseElements(html);
+export function extractMainContent(html, { baseUrl = '' } = {}) {
+  // v32：keepImages——容器 HTML 里保留 <img>，供结构化正文与配图抽取；
+  // img 无文本内容，纯文本 content 不受影响
+  const cleaned = stripNoiseElements(html, { keepImages: true });
 
   // 按**语义优先级**选容器（<article> 比 <main> 精确），同优先级内取文本最长的那个。
   // 不用「全局最长」的原因：<main> 常把侧栏/相关阅读一起包进来，长度占优但精度更差。
-  let best = { text: '', strategy: '' };
+  let best = { text: '', html: '', strategy: '' };
   for (const { re: source, strategy } of CONTAINER_PATTERNS) {
     const re = new RegExp(source.source, source.flags);
     let longest = '';
+    let longestHtml = '';
     for (const match of cleaned.matchAll(re)) {
       // 链接密度过滤**只在候选容器内部**做：在全页阶段做有误删整个正文容器的风险
-      const text = htmlToBlocks(stripLinkHeavyBlocks(match[1]));
-      if (text.length > longest.length) longest = text;
+      const inner = stripLinkHeavyBlocks(match[1]);
+      const text = htmlToBlocks(inner);
+      if (text.length > longest.length) {
+        longest = text;
+        longestHtml = inner;
+      }
     }
     if (longest.length >= MIN_CONTAINER_TEXT_LENGTH) {
-      best = { text: longest, strategy };
+      best = { text: longest, html: longestHtml, strategy };
       break;
     }
   }
 
   const useContainer = best.text.length >= MIN_CONTAINER_TEXT_LENGTH;
+  const containerHtml = useContainer ? best.html : stripLinkHeavyBlocks(cleaned);
   const content = cleanBlocks((useContainer ? best.text : htmlToBlocks(stripLinkHeavyBlocks(cleaned))).slice(0, MAX_CONTENT_LENGTH * 2)).slice(0, MAX_CONTENT_LENGTH);
 
   return {
     content,
+    // v32：结构化正文——容器选中时给容器 HTML；fallback 给全页清洗版（此时噪声难免，但结构至少保留）
+    html: sanitizeArticleHtml(containerHtml, baseUrl),
     extraction: useContainer ? 'container' : 'fallback',
     strategy: useContainer ? best.strategy : 'whole-page',
     textLength: content.length,

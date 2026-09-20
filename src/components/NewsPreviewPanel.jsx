@@ -72,6 +72,7 @@ export default function NewsPreviewPanel() {
   const [status, setStatus] = useState('idle'); // idle | loading | done | failed
   const [content, setContent] = useState('');
   const [images, setImages] = useState([]);
+  const [articleHtml, setArticleHtml] = useState(''); // v32：服务端白名单消毒的结构化正文（代码块/标题/列表结构）
 
   useEffect(() => {
     if (!item) return;
@@ -79,6 +80,7 @@ export default function NewsPreviewPanel() {
     setStatus('loading');
     setContent('');
     setImages([]);
+    setArticleHtml('');
     // 素材/精灵快照自带 md 全文时直接用，不再抓取
     const local = item.fullContent || item.content;
     if (looksLikeMarkdown(local) && String(local).length > 120) {
@@ -94,13 +96,17 @@ export default function NewsPreviewPanel() {
       setStatus('done');
       return () => { cancelled = true; };
     }
-    fetchArticleDetail(item.url).then(({ text, images: imgs }) => {
+    fetchArticleDetail(item.url).then(({ text, images: imgs, html }) => {
       if (cancelled) return;
       const finalImgs = [...imgs];
       if (item.imageUrl && !finalImgs.includes(item.imageUrl)) finalImgs.unshift(item.imageUrl);
       if (text) {
         setContent(text);
         setImages(finalImgs);
+        // v32：服务端白名单消毒的结构化正文——前端再兜底剥一次 script 与内联事件（双保险）
+        setArticleHtml(String(html || '')
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/\son[a-zA-Z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ''));
         setStatus('done');
       } else {
         setImages(finalImgs);
@@ -161,6 +167,11 @@ export default function NewsPreviewPanel() {
           正在抓取原文全文…
         </div>
       );
+    }
+    if (status === 'done' && articleHtml) {
+      // v32：结构化正文优先——服务端已从正文容器抽取并消毒（保留标题层级/段落/列表/表格/
+      // **代码块缩进**/图片在原文档流中的位置）；纯文本段落渲染只作 html 缺失时的兜底。
+      return <div className="news-preview-html" dangerouslySetInnerHTML={{ __html: articleHtml }} />;
     }
     if (status === 'failed') {
       // v23 #5：抓取失败也按段落排版——优先渲染本地快照正文（缩进阅读体验），摘要作兜底

@@ -103,9 +103,13 @@ export async function handleFetchPageRequest(req, res) {
     // 正文抽取：优先 <article> / itemprop=articleBody / article|post|entry 类容器，
     // 并剔除导航、页脚、侧栏、相关阅读、广告等噪声；抓不到容器才退化为整页（extraction='fallback'）。
     // 实体解码在 htmlToText 内部完成（&nbsp; → 空格后被 \s+ 收敛）。
-    const { content, extraction } = extractMainContent(stripped);
-    const images = extractImages(stripped, target);
-    return sendJsonResponse(res, 200, { ok: true, content, images, extraction });
+    // v32：额外返回结构化 html（保留标题/段落/列表/代码块/表格，预览面板渲染用）。
+    const { content, html: articleHtml, extraction } = extractMainContent(stripped, { baseUrl: target });
+    // v32：配图从**正文容器**里抽——此前从全页抽，侧栏/相关阅读的配图全混进来（无关图片的根因）。
+    // 容器抽取失败（fallback）才退回全页，此时噪声图难免但聊胜于无。
+    const containerForImages = articleHtml || stripped;
+    const images = extractImages(containerForImages, target);
+    return sendJsonResponse(res, 200, { ok: true, content, html: articleHtml, images, extraction });
   } catch (error) {
     if (error?.name === 'AbortError') return routeError(res, Object.assign(new Error('网页读取超时'), { code: 'UPSTREAM_TIMEOUT', status: 504 }));
     return routeError(res, error);
