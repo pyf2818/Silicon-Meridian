@@ -592,7 +592,7 @@ function App() {
     detectMaterialType, toggleMaterial, addManualMaterial,
     continueMaterialInWorkbench, removeMaterial, batchRemoveMaterials,
     updateMaterialTags, toggleMaterialSelection,
-    clearMaterialSelection, updateMaterialNote, assignMaterialsToSpace,
+    clearMaterialSelection, updateMaterialNote, updateMaterialContent, assignMaterialsToSpace,
     createMaterialSpace, deleteMaterialSpace, renameMaterialSpace,
     recentlyDeleted, restoreMaterial, purgeMaterial, emptyTrash,
     toggleMaterialStar,
@@ -2249,6 +2249,7 @@ ${materialLines || '暂无素材'}`;
         renameMaterialSpace={renameMaterialSpace}
         deleteMaterialSpace={deleteMaterialSpace}
         updateMaterialNote={updateMaterialNote}
+        updateMaterialContent={updateMaterialContent}
         updateMaterialTags={updateMaterialTags}
       />
     );

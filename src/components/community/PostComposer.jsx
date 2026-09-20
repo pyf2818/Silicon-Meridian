@@ -74,6 +74,7 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
   const [uploadingCount, setUploadingCount] = useState(0);
+  const [coverUploading, setCoverUploading] = useState(false); // 独立直传封面
   const [dragOverUpload, setDragOverUpload] = useState(false);
   const restoredRef = useRef(false);
   const uploadInputRef = useRef(null);
@@ -259,6 +260,29 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
                 <button type="button" className={`composer-chip ${form.cover.kind === 'extracted' ? 'active' : ''}`} disabled={!extractedImage} title={extractedImage ? '采用正文第一张图' : '正文里还没有 https 图片'}
                   onClick={() => extractedImage && patch({ cover: { kind: 'extracted', url: extractedImage } })}>正文首图</button>
                 <button type="button" className={`composer-chip ${form.cover.kind === 'url' ? 'active' : ''}`} onClick={() => patch({ cover: { kind: 'url', url: form.cover.url } })}>图片 URL</button>
+                {/* 独立直传封面：不必先传效果图（与 media 解耦，封面是封面的入口） */}
+                <label
+                  className={`composer-chip composer-cover-direct${coverUploading ? ' is-busy' : ''}`}
+                  title="直接上传一张图作为封面（不进入效果图区）"
+                >
+                  {coverUploading ? '上传中…' : '直传封面'}
+                  <input type="file" accept="image/*" hidden
+                    onChange={async event => {
+                      const file = event.target.files?.[0];
+                      event.target.value = '';
+                      if (!file) return;
+                      setCoverUploading(true);
+                      try {
+                        const record = await uploadCommunityMedia(file);
+                        patch({ cover: { kind: 'uploaded', url: record.url } });
+                        showToast('封面已上传');
+                      } catch (error) {
+                        showToast(error.message || '封面上传失败');
+                      } finally {
+                        setCoverUploading(false);
+                      }
+                    }} />
+                </label>
               </div>
               {form.cover.kind === 'url' && (
                 <input className="composer-cover-url" value={form.cover.url} maxLength={2048}
@@ -280,7 +304,27 @@ export default function PostComposer({ user, materials = [], workbenchDeliverabl
           <textarea data-testid="community-title-input" className="composer-title-input" value={form.title} maxLength={180}
             onChange={event => patch({ title: event.target.value })} placeholder="标题（一句话说清内容）" />
           <textarea data-testid="community-body-input" className="composer-body-input custom-scrollbar" value={form.body} maxLength={100000}
-            onChange={event => patch({ body: event.target.value })} placeholder="正文。清楚说明事实、判断依据和结论。" />
+            onChange={event => patch({ body: event.target.value })}
+            onPaste={async event => {
+              // 正文插图：粘贴截图 → 自动上传 → 以 markdown 图片语法追加（渲染端限宽、可点击放大）
+              const files = [...(event.clipboardData?.items || [])]
+                .filter(i => i.kind === 'file' && i.type.startsWith('image/'))
+                .map(i => i.getAsFile())
+                .filter(Boolean);
+              if (files.length === 0) return;
+              event.preventDefault();
+              for (const file of files) {
+                try {
+                  const record = await uploadCommunityMedia(file);
+                  const marker = `![${(file.name || '截图').slice(0, 40)}](${record.url})`;
+                  patch({ body: `${form.body}${form.body && !form.body.endsWith('\n') ? '\n\n' : ''}${marker}\n` });
+                  showToast('截图已上传并插入正文');
+                } catch (error) {
+                  showToast(error.message || '截图上传失败');
+                }
+              }
+            }}
+            placeholder="正文。清楚说明事实、判断依据和结论。支持直接粘贴截图（自动上传并插入）。" />
           <div className="composer-import-row">
             <span>从已有积累导入：</span>
             <button type="button" className={pickerOpen === 'materials' ? 'active' : ''} onClick={() => setPickerOpen(pickerOpen === 'materials' ? null : 'materials')}>素材库（{importableMaterials.length}）</button>

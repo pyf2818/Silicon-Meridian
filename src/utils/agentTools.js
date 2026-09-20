@@ -450,6 +450,38 @@ async function toolReadIntelligenceFocus(args, ctx) {
 }
 
 /**
+ * read_material - 读取素材库条目的完整正文。
+ * 素材正文存于 localStorage 的 materials 列表（与广场/工作站共用），目录层只列标题，
+ * 「正文按需取回」的承诺由本工具兑现——否则目录里的提示是空头支票。
+ */
+async function toolReadMaterial(args) {
+  const materialId = String(args?.id || '').trim();
+  const keyword = String(args?.keyword || '').trim();
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem('materials') || '[]'); } catch { list = []; }
+  if (!Array.isArray(list) || list.length === 0) {
+    return '素材库当前为空。可在广场/浏览页把内容保存为素材。';
+  }
+  let picked = null;
+  if (materialId) picked = list.find(m => m?.id === materialId);
+  if (!picked && keyword) {
+    const kws = keyword.toLowerCase().split(/\s+/).filter(Boolean);
+    picked = list
+      .map(m => {
+        const text = `${m.title || ''} ${(m.tags || []).join(' ')} ${m.fullContent || m.content || ''}`.toLowerCase();
+        return { m, score: kws.filter(t => text.includes(t)).length };
+      })
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)[0]?.m;
+  }
+  if (!picked) {
+    return `素材库（共 ${list.length} 条）中未找到${materialId ? ` ID 为 "${materialId}"` : keyword ? `与 "${keyword}" 相关` : ''}的素材。可先调 read_material 列出……（改为：不带参数调用会返回统计；用 list_knowledge 检索工作空间文件）`;
+  }
+  const content = String(picked.fullContent || picked.content || '').slice(0, 6000);
+  return `[素材:${picked.id}] ${picked.title || '未命名素材'}\n来源：${picked.source || '未知'}｜类型：${picked.type || 'material'}｜标签：${(picked.tags || []).join('、') || '无'}\n\n${content || '（无正文）'}`;
+}
+
+/**
  * list_knowledge - 检索工作空间知识库（agent 写入/用户导出的文件索引）。
  * 有 keyword 时按相关性检索；无 keyword 时列出最近沉淀的条目。
  */
@@ -1631,6 +1663,26 @@ const BUILTIN_TOOL_DEFS = [
     },
     meta: { label: '知识库检索', iconKey: 'bookmark', description: '检索工作空间知识库沉淀', category: 'knowledge' },
     executor: toolListKnowledge,
+  },
+  {
+    name: 'read_material',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'read_material',
+        description: '【读取素材正文】按 ID 或关键词读取素材库条目的完整正文。目录里的 [素材:ID] 对应这里——目录只有标题，正文用本工具取。id 与 keyword 至少提供一个；都不传则返回素材库统计。',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: '素材 ID（目录里的 [素材:ID]）' },
+            keyword: { type: 'string', description: '关键词（按标题/标签/正文相关性取最匹配的一条）' },
+          },
+          required: [],
+        },
+      },
+    },
+    meta: { label: '读取素材', iconKey: 'file', description: '读取素材库条目的完整正文', category: 'workspace' },
+    executor: toolReadMaterial,
   },
   {
     name: 'fetch_page',

@@ -272,6 +272,21 @@ export function useBookmarkMaterial({
     setMaterials(prev => prev.map(m => m.id === id ? { ...m, note } : m));
   }, []);
 
+  /** 编辑素材标题与正文（抽屉编辑态）：写回后由 saveLS 自动持久化 */
+  const updateMaterialContent = useCallback((id, { title, content } = {}) => {
+    setMaterials(prev => prev.map(m => {
+      if (m.id !== id) return m;
+      const next = { ...m };
+      if (typeof title === 'string' && title.trim()) next.title = title.trim();
+      if (typeof content === 'string') {
+        next.content = content;                        // 列表摘要源
+        next.fullContent = content;                    // 详情/工作站取用源
+        next.updatedAt = new Date().toISOString();
+      }
+      return next;
+    }));
+  }, []);
+
   const assignMaterialsToSpace = useCallback((ids, spaceId) => {
     setMaterials(prev => assignSpaceToMaterials(prev, ids, spaceId));
     setSelectedMaterials([]);
@@ -368,6 +383,7 @@ export function useBookmarkMaterial({
     // selectAllMaterials is defined in App.jsx after useMaterialsMemos
     clearMaterialSelection,
     updateMaterialNote,
+    updateMaterialContent,
     assignMaterialsToSpace,
     createMaterialSpace,
     deleteMaterialSpace,

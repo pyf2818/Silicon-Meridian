@@ -1,0 +1,8 @@
+
+/* v30：素材抽屉编辑态 + 封面直传 */
+.repo-drawer-edit { display: flex; flex-direction: column; gap: 8px; }
+.repo-drawer-edit label { font-size: 12px; opacity: .65; }
+.repo-drawer-edit-title { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(140,150,160,.35); background: transparent; color: inherit; font-size: 14px; }
+.repo-drawer-edit-content { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(140,150,160,.35); background: transparent; color: inherit; font-family: inherit; font-size: 13px; line-height: 1.6; resize: vertical; }
+.composer-cover-direct { cursor: pointer; user-select: none; }
+.composer-cover-direct.is-busy { opacity: .6; pointer-events: none; }

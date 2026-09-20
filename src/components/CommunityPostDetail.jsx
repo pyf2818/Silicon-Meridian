@@ -37,6 +37,7 @@ export default function CommunityPostDetail({ post, comments, loading, user, onC
   const [kindFilter, setKindFilter] = useState('all');
   const [sending, setSending] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState(''); // C3 任务 3：点缩略图放大预览
+  const [carouselIndex, setCarouselIndex] = useState(0); // 效果图轮播（展示区在正文上方）
 
   const kindCounts = useMemo(() => {
     const counts = { all: comments.length, comment: 0, praise: 0, critique: 0, question: 0 };
@@ -127,27 +128,70 @@ export default function CommunityPostDetail({ post, comments, loading, user, onC
 
         {tab === 'body' && (
           <>
+            {/* 效果图/视频展示区：移到正文上方（先看效果，再读正文），大图轮播 + 点击放大 */}
+            {Array.isArray(post.media) && post.media.length > 0 && (
+              <div className="detail-media detail-media-showcase" data-testid="detail-media">
+                {(() => {
+                  const images = post.media.filter(item => item.kind === 'image');
+                  const videos = post.media.filter(item => item.kind === 'video');
+                  return (
+                    <>
+                      {images.length > 0 && (
+                        <div className="detail-media-carousel">
+                          <button
+                            type="button"
+                            className="detail-media-nav"
+                            aria-label="上一张"
+                            onClick={() => setCarouselIndex(idx => (idx - 1 + images.length) % images.length)}
+                          >‹</button>
+                          <button
+                            type="button"
+                            className="detail-media-stage"
+                            onClick={() => setLightboxUrl(images[carouselIndex % images.length]?.url)}
+                            aria-label="放大查看图片"
+                          >
+                            <img
+                              src={images[carouselIndex % images.length]?.url}
+                              alt={images[carouselIndex % images.length]?.name || '效果图'}
+                              loading="lazy"
+                            />
+                            <span className="detail-media-counter">{(carouselIndex % images.length) + 1} / {images.length}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="detail-media-nav"
+                            aria-label="下一张"
+                            onClick={() => setCarouselIndex(idx => (idx + 1) % images.length)}
+                          >›</button>
+                        </div>
+                      )}
+                      {images.length > 1 && (
+                        <div className="detail-media-thumbs">
+                          {images.map((item, i) => (
+                            <button
+                              key={item.url}
+                              type="button"
+                              className={`detail-media-chip${(carouselIndex % images.length) === i ? ' is-active' : ''}`}
+                              onClick={() => setCarouselIndex(i)}
+                              aria-label={`查看第 ${i + 1} 张`}
+                            >
+                              <img src={item.url} alt={item.name || '效果图'} loading="lazy" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {videos.map(item => (
+                        <video key={item.url} className="detail-media-video" src={item.url} controls preload="metadata" playsInline />
+                      ))}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
             <div
               className={`community-detail-body${post.type === 'article' ? ' md-body' : ''}`}
               {...(post.type === 'article' ? { dangerouslySetInnerHTML: { __html: renderMarkdown(post.body) } } : { children: post.body })}
             />
-            {/* C3 任务 3：效果图 / 效果视频（预览窗缩小：视频 420px，图片缩略格点击放大） */}
-            {Array.isArray(post.media) && post.media.length > 0 && (
-              <div className="detail-media" data-testid="detail-media">
-                {post.media.filter(item => item.kind === 'image').length > 0 && (
-                  <div className="detail-media-grid">
-                    {post.media.filter(item => item.kind === 'image').map(item => (
-                      <button key={item.url} type="button" className="detail-media-thumb" onClick={() => setLightboxUrl(item.url)} aria-label="放大查看图片">
-                        <img src={item.url} alt={item.name || '效果图'} loading="lazy" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {post.media.filter(item => item.kind === 'video').map(item => (
-                  <video key={item.url} className="detail-media-video" src={item.url} controls preload="metadata" playsInline />
-                ))}
-              </div>
-            )}
             {/* 附件资料：图标 + 文件名 + 大小，点击下载 */}
             {Array.isArray(post.attachments) && post.attachments.length > 0 && (
               <div className="detail-attachments" data-testid="detail-attachments">

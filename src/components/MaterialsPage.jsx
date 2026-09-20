@@ -53,10 +53,11 @@ export default function MaterialsPage({
   materialDetailId, setMaterialDetailId,
   recentlyDeleted, restoreMaterial, purgeMaterial, emptyTrash,
   renameMaterialSpace, deleteMaterialSpace,
-  updateMaterialNote, updateMaterialTags,
+  updateMaterialNote, updateMaterialTags, updateMaterialContent,
 }) {
   const tagFilter = Array.isArray(materialTags) ? materialTags : [];
   const [renamingSpaceId, setRenamingSpaceId] = useState(null);
+  const [editingDetail, setEditingDetail] = useState(false); // 抽屉：预览 ⇄ 编辑
 
   // 本地资产：各工作空间关联的文件（素材 ↔ 本地文件 关联在图谱与详情里可视化）
   const [localFiles, setLocalFiles] = useState(() => getSpaces().flatMap(sp => (sp.files || []).map(f => ({ ...f, spaceName: sp.name }))));
@@ -485,10 +486,45 @@ export default function MaterialsPage({
                   {detail.insight.quality && <p><span>质量</span>{detail.insight.quality}</p>}
                 </div>
               )}
-              <div
-                className="repo-drawer-content markdown-body"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(String(detail.fullContent || detail.content || '（无内容）')) }}
-              />
+              {/* 编辑态：标题/正文可改（onBlur 保存），预览即所得 */}
+              {/* 预览 ⇄ 编辑切换（编辑态：标题/正文 onBlur 自动保存，保存即刷新预览） */}
+              <div className="repo-drawer-editbar" style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <button
+                  type="button"
+                  className={`composer-chip${editingDetail ? '' : ' active'}`}
+                  onClick={() => setEditingDetail(false)}
+                >预览</button>
+                <button
+                  type="button"
+                  className={`composer-chip${editingDetail ? ' active' : ''}`}
+                  onClick={() => setEditingDetail(true)}
+                >编辑</button>
+              </div>
+              {editingDetail ? (
+                <div className="repo-drawer-edit">
+                  <label>标题</label>
+                  <input
+                    className="repo-drawer-edit-title"
+                    defaultValue={detail.title || ''}
+                    onBlur={e => updateMaterialContentSafe(detail.id, { title: e.target.value })}
+                  />
+                  <label>正文（Markdown，失焦自动保存并刷新预览）</label>
+                  <textarea
+                    className="repo-drawer-edit-content custom-scrollbar"
+                    rows={16}
+                    defaultValue={String(detail.fullContent || detail.content || '')}
+                    onBlur={e => {
+                      updateMaterialContentSafe(detail.id, { content: e.target.value });
+                      setEditDraftKey(k => k + 1); // 触发预览刷新
+                    }}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="repo-drawer-content markdown-body"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(String(detail.fullContent || detail.content || '（无内容）')) }}
+                />
+              )}
               {detail.note && <p className="material-note">{detail.note}</p>}
 
               {(materialFileLinks.get(detail.id) || []).length > 0 && (
@@ -586,6 +622,9 @@ export default function MaterialsPage({
   // 详情抽屉里的备注/标签保存（包装 hook 回调，静默失败）
   function updateMaterialNoteSafe(id, note) {
     try { updateMaterialNote?.(id, note); } catch { /* ignore */ }
+  }
+  function updateMaterialContentSafe(id, patch) {
+    try { updateMaterialContent?.(id, patch); } catch { /* ignore */ }
   }
   function updateMaterialTagsSafe(id, tags) {
     try { updateMaterialTags?.(id, tags); } catch { /* ignore */ }
