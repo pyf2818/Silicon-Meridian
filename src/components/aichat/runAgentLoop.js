@@ -14,7 +14,7 @@ import { observeReply, observeToolUsage } from '../../utils/profileLearning.js';
 import { evolveMemory } from '../../utils/memoryEvolver.js';
 import { extractTodos } from '../../utils/todoExtractor.js';
 import { createSkillDirect } from '../../utils/agentTools.js';
-import { depositExperience } from '../../domain/agent/agentEvolution.js';
+import { recordAgentRun, depositExperience } from '../../domain/agent/agentEvolution.js';
 import {
   PRECIPITATION_SYSTEM_SUFFIX,
   buildPrecipitationPrompt,
