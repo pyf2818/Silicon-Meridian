@@ -515,7 +515,7 @@ export default function MaterialsPage({
                     defaultValue={String(detail.fullContent || detail.content || '')}
                     onBlur={e => {
                       updateMaterialContentSafe(detail.id, { content: e.target.value });
-                      setEditDraftKey(k => k + 1); // 触发预览刷新
+                      // 预览刷新由 materials → detail 重新派生自动完成，无需额外 state
                     }}
                   />
                 </div>
