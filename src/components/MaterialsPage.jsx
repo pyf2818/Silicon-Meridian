@@ -54,6 +54,7 @@ export default function MaterialsPage({
   recentlyDeleted, restoreMaterial, purgeMaterial, emptyTrash,
   renameMaterialSpace, deleteMaterialSpace,
   updateMaterialNote, updateMaterialTags, updateMaterialContent,
+  onOpenStock, // v31：素材 → 股市反向链路（股市 AI 分析类素材一键跳回对应个股）
 }) {
   const tagFilter = Array.isArray(materialTags) ? materialTags : [];
   const [renamingSpaceId, setRenamingSpaceId] = useState(null);
@@ -577,6 +578,14 @@ export default function MaterialsPage({
                 <span>添加于 {new Date(detail.createdAt).toLocaleString('zh-CN')}</span>
                 {materialRefCounts[detail.id] && <span>被 {materialRefCounts[detail.id]} 篇文章引用</span>}
                 {detail.url && <a href={detail.url} target="_blank" rel="noopener noreferrer">查看原文</a>}
+                {detail.metadata?.kind === 'stock-analysis' && detail.metadata?.code && onOpenStock && (
+                  <button
+                    type="button"
+                    className="repo-drawer-stock-link"
+                    onClick={() => { onOpenStock(detail.metadata.code, detail.metadata.stockName || ''); closeDetail(); }}
+                    title="带着这份分析回到股市动向，查看对应个股最新行情"
+                  >↗ 回到股市 · {detail.metadata.stockName || detail.metadata.code}</button>
+                )}
               </div>
             </div>
             <div className="repo-drawer-foot">

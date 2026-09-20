@@ -2259,6 +2259,12 @@ ${materialLines || '暂无素材'}`;
         updateMaterialNote={updateMaterialNote}
         updateMaterialContent={updateMaterialContent}
         updateMaterialTags={updateMaterialTags}
+        onOpenStock={(code, name) => {
+          // v31：素材 → 股市反向链路——写选中股票并跳转（StockPage 从 localStorage 恢复选中态与对应诊断）
+          localStorage.setItem('stockSelectedCode', String(code || ''));
+          if (name) localStorage.setItem('stockSelectedName', String(name));
+          setNav('stock');
+        }}
       />
     );
   }

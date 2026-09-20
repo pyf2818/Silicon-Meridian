@@ -55,7 +55,7 @@ export default function DiagnosisDrawer({
       type: 'viewpoint',
       source: '股市 AI 分析',
       tags: ['股市', 'AI分析', '历史归档'],
-      metadata: { kind: 'stock-analysis', code: record.code, mode: record.mode, at: record.at },
+      metadata: { kind: 'stock-analysis', code: record.code, stockName: record.name, mode: record.mode, at: record.at },
     });
     showToast(`已存入素材库：股市AI分析 · ${record.name || selectedName}`);
   };

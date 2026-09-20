@@ -188,13 +188,18 @@ ${formatEvidencePacketForPrompt(evidencePacket)}`;
   try {
     let usage = null;
     const aiNarrative = await invokeLlm(llmConfig, systemPrompt, userPrompt, onDelta, u => { usage = u; });
+    // v31：数据水印——标注行情时点（优先用行情源时间戳），AI 分析与行情快照强绑定、可追溯
+    const quoteTs = Number(input?.realtime?.timestamp);
+    const quoteLabel = Number.isFinite(quoteTs) && quoteTs > 0
+      ? new Date(quoteTs).toLocaleString('zh-CN')
+      : new Date().toLocaleString('zh-CN');
     return {
       ...algorithmResult,
       mode: 'ai',
       aiNarrative,
       usage, // v31：token 用量（测试 mock invokeLlm 时不带，UI 自动隐藏）
       algorithm,
-      content: `${aiNarrative}${COMPLIANCE_SUFFIX}`,
+      content: `${aiNarrative}\n\n（行情截至 ${quoteLabel}；以上内容由 AI 基于公开行情数据生成，仅供参考，不构成投资建议）`,
     };
   } catch (error) {
     return {

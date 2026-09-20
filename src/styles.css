@@ -7211,6 +7211,13 @@ body {
 .ai-elf-message-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; padding: 0 4px; }
 .ai-elf-msg-tokens { opacity: .8; letter-spacing: .02em; }
 
+/* v31：素材详情 → 股市反向链路 */
+.repo-drawer-stock-link {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  color: var(--accent-cyan); font-size: inherit; text-align: left;
+}
+.repo-drawer-stock-link:hover { text-decoration: underline; }
+
 /* AI精灵消息操作按钮 */
 .ai-elf-message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; padding: 0 4px; }
 .ai-elf-action-btn {
