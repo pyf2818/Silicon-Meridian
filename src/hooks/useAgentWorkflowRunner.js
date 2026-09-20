@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { getWorkflowSkillMeta, WORKFLOW_CONDITION_METRICS } from '../constants/appConstants.jsx';
 import { deriveWorkflowExecutionOrder, collectBranchReachable } from '../constants/workflowConstants.js';
 import { useProfileStore } from '../store';
-import { buildProfileMemory } from '../utils/workflowEngine.js';
+import { buildProfileMemory, WorkflowEngine } from '../utils/workflowEngine.js';
 import { hasItemId } from '../utils/itemIdentity.js';
 
 /**
@@ -230,7 +230,7 @@ export function useAgentWorkflowRunner({
       };
     };
 
-    const runLocalNode = (node, previousOutput) => {
+    const runLocalNode = async (node, previousOutput) => {
       const sourceItems = scopedAgentItems.slice(0, 5).map(formatItemLine).join('\n');
       if (node.type === 'input') {
         const categoryMap = scopedAgentItems.reduce((acc, item) => {
@@ -374,8 +374,24 @@ export function useAgentWorkflowRunner({
           }
         };
       }
+      if (node.type === 'parallel') {
+        // 委托 WorkflowEngine 真实执行：按视角并发 LLM 分支并合并（兼容画布 parallelBranches/parallelMerge）
+        const engine = new WorkflowEngine();
+        engine.abortController = new AbortController();
+        const parallelCtx = { agents, llmConfig, workflows: [] };
+        return engine._runParallel(node, previousOutput, parallelCtx, setTraceStep, undefined, localTrace);
+      }
+      if (node.type === 'router') {
+        // 委托 WorkflowEngine 真实执行：按 routerRules 命中分支标注 / 无命中透传（target 子工作流需 ctx.workflows）
+        const engine = new WorkflowEngine();
+        engine.abortController = new AbortController();
+        const routerCtx = { agents, llmConfig, workflows: [] };
+        return engine._runRouter(node, previousOutput, routerCtx, setTraceStep, undefined, localTrace);
+      }
+      // subworkflow 与未识别类型：生产 runner 暂无已存工作流上下文（ctx.workflows 未接入），
+      // 诚实占位而非假成功——接入已存工作流列表后可在 WorkflowEngine._runSubworkflow 真实执行。
       return {
-        output: `⚠️ 节点「${node.title}」（类型 ${node.type}）当前运行时不执行实际逻辑。\n生产运行时仅真实执行 LLM / input / classifier / condition / skill / reply / output 节点；subworkflow / parallel / router 等编排节点尚在建设中，此处为占位而非真实执行。请用 LLM 节点承接，或在 Canvas 预览中验证。\n\n上游输出：\n${previousOutput.slice(0, 700)}`,
+        output: `⚠️ 节点「${node.title}」（类型 ${node.type}）当前运行时不执行实际逻辑。\n生产运行时仅真实执行 LLM / input / classifier / condition / skill / reply / output / parallel / router（画布分支标注）节点；subworkflow 及带 target 的路由需要已存工作流上下文，尚待接入。请用 LLM 节点承接，或在 Canvas 预览中验证。\n\n上游输出：\n${previousOutput.slice(0, 700)}`,
         structured: { type: node.type, notExecuted: true }
       };
     };
@@ -479,7 +495,7 @@ ${blueprintSummary}`,
           if (data.error) throw new Error(data.error);
           output = data.content || `${node.title} 暂无输出`;
         } else {
-          const localResult = runLocalNode(node, nodeInput);
+          const localResult = await runLocalNode(node, nodeInput);
           output = typeof localResult === 'string' ? localResult : localResult.output;
           structured = typeof localResult === 'string' ? null : localResult.structured;
           shouldContinue = typeof localResult === 'string' ? true : localResult.shouldContinue !== false;
@@ -496,10 +512,18 @@ ${blueprintSummary}`,
         }
         nodeOutputs.push({ nodeId: node.id, title: node.title, type: node.type, inputKey, outputKey, input: nodeInput, output, structured, viaBranch });
         previousOutput = output;
-        const nodeStatus = structured?.notExecuted ? 'skipped' : 'completed';
+        const currentStep = localTrace.find(s => s.nodeId === node.id);
+        // 编排节点（parallel/router）已在 WorkflowEngine 内自行 setTrace（running→completed/failed），
+        // 此处尊重其失败状态，不强行覆盖回 completed（否则会掩盖执行失败）
+        const nodeStatus = structured?.notExecuted
+          ? 'skipped'
+          : (currentStep?.status === 'failed' ? 'failed' : 'completed');
+        const detailText = structured?.notExecuted
+          ? `⚠️ 未执行（${node.type} 编排节点待接入）`
+          : (currentStep?.status === 'failed' ? (currentStep.detail || output.slice(0, 220)) : output.slice(0, 220));
         setTraceStep(node.id, {
           status: nodeStatus,
-          detail: structured?.notExecuted ? `⚠️ 未执行（${node.type} 编排节点待接入）` : output.slice(0, 220),
+          detail: detailText,
           output,
           structured,
           inputKey,
