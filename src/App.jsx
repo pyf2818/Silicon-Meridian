@@ -2431,6 +2431,11 @@ ${materialLines || '暂无素材'}`;
                 });
                 showToast('模拟成果已存入素材库');
               }}
+              runAgentWorkflow={runAgentWorkflow}
+              cancelAgentWorkflow={cancelAgentWorkflow}
+              agentWorkflowRun={agentWorkflowRun}
+              agentWorkflowResult={agentWorkflowResult}
+              intelligenceMissions={intelligenceMissions}
             />
             </Suspense>
           )}

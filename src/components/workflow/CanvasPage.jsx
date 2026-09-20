@@ -78,6 +78,12 @@ export default function CanvasPage({
   activeWorkflowId,
   llmConfig,
   onExportDeliverable,
+  // v30c：真实运行（把工作流从「只能模拟」接活——runner 在 App 层，流式 trace 实时回流）
+  runAgentWorkflow,
+  cancelAgentWorkflow,
+  agentWorkflowRun = null,
+  agentWorkflowResult = null,
+  intelligenceMissions = [],
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -93,6 +99,10 @@ export default function CanvasPage({
   const [paletteOpen, setPaletteOpen] = useState(() => localStorage.getItem('wfPaletteOpen') !== 'false');
   useEffect(() => { localStorage.setItem('wfPaletteOpen', String(paletteOpen)); }, [paletteOpen]);
   const [aiBusy, setAiBusy] = useState(false);
+  // v30c：真实运行面板（区别于模拟运行——真实调用 LLM，trace 流式回流，可中断）
+  const [runPanelOpen, setRunPanelOpen] = useState(false);
+  const [runPrompt, setRunPrompt] = useState('');
+  const isRealRunning = agentWorkflowRun?.status === 'running';
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState([]); // {role, content, parsed?, note?}
   const undoRef = useRef(null);                     // 上一次 AI 变更前的画布快照
@@ -593,6 +603,17 @@ export default function CanvasPage({
           >
             {sim.running ? '■ 停止' : '▶ 模拟运行'}
           </button>
+          {runAgentWorkflow && (
+            <button
+              type="button"
+              className={`canvas-run-btn ${isRealRunning ? 'running' : ''}`}
+              onClick={() => setRunPanelOpen(v => !v)}
+              disabled={!(draft.nodes || []).some(n => n.enabled !== false)}
+              title="真实运行：逐节点调用大模型，输出流式可见，可随时停止"
+            >
+              {isRealRunning ? '● 运行中' : '⚡ 真实运行'}
+            </button>
+          )}
           <button type="button" className="canvas-act-btn" onClick={undoNodes} disabled={!canUndo} title="撤销 (Ctrl+Z)">↶ 撤销</button>
           <button type="button" className="canvas-act-btn" onClick={redoNodes} disabled={!canRedo} title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
           <button type="button" className="canvas-act-btn" onClick={autoLayout} disabled={!draft.nodes?.length} title="按网格重排节点">整理</button>
@@ -653,6 +674,65 @@ export default function CanvasPage({
             </div>
           )}
         </div>
+
+        {/* v30c：真实运行面板——真实调用 LLM，trace 流式回流，可中断 */}
+        {runPanelOpen && (
+          <div className="canvas-float canvas-run-panel" onMouseDown={e => e.stopPropagation()}>
+            <div className="canvas-run-head">
+              <span>真实运行 · {draft.name || '工作流'}</span>
+              <button type="button" onClick={() => setRunPanelOpen(false)} title="关闭">×</button>
+            </div>
+
+            {!isRealRunning && (
+              <div className="canvas-run-form">
+                <textarea
+                  value={runPrompt}
+                  onChange={e => setRunPrompt(e.target.value)}
+                  rows={3}
+                  placeholder={`运行任务（留空则使用默认任务：${(intelligenceMissions[0]?.prompt || '').slice(0, 40)}…）`}
+                />
+                <button
+                  type="button"
+                  className="canvas-run-start"
+                  onClick={() => runAgentWorkflow(intelligenceMissions[0], runPrompt, { nodesOverride: draft.nodes })}
+                  disabled={!(draft.nodes || []).some(n => n.enabled !== false)}
+                >▶ 开始真实运行</button>
+                <p className="canvas-run-note">真实调用大模型逐节点执行，输出随生成实时显示，可随时停止。</p>
+              </div>
+            )}
+
+            {isRealRunning && (
+              <div className="canvas-run-trace custom-scrollbar">
+                {(agentWorkflowRun?.trace || []).map(step => (
+                  <div key={step.id} className={`workflow-trace-step status-${step.status}`}>
+                    <span className="workflow-trace-dot" aria-hidden="true" />
+                    <strong>{step.order}. {step.title}</strong>
+                    <em>{step.status === 'running' ? '执行中' : step.status === 'completed' ? '完成' : step.status === 'failed' ? '失败' : step.status === 'skipped' ? '跳过' : step.status === 'blocked' ? '阻塞' : '排队中'}</em>
+                    {step.output && <pre>{step.output.slice(-700)}</pre>}
+                    {!step.output && step.detail && step.status !== 'queued' && <p>{step.detail}</p>}
+                  </div>
+                ))}
+                <button type="button" className="canvas-run-stop" onClick={cancelAgentWorkflow}>■ 停止运行</button>
+              </div>
+            )}
+
+            {!isRealRunning && agentWorkflowRun && ['completed', 'failed', 'stopped', 'blocked'].includes(agentWorkflowRun.status) && (
+              <div className="canvas-run-result custom-scrollbar">
+                <div className="canvas-run-result-head">
+                  <span>运行{agentWorkflowRun.status === 'completed' ? '完成' : agentWorkflowRun.status === 'stopped' ? '已停止' : agentWorkflowRun.status === 'blocked' ? '未就绪' : '失败'} · {agentWorkflowRun.missionLabel || ''}</span>
+                  {agentWorkflowResult?.content && onExportDeliverable && (
+                    <button
+                      type="button"
+                      onClick={() => onExportDeliverable(`${draft.name || '工作流'} 真实运行成果`, agentWorkflowResult.content)}
+                    >存入素材库</button>
+                  )}
+                </div>
+                {agentWorkflowResult?.error && <div className="canvas-run-err">{agentWorkflowResult.error}</div>}
+                {agentWorkflowResult?.content && <pre className="canvas-run-out">{agentWorkflowResult.content}</pre>}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 模拟运行报告 */}
         {sim.report && !sim.running && (

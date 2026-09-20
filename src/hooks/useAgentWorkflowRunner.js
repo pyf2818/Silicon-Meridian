@@ -46,13 +46,16 @@ export function useAgentWorkflowRunner({
 }) {
   // v30：运行取消——runAgentWorkflow 运行期间持有 controller，cancelAgentWorkflow 触发 abort
   const runAbortRef = useRef(null);
-  const runAgentWorkflow = useCallback(async (mission, customPrompt = '') => {
+  const runAgentWorkflow = useCallback(async (mission, customPrompt = '', opts = {}) => {
     const controller = new AbortController();
     runAbortRef.current = controller;
     const selectedMission = mission || intelligenceMissions[0];
     if (!selectedMission) return;
     const agent = agents.find(a => a.id === selectedMission.agentId) || agents.find(a => a.id === 'orchestrator') || agents[0];
-    const workflowNodes = enabledWorkflowNodes.length ? enabledWorkflowNodes : agentWorkflowDraft.nodes;
+    // v30c：节点集解析顺序——调用方显式覆盖（画布「真实运行」= 画布所见即所跑）> 工作站启用集 > 当前草稿
+    const workflowNodes = (Array.isArray(opts.nodesOverride) && opts.nodesOverride.length)
+      ? opts.nodesOverride
+      : (enabledWorkflowNodes.length ? enabledWorkflowNodes : agentWorkflowDraft.nodes);
     const blueprintSummary = workflowNodes.map((node, index) => `${index + 1}. ${node.title}｜${node.role}｜${node.prompt}`).join('\n');
     const prompt = customPrompt.trim() || selectedMission.prompt;
     const runId = `run-${Date.now()}`;
