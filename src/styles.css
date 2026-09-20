@@ -11875,8 +11875,9 @@ body {
   border-color: var(--accent-cyan-border);
 }
 .chat-header-btn svg {
-  width: 15px;
-  height: 15px;
+  /* v31e：30px 框（border-box 内容 28px）+ 15px 图标 → 6.5px 非整数边距产生亚像素偏右；14px → 7px 整数居中 */
+  width: 14px;
+  height: 14px;
   display: block;
 }
 

@@ -33,7 +33,8 @@ export function buildPrecipitationPrompt() {
     '{',
     '  "valuable": true 或 false,        // 本次是否产生了可复用的方法/规则/经验',
     '  "reason": "一句话说明判断依据",',
-    '  "skill": {                        // valuable=false 时可省略或置 null',
+    '  "lesson": "valuable 但不足以构成完整技能时，用一句话沉淀本次经验（≤120字）；可成技能时省略",',
+    '  "skill": {                        // 仅当结论能沉淀为完整技能时给出；否则置 null',
     '    "title": "技能标题（≤30字，动词开头）",',
     '    "description": "一句话说明这个技能解决什么问题（≤80字）",',
     '    "triggers": ["触发关键词"],      // ≤6 个',
@@ -41,7 +42,8 @@ export function buildPrecipitationPrompt() {
     '    "body": "技能正文：适用场景 / 工作流程 / 关键决策点 / 常见陷阱 / 输出要求"',
     '  }',
     '}',
-    '判定标准：只有形成了「下次遇到同类任务可以直接照做」的方法或规则，才算 valuable = true。',
+    '判定标准：形成了「下次遇到同类任务可以直接照做」的方法或规则 = valuable + skill；',
+    '有价值的经验教训但不足以展开成技能 = valuable + lesson（一句话即可）；纯事实问答 = 全 false。',
   ].join('\n');
 }
 
@@ -78,6 +80,7 @@ export function parsePrecipitationDecision(raw) {
   return {
     valuable: obj?.valuable === true,
     reason: String(obj?.reason || '').slice(0, 200),
+    lesson: String(obj?.lesson || '').slice(0, 300),
     skill: obj?.skill && typeof obj.skill === 'object' ? obj.skill : null,
   };
 }

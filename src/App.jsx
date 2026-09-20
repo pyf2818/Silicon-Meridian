@@ -1203,13 +1203,12 @@ function App() {
   }, [filtered]);
 
   useEffect(() => {
-    if (!items.length || !availableNewsDates.length) return;
-    if (!availableNewsDates.includes(selectedNewsDate)) {
-      // 历史日期可能无实时资讯但有快照，用户主动选择时不覆盖
-      const hasSnapshot = snapshotStoreRef.current.get(selectedNewsDate);
-      if (!hasSnapshot) setSelectedNewsDate(availableNewsDates[0]);
+    // v31e：仅在未选择日期时初始化为最新——用户从时间线显式选择的历史日期一律尊重，
+    // 不再因「不在实时资讯池」被强制弹回最新（弹回导致历史日期完全无法回看）
+    if (!selectedNewsDate && availableNewsDates.length) {
+      setSelectedNewsDate(availableNewsDates[0]);
     }
-  }, [items.length, availableNewsDates, selectedNewsDate]);
+  }, [availableNewsDates, selectedNewsDate]);
 
   const selectedDateItems = useMemo(() => {
     // 每日汇报严格聚焦当天日期，不允许降级到全部数据
@@ -1338,10 +1337,14 @@ function App() {
   }, [selectedNewsDate, recommendationSnapshots]);
 
   const displayRecommendationLanes = useMemo(() => {
+    // v31e：不可变日快照语义——选中日期有快照时（且不是最新资讯日）一律回看快照；
+    // 此前 liveCount 恒真（lanes 从全池实时计算），导致切历史日期后主列表纹丝不动。
+    const latestDate = availableNewsDates[0] || '';
+    const isLatestView = !selectedNewsDate || selectedNewsDate === latestDate;
     const liveCount = (recommendationLanes.public?.length || 0) + (recommendationLanes.personal?.length || 0);
-    if (liveCount > 0) return recommendationLanes;
-    return selectedRecommendationSnapshot?.lanes || recommendationLanes;
-  }, [recommendationLanes, selectedRecommendationSnapshot]);
+    if (isLatestView && liveCount > 0) return recommendationLanes;
+    return selectedRecommendationSnapshot?.lanes || { public: [], personal: [] };
+  }, [recommendationLanes, selectedRecommendationSnapshot, availableNewsDates, selectedNewsDate]);
 
   useEffect(() => {
     if (loading || recommendationCandidates.length === 0) return;

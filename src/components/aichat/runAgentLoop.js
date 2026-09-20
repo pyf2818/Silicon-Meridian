@@ -362,6 +362,15 @@ export async function runAgentLoop({
                 source: 'skill',
               });
             }
+          } else if (String(decision.lesson || '').trim().length >= 8) {
+            // v31e：双路沉淀——结论有价值但不足以成技能时，直接以「一句话经验」进进化档案。
+            // 修复：此前 depositExperience 只挂在技能创建成功分支内，普通对话的经验永远不入档，
+            // 进化档案的 experienceCount（进而等级/里程碑）几乎不增长。
+            depositExperience(agent?.id || 'orchestrator', {
+              topic: decision.reason || '工作复盘',
+              lesson: decision.lesson,
+              source: 'run',
+            });
           }
         }
       }

@@ -23,7 +23,6 @@ import {
   normalizeWorkflowEdges,
 } from '../../constants/workflowConstants.js';
 import { validateWorkflowDraft } from '../../utils/workflowValidation.js';
-import { planSimulation, summarizeSimulation, buildDeliverableText } from '../../utils/workflowSimulator.js';
 import {
   buildWorkflowSystemPrompt,
   parseWorkflowJson,
@@ -90,9 +89,7 @@ export default function CanvasPage({
   const [showValidate, setShowValidate] = useState(false);
   const [showFlows, setShowFlows] = useState(false);
   const [prefs, setPrefs] = useState(getCanvasPrefs);
-  // 模拟运行（v18）：按 planSimulation 推演真实数据流，节点/连线逐步点亮
-  const [sim, setSim] = useState({ running: false, flowEdge: -1, flowLabel: '', nodeStates: {}, outputs: {}, report: null, step: -1 });
-  const cancelRef = useRef(false);
+  // v31e：模拟运行已移除——真实运行直接驱动画布节点走向（点亮 + 边流动 + 输出标签）
   // AI 搭建（v18）：对话生成/修改节点
   const [aiOpen, setAiOpen] = useState(false);
   // 右侧节点面板开合（持久化，默认展开）
@@ -111,7 +108,6 @@ export default function CanvasPage({
   const historyRef = useRef({ stack: [], index: -1, lastPush: 0 });
   const suppressHistoryRef = useRef(false);
   const lastSnapRef = useRef({ nodes: draft.nodes, edges: draft.edges });
-  const [showDeliverable, setShowDeliverable] = useState(false);
   // canUndo/canRedo 必须是 React 态：入栈发生在 render 后的 effect 里，
   // 若直接读 ref，变化当次渲染算出的仍是旧值，之后无人触发重渲染 → 按钮永不解禁。
   const [histState, setHistState] = useState({ canUndo: false, canRedo: false });
@@ -244,59 +240,35 @@ export default function CanvasPage({
     return validation.checks.filter(c => c.id.endsWith(`-${selectedNode.id}`) && !c.ok);
   }, [validation, selectedNode]);
 
-  /* ---- 模拟运行：按链路推演，边线流动 + 粒子 + 数据标签 ---- */
-  const stopSim = useCallback(() => {
-    cancelRef.current = true;
-    setSim({ running: false, flowEdge: -1, flowLabel: '', nodeStates: {}, outputs: {}, report: null, step: -1 });
-  }, []);
-
-  const runSimulation = useCallback(() => {
-    if (sim.running) { stopSim(); return; }
-    const plan = planSimulation(draft.nodes, { edges: draft.edges });
-    if (!plan.steps.length) return;
-    cancelRef.current = false;
-    setShowDeliverable(false);
-    setSim({ running: true, flowEdge: -1, flowLabel: '', nodeStates: {}, outputs: {}, report: null, step: 0 });
-    (async () => {
-      const startedAt = performance.now();
-      for (let i = 0; i < plan.steps.length; i += 1) {
-        if (cancelRef.current) return;
-        const step = plan.steps[i];
-        if (step.status === 'skipped') {
-          setSim(s => ({ ...s, step: i, nodeStates: { ...s.nodeStates, [step.id]: 'skipped' } }));
-          await sleep(180);
-          continue;
+  /* ---- v31e：真实运行驱动画布节点走向（复用原模拟运行的点亮/流动/输出标签样式） ---- */
+  const realRun = useMemo(() => {
+    const trace = agentWorkflowRun?.trace || [];
+    if (!trace.length) return { nodeStates: {}, outputs: {}, flowEdge: -1, flowLabel: '' };
+    const nodeStates = {};
+    const outputs = {};
+    trace.forEach(step => {
+      nodeStates[step.nodeId] = step.status === 'completed' ? 'done'
+        : step.status === 'running' ? 'running'
+        : step.status === 'failed' ? 'failed'
+        : step.status === 'skipped' ? 'skipped' : 'queued';
+      if (step.output) outputs[step.nodeId] = step.output;
+    });
+    // 正在执行的节点：点亮「上游完成节点 → 当前节点」的边线流动（与模拟运行同款视觉）
+    const running = trace.find(s => s.status === 'running');
+    let flowEdge = -1;
+    let flowLabel = '';
+    if (running) {
+      const prev = trace.find(s => s.order === running.order - 1 && s.status === 'completed');
+      if (prev) {
+        const idx = (draft.edges || []).findIndex(e => e.from === prev.nodeId && e.to === running.nodeId);
+        if (idx >= 0) {
+          flowEdge = idx;
+          flowLabel = String(prev.output || '').slice(0, 40);
         }
-        setSim(s => ({
-          ...s,
-          step: i,
-          flowEdge: i > 0 ? i - 1 : -1,
-          flowLabel: i > 0 ? plan.steps[i - 1].output : '',
-          nodeStates: { ...s.nodeStates, [step.id]: 'running' },
-        }));
-        await sleep(Math.max(140, step.duration / (prefs.speed || 1)));
-        if (cancelRef.current) return;
-        setSim(s => ({
-          ...s,
-          nodeStates: { ...s.nodeStates, [step.id]: 'done' },
-          outputs: { ...s.outputs, [step.id]: step.output },
-          flowEdge: -1,
-          flowLabel: '',
-        }));
       }
-      setSim(s => ({
-        ...s,
-        running: false,
-        flowEdge: -1,
-        flowLabel: '',
-        report: {
-          ...plan,
-          elapsed: Math.round(performance.now() - startedAt),
-          deliverable: buildDeliverableText(plan, draft.name),
-        },
-      }));
-    })();
-  }, [sim.running, draft.nodes, prefs.speed, stopSim]);
+    }
+    return { nodeStates, outputs, flowEdge, flowLabel };
+  }, [agentWorkflowRun, draft.edges]);
 
   /* ---- 一键整理布局：按 3 列网格重排 ---- */
   const autoLayout = useCallback(() => {
@@ -486,10 +458,10 @@ export default function CanvasPage({
         onMoveNode={(id, x, y) => updateNode(id, { position: { x, y } })}
         onCreateNodeAt={(type, x, y) => addNode({ x, y }, type)}
         nodeTypeMeta={nodeTypeMeta}
-        nodeStates={sim.nodeStates}
-        flowEdge={sim.flowEdge}
-        flowLabel={sim.flowLabel}
-        simOutputs={sim.outputs}
+        nodeStates={realRun.nodeStates}
+        flowEdge={realRun.flowEdge}
+        flowLabel={realRun.flowLabel}
+        simOutputs={realRun.outputs}
         invalidIds={invalidIds}
         onDblClick={handleDblClick}
         gridMode={prefs.grid}
@@ -594,24 +566,15 @@ export default function CanvasPage({
           >
             {validation.ready ? '✓ 就绪' : `⚠ ${issueCount} 待完善`}
           </button>
-          <button
-            type="button"
-            className="canvas-sim-btn"
-            onClick={runSimulation}
-            disabled={!(draft.nodes || []).some(n => n.enabled !== false)}
-            title="模拟运行：按链路推演数据流（不调用大模型）"
-          >
-            {sim.running ? '■ 停止' : '▶ 模拟运行'}
-          </button>
           {runAgentWorkflow && (
             <button
               type="button"
               className={`canvas-run-btn ${isRealRunning ? 'running' : ''}`}
-              onClick={() => setRunPanelOpen(v => !v)}
+              onClick={() => { if (isRealRunning) cancelAgentWorkflow(); else setRunPanelOpen(true); }}
               disabled={!(draft.nodes || []).some(n => n.enabled !== false)}
-              title="真实运行：逐节点调用大模型，输出流式可见，可随时停止"
+              title={isRealRunning ? '点击停止真实运行' : '真实运行：逐节点调用大模型，画布节点实时点亮，可随时停止'}
             >
-              {isRealRunning ? '● 运行中' : '⚡ 真实运行'}
+              {isRealRunning ? '■ 停止运行' : '⚡ 真实运行'}
             </button>
           )}
           <button type="button" className="canvas-act-btn" onClick={undoNodes} disabled={!canUndo} title="撤销 (Ctrl+Z)">↶ 撤销</button>
@@ -735,53 +698,7 @@ export default function CanvasPage({
           </div>
         )}
 
-        {/* 模拟运行报告 */}
-        {sim.report && !sim.running && (
-          <div className="canvas-float canvas-sim-report" onMouseDown={e => e.stopPropagation()}>
-            <div className="canvas-sim-report-head">
-              <span>模拟运行报告</span>
-              <b className={sim.report.ok ? 'ok' : 'warn'}>{summarizeSimulation(sim.report)}</b>
-              <button type="button" onClick={() => setSim(s => ({ ...s, report: null }))} title="关闭">×</button>
-            </div>
-            <div className="canvas-sim-report-body custom-scrollbar">
-              {sim.report.steps.map(step => (
-                <div key={step.id} className={`canvas-sim-step ${step.status}`}>
-                  <i>{step.status === 'skipped' ? '−' : '✓'}</i>
-                  <span className="canvas-sim-step-title">{step.index + 1}. {step.title}</span>
-                  <span className="canvas-sim-step-out">{step.output}</span>
-                  <small>{step.note}{step.duration ? ` · ${step.duration}ms` : ''}</small>
-                </div>
-              ))}
-            </div>
-            <div className="canvas-sim-report-foot">
-              <button
-                type="button"
-                className={`canvas-sim-deliverable-btn${showDeliverable ? ' open' : ''}`}
-                onClick={() => setShowDeliverable(v => !v)}
-                disabled={sim.report.shortCircuitAt !== null}
-                title={sim.report.shortCircuitAt !== null ? '链路被短路，无最终成果' : '查看最终成果全文'}
-              >
-                {showDeliverable ? '收起成果' : '📄 查看最终成果'}
-              </button>
-              <span>输入 {sim.report.itemCount} 条 · 计划 {sim.report.totalDuration}ms · 实际 {(sim.report.elapsed / 1000).toFixed(1)}s（模拟，未调用大模型）</span>
-            </div>
-            {showDeliverable && sim.report.deliverable && (
-              <div className="canvas-sim-deliverable">
-                <pre className="custom-scrollbar">{sim.report.deliverable}</pre>
-                <div className="canvas-sim-deliverable-actions">
-                  <button type="button" onClick={() => { navigator.clipboard?.writeText(sim.report.deliverable); showToast('成果已复制到剪贴板'); }}>复制全文</button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onExportDeliverable) { onExportDeliverable(`${draft.name || '工作流'} · 模拟成果`, sim.report.deliverable); }
-                      else showToast('暂无法保存素材');
-                    }}
-                  >存入素材库</button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* v31e：模拟运行已移除——真实运行面板即唯一运行入口，画布节点走向由真实 trace 驱动 */}
 
         {/* 画布内浮动：选中节点的配置卡 */}
         {selectedNode && (
