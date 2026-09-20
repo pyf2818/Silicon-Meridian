@@ -36,9 +36,15 @@ it('adapts AI guidance for beginner mode and investor policy', async () => {
   });
   const [, systemPrompt] = callLlm.mock.calls[0];
   expect(systemPrompt).toContain('输出层级：新手版');
-  expect(systemPrompt).toContain('一句话结论');
-  expect(systemPrompt).toContain('今天学一招');
+  expect(systemPrompt).toContain('一句话操作判断');
+  expect(systemPrompt).toContain('什么时候买');
+  expect(systemPrompt).toContain('止损价');
   expect(systemPrompt).toContain('老舵主');
+  // v29：大师决策框架注入（利弗莫尔 / 欧奈尔 / 米勒维尼 公开方法论）
+  expect(systemPrompt).toContain('利弗莫尔');
+  expect(systemPrompt).toContain('欧奈尔');
+  expect(systemPrompt).toContain('米勒维尼');
+  expect(systemPrompt).toContain('条件化动作剧本');
   expect(systemPrompt).toContain('稳健');
   expect(systemPrompt).toContain('1%');
 });
@@ -53,7 +59,9 @@ it('adapts AI guidance for professional evidence review', async () => {
   });
   const [, systemPrompt] = callLlm.mock.calls[0];
   expect(systemPrompt).toContain('输出层级：专业版');
-  expect(systemPrompt).toContain('技术面研判');
-  expect(systemPrompt).toContain('证据权重');
+  expect(systemPrompt).toContain('买点剧本');
+  expect(systemPrompt).toContain('卖点剧本');
+  // 欧奈尔止损铁律数字必须出现在专业版卖点剧本中
+  expect(systemPrompt).toContain('7-8%');
   expect(systemPrompt).toContain('失效条件');
 });

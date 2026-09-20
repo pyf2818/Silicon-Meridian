@@ -67,6 +67,7 @@ export default function AiElf({
   const [messages, setMessages] = useState(loadMessages);
   const [quotedContext, setQuotedContext] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState(null); // 侧栏中当前对话对应的已存会话
   const elfChatHistory = useElfStore(s => s.elfChatHistory);
   const setElfChatHistory = useElfStore(s => s.setElfChatHistory);
   const elfCollab = useElfStore(s => s.elfCollab);
@@ -124,6 +125,17 @@ export default function AiElf({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // v29：浮窗打开瞬间定位到最新回复——窗口刚挂载时 messages 数组未变，
+  // 上面的 effect 不会重跑，导致打开时停留在最顶端（最旧消息）。
+  // rAF 等一帧布局完成后再滚；behavior:'auto' 直接定位（长列表 smooth 会中途停住）。
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const raf = requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isOpen]);
 
   // 悬浮球拖动 + 点击开合
   const handleMouseDown = useCallback((e) => {
@@ -231,18 +243,28 @@ export default function AiElf({
       messages: meaningful.slice(-60),
     };
     setElfChatHistory(prev => [session, ...prev.filter(s => s.id !== session.id)].slice(0, 30));
+    setActiveSessionId(session.id);
     showToast('已保存到聊天记录');
   };
 
   const restoreChatSession = (session) => {
-    if (messages.length && !window.confirm('恢复该记录会覆盖当前对话，继续？')) return;
+    if (messages.length && activeSessionId !== session.id && !window.confirm('恢复该记录会覆盖当前对话，继续？')) return;
     setMessages(Array.isArray(session.messages) ? session.messages : []);
+    setActiveSessionId(session.id);
     setShowHistory(false);
     showToast('已恢复聊天记录');
   };
 
   const deleteChatSession = (id) => {
     setElfChatHistory(prev => prev.filter(s => s.id !== id));
+    if (activeSessionId === id) setActiveSessionId(null);
+  };
+
+  // 新对话：清空当前对话开始新话题（侧栏入口；恢复会话高亮一并清除）
+  const startNewConversation = () => {
+    if (messages.length && !window.confirm('清空当前对话，开始新话题？')) return;
+    setMessages([]);
+    setActiveSessionId(null);
   };
 
   // 分析结论沉淀：存素材库 / 交回工作站（基础交接能力，保留）
@@ -277,10 +299,6 @@ export default function AiElf({
     const payload = buildConversationMaterial(mode);
     if (mode === 'workbench') onContinueInWorkbench?.(payload);
     else onExportToMaterials?.(payload);
-  };
-
-  const clearConversation = () => {
-    if (!messages.length || window.confirm('清空当前对话？')) setMessages([]);
   };
 
   // 计算聊天窗口位置（跟随精灵）
@@ -370,56 +388,64 @@ export default function AiElf({
               <small>问答 · 拖卡片分析</small>
             </div>
             <span className="ai-elf-header-space" style={{ flex: 1 }} />
-            <button type="button" className={`ai-elf-btn ${showHistory ? 'active' : ''}`} onClick={() => setShowHistory(v => !v)} title="聊天记录">{ICONS.clock || '◔'}</button>
-            <button type="button" className="ai-elf-btn" onClick={clearConversation} title="清空对话，开始新话题">{ICONS.refresh || '⟲'}</button>
+            <button type="button" className={`ai-elf-btn ${showHistory ? 'active' : ''}`} onClick={() => setShowHistory(v => !v)} title="聊天记录侧栏">{ICONS.clock || '◔'}</button>
+            <button type="button" className="ai-elf-btn" onClick={startNewConversation} title="清空对话，开始新话题">{ICONS.refresh || '⟲'}</button>
             <button type="button" className="ai-elf-btn" onClick={() => saveConversation('workbench')} title="保存到 AI 工作站继续研究">{ICONS.cpu || '⇱'}</button>
             <button type="button" className="ai-elf-btn" onClick={() => saveConversation('archive')} title="保存到素材库">{ICONS.bookmark || '★'}</button>
             <button type="button" className="ai-elf-btn" onClick={() => setIsOpen(false)} title="收起">{ICONS.x || '×'}</button>
           </header>
 
-          {showHistory && (
-            <div className="ai-elf-history">
-              <div className="ai-elf-history-head">
-                <span>聊天记录（{elfChatHistory.length}）</span>
-                <button type="button" onClick={saveChatSession}>＋ 保存当前对话</button>
+          {/* v29：记录管理侧边栏 + 主聊天区（shell 双栏布局） */}
+          <div className="ai-elf-shell">
+            {showHistory && (
+              <aside className="ai-elf-sidebar">
+                <div className="ai-elf-sidebar-head">
+                  <span>聊天记录（{elfChatHistory.length}）</span>
+                  <button type="button" onClick={startNewConversation} title="清空当前对话，开始新话题">{ICONS.refresh || '⟲'}</button>
+                </div>
+                <div className="ai-elf-sidebar-list custom-scrollbar">
+                  {elfChatHistory.length === 0 && <p className="ai-elf-sidebar-empty">还没有保存过对话。聊完后点下方「保存当前对话」，记录会留在本地。</p>}
+                  {elfChatHistory.map(session => (
+                    <div key={session.id} className={`ai-elf-sidebar-item ${session.id === activeSessionId ? 'active' : ''}`}>
+                      <button type="button" className="ai-elf-sidebar-main" onClick={() => restoreChatSession(session)} title="点击恢复该对话">
+                        <b>{session.title}</b>
+                        <small>{new Date(session.savedAt).toLocaleString('zh-CN')} · {session.messages?.length || 0} 条</small>
+                      </button>
+                      <button type="button" className="ai-elf-sidebar-del" onClick={() => deleteChatSession(session.id)} title="删除">×</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="ai-elf-sidebar-foot">
+                  <button type="button" onClick={saveChatSession} title="把当前对话存入记录">＋ 保存当前对话</button>
+                </div>
+              </aside>
+            )}
+            <div className="ai-elf-main">
+              <div className="ai-elf-chat-body">
+                <MessageList
+                  messages={messages}
+                  avatarImage={avatarImage}
+                  activeAgent={activeAgent}
+                  isLoading={isLoading}
+                  messagesEndRef={messagesEndRef}
+                  onContinueInWorkbench={onContinueInWorkbench}
+                  setQuotedContext={setQuotedContext}
+                  setInputText={setInputText}
+                  saveConversationToMaterials={saveConversation}
+                  elfName={elfName}
+                />
               </div>
-              <div className="ai-elf-history-list custom-scrollbar">
-                {elfChatHistory.length === 0 && <p className="ai-elf-history-empty">还没有保存过对话。聊完后点「保存当前对话」，记录会留在本地。</p>}
-                {elfChatHistory.map(session => (
-                  <div key={session.id} className="ai-elf-history-item">
-                    <button type="button" className="ai-elf-history-main" onClick={() => restoreChatSession(session)} title="点击恢复该对话">
-                      <b>{session.title}</b>
-                      <small>{new Date(session.savedAt).toLocaleString('zh-CN')} · {session.messages?.length || 0} 条</small>
-                    </button>
-                    <button type="button" className="ai-elf-history-del" onClick={() => deleteChatSession(session.id)} title="删除">×</button>
-                  </div>
-                ))}
-              </div>
+              <InputArea
+                quotedContext={quotedContext}
+                setQuotedContext={setQuotedContext}
+                inputText={inputText}
+                setInputText={setInputText}
+                sendMessage={sendMessage}
+                activeAgent={activeAgent}
+                isLoading={isLoading}
+              />
             </div>
-          )}
-          <div className="ai-elf-chat-body">
-            <MessageList
-              messages={messages}
-              avatarImage={avatarImage}
-              activeAgent={activeAgent}
-              isLoading={isLoading}
-              messagesEndRef={messagesEndRef}
-              onContinueInWorkbench={onContinueInWorkbench}
-              setQuotedContext={setQuotedContext}
-              setInputText={setInputText}
-              saveConversationToMaterials={saveConversation}
-              elfName={elfName}
-            />
           </div>
-          <InputArea
-            quotedContext={quotedContext}
-            setQuotedContext={setQuotedContext}
-            inputText={inputText}
-            setInputText={setInputText}
-            sendMessage={sendMessage}
-            activeAgent={activeAgent}
-            isLoading={isLoading}
-          />
         </div>
       )}
     </>

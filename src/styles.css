@@ -28349,32 +28349,47 @@ body {
 .nav-primary-group.nav-grouped + .nav-primary-group.nav-grouped { margin-top: 14px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent); }
 .nav-group-title-static { margin: 0 0 6px; padding: 0 10px; font-size: 10px; font-weight: 800; letter-spacing: .12em; color: var(--text-muted); opacity: .75; }
 
-/* ---- 3. AI 精灵聊天记录 ---- */
-.ai-elf-history { display: flex; flex-direction: column; max-height: 220px; border-bottom: 1px solid var(--border-color); background: var(--bg-secondary, var(--bg-primary)); }
-.ai-elf-history-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 14px; font-size: 11px; font-weight: 700; color: var(--text-muted);
+/* ---- 3. AI 精灵记录管理侧边栏（v29：下拉面板升级为 shell 内左侧栏） ---- */
+.ai-elf-shell { position: relative; flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.ai-elf-sidebar {
+  width: 188px; flex: none; display: flex; flex-direction: column;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-secondary, var(--bg-primary));
+  animation: aiElfSidebarIn .18s ease;
 }
-.ai-elf-history-head button {
-  padding: 4px 10px; border-radius: 7px; cursor: pointer; font-size: 11px;
-  border: 1px solid var(--border-color); background: transparent; color: var(--accent-cyan);
-}
-.ai-elf-history-head button:hover { border-color: var(--accent-cyan); }
-.ai-elf-history-list { overflow-y: auto; padding: 0 10px 10px; display: flex; flex-direction: column; gap: 3px; }
-.ai-elf-history-empty { margin: 4px 6px 8px; font-size: 11.5px; line-height: 1.7; color: var(--text-muted); }
-.ai-elf-history-item { display: flex; align-items: center; gap: 4px; border-radius: 8px; }
-.ai-elf-history-item:hover { background: color-mix(in srgb, var(--accent-cyan) 7%, transparent); }
-.ai-elf-history-main {
-  flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 7px 9px;
+@keyframes aiElfSidebarIn { from { transform: translateX(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.ai-elf-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border-color); flex: none; }
+.ai-elf-sidebar-head span { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--text-muted); }
+.ai-elf-sidebar-head button { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; background: transparent; border-radius: 6px; color: var(--text-secondary); cursor: pointer; }
+.ai-elf-sidebar-head button:hover { background: color-mix(in srgb, var(--accent-cyan) 15%, transparent); color: var(--accent-cyan); }
+.ai-elf-sidebar-head button svg { width: 13px; height: 13px; }
+.ai-elf-sidebar-list { flex: 1; overflow-y: auto; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+.ai-elf-sidebar-empty { margin: 8px 4px; font-size: 11.5px; line-height: 1.7; color: var(--text-muted); }
+.ai-elf-sidebar-item { display: flex; align-items: center; gap: 4px; border-radius: 8px; border: 1px solid transparent; }
+.ai-elf-sidebar-item:hover { background: color-mix(in srgb, var(--accent-cyan) 7%, transparent); }
+.ai-elf-sidebar-item.active { border-color: color-mix(in srgb, var(--accent-cyan) 45%, transparent); background: color-mix(in srgb, var(--accent-cyan) 8%, transparent); }
+.ai-elf-sidebar-main {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px;
   border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer;
 }
-.ai-elf-history-main b { font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ai-elf-history-main small { font-size: 10px; color: var(--text-muted); }
-.ai-elf-history-del {
-  width: 22px; height: 24px; border: 0; border-radius: 6px; background: transparent;
-  color: var(--text-muted); cursor: pointer; font-size: 13px;
+.ai-elf-sidebar-main b { font-size: 12px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-elf-sidebar-main small { font-size: 10px; color: var(--text-muted); }
+.ai-elf-sidebar-del {
+  width: 22px; height: 22px; flex: none; border: 0; border-radius: 6px; background: transparent;
+  color: var(--text-muted); cursor: pointer; font-size: 14px; line-height: 1;
 }
-.ai-elf-history-del:hover { color: var(--status-critical, #f85149); background: color-mix(in srgb, var(--status-critical, #f85149) 10%, transparent); }
+.ai-elf-sidebar-del:hover { color: var(--status-critical, #f85149); background: color-mix(in srgb, var(--status-critical, #f85149) 10%, transparent); }
+.ai-elf-sidebar-foot { padding: 8px 10px; border-top: 1px solid var(--border-color); flex: none; }
+.ai-elf-sidebar-foot button { width: 100%; padding: 6px 8px; font-size: 11.5px; border: 1px solid var(--border-color); background: transparent; border-radius: 8px; color: var(--text-secondary); cursor: pointer; transition: var(--transition-base); }
+.ai-elf-sidebar-foot button:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+/* 窄屏：侧栏改浮层覆盖，不挤压聊天主区 */
+@media (max-width: 768px) {
+  .ai-elf-sidebar {
+    position: absolute; top: 0; bottom: 0; left: 0; z-index: 20;
+    width: min(240px, 78%);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .35);
+  }
+}
 .ai-elf-btn.active { color: var(--accent-cyan); border-color: var(--accent-cyan); }
 
 /* ---- 4. 联网搜索状态条（豆包） ---- */
