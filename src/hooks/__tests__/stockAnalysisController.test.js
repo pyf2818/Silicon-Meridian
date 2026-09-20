@@ -40,11 +40,13 @@ it('adapts AI guidance for beginner mode and investor policy', async () => {
   expect(systemPrompt).toContain('什么时候买');
   expect(systemPrompt).toContain('止损价');
   expect(systemPrompt).toContain('老舵主');
+  // v31c：三价表硬性要求——预测的买入/卖出点直接给数字
+  expect(systemPrompt).toContain('核心买卖参考价');
+  expect(systemPrompt).toContain('目标卖出价');
   // v29：大师决策框架注入（利弗莫尔 / 欧奈尔 / 米勒维尼 公开方法论）
   expect(systemPrompt).toContain('利弗莫尔');
   expect(systemPrompt).toContain('欧奈尔');
   expect(systemPrompt).toContain('米勒维尼');
-  expect(systemPrompt).toContain('条件化动作剧本');
   expect(systemPrompt).toContain('稳健');
   expect(systemPrompt).toContain('1%');
 });
@@ -61,6 +63,8 @@ it('adapts AI guidance for professional evidence review', async () => {
   expect(systemPrompt).toContain('输出层级：专业版');
   expect(systemPrompt).toContain('买点剧本');
   expect(systemPrompt).toContain('卖点剧本');
+  // v31c：三价表硬性要求
+  expect(systemPrompt).toContain('建议买入触发价');
   // 欧奈尔止损铁律数字必须出现在专业版卖点剧本中
   expect(systemPrompt).toContain('7-8%');
   expect(systemPrompt).toContain('失效条件');

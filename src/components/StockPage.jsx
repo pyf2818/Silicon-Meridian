@@ -39,6 +39,16 @@ const BENCHMARK_OPTIONS = [
   { code: 'sz399006', name: '创业板指' },
 ];
 
+// v31c：研究工具白话说明——每个 tab 一句「这是干嘛的」，解决「看不明白有啥用」
+const RESEARCH_TOOL_GUIDE = {
+  decision: '一张卡汇总当前个股的评级、多空证据和关键价位——先看这张卡，再决定要不要继续往下研究。',
+  policy: '设定你的投资周期、风险偏好和单笔亏损上限，后面的仓位计算和 AI 分析都会按这套约束来。',
+  risk: '按你的账户资金和止损价，算出「这一笔最多买多少股」，把单笔亏损锁死在预算内——先算能亏多少，再决定买多少。',
+  scenario: '提前把剧本写好：上涨怎么应对、下跌怎么应对、到什么价位做什么动作，临场不靠情绪拍脑袋。',
+  checklist: '买之前的自查清单：基本面、资金、风险信号逐项过一遍，全部通过再动手，减少冲动单。',
+  journal: '把每次的买入理由写成假设存档，之后复盘验证对与错——这是唯一能让你越亏越聪明的方法。',
+};
+
 export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMaterial }) {
   const pageRef = useRef(null);
   const { watchlist, inWatchlist, toggleStock, moveStock } = useStockWatchlist();
@@ -100,6 +110,8 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
   const [briefingTab, setBriefingTab] = useState('current');
   const [showResearchTools, setShowResearchTools] = useState(false);
   const [researchToolTab, setResearchToolTab] = useState('risk');
+  // v31c：header AI 工具下拉（收纳诊断/早报/研究工具，解决顶栏拥挤）
+  const [showAiMenu, setShowAiMenu] = useState(false);
   // 监控配置弹窗
   const [showAlertConfig, setShowAlertConfig] = useState(false);
   const [alertConditions, setAlertConditions] = useState(() => {
@@ -484,7 +496,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
       type: 'viewpoint',
       source: '股市 AI 分析',
       tags: ['股市', 'AI分析', experienceMode === 'pro' ? '专业版' : '新手版'],
-      metadata: { kind: 'stock-analysis', code: selectedCode, mode: d.mode || 'algorithm', experienceMode, at: d.at || Date.now() },
+      metadata: { kind: 'stock-analysis', code: selectedCode, stockName: d.stock?.name || selectedName, mode: d.mode || 'algorithm', experienceMode, at: d.at || Date.now() },
     });
     // 明确的成功反馈：保存后立即 toast，让用户知晓已入素材库
     showToast(`已存入素材库：股市AI分析 · ${d.stock?.name || selectedName}`);
@@ -571,17 +583,32 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
         <button className={`stock-watch-btn ${isSelectedInWatchlist ? 'active' : ''}`} onClick={() => toggleStock(selectedStock)} title={isSelectedInWatchlist ? '移出自选' : '加入自选'}>
           {ICONS.star}<span>{isSelectedInWatchlist ? '已自选' : '加自选'}</span>
         </button>
-        {experienceMode === 'pro' && (
-          <button className="stock-research-entry" onClick={() => openResearchTools('risk')} title="打开风险预算与研究假设账本">
-            {ICONS.document}<span>研究工具</span>
-          </button>
+        <button
+          type="button"
+          className={`stock-ai-action ${showAiMenu ? 'active' : ''}`}
+          onClick={() => setShowAiMenu(v => !v)}
+          title="AI 工具：诊断 / 早报 / 研究工具"
+        >
+          {ICONS.sparkle}<span>AI 工具</span>
+        </button>
+        {showAiMenu && (
+          <>
+            <div className="dropdown-backdrop" onClick={() => setShowAiMenu(false)} />
+            <div className="stock-ai-menu" onMouseLeave={() => setShowAiMenu(false)}>
+              <button type="button" onClick={() => { setShowAiMenu(false); setShowDiagDrawer(true); }}>
+                {ICONS.sparkle}<b>AI 诊断</b><small>买卖参考价 · 剧本 · 历史</small>
+              </button>
+              <button type="button" onClick={() => { setShowAiMenu(false); setBriefingTab(ai.briefing ? 'current' : ai.briefingHistory.length ? 'history' : 'current'); setShowBriefing(true); }}>
+                {ICONS.sparkle}<b>AI 市场早报</b><small>今日大盘 · 板块 · 风险清单</small>
+              </button>
+              {experienceMode === 'pro' && (
+                <button type="button" onClick={() => { setShowAiMenu(false); openResearchTools('decision'); }}>
+                  {ICONS.document}<b>研究工具</b><small>决策卡 · 仓位 · 情景 · 清单</small>
+                </button>
+              )}
+            </div>
+          </>
         )}
-        <button className="stock-ai-action" onClick={() => setShowDiagDrawer(true)} title="打开 AI 诊断抽屉（买卖剧本 + 历史记录）">
-          {ICONS.sparkle}<span>AI 诊断</span>
-        </button>
-        <button className="stock-ai-action" onClick={() => { setBriefingTab(ai.briefing ? 'current' : ai.briefingHistory.length ? 'history' : 'current'); setShowBriefing(true); }} title="生成或查看 AI 市场早报">
-          {ICONS.sparkle}<span>AI 早报</span>
-        </button>
         <button className="btn-refresh" onClick={loadDashboard}>{ICONS.refresh}<span>刷新</span></button>
       </header>
 
@@ -878,6 +905,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
               <button type="button" className={researchToolTab === 'checklist' ? 'active' : ''} onClick={() => setResearchToolTab('checklist')} role="tab">研究清单</button>
               <button type="button" className={researchToolTab === 'journal' ? 'active' : ''} onClick={() => setResearchToolTab('journal')} role="tab">假设账本</button>
             </div>
+            <p className="stock-research-guide">{RESEARCH_TOOL_GUIDE[researchToolTab]}</p>
             <div className="stock-modal-body">
               {researchToolTab === 'decision' ? (
                 <DecisionEvidenceTool stock={selectedStock} realtime={realtime} diagnosis={ai.diagnosis} evidencePacket={ai.diagnosis?.evidencePacket} diagnosing={ai.diagnosing} onAnalyze={runDiagnosis} onOpenTool={setResearchToolTab} />
