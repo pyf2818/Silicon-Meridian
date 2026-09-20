@@ -36,7 +36,7 @@ export { mergeToolCallDeltas, STREAM_STALL_TIMEOUT_MS };
  * 取消语义：调用方 controller 中止 → 原样抛 AbortError（上层识别为「用户停止」）；
  * 静默超时 → 抛带 retriable 的普通 Error（上层识别为「上游异常」可重试）。
  */
-export async function streamAgentResponse({ controller, baseUrl, apiKey, model, systemPrompt, messages, maxTokens, tools, toolChoice, onChunk, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS }) {
+export async function streamAgentResponse({ controller, baseUrl, apiKey, model, systemPrompt, messages, maxTokens, tools, toolChoice, onChunk, onReasoning, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS }) {
   // 组合信号：调用方 controller（用户停止）+ 内部看门狗。分开是为了能区分两种中止原因。
   const internal = new AbortController();
   const forwardAbort = () => internal.abort();
@@ -95,6 +95,7 @@ export async function streamAgentResponse({ controller, baseUrl, apiKey, model, 
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
   let content = '';
+  let reasoning = '';
   let usage = null;
   const toolCallDeltas = []; // 收集每批 delta.tool_calls，结束统一合并
 
@@ -122,6 +123,12 @@ export async function streamAgentResponse({ controller, baseUrl, apiKey, model, 
           content += json.delta;
           if (onChunk) onChunk(content); // 实时逐字渲染
         }
+        // v34：推理模型思维链（delta.reasoning_content）——服务端透传为 reasoning 帧，
+        // 累计后经 onReasoning 实时回调；此前被丢弃，"思考过程"无数据可显示
+        if (typeof json.reasoning === 'string' && json.reasoning) {
+          reasoning += json.reasoning;
+          if (onReasoning) onReasoning(json.reasoning, reasoning);
+        }
         if (Array.isArray(json.toolCallDelta)) {
           toolCallDeltas.push(json.toolCallDelta);
         }
@@ -143,7 +150,7 @@ export async function streamAgentResponse({ controller, baseUrl, apiKey, model, 
   }
 
   const toolCalls = mergeToolCallDeltas(toolCallDeltas);
-  return { content, tool_calls: toolCalls, usage };
+  return { content, tool_calls: toolCalls, usage, reasoning };
 }
 
 /**
@@ -181,11 +188,13 @@ export async function runToolLoop({
   buildSystemSuffix,
   onProgress,
   onContentDelta, // (delta:string) => void：纯增量文本流（区别于 onProgress 的混合补丁），群聊流式气泡用
+  onReasoning, // (delta, full) => void：v34 推理模型思维链流式回调（思考过程展示）
   onToolComplete,
   generateSummary,
 }) {
   const CONVERGE_AT = maxIterations - 1; // 倒数第二轮起提示收敛
   const toolCallTrace = [];
+  const reasoningTexts = []; // v34：每轮思维链文本（[{iter, text}]），供 UI"思考过程"展开
   const usageTotal = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, turns: 0 };
   const conversationMessages = baseMessages.map(m => ({ ...m }));
   let finalContent = '';
@@ -257,6 +266,7 @@ export async function runToolLoop({
       // ── 带重试的 LLM 调用：仅对 429/5xx/上游限流瞬错重试，最多 2 次 ──
       const MAX_AGENT_RETRIES = 2;
       let data;
+      let iterReasoning = ''; // v34：本轮思维链累计
       for (let attempt = 0; attempt <= MAX_AGENT_RETRIES; attempt += 1) {
         try {
           data = await streamAgentResponse({
@@ -273,6 +283,13 @@ export async function runToolLoop({
               emit({ content: c, thinking: '正在生成...' });
               if (onContentDelta) {
                 try { onContentDelta(c); } catch { /* 流式回调失败不拖垮执行 */ }
+              }
+            },
+            onReasoning: (delta, full) => {
+              iterReasoning = full;
+              emit({ reasoning: full, thinking: '正在深度思考…' });
+              if (onReasoning) {
+                try { onReasoning(delta, full); } catch { /* 思维链回调失败不拖垮执行 */ }
               }
             },
           });
@@ -295,6 +312,12 @@ export async function runToolLoop({
       usageTotal.completion_tokens += Number(data.usage?.completion_tokens) || 0;
       usageTotal.total_tokens += Number(data.usage?.total_tokens)
         || (Number(data.usage?.prompt_tokens) || 0) + (Number(data.usage?.completion_tokens) || 0);
+
+      // v34：本轮思维链有内容则入档（"思考过程"步骤展示 + 展开回看）
+      if (iterReasoning.trim()) {
+        reasoningTexts.push({ iter: iter + 1, text: iterReasoning.trim() });
+        emit({ reasoningTexts: reasoningTexts.map(r => ({ ...r })) });
+      }
 
       // 若无 tool_calls，本次即为最终答案
       if (!Array.isArray(data.tool_calls) || data.tool_calls.length === 0) {
@@ -492,6 +515,7 @@ export async function runToolLoop({
   return {
     finalContent,
     toolCallTrace,
+    reasoningTexts, // v34：每轮思维链（思考过程展示与回看）
     aborted,
     usage: usageTotal,
     conversationMessages,

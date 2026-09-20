@@ -2,6 +2,44 @@ import React, { useState } from 'react';
 import { ICONS } from '../../constants/appConstants.jsx';
 import { showToast } from '../../utils/toast.js';
 
+/**
+ * v34：思考过程块（ReasoningBlock）
+ * - 推理模型思维链（reasoning_content）实时流式展示，生成中默认展开实时可读；
+ * - 完成后保留为可展开的"思考过程"步骤（按轮次分节），随时回看；
+ * - 非推理模型无 reasoning 数据时返回 null（不占位）。
+ */
+export function ReasoningBlock({ reasoning = '', texts = [], loading = false }) {
+  // hooks 规则：useState 必须在任何条件 return 之前
+  const [expanded, setExpanded] = useState(false);
+  const hasTexts = Array.isArray(texts) && texts.length > 0;
+  const hasLive = typeof reasoning === 'string' && reasoning.trim().length > 0;
+  if (!hasTexts && !hasLive) return null;
+  const preview = String(hasLive ? reasoning : (texts[texts.length - 1]?.text || '')).slice(-180);
+  return (
+    <div className={`agent-reasoning${loading ? ' is-loading' : ''}${expanded ? ' is-expanded' : ''}`}>
+      <button type="button" className="agent-reasoning-toggle" onClick={() => setExpanded(v => !v)}>
+        <span className={`tool-call-chevron${expanded ? ' is-open' : ''}`}>▾</span>
+        <span className="agent-reasoning-toggle-label">
+          {loading ? '正在深度思考…（点击收起）' : '思考过程（点击展开回看）'}
+        </span>
+      </button>
+      {!expanded && loading && (
+        <pre className="agent-reasoning-preview custom-scrollbar">{preview}</pre>
+      )}
+      {expanded && (
+        <div className="agent-reasoning-body custom-scrollbar">
+          {hasTexts ? texts.map(t => (
+            <div key={t.iter} className="agent-reasoning-round">
+              <b className="agent-reasoning-round-label">第 {t.iter} 轮思考</b>
+              <pre>{t.text}</pre>
+            </div>
+          )) : <pre>{reasoning}</pre>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* 工具元信息：友好名称 + 简短图标，用于工具调用卡片展示 */
 const TOOL_META = {
   read_workspace_file: { label: '读取文件', iconKey: 'document' },

@@ -176,13 +176,30 @@ export async function runAgentLoop({
   };
 
   // 给 UI 用的工具调用记录（不带原始 messages 结构，便于渲染卡片）
-  const updateAssistantMsg = (patch) => {
+  // v34：80ms trailing 节流——内核每 delta 调 onProgress，此前每次都全量 setSessions
+  //（连带 localStorage 写），高频全量渲染+序列化就是"流式一卡一卡"的主因。
+  // 合并策略：content/reasoning 均为累计全文、toolCalls 为最新数组引用，覆盖合并安全。
+  let pendingMsgPatch = null;
+  let msgFlushTimer = null;
+  const applyMsgPatch = (patch) => {
     setSessions(prev => prev.map(s => {
       if (s.id !== targetId) return s;
       const msgs = [...s.messages];
       msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], ...patch, loading: true };
       return { ...s, messages: msgs };
     }));
+  };
+  const updateAssistantMsg = (patch) => {
+    pendingMsgPatch = { ...pendingMsgPatch, ...patch, loading: true };
+    if (!msgFlushTimer) {
+      msgFlushTimer = setTimeout(() => {
+        msgFlushTimer = null;
+        if (pendingMsgPatch) {
+          applyMsgPatch(pendingMsgPatch);
+          pendingMsgPatch = null;
+        }
+      }, 80);
+    }
   };
 
   // LLM 真压缩摘要器：超预算时由内核调用生成结构化摘要（带缓存，失败自动降级本地摘要）
@@ -214,15 +231,19 @@ export async function runAgentLoop({
         appendHistory(targetId, { toolName, args, result: String(toolResult).slice(0, 2000), status });
       } catch { /* ignore */ }
     },
+    // v34：思维链流式回调——runToolLoop 每轮把模型 reasoning 增量透传上来
+    onReasoning: (delta, full) => {
+      updateAssistantMsg({ reasoning: full });
+    },
     generateSummary,
   });
 
   let { finalContent } = result;
-  const { toolCallTrace, aborted, usage } = result;
+  const { toolCallTrace, reasoningTexts, aborted, usage } = result;
 
   if (aborted) {
     if (!finalContent) finalContent = '（已停止）';
-    // 写入最终消息：保留 toolCalls 痕迹，标记 stopped
+    // 写入最终消息：保留 toolCalls 痕迹 + 思维链，标记 stopped
     setSessions(prev => prev.map(s => {
       if (s.id !== targetId) return s;
       const msgs = [...s.messages];
@@ -231,6 +252,7 @@ export async function runAgentLoop({
         content: finalContent,
         toolCalls: toolCallTrace.slice(),
         toolCallCount: toolCallTrace.length,
+        reasoningTexts: reasoningTexts.map(r => ({ ...r })),
         loading: false,
         stopped: true,
       };
@@ -285,7 +307,7 @@ export async function runAgentLoop({
     }
   }
 
-  // 写入最终 assistant 消息（保留 toolCalls 痕迹供 UI 展示 + 本轮 token 用量）
+  // 写入最终 assistant 消息（保留 toolCalls 痕迹供 UI 展示 + 思维链 + 本轮 token 用量）
   setSessions(prev => prev.map(s => {
     if (s.id !== targetId) return s;
     const msgs = [...s.messages];
@@ -293,6 +315,8 @@ export async function runAgentLoop({
       role: 'assistant',
       content: finalFinalContent,
       toolCalls: toolCallTrace.slice(),
+      reasoningTexts: reasoningTexts.map(r => ({ ...r })),
+      reasoning: undefined, // 清掉流式期间的临时 reasoning（已归档进 reasoningTexts）
       usage,
       loading: false,
     };

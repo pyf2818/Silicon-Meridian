@@ -304,6 +304,11 @@ export async function handleAiStreamRequest(req, res, body) {
           const json = JSON.parse(payload);
           const choice = json.choices?.[0] || {};
           const delta = choice.delta || {};
+          // v34：推理模型的思维链透传（DeepSeek-R1 / GLM 等在 delta.reasoning_content）
+          // ——此前被丢弃，前端"思考过程"永远无内容
+          if (delta.reasoning_content) {
+            res.write(`data: ${JSON.stringify({ ok: true, reasoning: delta.reasoning_content })}\n\n`);
+          }
           // 普通文本增量（既有行为，聊天路径依赖它）
           if (delta.content) {
             res.write(`data: ${JSON.stringify({ ok: true, delta: delta.content })}\n\n`);

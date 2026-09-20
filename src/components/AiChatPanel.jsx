@@ -23,7 +23,7 @@ import {
   subscribePending, getPendingApprovals, respondApproval, cancelAllPending,
 } from '../utils/sandbox.js';
 import { PersonaDrawer } from './PersonaEditor.jsx';
-import { ToolCallCard, ApprovalCard } from './aichat/ToolCards.jsx';
+import { ToolCallCard, ApprovalCard, ReasoningBlock } from './aichat/ToolCards.jsx';
 import AgentTeamPanel from './aichat/AgentTeamPanel.jsx';
 import AgentTeamChat from './aichat/AgentTeamChat.jsx';
 import {
@@ -1760,12 +1760,20 @@ export default function AiChatPanel({
               </div>
             )}
             <div className={`chat-bubble ${msg.error ? 'chat-bubble-error' : ''}${msg.toolCalls?.length ? ' chat-bubble-has-tools' : ''}`}>
-              {/* v33：思考提示独立成块（不在工具卡片容器里）——agent loop 每一步都清晰分段 */}
-              {msg.thinking && msg.loading && (
+              {/* v34：思考提示独立成块（不在工具卡片容器里）——agent loop 每一步都清晰分段 */}
+              {msg.thinking && msg.loading && !msg.reasoning && (
                 <div className="chat-tool-thinking">
                   <span className="chat-tool-thinking-dot" />
                   {msg.thinking}
                 </div>
+              )}
+              {/* v34：思维链块——推理模型 reasoning_content 实时流式 + 完成后按轮回看 */}
+              {(msg.reasoning || (msg.loading && msg.reasoningTexts?.length) || (!msg.loading && msg.reasoningTexts?.length)) && (
+                <ReasoningBlock
+                  reasoning={msg.loading ? msg.reasoning : ''}
+                  texts={msg.reasoningTexts}
+                  loading={Boolean(msg.loading)}
+                />
               )}
               {msg.toolCalls && msg.toolCalls.length > 0 && (
                 <div className="chat-tool-calls">
