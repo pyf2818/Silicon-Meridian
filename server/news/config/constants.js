@@ -749,6 +749,9 @@ export const DEFAULT_SOURCES = [
   { name: 'ArXiv CS CL', url: 'https://export.arxiv.org/rss/cs.CL', region: 'global', defaultCategory: 'research' },
   { name: 'ArXiv CS CV', url: 'https://export.arxiv.org/rss/cs.CV', region: 'global', defaultCategory: 'research' },
   { name: 'MIT News AI', url: 'https://news.mit.edu/rss/topic/artificial-intelligence2', region: 'overseas', defaultCategory: 'research' },
+  // 第 5 批候选实测结论（scripts/test-source-candidates-5.mjs）：Ars Technica / TechCrunch
+  // 已在库内（silicon-valley 组）；HN / V2EX / 微博热搜 / 知乎热榜 / GitHub Trending
+  // 在沙盒出口受限下未通过，待本机网络复测（node scripts/test-source-candidates-5.mjs）通过后再接
   { name: 'Stanford HAI', url: 'https://hai.stanford.edu/news/rss.xml', region: 'overseas', defaultCategory: 'research' },
   { name: 'Science Daily', url: 'https://www.sciencedaily.com/rss/', region: 'overseas', defaultCategory: 'research' },
   { name: 'IEEE Spectrum', url: 'https://spectrum.ieee.org/rss/fulltext', region: 'overseas', defaultCategory: 'research' },
