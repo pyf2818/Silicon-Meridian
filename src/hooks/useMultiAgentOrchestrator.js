@@ -18,6 +18,7 @@ import {
   orchestrationStep,
   commitOrchestrationStep,
 } from '../utils/agentOrchestrator.js';
+import { streamLlm } from '../utils/llmStream.js';
 
 /** 单视角/合成调用的默认超时与 token 上限 */
 const VIEW_MAX_TOKENS = 1800;
@@ -28,7 +29,7 @@ const VIEW_MAX_TOKENS = 1800;
  * @param {object} opts.llmConfig      { baseUrl, apiKey, selectedModel, webSearchEnabled }
  * @param {boolean} opts.enabled       false 时 hook 空转（如未连工作区）
  * @returns {{
- *   run: (task: string, opts?: {chain?: string[], onView?: Function}) => Promise<{ok, views, synthesis, error}>,
+ *   run: (task: string, opts?: {chain?: string[], onView?: Function, onViewDelta?: Function}) => Promise<{ok, views, synthesis, error}>,
  *   runState: 'idle'|'running'|'done'|'error',
  *   progress: Array<{viewLabel, status, output?, error?}>,
  *   abort: () => void,
@@ -39,34 +40,22 @@ export function useMultiAgentOrchestrator({ agents, llmConfig, enabled = true })
   const [runState, setRunState] = useState('idle');
   const [progress, setProgress] = useState([]);
 
-  // 实际 LLM 调用：对话（非工具）路径
-  const callLlm = useCallback(async (systemPrompt, userInput) => {
+  // 实际 LLM 调用：对话（非工具）路径。v30：流式——onDelta 逐字回调，signal 真取消。
+  const callLlm = useCallback(async (systemPrompt, userInput, onDelta = null) => {
     if (!llmConfig?.baseUrl || !llmConfig?.selectedModel) {
       throw new Error('请先在设置中配置大模型');
     }
     const controller = new AbortController();
     abortRef.current = controller;
-    const res = await fetch('/api/ai-generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const { content } = await streamLlm({
+      llmConfig,
+      systemPrompt,
+      userPrompt: userInput,
+      onDelta: onDelta || undefined,
       signal: controller.signal,
-      body: JSON.stringify({
-        baseUrl: llmConfig.baseUrl,
-        apiKey: llmConfig.apiKey,
-        model: llmConfig.selectedModel,
-        action: 'chat',
-        systemPrompt,
-        messages: [{ role: 'user', content: userInput }],
-        max_tokens: VIEW_MAX_TOKENS,
-      }),
+      maxTokens: VIEW_MAX_TOKENS,
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `AI 请求失败 (${res.status})`);
-    }
-    const data = await res.json();
-    if (data.ok === false) throw new Error(data.error || 'AI 请求失败');
-    return data.content || '';
+    return content;
   }, [llmConfig]);
 
   const abort = useCallback(() => {
@@ -82,6 +71,12 @@ export function useMultiAgentOrchestrator({ agents, llmConfig, enabled = true })
     const progressList = [];
     const updateProgress = (entry) => {
       progressList.push(entry);
+      setProgress([...progressList]);
+      return progressList.length - 1; // 返回条目索引，供流式增量 patch
+    };
+    const patchProgress = (index, patch) => {
+      if (index < 0 || !progressList[index]) return;
+      progressList[index] = { ...progressList[index], ...patch };
       setProgress([...progressList]);
     };
 
@@ -99,25 +94,33 @@ export function useMultiAgentOrchestrator({ agents, llmConfig, enabled = true })
     let state = { task, chain, synthesizer, views: [], index: 0 };
     const views = [];
     let synthesis = '';
+    let viewSeq = 0;
 
     try {
-      // 逐个视角
+      // 逐个视角（v30：onViewDelta 实时流出视角产出）
       while (true) {
         const step = orchestrationStep(state);
         if (step.done) break;
 
         const { agent, viewLabel, input } = step;
-        updateProgress({ viewLabel, status: 'running' });
+        const progressIndex = updateProgress({ viewLabel, status: 'running' });
+        const seq = ++viewSeq;
+        opts.onViewDelta?.({ type: 'view-start', seq, label: viewLabel });
         try {
-          const out = await callLlm(agent.systemPrompt || '你是专业分析智能体。', input);
+          const out = await callLlm(agent.systemPrompt || '你是专业分析智能体。', input, (delta, full) => {
+            patchProgress(progressIndex, { output: full });
+            opts.onViewDelta?.({ type: 'view-delta', seq, label: viewLabel, delta, full });
+          });
           views.push({ viewLabel, output: out, agentId: agent.id });
-          updateProgress({ viewLabel, status: 'done', output: out });
+          patchProgress(progressIndex, { status: 'done', output: out });
+          opts.onViewDelta?.({ type: 'view-done', seq, label: viewLabel, full: out });
           state = commitOrchestrationStep(state, out, agent.id);
         } catch (err) {
           if (err?.name === 'AbortError') throw err;
           // 视角失败：标记跳过，继续下一视角
-          updateProgress({ viewLabel, status: 'error', error: err?.message || String(err) });
-          state = commitOrchestrationStep(state, `⚠️ ${viewLabel} 视角执行失败（${err?.message}）`, agent.id);
+          patchProgress(progressIndex, { status: 'error', error: err?.message || String(err) });
+          opts.onViewDelta?.({ type: 'view-error', seq, label: viewLabel, error: err?.message || String(err) });
+          state = commitOrchestrationStep(state, `（${viewLabel} 视角执行失败：${err?.message}）`, agent.id);
         }
         // abort 检查
         if (abortRef.current?.signal.aborted) throw new Error('aborted');
@@ -125,16 +128,21 @@ export function useMultiAgentOrchestrator({ agents, llmConfig, enabled = true })
 
       // 合成
       if (synthesizer) {
-        updateProgress({ viewLabel: synthesizer.label, status: 'running' });
+        const progressIndex = updateProgress({ viewLabel: synthesizer.label, status: 'running' });
+        opts.onViewDelta?.({ type: 'synthesis-start', label: synthesizer.label });
         try {
           const step = orchestrationStep(state);
           if (step.step === 'synthesize') {
-            synthesis = await callLlm(synthesizer.agent.systemPrompt || '你是信息总控，负责综合多视角。', step.input);
-            updateProgress({ viewLabel: synthesizer.label, status: 'done', output: synthesis });
+            synthesis = await callLlm(synthesizer.agent.systemPrompt || '你是信息总控，负责综合多视角。', step.input, (delta, full) => {
+              patchProgress(progressIndex, { output: full });
+              opts.onViewDelta?.({ type: 'synthesis-delta', label: synthesizer.label, delta, full });
+            });
+            patchProgress(progressIndex, { status: 'done', output: synthesis });
+            opts.onViewDelta?.({ type: 'synthesis-done', label: synthesizer.label, full: synthesis });
           }
         } catch (err) {
           if (err?.name === 'AbortError') throw err;
-          updateProgress({ viewLabel: synthesizer.label, status: 'error', error: err?.message || String(err) });
+          patchProgress(progressIndex, { status: 'error', error: err?.message || String(err) });
         }
       }
 

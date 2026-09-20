@@ -11,6 +11,7 @@ import {
   formatWorkflowNodeConfig
 } from '../constants/workflowConstants.js';
 import { hasItemId } from './itemIdentity.js';
+import { streamLlm } from './llmStream.js';
 
 export function buildWorkbenchContext(prompt, {
   scopedAgentItems = [],
@@ -342,6 +343,41 @@ export class WorkflowEngine {
   }
 
   /**
+   * v30：统一 LLM 对话调用。ctx.stream === true 时走流式 SSE（onDelta 增量回调，
+   * 引擎侧把增量实时写入 trace → 所有消费 UI 即时可见），否则保持原非流式路径
+   * （引擎单测大量 mock fetch 返回完整 JSON，不走流式分支，零破坏）。
+   * abort：两条路径都接 this.abortController.signal，停止按钮真取消。
+   */
+  async _callChat(ctx, { systemPrompt, messages, onDelta }) {
+    if (ctx?.stream === true) {
+      const { content } = await streamLlm({
+        llmConfig: { baseUrl: ctx.llmConfig?.baseUrl, apiKey: ctx.llmConfig?.apiKey, selectedModel: ctx.llmConfig?.selectedModel },
+        systemPrompt,
+        messages,
+        onDelta: onDelta || undefined,
+        signal: this.abortController?.signal,
+      });
+      return content;
+    }
+    const response = await fetch('/api/ai-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseUrl: ctx.llmConfig?.baseUrl,
+        apiKey: ctx.llmConfig?.apiKey,
+        model: ctx.llmConfig?.selectedModel,
+        action: 'chat',
+        systemPrompt,
+        messages,
+      }),
+      signal: this.abortController?.signal,
+    });
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    return data.content || '';
+  }
+
+  /**
    * @param {Object} workflow - { id, name, nodes: Node[] }
    * @param {Object} ctx - execution context (scopedAgentItems, llmConfig, agents, etc.)
    * @param {Function} onStep - callback(nodeId, status, output?, structured?, error?)
@@ -427,23 +463,12 @@ export class WorkflowEngine {
               ]
             : [{ role: 'user', content: `${node.prompt}\n\n${String(nodeInput).slice(-6000)}` }];
 
-          const response = await fetch('/api/ai-generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              baseUrl: ctx.llmConfig?.baseUrl,
-              apiKey: ctx.llmConfig?.apiKey,
-              model: ctx.llmConfig?.selectedModel,
-              action: 'chat',
-              systemPrompt,
-              messages
-            }),
-            signal: this.abortController?.signal
-          });
-
-          const data = await response.json();
-          if (data.error) throw new Error(data.error);
-          output = data.content || `${node.title} 暂无输出`;
+          output = await this._callChat(ctx, {
+            systemPrompt,
+            messages,
+            // 流式：增量实时写入 trace，画布/运行面板即时可见
+            onDelta: ctx?.stream === true ? (_delta, full) => setTrace(node.id, { status: 'running', output: full }) : null,
+          }) || `${node.title} 暂无输出`;
         } else if (node.type === 'skill' && node.skillMode === 'ai') {
           // v24 #4：skill AI 增强模式——本地规则引擎产出结构化底座，再交 LLM 深化（真实调用，非空壳）
           const localResult = runLocalNode(node, previousOutput, localCtxFrom(ctx));
@@ -451,25 +476,18 @@ export class WorkflowEngine {
           structured = typeof localResult === 'string' ? null : localResult.structured;
           const aiSkillMeta = getWorkflowSkillMeta(node.skillId || 'evidence-pack');
           const skillAgent = (ctx.agents || []).find(a => a.id === node.agentId) || (ctx.agents || [])[0];
-          const skillResponse = await fetch('/api/ai-generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              baseUrl: ctx.llmConfig?.baseUrl,
-              apiKey: ctx.llmConfig?.apiKey,
-              model: ctx.llmConfig?.selectedModel,
-              action: 'chat',
-              systemPrompt: `${skillAgent?.systemPrompt || '你是个人情报智能体。'}\n\n你正在执行工作流 Skill「${aiSkillMeta.label}」：${aiSkillMeta.description}\n要求：结论先行、标注不确定项、输出可直接被下游节点使用的深化结果。`,
-              messages: [{
-                role: 'user',
-                content: `节点指令：${node.prompt || '(无)'}\n\n本地规则引擎的结构化结果：\n${String(localOutput).slice(-4000)}\n\n请基于以上结构化结果与输入上下文，输出该 Skill 的深化分析结论。`
-              }]
-            }),
-            signal: this.abortController?.signal
+          const deepened = await this._callChat(ctx, {
+            systemPrompt: `${skillAgent?.systemPrompt || '你是个人情报智能体。'}\n\n你正在执行工作流 Skill「${aiSkillMeta.label}」：${aiSkillMeta.description}\n要求：结论先行、标注不确定项、输出可直接被下游节点使用的深化结果。`,
+            messages: [{
+              role: 'user',
+              content: `节点指令：${node.prompt || '(无)'}\n\n本地规则引擎的结构化结果：\n${String(localOutput).slice(-4000)}\n\n请基于以上结构化结果与输入上下文，输出该 Skill 的深化分析结论。`
+            }],
+            onDelta: ctx?.stream === true ? (_delta, full) => setTrace(node.id, {
+              status: 'running',
+              output: `【本地规则结果】\n${localOutput}\n\n【AI 深化】\n${full}`,
+            }) : null,
           });
-          const skillData = await skillResponse.json();
-          if (skillData.error) throw new Error(skillData.error);
-          output = `【本地规则结果】\n${localOutput}\n\n【AI 深化】\n${skillData.content || '(AI 无输出)'}`;
+          output = `【本地规则结果】\n${localOutput}\n\n【AI 深化】\n${deepened || '(AI 无输出)'}`;
         } else {
           const localResult = runLocalNode(node, previousOutput, localCtxFrom(ctx));
           output = typeof localResult === 'string' ? localResult : localResult.output;
@@ -605,22 +623,11 @@ export class WorkflowEngine {
       const agent = (ctx.agents || []).find(a => a.id === branch.agentId) || (ctx.agents || [])[0];
       const systemPrompt = `${agent?.systemPrompt || '你是个人情报智能体。'}\n\n你在并行分支 "${branch.name}" 中工作，请基于输入独立给出该分支的结论。`;
       const messages = [{ role: 'user', content: `${branch.prompt || ''}\n\n${input.slice(-4000)}` }];
-      const response = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: ctx.llmConfig?.baseUrl,
-          apiKey: ctx.llmConfig?.apiKey,
-          model: ctx.llmConfig?.selectedModel,
-          action: 'chat',
-          systemPrompt,
-          messages,
-        }),
-        signal: this.abortController?.signal,
+      const branchOutput = await this._callChat(ctx, {
+        systemPrompt,
+        messages,
       });
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      return { name: branch.name, output: data.content || '(无内容)' };
+      return { name: branch.name, output: branchOutput || '(无内容)' };
     }));
 
     // 收集成功的分支结果（失败的保留错误信息）
@@ -640,21 +647,12 @@ export class WorkflowEngine {
     } else if (mergeStrategy === 'summarize') {
       // 让 LLM 汇总各分支结果
       const branchDigest = completed.map((b, i) => `### 分支 ${i + 1}：${b.name}\n${b.output}`).join('\n\n');
-      const summarizeResp = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: ctx.llmConfig?.baseUrl,
-          apiKey: ctx.llmConfig?.apiKey,
-          model: ctx.llmConfig?.selectedModel,
-          action: 'chat',
-          systemPrompt: '你是并行执行汇总器。请基于多个分支的结果生成综述，保留关键差异和共识。',
-          messages: [{ role: 'user', content: branchDigest.slice(-6000) }],
-        }),
-        signal: this.abortController?.signal,
+      const summarized = await this._callChat(ctx, {
+        systemPrompt: '你是并行执行汇总器。请基于多个分支的结果生成综述，保留关键差异和共识。',
+        messages: [{ role: 'user', content: branchDigest.slice(-6000) }],
+        onDelta: ctx?.stream === true ? (_delta, full) => setTrace(node.id, { status: 'running', detail: '并行分支汇总中…', output: full }) : null,
       });
-      const summarizeData = await summarizeResp.json();
-      mergedOutput = summarizeData.content || branchDigest;
+      mergedOutput = summarized || branchDigest;
     } else {
       // concat：默认拼接
       mergedOutput = completed.map((b, i) => `### 分支 ${i + 1}：${b.name}\n${b.output}`).join('\n\n---\n\n');

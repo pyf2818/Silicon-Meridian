@@ -17,6 +17,7 @@ export default function IntelligenceBriefingPanel({ briefing, maxClusters = 8 })
     evolution,
     agentic,
     llmStatus = 'idle',
+    g2Progress = null,
     runAgentic,
   } = briefing || {};
 
@@ -109,6 +110,12 @@ export default function IntelligenceBriefingPanel({ briefing, maxClusters = 8 })
         <button type="button" className="intel-btn" onClick={runAgentic} disabled={llmStatus === 'running'}>
           {llmStatus === 'running' ? '多智能体分析中…' : '生成多智能体分析'}
         </button>
+        {llmStatus === 'running' && g2Progress && (
+          <div className="intel-g2-progress">
+            <div className="intel-g2-progress-step">第 {g2Progress.seq} 步：{g2Progress.preview}…</div>
+            {g2Progress.output && <div className="intel-g2-progress-output">{String(g2Progress.output).slice(-160)}</div>}
+          </div>
+        )}
         {llmStatus === 'no-config' && (
           <p className="intel-note intel-note--warn">
             未配置大模型：请先在设置中填写 baseUrl / 模型，即可生成多视角分析。

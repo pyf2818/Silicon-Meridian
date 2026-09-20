@@ -1,9 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { getWorkflowSkillMeta, WORKFLOW_CONDITION_METRICS } from '../constants/appConstants.jsx';
 import { deriveWorkflowExecutionOrder, collectBranchReachable } from '../constants/workflowConstants.js';
 import { useProfileStore } from '../store';
 import { buildProfileMemory, WorkflowEngine } from '../utils/workflowEngine.js';
 import { hasItemId } from '../utils/itemIdentity.js';
+import { streamLlm } from '../utils/llmStream.js';
 
 /**
  * 智能体工作流运行器（从 App.jsx 抽离）
@@ -43,7 +44,11 @@ export function useAgentWorkflowRunner({
   setAgentWorkflowHistory,
   setShowLlmQuickConfig,
 }) {
+  // v30：运行取消——runAgentWorkflow 运行期间持有 controller，cancelAgentWorkflow 触发 abort
+  const runAbortRef = useRef(null);
   const runAgentWorkflow = useCallback(async (mission, customPrompt = '') => {
+    const controller = new AbortController();
+    runAbortRef.current = controller;
     const selectedMission = mission || intelligenceMissions[0];
     if (!selectedMission) return;
     const agent = agents.find(a => a.id === selectedMission.agentId) || agents.find(a => a.id === 'orchestrator') || agents[0];
@@ -377,15 +382,15 @@ export function useAgentWorkflowRunner({
       if (node.type === 'parallel') {
         // 委托 WorkflowEngine 真实执行：按视角并发 LLM 分支并合并（兼容画布 parallelBranches/parallelMerge）
         const engine = new WorkflowEngine();
-        engine.abortController = new AbortController();
-        const parallelCtx = { agents, llmConfig, workflows: [] };
+        engine.abortController = controller; // v30：共享取消信号——点停止时并行分支同步中断
+        const parallelCtx = { agents, llmConfig, workflows: [], stream: true };
         return engine._runParallel(node, previousOutput, parallelCtx, setTraceStep, undefined, localTrace);
       }
       if (node.type === 'router') {
         // 委托 WorkflowEngine 真实执行：按 routerRules 命中分支标注 / 无命中透传（target 子工作流需 ctx.workflows）
         const engine = new WorkflowEngine();
-        engine.abortController = new AbortController();
-        const routerCtx = { agents, llmConfig, workflows: [] };
+        engine.abortController = controller;
+        const routerCtx = { agents, llmConfig, workflows: [], stream: true };
         return engine._runRouter(node, previousOutput, routerCtx, setTraceStep, undefined, localTrace);
       }
       // subworkflow 与未识别类型：生产 runner 暂无已存工作流上下文（ctx.workflows 未接入），
@@ -418,6 +423,16 @@ export function useAgentWorkflowRunner({
 
       for (let index = 0; index < executionPlan.length; index++) {
         const { node, viaBranch } = executionPlan[index];
+
+        // v30：用户点停止——剩余节点标记跳过，退出循环
+        if (controller.signal.aborted) {
+          localTrace = localTrace.map(step => (step.status === 'queued' || step.status === 'running'
+            ? { ...step, status: 'skipped', detail: '已手动停止' } : step));
+          setAgentWorkflowRun(prev => ({ ...prev, trace: prev.trace.map(step => (step.status === 'queued' || step.status === 'running'
+            ? { ...step, status: 'skipped', detail: '已手动停止' } : step)) }));
+          haltedByCondition = null;
+          break;
+        }
 
         // 分支短路：条件判定的被淘汰子树标记跳过，不执行
         if (skipSet.has(node.id)) {
@@ -464,15 +479,11 @@ export function useAgentWorkflowRunner({
         let structured = null;
         let shouldContinue = true;
         if (node.type === 'llm') {
-          const response = await fetch('/api/ai-generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              baseUrl: llmConfig.baseUrl,
-              apiKey: llmConfig.apiKey,
-              model: llmConfig.selectedModel,
-              action: 'chat',
-              content: `工作流任务：${prompt}
+          // v30：流式执行——增量实时写入 trace，运行面板即时可见；点停止真取消
+          const { content } = await streamLlm({
+            llmConfig,
+            systemPrompt,
+            userPrompt: `工作流任务：${prompt}
 
 当前节点：${node.title}${viaBranch ? `（经由分支：${viaBranch}）` : ''}
 节点职责：${node.role}
@@ -485,15 +496,18 @@ ${nodeInput}
 
 完整蓝图：
 ${blueprintSummary}`,
-              systemPrompt,
-              messages: [
-                { role: 'user', content: String(nodeInput).slice(-6000) }
-              ]
-            })
+            messages: [
+              { role: 'user', content: String(nodeInput).slice(-6000) }
+            ],
+            signal: controller.signal,
+            onDelta: (_delta, full) => {
+              setAgentWorkflowRun(prev => ({
+                ...prev,
+                trace: prev.trace.map(step => (step.nodeId === node.id ? { ...step, output: full } : step))
+              }));
+            },
           });
-          const data = await response.json();
-          if (data.error) throw new Error(data.error);
-          output = data.content || `${node.title} 暂无输出`;
+          output = content || `${node.title} 暂无输出`;
         } else {
           const localResult = await runLocalNode(node, nodeInput);
           output = typeof localResult === 'string' ? localResult : localResult.output;
@@ -607,6 +621,7 @@ ${blueprintSummary}`,
         haltedByCondition: haltedByCondition?.title || ''
       }, ...prev.filter(item => item.id !== runId)].slice(0, 12));
     } catch (e) {
+      const aborted = controller.signal.aborted || e?.name === 'AbortError';
       const failedAt = new Date().toISOString();
       const failedActions = createWorkflowActions({
         runId,
@@ -615,19 +630,21 @@ ${blueprintSummary}`,
         content: '',
         nodeOutputs: []
       });
+      const failMessage = aborted ? '已手动停止' : (e.message || '智能体工作流运行失败');
       setAgentWorkflowResult({
         loading: false,
         content: '',
-        error: e.message || '智能体工作流运行失败',
+        error: aborted ? '' : failMessage,
+        stopped: aborted,
         missionId: selectedMission.id
       });
       setAgentWorkflowRun(prev => ({
         ...prev,
-        status: 'failed',
+        status: aborted ? 'stopped' : 'failed',
         finishedAt: failedAt,
         trace: prev.trace.map(step => {
           if (step.nodeId === activeNodeId || step.status === 'running') {
-            return { ...step, status: 'failed', detail: e.message || '智能体工作流运行失败' };
+            return { ...step, status: aborted ? 'skipped' : 'failed', detail: aborted ? '已手动停止' : (e.message || '智能体工作流运行失败') };
           }
           if (step.status === 'queued') return { ...step, status: 'skipped' };
           return step;
@@ -636,7 +653,7 @@ ${blueprintSummary}`,
       setAgentWorkflowActions(failedActions);
       setAgentWorkflowHistory(prev => [{
         id: runId,
-        status: 'failed',
+        status: aborted ? 'stopped' : 'failed',
         missionId: selectedMission.id,
         missionLabel: selectedMission.label,
         workflowName: agentWorkflowDraft.name,
@@ -645,17 +662,19 @@ ${blueprintSummary}`,
         startedAt,
         finishedAt: failedAt,
         content: '',
-        error: e.message || '智能体工作流运行失败',
+        error: aborted ? '已手动停止' : (e.message || '智能体工作流运行失败'),
         trace: localTrace.map(step => {
-          if (step.nodeId === activeNodeId || step.status === 'running') return { ...step, status: 'failed', detail: e.message || '智能体工作流运行失败' };
+          if (step.nodeId === activeNodeId || step.status === 'running') return { ...step, status: aborted ? 'skipped' : 'failed', detail: aborted ? '已手动停止' : (e.message || '智能体工作流运行失败') };
           if (step.status === 'queued') return { ...step, status: 'skipped' };
           return step;
         }),
         nodeOutputs: [],
         actions: failedActions
       }, ...prev.filter(item => item.id !== runId)].slice(0, 12));
+    } finally {
+      if (runAbortRef.current === controller) runAbortRef.current = null;
     }
   }, [agents, intelligenceMissions, llmConfig, buildWorkbenchContext, enabledWorkflowNodes, agentWorkflowDraft.nodes, agentWorkflowDraft.name, agentWorkflowDraft.edges, scopedAgentItems, selectedNewsDate, agentWorkflowScope, intelligenceProfile.focusLabels, intelligenceProfile.tracked, bookmarks, materials, selectedInterests, createWorkflowActions]);
 
-  return runAgentWorkflow;
+  return { runAgentWorkflow, cancelAgentWorkflow: () => runAbortRef.current?.abort() };
 }

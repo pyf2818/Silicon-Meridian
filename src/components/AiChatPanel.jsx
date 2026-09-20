@@ -880,8 +880,26 @@ export default function AiChatPanel({
     // setSessionStreaming(activeSessionId, false) 永远不会执行，该会话会**永久停在「生成中」**：
     // 停止按钮常亮、后续每条消息都被判定为「正在运行」而进队、而队列又永远没人消费。
     try {
-      // 2) 跑编排器
-      const { ok, views, synthesis, error } = await multiAgent.run(prompt);
+      // 2) 跑编排器（v30：视角/合成产出实时直播进 placeholder 消息，流式可见；stop 按钮经 signal 真取消）
+      let live = '';
+      const flushLive = () => {
+        setSessions(prev => prev.map(s => {
+          if (s.id !== activeSessionId) return s;
+          const msgs = [...s.messages];
+          const last = msgs[msgs.length - 1];
+          if (last?.role === 'assistant' && last.loading) msgs[msgs.length - 1] = { ...last, content: live };
+          return { ...s, messages: msgs, updatedAt: Date.now() };
+        }));
+      };
+      const { ok, views, synthesis, error } = await multiAgent.run(prompt, {
+        onViewDelta: (event) => {
+          if (event.type === 'view-start') { live += `\n\n### ${event.seq} · ${event.label}\n`; flushLive(); }
+          else if (event.type === 'view-delta') { live += event.delta || ''; flushLive(); }
+          else if (event.type === 'view-error') { live += `\n> ${event.label} 视角执行失败：${event.error || '未知错误'}\n`; flushLive(); }
+          else if (event.type === 'synthesis-start') { live += `\n\n## 综合判断\n\n`; flushLive(); }
+          else if (event.type === 'synthesis-delta') { live += event.delta || ''; flushLive(); }
+        },
+      });
 
       // 3) 拼总报告：各视角 + 综合（综合在前，视角折叠其后）
       const viewsText = (views || []).length

@@ -1829,7 +1829,7 @@ ${materialLines || '暂无素材'}`;
 
   // (useBookmarkMaterial moved above useArticleEditor — provides materials which the latter consumes)
 
-  const runAgentWorkflow = useAgentWorkflowRunner({
+  const { runAgentWorkflow, cancelAgentWorkflow } = useAgentWorkflowRunner({
     agents,
     intelligenceMissions,
     enabledWorkflowNodes,

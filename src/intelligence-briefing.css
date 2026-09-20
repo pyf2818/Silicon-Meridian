@@ -109,6 +109,26 @@
 }
 .intel-btn:hover:not(:disabled) { background: var(--accent-cyan-soft); }
 .intel-btn:disabled { opacity: .6; cursor: default; }
+
+/* v30：G2 多智能体进度直播 */
+.intel-g2-progress {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent-cyan-soft, rgba(79, 227, 255, .25));
+  border-radius: 6px;
+  background: var(--bg-secondary, transparent);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.intel-g2-progress-step { font-weight: 700; color: var(--accent-cyan); }
+.intel-g2-progress-output {
+  margin-top: 4px;
+  max-height: 88px;
+  overflow: hidden;
+  word-break: break-word;
+  opacity: .85;
+}
 .intel-note { margin-top: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.55; }
 .intel-note--warn { color: #c08a3e; }
 .intel-note--err { color: #d06464; }

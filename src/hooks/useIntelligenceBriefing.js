@@ -16,6 +16,7 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import { buildSemanticClusters } from '../domain/intelligence/semanticCluster.js';
 import { buildAgenticBriefing } from '../domain/intelligence/agenticBriefing.js';
 import { createSnapshotStore } from '../domain/intelligence/snapshotStore.js';
+import { streamLlm } from '../utils/llmStream.js';
 import {
   buildBriefingEvolution,
   digestFromBriefing,
@@ -113,6 +114,8 @@ export function useIntelligenceBriefing({ items = [], date, llmConfig }) {
   // G2：多智能体分析（需 LLM）
   const [agentic, setAgentic] = useState(null);
   const [llmStatus, setLlmStatus] = useState('idle');
+  // v30：G2 进度直播（当前第几步 + 最新输出的流式文本）——多智能体是 19 次短调用串行，进度感比逐字更重要
+  const [g2Progress, setG2Progress] = useState(null);
 
   // 快照对账（读方向）：服务端 briefing_snapshots 为权威，localStorage 只是缓存。
   // 登录态下服务端若有当日前端分析（aiPayload.frontend=true），且本地缺失 → 回灌本地缓存。
@@ -165,30 +168,24 @@ export function useIntelligenceBriefing({ items = [], date, llmConfig }) {
     // 串行节流：两次 LLM 调用之间至少间隔 MIN_GAP，给上游限流留出余量（多智能体≈19 次调用）
     let lastCallAt = 0;
     const MIN_GAP = 500;
+    let callSeq = 0;
     const llmCall = async ({ system, user }) => {
       const now = Date.now();
       const wait = Math.max(0, lastCallAt + MIN_GAP - now);
       if (wait) await sleep(wait);
       lastCallAt = Date.now();
+      const seq = ++callSeq;
+      setG2Progress({ seq, preview: String(user || '').slice(0, 70), output: '' });
       return withRetry(async () => {
-        const res = await fetch('/api/ai-generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            baseUrl: llmConfig.baseUrl,
-            apiKey: llmConfig.apiKey,
-            model: llmConfig.selectedModel,
-            action: 'chat',
-            systemPrompt: system,
-            messages: [{ role: 'user', content: user }],
-            max_tokens: 400,
-          }),
+        const { content } = await streamLlm({
+          llmConfig,
+          systemPrompt: system,
+          userPrompt: user,
+          maxTokens: 400,
+          onDelta: (_delta, full) => setG2Progress(prev => (prev?.seq === seq ? { ...prev, output: full } : prev)),
         });
-        if (!res.ok) throw new Error(`AI 请求失败 (${res.status})`);
-        const data = await res.json();
-        if (data.ok === false) throw new Error(data.error || 'AI 请求失败');
-        if (!data.content) throw new Error('AI 返回为空');
-        return data.content;
+        if (!content) throw new Error('AI 返回为空');
+        return content;
       });
     };
     try {
@@ -222,8 +219,10 @@ export function useIntelligenceBriefing({ items = [], date, llmConfig }) {
         }).catch(() => { /* 未登录或服务不可用：localStorage 兜底 */ });
       }
       setLlmStatus('done');
+      setG2Progress(null);
     } catch {
       setLlmStatus('error');
+      setG2Progress(null);
     }
   }, [llmConfig, semanticClusters, store, date]);
 
@@ -234,6 +233,7 @@ export function useIntelligenceBriefing({ items = [], date, llmConfig }) {
     evolution,
     agentic,
     llmStatus,
+    g2Progress,
     runAgentic,
   };
 }

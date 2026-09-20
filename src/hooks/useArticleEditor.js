@@ -3,6 +3,7 @@ import { loadLS } from '../utils/localStorage.js';
 import { showToast } from '../utils/toast.js';
 import { renderMarkdown } from '../utils/markdown.jsx';
 import { normalizeAsset } from '../domain/creative/assetModel.js';
+import { streamLlm } from '../utils/llmStream.js';
 import { exportDocument } from '../domain/creative/exportEngine.js';
 import { saveDocumentVersion } from '../domain/creative/versionStore.js';
 import { ARTICLE_STATUS, ARTICLE_TEMPLATES, ARTICLE_TEMPLATE_CONTENT } from '../constants/index.jsx';
@@ -310,7 +311,7 @@ export function useArticleEditor({ llmConfig, materials = [], editorTextareaRef 
     setArticles(prev => prev.map(a => ids.includes(a.id) ? { ...a, spaceId: spaceId || null } : a));
   }, []);
 
-  // ---- AI 辅助写作 ----
+  // ---- AI 辅助写作（v30：流式——生成中即可预览，完成后可一键插入） ----
   const aiAction = useCallback(async (article, action, content) => {
     if (!llmConfig.baseUrl || !llmConfig.selectedModel) {
       setAiResult({ loading: false, content: '', error: '请先配置大模型', action });
@@ -318,25 +319,15 @@ export function useArticleEditor({ llmConfig, materials = [], editorTextareaRef 
     }
     setAiResult({ loading: true, content: '', error: '', action });
     try {
-      const res = await fetch('/api/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: llmConfig.baseUrl,
-          apiKey: llmConfig.apiKey,
-          model: llmConfig.selectedModel,
-          action,
-          content
-        })
+      const { content: result } = await streamLlm({
+        llmConfig,
+        action,
+        userPrompt: content,
+        onDelta: (_delta, full) => setAiResult(prev => ({ ...prev, content: full })),
       });
-      const data = await res.json();
-      if (data.ok) {
-        setAiResult({ loading: false, content: typeof data.content === 'string' ? data.content : JSON.stringify(data.content), error: '', action });
-      } else {
-        setAiResult({ loading: false, content: '', error: data.error || '请求失败', action });
-      }
+      setAiResult({ loading: false, content: result || '（无输出）', error: '', action });
     } catch (e) {
-      setAiResult({ loading: false, content: '', error: e.message, action });
+      setAiResult(prev => ({ loading: false, content: prev.content, error: prev.content ? '' : e.message, action }));
     }
   }, [llmConfig]);
 
