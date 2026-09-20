@@ -97,6 +97,15 @@ export function getSessionState(sessionId) {
   return state.sessions[sessionId] || createEmptySession();
 }
 
+/** 列出所有「产生过执行计划」的会话（执行记录页的单人任务源）。
+ *  返回 [{ sessionId, plan, updatedAt }]，按更新时间倒序；plan 为空的会话不返回。 */
+export function listSessionsWithPlan() {
+  return Object.entries(state.sessions)
+    .filter(([, s]) => Array.isArray(s.plan) && s.plan.length > 0)
+    .map(([sessionId, s]) => ({ sessionId, plan: s.plan, updatedAt: s.updatedAt }))
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
 export function getActiveSessionId() {
   return state.activeSessionId;
 }

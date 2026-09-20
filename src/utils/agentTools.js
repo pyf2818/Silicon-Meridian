@@ -416,20 +416,33 @@ async function toolReadIntelligenceFocus(args, ctx) {
         : '今日暂无情报事件（快照尚未生成或来源还没有更新）。可稍后重试，或改用 search_news 按关键词检索。';
     }
 
-    const events = data.events.slice(0, take);
+    // 突发加权排序：同事件被更多独立源报道 = 最强的价值信号（如某泄露事件
+    // 在数小时内被 5+ 源同时爆发）。排序分 = intelligenceScore + 突发加成（封顶 +24），
+    // 高突发事件额外标注，让 agent 优先引用、用户优先看到「正在发生的事」。
+    const burstOf = (ev) => {
+      const n = Number(ev.independentSourceCount) || (Array.isArray(ev.sources) ? ev.sources.length : 0) || 1;
+      return Math.max(0, Math.min(n - 1, 5));
+    };
+    const ranked = data.events
+      .map(ev => ({ ev, burst: burstOf(ev), score: (Number(ev.intelligenceScore) || 0) + Math.min(burstOf(ev), 4) * 6 }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, take);
+
+    const events = ranked.map(r => r.ev);
     // 登记引用 ID：runAgentLoop 终答引用校验会把这些 ID 加入合法引用集
     if (Array.isArray(ctx?.focusCitations)) {
       events.forEach(ev => { if (ev?.id) ctx.focusCitations.push(String(ev.id)); });
     }
 
-    const lines = events.map(ev => {
+    const lines = ranked.map(({ ev, burst }) => {
       const src = (ev.sources || []).length ? ev.sources.join('、') : (ev.source || '情报事件');
       const summary = String(ev.summary || '').replace(/\s+/g, ' ').slice(0, 400);
-      return `[资讯:${ev.id}] ${ev.title}\n  来源：${src}（${ev.independentSourceCount || 1} 个独立源，置信度 ${ev.confidence || 0}%）\n  摘要：${summary || '无'}${ev.url ? `\n  原文：${ev.url}` : ''}`;
+      const burstTag = burst >= 2 ? `｜多源爆发（${burst + 1} 个独立源）` : '';
+      return `[资讯:${ev.id}] ${ev.title}\n  来源：${src}（${ev.independentSourceCount || 1} 个独立源，置信度 ${ev.confidence || 0}%）${burstTag}\n  摘要：${summary || '无'}${ev.url ? `\n  原文：${ev.url}` : ''}`;
     });
     const header = topic
-      ? `聚焦主题 "${topic}" 的 ${events.length} 条情报事件（可直接以 [资讯:ID] 格式引用）：`
-      : `今日情报概览 · 共 ${events.length} 条事件（可直接以 [资讯:ID] 格式引用）：`;
+      ? `聚焦主题 "${topic}" 的 ${events.length} 条情报事件（按 情报分+突发加成 排序，可直接以 [资讯:ID] 格式引用）：`
+      : `今日情报概览 · 共 ${events.length} 条事件（按 情报分+突发加成 排序，可直接以 [资讯:ID] 格式引用）：`;
     return `${header}\n\n${lines.join('\n\n')}`;
   } catch (err) {
     return `错误：聚焦情报拉取失败 - ${err?.message || err}`;

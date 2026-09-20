@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SUBAGENT_PRESETS } from '../../domain/agent/subagentCore.js';
 import { listTeams, subscribeTeams } from '../../store/teamStore.js';
+import { listSessionsWithPlan, subscribe as subscribeSessionStore } from '../../utils/sessionStore.js';
 import { ICONS } from '../../constants/appConstants.jsx';
 
 const TEAM_STATUS_META = {
@@ -136,8 +137,58 @@ function TeamCard({ team, defaultOpen = false }) {
  * 执行记录主面板。
  * @param {Function} onLaunch  点击「发起」→ 父层切到团队群聊视图并把 @ 指派预填进群聊输入框
  */
+/** 单人执行记录的数据源：sessionStore 里产生过执行计划的会话（订阅实时刷新） */
+function useSessionPlans() {
+  const [plans, setPlans] = useState(() => listSessionsWithPlan());
+  useEffect(() => subscribeSessionStore(() => setPlans(listSessionsWithPlan())), []);
+  return plans;
+}
+
+const SESSION_TASK_STATUS = {
+  done: { label: '完成', cls: 'is-done' },
+  in_progress: { label: '执行中', cls: 'is-running' },
+  failed: { label: '失败', cls: 'is-failed' },
+  pending: { label: '待执行', cls: 'is-pending' },
+};
+
+/** 单人（会话级）执行记录卡：与团队卡同款交互，展示该会话的执行计划任务列表 */
+function SessionPlanCard({ entry }) {
+  const [open, setOpen] = useState(false);
+  const first = entry.plan[0] || {};
+  const status = SESSION_TASK_STATUS[first.status] || SESSION_TASK_STATUS.pending;
+  const doneCount = entry.plan.filter(t => t.status === 'done').length;
+  const title = first.title || `会话 ${String(entry.sessionId).slice(0, 8)}`;
+  return (
+    <div className={`team-card ${open ? 'is-open' : ''}`}>
+      <button type="button" className="team-card-head" onClick={() => setOpen(o => !o)}>
+        <span className={`team-status-badge ${status.cls}`}>{status.label}</span>
+        <span className="team-card-goal">{title}</span>
+        <span className="team-card-meta">
+          单人 · {doneCount}/{entry.plan.length} 任务 · {formatTime(entry.updatedAt)}
+        </span>
+      </button>
+      {open && (
+        <div className="team-card-body">
+          {entry.plan.map(t => {
+            const meta = SESSION_TASK_STATUS[t.status] || SESSION_TASK_STATUS.pending;
+            return (
+              <div key={t.id} className="team-task-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className={`team-status-badge ${meta.cls}`} style={{ flexShrink: 0 }}>{meta.label}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {t.title || t.id}{t.result ? ` · ${String(t.result).slice(0, 60)}` : ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AgentTeamPanel({ onLaunch, activeSessionTitle = '' }) {
   const teams = useTeams();
+  const sessionPlans = useSessionPlans();
   const runningCount = teams.filter(t => t.status === 'running').length;
 
   return (
@@ -177,6 +228,20 @@ export default function AgentTeamPanel({ onLaunch, activeSessionTitle = '' }) {
           >{p.name}</button>
         ))}
       </div>
+
+      {/* 单人任务记录：会话级执行计划（set_plan / add_task 产生的任务）——
+          让「群聊发目标 / 对话设任务」即使没组建团队也有记录可查 */}
+      {sessionPlans.length > 0 && (
+        <section className="team-list-section">
+          <div className="team-list-head">
+            <h3>单人任务记录</h3>
+            <span>{sessionPlans.length} 个会话</span>
+          </div>
+          {sessionPlans.map(entry => (
+            <SessionPlanCard key={entry.sessionId} entry={entry} />
+          ))}
+        </section>
+      )}
 
       {/* 最近团队：页面主体 */}
       <section className="team-list-section">
