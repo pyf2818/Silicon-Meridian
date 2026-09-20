@@ -19,6 +19,8 @@ import { getRootHandle } from '../../utils/workspaceHandleStore.js';
 import { persistLongResult } from '../../session/outputSink.js';
 import { createLlmSummarizer } from '../../session/llmSummarizer.js';
 import { SUBAGENT_LIMITS, buildSubagentSystemPrompt } from '../../domain/agent/subagentCore.js';
+import { observeToolUsage } from '../../utils/profileLearning.js';
+import { recordAgentRun } from '../../domain/agent/agentEvolution.js';
 
 /**
  * 固定并发池：按 lane 消费任务队列，任意一个 worker 抛错不拖垮其余 lane。
@@ -160,6 +162,17 @@ async function runOneSubagent(task, { llmConfig, selectedModel, parentCtx, onPro
     });
 
     const status = result.aborted ? 'aborted' : 'done';
+    // 画像观测：子代理内部工具调用此前不进画像/进化档案（被父级的 spawn_subagent 一个名覆盖），
+    // 此处把真实内部工具名与执行统计补录，避免进化档案「工具偏好 / 运行次数」数据失真。
+    try {
+      const toolNames = (result.toolCallTrace || []).map(tc => tc?.name).filter(Boolean);
+      observeToolUsage(toolNames);
+      recordAgentRun(preset.id, {
+        toolCalls: toolNames.length,
+        tokens: result.usage?.total_tokens || 0,
+        goalRounds: result.usage?.turns || 0,
+      });
+    } catch { /* 观测失败不影响子代理结果 */ }
     // 转写落盘（详细产出进工作空间，报告里只留路径引用——抗传话游戏）
     let transcriptPath = '';
     try {

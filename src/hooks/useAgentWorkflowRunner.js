@@ -375,8 +375,8 @@ export function useAgentWorkflowRunner({
         };
       }
       return {
-        output: `${node.title} 已处理。\n${previousOutput.slice(0, 700)}`,
-        structured: { type: node.type }
+        output: `⚠️ 节点「${node.title}」（类型 ${node.type}）当前运行时不执行实际逻辑。\n生产运行时仅真实执行 LLM / input / classifier / condition / skill / reply / output 节点；subworkflow / parallel / router 等编排节点尚在建设中，此处为占位而非真实执行。请用 LLM 节点承接，或在 Canvas 预览中验证。\n\n上游输出：\n${previousOutput.slice(0, 700)}`,
+        structured: { type: node.type, notExecuted: true }
       };
     };
 
@@ -496,9 +496,10 @@ ${blueprintSummary}`,
         }
         nodeOutputs.push({ nodeId: node.id, title: node.title, type: node.type, inputKey, outputKey, input: nodeInput, output, structured, viaBranch });
         previousOutput = output;
+        const nodeStatus = structured?.notExecuted ? 'skipped' : 'completed';
         setTraceStep(node.id, {
-          status: 'completed',
-          detail: output.slice(0, 220),
+          status: nodeStatus,
+          detail: structured?.notExecuted ? `⚠️ 未执行（${node.type} 编排节点待接入）` : output.slice(0, 220),
           output,
           structured,
           inputKey,

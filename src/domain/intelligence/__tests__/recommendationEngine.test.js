@@ -21,6 +21,16 @@ describe('recommendation engine', () => {
     expect(result.personalScore).toBeLessThanOrEqual(100);
   });
 
+  it('novelty factor is 0 only when isNovel is explicitly false', () => {
+    const off = buildRecommendation(base, { now, isNovel: false });
+    const on = buildRecommendation(base, { now, isNovel: true });
+    const def = buildRecommendation(base, { now });
+    expect(off.scoreParts.personal.novelty).toBe(0);
+    expect(on.scoreParts.personal.novelty).toBe(5);
+    // isNovel 缺失（undefined）时按默认给 5，避免恒 0 退化（此前恒 5 分已修为「同类最近无阅读才算新颖」）
+    expect(def.scoreParts.personal.novelty).toBe(5);
+  });
+
   it('builds equal lanes without reusing an event', () => {
     const items = Array.from({ length: 12 }, (_, index) => ({
       id: `n${index}`,
