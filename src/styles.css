@@ -7232,9 +7232,11 @@ body {
   border: 0; border-radius: 9px; background: transparent; text-align: left; cursor: pointer;
 }
 .stock-ai-menu button:hover { background: color-mix(in srgb, var(--accent-cyan) 9%, transparent); }
+/* v31d：ICON svg 无固有尺寸，flex 中会被拉伸成大块——菜单内全局钉死尺寸 */
+.stock-ai-menu button svg { width: 14px; height: 14px; flex: none; display: inline-block; }
 .stock-ai-menu button b { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-primary); }
-.stock-ai-menu button b svg { width: 13px; height: 13px; color: var(--accent-cyan); flex: none; }
-.stock-ai-menu button small { font-size: 10.5px; color: var(--text-muted); }
+.stock-ai-menu button b svg { width: 14px; height: 14px; color: var(--accent-cyan); }
+.stock-ai-menu button small { font-size: 10.5px; color: var(--text-muted); padding-left: 21px; }
 
 /* v31c：研究工具白话说明条 */
 .stock-research-guide {
