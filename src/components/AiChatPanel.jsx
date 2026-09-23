@@ -23,12 +23,12 @@ import {
   subscribePending, getPendingApprovals, respondApproval, cancelAllPending,
 } from '../utils/sandbox.js';
 import { PersonaDrawer } from './PersonaEditor.jsx';
-import { ToolCallCard, ApprovalCard, ReasoningBlock } from './aichat/ToolCards.jsx';
+import { ActivityStream, ApprovalCard, ReasoningBlock } from './aichat/ToolCards.jsx';
 import AgentTeamPanel from './aichat/AgentTeamPanel.jsx';
 import AgentTeamChat from './aichat/AgentTeamChat.jsx';
 import {
   getActiveSpaceId, getDefaultSpaceId, deleteSpace, renameSpace, migrateSessionSpaces,
-  getSpaces, subscribeSpaces, associateFiles, clearSpaceFiles,
+  getSpaces, subscribeSpaces, associateFiles, clearSpaceFiles, getSpace,
 } from '../utils/workspaceStore.js';
 import { sessionsStore, loadSessions, saveSessions } from './aichat/sessionsStore.js';
 import { WELCOME_MSGS, EMPTY_MESSAGES, SUGGEST_ICONS } from './aichat/constants.jsx';
@@ -43,11 +43,18 @@ import { useSkills } from '../hooks/useSkills.js';
 import { showToast } from '../utils/toast.js';
 import { useProfileStore, useUiStore } from '../store';
 import { ICONS } from '../constants/appConstants.jsx';
-import { packConversation, estimateMessages } from '../session/contextManager.js';
+import { packConversation, estimateMessages, resolveContextBudget } from '../session/contextManager.js';
 import { COMPLETION_MAX_TOKENS } from '../constants/agentLoop.js';
 import { forkLinearSession } from '../session/trailStore.js';
 import { useMultiAgentOrchestrator } from '../hooks/useMultiAgentOrchestrator.js';
 import { recordAgentRun, depositExperience } from '../domain/agent/agentEvolution.js';
+import {
+  isTextLikeUpload,
+  looksBinary,
+  formatBytes,
+  buildUserContentWithAttachments,
+  toAttachmentMeta,
+} from '../domain/agent/attachmentInjection.js';
 import MaterialGraph from './MaterialGraph.jsx';
 // spawn_subagent 工具注册（import 即注册进 toolRegistry，供 orchestrator 等白名单使用）
 import '../utils/agentSubagentTool.js';
@@ -146,30 +153,18 @@ export default function AiChatPanel({
   const [memoriesVersion, setMemoriesVersion] = useState(0); // 会话记忆版本（摘要生成后刷新）
   const [learnedVersion, setLearnedVersion] = useState(0); // 学习画像版本（观测后刷新）
   const [autoTodos, setAutoTodos] = useState([]); // 对话自动提取的行动项
-  const [excludeAllEvidence, setExcludeAllEvidence] = useState(false); // 一键排除全部情报上下文
-  const [excludeAllMaterials, setExcludeAllMaterials] = useState(false); // 一键排除全部素材库上下文
-  // 底部上下文胶囊的"查看内容"弹层：null | 'intel' | 'material'（数字胶囊点开看具体条目）
-  const [contextPeek, setContextPeek] = useState(null);
-  const contextPeekRef = useRef(null);
-  // 弹层条目级排除：情报 / 素材各自的排除集（弹层内变灰透明），叠加在 excludeAll* 全局开关之上
-  const [excludedIntelIds, setExcludedIntelIds] = useState(() => new Set());
-  const [excludedMaterialIds, setExcludedMaterialIds] = useState(() => new Set());
-  // Ctrl+点击多选暂存（切换弹层域时清空）
-  const [peekSelection, setPeekSelection] = useState(() => new Set());
-  useEffect(() => { setPeekSelection(new Set()); }, [contextPeek]);
-  // 点外部关闭弹层（胶囊自身 stopPropagation，保证点胶囊本体仍是 toggle）
-  useEffect(() => {
-    if (!contextPeek) return undefined;
-    const onDocMouseDown = (e) => {
-      if (contextPeekRef.current && !contextPeekRef.current.contains(e.target)) setContextPeek(null);
-    };
-    document.addEventListener('mousedown', onDocMouseDown);
-    return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [contextPeek]);
+  // 2026-09-22：移除输入框的「情报/素材」胶囊与条目弹层（含条目排除/批量注入）——
+  // 高质量资讯直接通过对话获取即可，注入链路（buildSystemPrompt 的 exclude 参数契约）保留但恒为默认值。
 
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState(llmConfig?.selectedModel || '');
   const [attachments, setAttachments] = useState([]);
+  // 已就绪（上传成功）的附件——发送时真正随消息走的部分。
+  // ⚠️ 必须在 sendMessage 声明之前初始化：它出现在 sendMessage 的 deps 数组（渲染期求值，先行会 TDZ 崩溃）。
+  const readyAttachments = useMemo(
+    () => attachments.filter(a => a?.status === 'ready' && a?.url),
+    [attachments],
+  );
   const [sessionCollapsed, setSessionCollapsed] = useState(false);
   // 中栏视图：'chat' 对话 | 'team' 执行记录（AgentTeamPanel 专有页面）
   const [centerView, setCenterView] = useState('chat');
@@ -287,8 +282,11 @@ export default function AiChatPanel({
   const messageQueueMapRef = useRef({}); // sessionId → [msg, ...]
   const [messageQueueMap, setMessageQueueMap] = useState({});
   const syncQueueUI = useCallback(() => setMessageQueueMap({ ...messageQueueMapRef.current }), []);
-  const enqueueQueued = useCallback((sid, msg) => {
-    messageQueueMapRef.current[sid] = [...(messageQueueMapRef.current[sid] || []), msg];
+  // 队列元素：字符串（纯文本）或 { text, attachments }（带附件的排队消息，v36）
+  const queueItemText = (item) => (typeof item === 'string' ? item : item?.text || '');
+  const enqueueQueued = useCallback((sid, msg, atts = null) => {
+    const item = atts?.length ? { text: msg, attachments: atts } : msg;
+    messageQueueMapRef.current[sid] = [...(messageQueueMapRef.current[sid] || []), item];
     syncQueueUI();
   }, [syncQueueUI]);
   const shiftQueued = useCallback((sid) => {
@@ -306,7 +304,11 @@ export default function AiChatPanel({
   const updateQueuedAt = useCallback((sid, idx, text) => {
     const q = messageQueueMapRef.current[sid] || [];
     if (!q[idx]) return;
-    messageQueueMapRef.current[sid] = q.map((m, i) => (i === idx ? text : m));
+    messageQueueMapRef.current[sid] = q.map((m, i) => {
+      if (i !== idx) return m;
+      // 对象消息（带附件）：编辑只更新文本，附件原样保留
+      return typeof m === 'string' ? text : { ...m, text };
+    });
     syncQueueUI();
   }, [syncQueueUI]);
   const moveQueued = useCallback((sid, idx, dir) => {
@@ -377,73 +379,6 @@ export default function AiChatPanel({
     const query = (input || lastUser || '').slice(0, 120);
     return buildMaterialContext(materials, { query, limit: 12, pinnedIds: pinnedMaterialIds });
   }, [materials, input, messages, pinnedMaterialIds]);
-
-  // 上下文胶囊弹层数据：情报证据条目（与 system prompt 注入同源，≤12 条）
-  const intelPeekItems = useMemo(() => (intelligenceContext?.items || []).slice(0, 12), [intelligenceContext]);
-  // 弹层条目点击：把 [资讯:ID] / [素材:ID] 引用插入输入框（引用格式与 buildSystemPrompt 的证据/素材锚点一致）
-  const insertContextReference = useCallback((ref) => {
-    setInput(prev => {
-      const base = prev || '';
-      const needSpace = base.length > 0 && !/\s$/.test(base);
-      return `${base}${needSpace ? ' ' : ''}${ref}`;
-    });
-    setContextPeek(null);
-    setTimeout(() => inputRef.current?.focus(), 0);
-  }, []);
-
-  /* ===== 条目级排除：过滤后的"有效上下文"（prompt 注入与胶囊计数都用过滤版） ===== */
-  const effectiveIntelContext = useMemo(() => {
-    if (!intelligenceContext || excludedIntelIds.size === 0) return intelligenceContext;
-    return { ...intelligenceContext, items: (intelligenceContext.items || []).filter(i => !excludedIntelIds.has(i.id)) };
-  }, [intelligenceContext, excludedIntelIds]);
-  const effectiveMaterialContext = useMemo(() => {
-    if (excludedMaterialIds.size === 0) return materialContext;
-    return { ...materialContext, selected: (materialContext.selected || []).filter(m => !excludedMaterialIds.has(m.id)) };
-  }, [materialContext, excludedMaterialIds]);
-
-  // 弹层条目点击：Ctrl/⌘+点击 = 多选切换；已排除条目单击 = 恢复；普通点击 = 插入引用
-  const handlePeekItemClick = useCallback((domain, id, ref, isExcluded, e) => {
-    if (e?.ctrlKey || e?.metaKey) {
-      e.preventDefault();
-      setPeekSelection(prev => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id); else next.add(id);
-        return next;
-      });
-      return;
-    }
-    if (isExcluded) {
-      const clear = prev => { const n = new Set(prev); n.delete(id); return n; };
-      if (domain === 'intel') setExcludedIntelIds(clear); else setExcludedMaterialIds(clear);
-      return;
-    }
-    insertContextReference(ref);
-  }, [insertContextReference]);
-
-  // 批量注入：把选中的多条引用一次性插入输入框
-  const injectSelectedContext = useCallback(() => {
-    const items = contextPeek === 'intel' ? intelPeekItems : materialContext.selected;
-    const refs = (items || [])
-      .filter(i => peekSelection.has(i.id))
-      .map(i => (contextPeek === 'intel' ? `[资讯:${i.id}]` : `[素材:${i.id}]`));
-    if (!refs.length) return;
-    setInput(prev => {
-      const base = prev || '';
-      const needSpace = base.length > 0 && !/\s$/.test(base);
-      return `${base}${needSpace ? ' ' : ''}${refs.join(' ')}`;
-    });
-    setPeekSelection(new Set());
-    setContextPeek(null); // 与单条点击插入行为一致：注入后收起弹层
-    setTimeout(() => inputRef.current?.focus(), 0);
-  }, [contextPeek, intelPeekItems, materialContext, peekSelection]);
-
-  // 批量排除：选中的条目加入排除集（弹层内变灰透明，注入时过滤掉）
-  const excludeSelectedContext = useCallback(() => {
-    if (!peekSelection.size) return;
-    if (contextPeek === 'intel') setExcludedIntelIds(prev => new Set([...prev, ...peekSelection]));
-    else setExcludedMaterialIds(prev => new Set([...prev, ...peekSelection]));
-    setPeekSelection(new Set());
-  }, [contextPeek, peekSelection]);
 
   // 工作空间召回：异步检索相关文件（IndexedDB），debounce 避免频繁查询
   const [recalledFiles, setRecalledFiles] = useState([]);
@@ -845,13 +780,13 @@ export default function AiChatPanel({
   // sessions 持久化由 sessionsStore.setState 自动处理（流式过程中持续写回）
 
   // Build system prompt：已抽离至 aichat/buildSystemPrompt.js
-  // 注意：情报/素材用"过滤版"（条目级排除生效），excludeAll* 全局开关照旧叠加
+  // 2026-09-22：条目排除 UI 移除后不再传 exclude 参数（buildSystemPrompt 侧参数保留默认 false，契约兼容）
   const systemPrompt = useMemo(() => buildSystemPrompt({
-    selectedInterests, categories, intelligenceProfile, workbenchItems, intelligenceContext: effectiveIntelContext,
+    selectedInterests, categories, intelligenceProfile, workbenchItems, intelligenceContext,
     workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs,
-    excludeAllEvidence, excludeAllMaterials, materialContext: effectiveMaterialContext, agent,
+    materialContext, agent,
     siliconstreamPersona, personaSummary,
-  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, effectiveIntelContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, excludeAllEvidence, excludeAllMaterials, effectiveMaterialContext, agent, siliconstreamPersona, personaSummary]);
+  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, materialContext, agent, siliconstreamPersona, personaSummary]);
 
   // ===== 上下文窗口进度环：与发送链路同源的估算器（systemPrompt + 历史 + 输入草稿） =====
   // 注意：必须在 systemPrompt 定义之后（TDZ）；分母 = 流式回复的真实压缩预算
@@ -868,7 +803,7 @@ export default function AiChatPanel({
   }, [messages, systemPrompt, input]);
 
   // 情境化快捷建议：已抽离至 aichat/buildQuickActions.js
-  const quickActions = useMemo(() => buildQuickActions(effectiveIntelContext, workbenchItems, effectiveMaterialContext), [effectiveIntelContext, workbenchItems, effectiveMaterialContext]);
+  const quickActions = useMemo(() => buildQuickActions(intelligenceContext, workbenchItems, materialContext), [intelligenceContext, workbenchItems, materialContext]);
 
   // 多视角协作（AI 工作站多智能体编排）：一次任务多 agent 接力产出再综合
   const multiAgent = useMultiAgentOrchestrator({ agents, llmConfig, enabled: !!agents?.length });
@@ -1063,8 +998,10 @@ export default function AiChatPanel({
     let targetId = opts.sessionId || activeSessionId;
     // 队列模式：该会话生成中 → 排进「该会话」的队（不阻塞其他会话并行）
     if (streamingSessionsRef.current.has(targetId)) {
-      enqueueQueued(targetId, msg);
+      const pendingAtts = readyAttachments;
+      enqueueQueued(targetId, msg, pendingAtts.length ? pendingAtts : null);
       setInput('');
+      if (pendingAtts.length) setAttachments([]);
       return;
     }
     if (!llmConfig?.baseUrl || !selectedModel) {
@@ -1086,7 +1023,36 @@ export default function AiChatPanel({
       setActiveSessionId(targetId);
     }
 
-    const userMessage = { role: 'user', content: msg };
+    // 附件（v36）：上传完成的附件随消息真正发送——
+    // content 注入附件说明/文本内容/URL 供 LLM 读取；attachments 元数据供气泡渲染；
+    // displayContent 保留用户原文供 UI 展示（与 LLM 输入分离）。
+    const sendAtts = (opts?.attachments?.length ? opts.attachments : readyAttachments)
+      .filter(a => a?.status === 'ready' && a?.url);
+    // v36.2 工作空间关联文件真送达：目标会话所属空间已关联的本地文件走附件同管道
+    // ——内容随消息进 LLM + 气泡渲染空间文件卡。修掉旧「只进系统提示且每文件仅
+    // 1200 字符」的假关联。用 getSpace 按目标会话空间即时取数（无 stale closure）；
+    // 注入预算沿用附件上限（12KB/文件 · 36KB/消息），读取失败的占位内容不注入。
+    const targetSpaceId = sessions.find(s => s.id === targetId)?.spaceId || getActiveSpaceId();
+    const wsAtts = ((getSpace(targetSpaceId)?.files) || [])
+      .filter(f => typeof f?.content === 'string' && f.content.trim() && !f.content.startsWith('读取失败:'))
+      .map(f => ({
+        id: `wsfile:${f.path}`,
+        source: 'workspace',
+        kind: 'file',
+        name: f.name,
+        path: f.path,
+        size: f.content.length,
+        textContent: f.content,
+        truncated: Boolean(f.truncated),
+      }));
+    const allSendAtts = [...sendAtts, ...wsAtts];
+    const attMeta = toAttachmentMeta(allSendAtts);
+    const fullContent = attMeta.length ? buildUserContentWithAttachments(msg, allSendAtts) : msg;
+    const userMessage = {
+      role: 'user',
+      content: fullContent,
+      ...(attMeta.length ? { attachments: attMeta, displayContent: msg } : {}),
+    };
     const assistantPlaceholder = { role: 'assistant', content: '', loading: true };
     // 目标会话自己的历史（并行时可能是后台会话，不能用当前激活会话的 messages）
     const targetHistory = (sessions.find(s => s.id === targetId)?.messages) || messages;
@@ -1103,6 +1069,7 @@ export default function AiChatPanel({
     observeFeedback(msg);
     setLearnedVersion(v => v + 1);
     setInput('');
+    if (attMeta.length) setAttachments([]); // 附件已随消息发出，清空输入区附件
 
     // 记录到输入历史（去重最新项，最多保留 50 条）
     const hist = inputHistoryRef.current;
@@ -1143,7 +1110,8 @@ export default function AiChatPanel({
       // 打包逻辑与 agent 工具循环、AI 精灵共用 contextManager.packConversation 一份实现。
       const fullHistory = [...targetHistory, userMessage];
       const packed = await packConversation(fullHistory, {
-        budget: STREAM_CONTEXT_BUDGET,
+        // 预算随模型窗口自适应（未知模型 === 常量默认值，行为不变）
+        budget: resolveContextBudget(selectedModel, STREAM_CONTEXT_BUDGET),
         keepRecent: STREAM_KEEP_RECENT,
         cutMin: 2,
         fallbackLimit: STREAM_TAIL_LIMIT,
@@ -1333,7 +1301,7 @@ export default function AiChatPanel({
         clearQueued(targetId);
       }
     }
-  }, [input, messages, sessions, llmConfig, selectedModel, systemPrompt, onOpenLlmConfig, activeSessionId, intelligenceContext, agent, runAgentLoop, setSessionStreaming, enqueueQueued, shiftQueued, clearQueued]);
+  }, [input, messages, sessions, llmConfig, selectedModel, systemPrompt, onOpenLlmConfig, activeSessionId, intelligenceContext, agent, runAgentLoop, setSessionStreaming, enqueueQueued, shiftQueued, clearQueued, readyAttachments]);
 
   // v26.9e 队列自愈：仅在「该会话确实没有在跑」时才补发队首。
   // 加 2s 冷静期是刻意的——正常的队列消费会在 finally 里 50ms 内把 isStreaming 拉回 true，
@@ -1342,9 +1310,11 @@ export default function AiChatPanel({
     if (!sid) return;
     if (streamingSessionsRef.current.has(sid)) return;
     if (!llmConfig?.baseUrl || !selectedModel) return; // 无配置时不消费，避免消息被 shift 出来却发不出去
-    const nextMsg = shiftQueued(sid);
-    if (!nextMsg) return;
-    setTimeout(() => sendMessage(nextMsg, { sessionId: sid }), 50);
+    const nextItem = shiftQueued(sid);
+    if (!nextItem) return;
+    const nextText = queueItemText(nextItem);
+    const nextAtts = typeof nextItem === 'object' && nextItem?.attachments?.length ? nextItem.attachments : undefined;
+    setTimeout(() => sendMessage(nextText, { sessionId: sid, attachments: nextAtts }), 50);
   }, [shiftQueued, sendMessage, llmConfig?.baseUrl, selectedModel]);
   drainQueueRef.current = drainQueue;
 
@@ -1546,16 +1516,88 @@ export default function AiChatPanel({
     inputRef, input, setInput, sendMessage,
   });
 
-  const handleFileUpload = useCallback((e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setAttachments(prev => [...prev, { name: file.name, type: file.type, size: file.size, dataUrl: reader.result }]);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+  // ── 附件上传（v36 修复：此前附件只存本地 state，从未随消息发送）──
+  // 流程：选择文件 → 立即 POST /api/community/uploads（multipart，登录态）→ chip 展示状态
+  // → 发送时已就绪的附件随 userMessage 走（url 元数据 + 文本内容注入 LLM 输入，见 attachmentInjection.js）。
+  // dataUrl 仅用于 chip/预览的本地展示，绝不进消息（防 localStorage 持久化膨胀）。
+  const [imgPreview, setImgPreview] = useState(null); // { url, name, anchor: DOMRect } — 图片悬停预览小窗
+
+  const patchAttachment = useCallback((key, patch) => {
+    setAttachments(prev => prev.map(a => (a.key === key ? { ...a, ...patch } : a)));
   }, []);
+
+  const readAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('读取文件失败'));
+    reader.readAsDataURL(file);
+  });
+
+  // 前端预检（与服务端 UPLOAD_LIMITS 同口径）：图 5MB / 视频 25MB / 其他 10MB
+  const uploadSizeLimit = (mime) => {
+    if (String(mime).startsWith('image/')) return 5 * 1024 * 1024;
+    if (String(mime).startsWith('video/')) return 25 * 1024 * 1024;
+    return 10 * 1024 * 1024;
+  };
+
+  const handleFileUpload = useCallback(async (e) => {
+    const picked = [...(e.target.files || [])].slice(0, 4);
+    e.target.value = '';
+    if (!picked.length) return;
+    // 注：不做前置 user 检查——user prop 异步 hydrate 的时序不可靠；
+    // 未登录时上传请求自然收到 401，chip 标「失败」并提示，行为一致。
+    for (const file of picked) {
+      const mime = file.type || '';
+      if (file.size > uploadSizeLimit(mime)) {
+        showToast(`「${file.name}」超过大小限制（${formatBytes(uploadSizeLimit(mime))}）`);
+        continue;
+      }
+      const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      const att = {
+        key,
+        name: file.name,
+        mime,
+        size: file.size,
+        kind: mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : 'file',
+        status: 'uploading',
+        localUrl: '',
+        textContent: '',
+      };
+      try {
+        // 图片：本地 dataUrl 供 chip 缩略图即时展示；文本类：读出内容供注入（二进制嗅探拦截）
+        if (att.kind === 'image') {
+          att.localUrl = await readAsDataUrl(file);
+        } else if (isTextLikeUpload(file.name, mime) && file.size <= 2 * 1024 * 1024) {
+          const text = await file.text();
+          if (!looksBinary(text)) att.textContent = text;
+        }
+      } catch { /* 预读失败不阻断上传 */ }
+      setAttachments(prev => [...prev, att]);
+      try {
+        const fd = new FormData();
+        fd.append('file', file, file.name);
+        const res = await fetch('/api/community/uploads', { method: 'POST', body: fd });
+        const data = await res.json().catch(() => ({}));
+        // 服务端错误响应的 error 可能是字符串或 { code, message } 对象——统一提取，避免 "[object Object]"
+        const rawErr = data?.error;
+        const errMsg = typeof rawErr === 'string' ? rawErr : rawErr?.message || `上传失败（${res.status}）`;
+        if (!res.ok || data?.ok === false) throw new Error(errMsg);
+        const up = data?.data?.uploads?.[0];
+        if (!up?.url) throw new Error('上传响应缺少文件地址');
+        patchAttachment(key, {
+          status: 'ready',
+          id: up.id,
+          url: up.url,
+          kind: up.kind || att.kind,
+          mime: up.mime || att.mime,
+          size: up.size ?? att.size,
+        });
+      } catch (err) {
+        patchAttachment(key, { status: 'error', errorMsg: String(err?.message || err).slice(0, 100) });
+        showToast(`「${file.name}」上传失败：${String(err?.message || err).slice(0, 60)}`);
+      }
+    }
+  }, [patchAttachment]);
 
   const removeAttachment = useCallback((idx) => {
     setAttachments(prev => prev.filter((_, i) => i !== idx));
@@ -1760,13 +1802,64 @@ export default function AiChatPanel({
               </div>
             )}
             <div className={`chat-bubble ${msg.error ? 'chat-bubble-error' : ''}${msg.toolCalls?.length ? ' chat-bubble-has-tools' : ''}`}>
-              {/* v34：思考提示独立成块（不在工具卡片容器里）——agent loop 每一步都清晰分段 */}
-              {msg.thinking && msg.loading && !msg.reasoning && (
-                <div className="chat-tool-thinking">
-                  <span className="chat-tool-thinking-dot" />
-                  {msg.thinking}
+              {/* v36：用户消息附件——图片缩略图（悬停预览大图）/ 文件卡片（点击下载） */}
+              {msg.role === 'user' && Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+                <div className="chat-msg-attachments">
+                  {msg.attachments.map((att, ai) => (att?.kind === 'image' ? (
+                    <div key={att.id || ai} className="chat-att-image-wrap">
+                      <img
+                        src={att.url}
+                        alt={att.name || '图片附件'}
+                        className="chat-att-image"
+                        loading="lazy"
+                        onMouseEnter={(e) => {
+                          const anchor = toPlainRect(e.currentTarget);
+                          const { left, top } = computePopoverPosition(
+                            anchor,
+                            { width: 360, height: 360 },
+                            { width: window.innerWidth, height: window.innerHeight },
+                            { prefer: 'down', align: 'start' },
+                          );
+                          setImgPreview({ url: att.url, name: att.name, left, top });
+                        }}
+                        onMouseLeave={() => setImgPreview(null)}
+                        onClick={() => window.open(att.url, '_blank', 'noopener')}
+                      />
+                    </div>
+                  ) : att.source === 'workspace' ? (
+                    // v36.2 空间文件卡：本地文件无下载 URL，内容已随消息提供给 AI
+                    <div
+                      key={att.id || ai}
+                      className="chat-att-file chat-att-file-ws"
+                      title={`本地工作空间文件 · ${att.path || att.name}（内容已随消息提供给 AI）`}
+                    >
+                      <span className="icon-sm chat-att-file-icon">{ICONS.document}</span>
+                      <span className="chat-att-file-name">{att.name || '附件'}</span>
+                      <span className="chat-att-file-size">{formatBytes(att.size)} · 空间</span>
+                    </div>
+                  ) : (
+                    <a
+                      key={att.id || ai}
+                      className="chat-att-file"
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`${att.name || '附件'} · ${formatBytes(att.size)}${att.textContent ? ' · 内容已随消息提供给 AI' : ''}`}
+                    >
+                      <span className="icon-sm chat-att-file-icon">{ICONS.document}</span>
+                      <span className="chat-att-file-name">{att.name || '附件'}</span>
+                      <span className="chat-att-file-size">{att.kind === 'video' ? '视频 · ' : ''}{formatBytes(att.size)}</span>
+                    </a>
+                  )))}
                 </div>
               )}
+              {/* v35：Codex 式过程流——thinking + 工具日志行统一编排，完成后折叠成摘要行 */}
+              <ActivityStream
+                thinking={msg.loading && !msg.reasoning ? msg.thinking : ''}
+                thinkingKind={msg.thinkingKind || ''}
+                toolCalls={msg.toolCalls}
+                loading={Boolean(msg.loading)}
+              />
               {/* v34：思维链块——推理模型 reasoning_content 实时流式 + 完成后按轮回看 */}
               {(msg.reasoning || (msg.loading && msg.reasoningTexts?.length) || (!msg.loading && msg.reasoningTexts?.length)) && (
                 <ReasoningBlock
@@ -1774,13 +1867,6 @@ export default function AiChatPanel({
                   texts={msg.reasoningTexts}
                   loading={Boolean(msg.loading)}
                 />
-              )}
-              {msg.toolCalls && msg.toolCalls.length > 0 && (
-                <div className="chat-tool-calls">
-                  {msg.toolCalls.map((tc, idx) => (
-                    <ToolCallCard key={tc.id || idx} tc={tc} step={idx + 1} total={msg.toolCalls.length} />
-                  ))}
-                </div>
               )}
               {msg.loading ? (
                 // v33 修复流式观感：内核每 delta 都在更新 msg.content，但旧渲染在
@@ -1797,18 +1883,38 @@ export default function AiChatPanel({
               ) : (
                 <div
                   className={`chat-bubble-content${(isStreaming && i === messages.length - 1) ? ' is-streaming' : ''}${msg.stopped ? ' is-stopped' : ''}`}
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.role === 'user' ? (msg.displayContent || msg.content) : msg.content) }}
                 />
               )}
               {msg.stopped && (
-                <div className="chat-stopped-mark">已停止生成</div>
-              )}
-              {/* token 用量（上游报告时展示，成本可见化） */}
-              {!msg.loading && !msg.error && msg.usage?.total_tokens > 0 && (
-                <div className="chat-usage-mark">
-                  本轮 {Number(msg.usage.total_tokens).toLocaleString()} tokens（输入 {Number(msg.usage.prompt_tokens || 0).toLocaleString()} / 输出 {Number(msg.usage.completion_tokens || 0).toLocaleString()}）
+                <div className="chat-stopped-mark">
+                  <span>已停止生成</span>
+                  {/* v36 中断恢复：会话状态（工具历史/产物路径）经 buildSessionContextText 注入下轮，
+                      点「继续任务」即可从断点接力，不重复已完成的步骤 */}
+                  <button
+                    type="button"
+                    className="chat-resume-btn"
+                    disabled={isStreaming}
+                    onClick={() => sendMessage('继续：请从上次中断的地方接着完成任务。先参考会话状态里已完成的步骤与产物路径，从断点继续，不要重复已完成的工作。')}
+                    title="从断点继续执行该任务"
+                  >
+                    继续任务
+                  </button>
                 </div>
               )}
+              {/* token 用量（上游报告时展示，成本可见化）
+                  v36.2：部分上游只报总量不报分项——零值字段不再渲染，
+                  杜绝「输入 980 / 输出 0」这种幽灵"0" */}
+              {!msg.loading && !msg.error && msg.usage?.total_tokens > 0 && (() => {
+                const parts = [];
+                if (Number(msg.usage.prompt_tokens) > 0) parts.push(`输入 ${Number(msg.usage.prompt_tokens).toLocaleString()}`);
+                if (Number(msg.usage.completion_tokens) > 0) parts.push(`输出 ${Number(msg.usage.completion_tokens).toLocaleString()}`);
+                return (
+                  <div className="chat-usage-mark">
+                    本轮 {Number(msg.usage.total_tokens).toLocaleString()} tokens{parts.length ? `（${parts.join(' / ')}）` : ''}
+                  </div>
+                );
+              })()}
             </div>
             {/* P0-2 计划卡操作条：批准执行 / 修改 / 放弃 */}
             {msg.isPlan && !msg.loading && !msg.error && !msg.planDismissed && (
@@ -1841,7 +1947,7 @@ export default function AiChatPanel({
                   type="button"
                   className="chat-action-btn"
                   title="把这条消息填回输入框，修改后重新发送"
-                  onClick={() => { setInput(msg.content || ''); setTimeout(() => inputRef.current?.focus(), 60); }}
+                  onClick={() => { setInput(msg.displayContent || msg.content || ''); setTimeout(() => inputRef.current?.focus(), 60); }}
                   disabled={isStreaming}
                 >
                   <span className="icon-sm">{ICONS.edit}</span>
@@ -1916,12 +2022,20 @@ export default function AiChatPanel({
       )}
       </div>
 
-      {/* Attachments */}
+      {/* Attachments（v36：缩略图 + 上传状态——uploading 转圈 / ready 就绪 / error 失败原因） */}
       {attachments.length > 0 && (
         <div className="chat-attachments">
           {attachments.map((att, i) => (
-            <div key={i} className="chat-attachment-chip">
-              <span>{att.name}</span>
+            <div key={att.key || i} className={`chat-attachment-chip is-${att.status || 'ready'}`} title={att.status === 'error' ? (att.errorMsg || '上传失败') : `${att.name || ''} · ${formatBytes(att.size)}`}>
+              {att.kind === 'image' && (att.localUrl || att.url) ? (
+                <img src={att.localUrl || att.url} alt="" className="chat-attachment-thumb" />
+              ) : (
+                <span className="icon-sm chat-attachment-fileicon">{ICONS.document}</span>
+              )}
+              <span className="chat-attachment-name">{att.name || '附件'}</span>
+              <span className={`chat-attachment-state st-${att.status || 'ready'}`}>
+                {att.status === 'uploading' ? '上传中' : att.status === 'error' ? '失败' : '就绪'}
+              </span>
               <button onClick={() => removeAttachment(i)} title="移除">{ICONS.x}</button>
             </div>
           ))}
@@ -2013,19 +2127,19 @@ export default function AiChatPanel({
                             onKeyDown={e => {
                               if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
-                                updateQueuedAt(activeSessionId, i, editDraft.trim() || q);
+                                updateQueuedAt(activeSessionId, i, editDraft.trim() || queueItemText(q));
                                 setEditingQueueIdx(null);
                               } else if (e.key === 'Escape') setEditingQueueIdx(null);
                             }}
                           />
                         ) : (
-                          <span className="chat-queue-item-text" title={q}>{q}</span>
+                          <span className="chat-queue-item-text" title={queueItemText(q)}>{queueItemText(q)}{typeof q === 'object' && q?.attachments?.length ? '（带附件）' : ''}</span>
                         )}
                         <span className="chat-queue-item-acts">
                           {editingQueueIdx === i ? (
-                            <button type="button" onClick={() => { updateQueuedAt(activeSessionId, i, editDraft.trim() || q); setEditingQueueIdx(null); }} title="保存">✓</button>
+                            <button type="button" onClick={() => { updateQueuedAt(activeSessionId, i, editDraft.trim() || queueItemText(q)); setEditingQueueIdx(null); }} title="保存">✓</button>
                           ) : (
-                            <button type="button" onClick={() => { setEditingQueueIdx(i); setEditDraft(q); }} title="二次编辑">✎</button>
+                            <button type="button" onClick={() => { setEditingQueueIdx(i); setEditDraft(queueItemText(q)); }} title="二次编辑">✎</button>
                           )}
                           <button type="button" disabled={i === 0} onClick={() => moveQueued(activeSessionId, i, -1)} title="上移（提前发送）">↑</button>
                           <button type="button" disabled={i === activeQueue.length - 1} onClick={() => moveQueued(activeSessionId, i, 1)} title="下移（延后发送）">↓</button>
@@ -2038,6 +2152,19 @@ export default function AiChatPanel({
               </>
             )}
           </div>
+          {/* v36：图片附件悬停预览小窗（portal 到 body，防气泡 overflow 裁剪） */}
+          {imgPreview && createPortal(
+            <div
+              className="chat-img-preview-pop"
+              style={{ left: imgPreview.left, top: imgPreview.top }}
+              onMouseLeave={() => setImgPreview(null)}
+              role="presentation"
+            >
+              <img src={imgPreview.url} alt={imgPreview.name || '图片预览'} />
+              {imgPreview.name && <div className="chat-img-preview-name">{imgPreview.name}</div>}
+            </div>,
+            document.body,
+          )}
           {/* 快捷指令收纳：单按钮弹层（情境指令 + 自定义），不再平铺占位 */}
           <div className="chat-quick-wrap">
             <button
@@ -2178,25 +2305,8 @@ export default function AiChatPanel({
             </span>
           </div>
           <div className="chat-context-group">
-            {intelligenceContext?.items?.length > 0 && (
-              <button
-                type="button"
-                className={`chat-context-pill chat-context-pill-peek ${excludeAllEvidence ? 'excluded' : ''} ${contextPeek === 'intel' ? 'open' : ''}`}
-                onMouseDown={e => e.stopPropagation()}
-                onClick={() => setContextPeek(p => (p === 'intel' ? null : 'intel'))}
-                title="查看注入的情报证据条目"
-              >
-                <span className="icon-sm">{ICONS.messageSquare}</span>
-                {excludeAllEvidence
-                  ? '已排除情报'
-                  : (excludedIntelIds.size > 0
-                    ? `情报 ${effectiveIntelContext.items.length}/${intelligenceContext.items.length}`
-                    : `情报 ${intelligenceContext.items.length}`)}
-                <span className="chat-context-pill-caret">▴</span>
-              </button>
-            )}
             {workspaceFiles.length > 0 && (
-              <div className="chat-context-pill chat-context-pill-file" title={workspaceFiles.map(f => f.name).join(', ')}>
+              <div className="chat-context-pill chat-context-pill-file" title={`已关联：${workspaceFiles.map(f => f.name).join('、')}（正文随每条消息自动提供给 AI）`}>
                 <span className="icon-sm">{ICONS.document}</span>
                 文件 {workspaceFiles.length}
                 <button
@@ -2207,22 +2317,6 @@ export default function AiChatPanel({
                 >{ICONS.x}</button>
               </div>
             )}
-            {materialContext.total > 0 && (
-              <button
-                type="button"
-                className={`chat-context-pill chat-context-pill-peek chat-context-pill-material ${excludeAllMaterials ? 'excluded' : ''} ${materialContext.hasElf ? 'has-elf' : ''} ${contextPeek === 'material' ? 'open' : ''}`}
-                onMouseDown={e => e.stopPropagation()}
-                onClick={() => setContextPeek(p => (p === 'material' ? null : 'material'))}
-                title="查看注入的素材条目"
-              >
-                <span className="icon-sm">{ICONS.layers}</span>
-                {excludeAllMaterials
-                  ? '已排除素材'
-                  : (materialContext.hasElf ? `精灵素材 ${materialContext.elfCount}` : `素材 ${materialContext.total}`)}
-                {excludedMaterialIds.size > 0 && !excludeAllMaterials && <span className="chat-context-pill-excluded">已排除 {excludedMaterialIds.size}</span>}
-                <span className="chat-context-pill-caret">▴</span>
-              </button>
-            )}
             <button
               type="button"
               className={`chat-context-pill chat-websearch-toggle ${webSearchEnabled ? 'active' : 'inactive'}`}
@@ -2232,91 +2326,6 @@ export default function AiChatPanel({
               <span className="icon-sm">{ICONS.globe || ICONS.compass}</span>
               {webSearchEnabled ? '联网' : '离线'}
             </button>
-
-            {/* 上下文条目弹层：数字胶囊 → 看得见的条目列表，点击插入引用 */}
-            {contextPeek && (
-              <div className="chat-context-peek" ref={contextPeekRef}>
-                <div className="chat-context-peek-head">
-                  <span className="chat-context-peek-title">
-                    {contextPeek === 'intel'
-                      ? `注入的情报证据 · ${intelPeekItems.length} 条`
-                      : `注入的素材上下文 · ${materialContext.selected.length}/${materialContext.total} 条`}
-                  </span>
-                  {contextPeek === 'intel' && (
-                    <button
-                      type="button"
-                      className={`chat-context-peek-toggle ${excludeAllEvidence ? 'is-excluded' : ''}`}
-                      onClick={() => setExcludeAllEvidence(v => !v)}
-                    >
-                      {excludeAllEvidence ? '已排除 · 恢复' : '排除注入'}
-                    </button>
-                  )}
-                  {contextPeek === 'material' && (
-                    <button
-                      type="button"
-                      className={`chat-context-peek-toggle ${excludeAllMaterials ? 'is-excluded' : ''}`}
-                      onClick={() => setExcludeAllMaterials(v => !v)}
-                    >
-                      {excludeAllMaterials ? '已排除 · 恢复' : '排除注入'}
-                    </button>
-                  )}
-                  <button type="button" className="chat-context-peek-close" onClick={() => setContextPeek(null)} title="关闭">{ICONS.x}</button>
-                </div>
-                <div className="chat-context-peek-list custom-scrollbar">
-                  {contextPeek === 'intel' && intelPeekItems.map(item => {
-                    const isExcluded = excludedIntelIds.has(item.id);
-                    const isSelected = peekSelection.has(item.id);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`chat-context-peek-item ${isExcluded ? 'excluded' : ''} ${isSelected ? 'selected' : ''}`}
-                        onClick={e => handlePeekItemClick('intel', item.id, `[资讯:${item.id}]`, isExcluded, e)}
-                        title={isExcluded ? '已排除注入 · 单击恢复' : (item.summary || item.title)}
-                      >
-                        <span className="chat-context-peek-item-title">{item.title}</span>
-                        <span className="chat-context-peek-item-meta">{item.source || '未知来源'}{isExcluded ? ' · 已排除' : ''}</span>
-                      </button>
-                    );
-                  })}
-                  {contextPeek === 'material' && materialContext.selected.map(mat => {
-                    const isExcluded = excludedMaterialIds.has(mat.id);
-                    const isSelected = peekSelection.has(mat.id);
-                    return (
-                      <button
-                        key={mat.id}
-                        type="button"
-                        className={`chat-context-peek-item ${isExcluded ? 'excluded' : ''} ${isSelected ? 'selected' : ''}`}
-                        onClick={e => handlePeekItemClick('material', mat.id, `[素材:${mat.id}]`, isExcluded, e)}
-                        title={isExcluded ? '已排除注入 · 单击恢复' : String(mat.fullContent || mat.content || '').slice(0, 200)}
-                      >
-                        <span className="chat-context-peek-item-title">{mat.title || '未命名素材'}</span>
-                        <span className="chat-context-peek-item-meta">{mat.type || 'material'}{mat.source ? ` · ${mat.source}` : ''}{isExcluded ? ' · 已排除' : ''}</span>
-                      </button>
-                    );
-                  })}
-                  {contextPeek === 'material' && materialContext.total > materialContext.selected.length && (
-                    <div className="chat-context-peek-more">
-                      仅相关性最高的 {materialContext.selected.length} 条注入上下文，素材库共 {materialContext.total} 条
-                    </div>
-                  )}
-                </div>
-                {peekSelection.size > 0 && (
-                  <div className="chat-context-peek-actions">
-                    <button type="button" className="chat-context-peek-act primary" onClick={injectSelectedContext}>
-                      注入 {peekSelection.size} 条
-                    </button>
-                    <button type="button" className="chat-context-peek-act is-exclude" onClick={excludeSelectedContext}>
-                      排除 {peekSelection.size} 条
-                    </button>
-                    <button type="button" className="chat-context-peek-act" onClick={() => setPeekSelection(new Set())}>
-                      清除选择
-                    </button>
-                  </div>
-                )}
-                <div className="chat-context-peek-hint">Ctrl+点击多选 · 单击插入引用 · 已排除条目单击恢复</div>
-              </div>
-            )}
           </div>
           </div>
         </div>

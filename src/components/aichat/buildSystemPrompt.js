@@ -181,7 +181,7 @@ export function buildSystemPrompt({
       ? `【工作空间召回·目录】以下是你之前沉淀的相关文件（只列名称与一瞥，需要全文时用 read_workspace_file 按名读取）：\n${buildEvidenceCatalog({ files: recalledFiles }).text}`
       : '',
     workspaceFiles.length > 0
-      ? `用户从本地工作空间加入了以下文件作为分析上下文（用户显式指定，保留正文；已按条数与长度封顶）：\n${workspaceFiles.slice(0, 4).map(f => `[文件:${f.name}]\n${String(f.content || '').slice(0, 1200)}`).join('\n\n')}`
+      ? `【工作空间关联文件】用户已将以下本地文件关联到当前空间，其正文会随每条用户消息以「空间文件」块携带（以消息内文件块为准，此处只列目录）：\n${workspaceFiles.map(f => `  - ${f.name}（${f.path || '本地文件'}${f.truncated ? '，空间内已截断，需要全文可用 read_workspace_file' : ''}）`).join('\n')}`
       : '',
     // Phase 1.3 Task 14: 预留"最近校准"段 —— 读取 pendingSuggestions 中近 7 天 accepted 的建议。
     // 当前 pendingSuggestions 永远没有 accepted 项（Phase 2 才有接受 UI），此段实际不输出内容，

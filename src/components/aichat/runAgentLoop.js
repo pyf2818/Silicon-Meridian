@@ -209,11 +209,21 @@ export async function runAgentLoop({
     parentSignal: controller?.signal,
   });
 
+  // v36 长任务执行规范：一次性拼进系统提示（非每轮重复注入）。
+  // 目标：长任务自主推进不中途请示、长产物分段落盘防截断、阶段化推进直到完整交付。
+  const longTaskGuideline = `
+
+【长任务执行规范】
+- 接到多步骤/深度调研类任务时，先在心里拆成阶段（如：调研 → 交叉验证 → 整合 → 产出），然后逐阶段自主推进，不要中途停下来向用户请示（除非工具被拒绝或遇到必须用户决策的权限问题）。
+- 产出长文档/长报告（预计超过 2000 字）时，用 write_workspace_file 分段落盘：先写入第一段，之后每轮用 append=true 续写下一段——单次工具调用内容过长会被截断，分段才完整。
+- 每完成一个阶段就继续下一阶段，直到任务完整交付；最后在回复里给出简要交付说明（做了什么 / 产物在哪 / 有何遗留）。
+- 中断后继续的任务：优先利用【会话状态】里已完成的步骤与产物路径，从断点接着做，不要重复已完成的步骤。`;
+
   const result = await runToolLoop({
     controller,
     toolSchemas,
     baseMessages,
-    systemPrompt,
+    systemPrompt: `${systemPrompt || ''}${longTaskGuideline}`,
     llmConfig,
     selectedModel,
     toolCtx,
@@ -243,6 +253,9 @@ export async function runAgentLoop({
 
   if (aborted) {
     if (!finalContent) finalContent = '（已停止）';
+    // 丢弃挂起的节流 patch：80ms 定时器若在最终写回后触发，会用 loading:true 覆盖最终态
+    if (msgFlushTimer) { clearTimeout(msgFlushTimer); msgFlushTimer = null; }
+    pendingMsgPatch = null;
     // 写入最终消息：保留 toolCalls 痕迹 + 思维链，标记 stopped
     setSessions(prev => prev.map(s => {
       if (s.id !== targetId) return s;
@@ -261,7 +274,46 @@ export async function runAgentLoop({
     return;
   }
 
+  // v36.2：推理模型经部分桥接网关时 <think> 思维链可能被内联进 content
+  //（正常通道是 reasoning_content）——最终写回前整块剥离 + 清掉游离标签，
+  // 避免思维链原文/边界碎片漏进正文。产物本身不该含此标签，剥离是纯防御。
+  if (finalContent) {
+    finalContent = finalContent
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<\/?think>/gi, '')
+      .trim();
+  }
   if (!finalContent) finalContent = '（agent 达到最大轮数仍未给出最终回复）';
+
+  // 丢弃挂起的节流 patch（v35 修复：80ms trailing 定时器若在最终写回后触发，
+  // applyMsgPatch 的 loading:true 会覆盖写回的 loading:false —— 表现为「流完了永远转圈」）
+  if (msgFlushTimer) { clearTimeout(msgFlushTimer); msgFlushTimer = null; }
+  pendingMsgPatch = null;
+
+  // v35.1：先把最终消息写回（loading:false）——内容与工具痕迹**立刻**呈现，
+  // 活动行/光标随流结束即刻消失。自检修复挪到写回之后静默进行：
+  // 此前 selfVerifyRepair（一次非流式 LLM 调用，最长 60s）在写回之前 await，
+  // 只要终答触发引用校验/工具失败对照，UI 就会卡在「正在生成」直到修复返回
+  // —— 表现为「内容明明已经流完，气泡还在转圈」。
+  let finalAnswer = finalContent;
+  const writeFinalAnswer = (content, extra = {}) => {
+    setSessions(prev => prev.map(s => {
+      if (s.id !== targetId) return s;
+      const msgs = [...s.messages];
+      msgs[msgs.length - 1] = {
+        role: 'assistant',
+        content,
+        toolCalls: toolCallTrace.slice(),
+        reasoningTexts: reasoningTexts.map(r => ({ ...r })),
+        reasoning: undefined, // 清掉流式期间的临时 reasoning（已归档进 reasoningTexts）
+        usage,
+        loading: false,
+        ...extra,
+      };
+      return { ...s, messages: msgs, updatedAt: Date.now() };
+    }));
+  };
+  writeFinalAnswer(finalAnswer);
 
   // ── 终答质量自检（P2-9 引用校验 + P2-10 对照工具执行痕迹）──
   // 收集两类问题：① 引用了不在证据集中的资讯 ID；② 断言了失败 / 被拒工具的成功结果。
@@ -270,7 +322,7 @@ export async function runAgentLoop({
     ...(intelligenceContext?.items || []).map(item => String(item.id)),
     ...(toolCtx.focusCitations || []),
   ]);
-  const citedIds = [...finalContent.matchAll(/\[资讯:([^\]]+)\]/g)].map(match => match[1].trim());
+  const citedIds = [...finalAnswer.matchAll(/\[资讯:([^\]]+)\]/g)].map(match => match[1].trim());
   const invalidIds = [...new Set(citedIds.filter(id => !allowedCitationIds.has(id)))];
   const failedCalls = toolCallTrace.filter(t =>
     t.status === 'skipped' || (typeof t.result === 'string' && /^错误：/.test(t.result)));
@@ -283,9 +335,9 @@ export async function runAgentLoop({
     issues.push(`工具 ${t.name} ${reason}，回答中不应断言其成功产出的结果或数据`);
   });
 
-  let finalFinalContent = finalContent;
   if (issues.length) {
-    // 一次性回灌修复（不调用工具），失败则降级保留原答案并附警告
+    // 一次性回灌修复（不调用工具），失败则降级保留原答案并附警告。
+    // 修复在写回之后静默进行：完成后二次更新内容（不带 loading，不打断阅读）。
     const repaired = await selfVerifyRepair({
       content: finalContent,
       issues,
@@ -295,36 +347,22 @@ export async function runAgentLoop({
       signal: controller?.signal,
     });
     if (repaired) {
-      finalFinalContent = repaired;
+      finalAnswer = repaired;
       // 复检引用：仍无效的给出温和提示（不再二次修复，避免无限循环）
       const reCited = [...repaired.matchAll(/\[资讯:([^\]]+)\]/g)].map(m => m[1].trim());
       const stillInvalid = [...new Set(reCited.filter(id => !allowedCitationIds.has(id)))];
       if (stillInvalid.length) {
-        finalFinalContent += `\n\n> 引用校验提示：以下资讯 ID 不在当前证据集中：${stillInvalid.join('、')}`;
+        finalAnswer += `\n\n> 引用校验提示：以下资讯 ID 不在当前证据集中：${stillInvalid.join('、')}`;
       }
+      writeFinalAnswer(finalAnswer, { selfRepaired: true });
     } else if (invalidIds.length) {
-      finalFinalContent = `${finalContent}\n\n> 引用校验失败：以下资讯 ID 不在当前证据集中：${invalidIds.join('、')}`;
+      finalAnswer = `${finalContent}\n\n> 引用校验失败：以下资讯 ID 不在当前证据集中：${invalidIds.join('、')}`;
+      writeFinalAnswer(finalAnswer);
     }
   }
 
-  // 写入最终 assistant 消息（保留 toolCalls 痕迹供 UI 展示 + 思维链 + 本轮 token 用量）
-  setSessions(prev => prev.map(s => {
-    if (s.id !== targetId) return s;
-    const msgs = [...s.messages];
-    msgs[msgs.length - 1] = {
-      role: 'assistant',
-      content: finalFinalContent,
-      toolCalls: toolCallTrace.slice(),
-      reasoningTexts: reasoningTexts.map(r => ({ ...r })),
-      reasoning: undefined, // 清掉流式期间的临时 reasoning（已归档进 reasoningTexts）
-      usage,
-      loading: false,
-    };
-    return { ...s, messages: msgs, updatedAt: Date.now() };
-  }));
-
   // 画像学习与摘要（与流式路径一致）
-  observeReply(finalFinalContent);
+  observeReply(finalAnswer);
   setLearnedVersion(v => v + 1);
   // 进化档案统计：runAgentLoop 路径此前从未记录 → 进化数值只被流式路径累加，
   // 走本路径的对话完全不计入（用户「用了好久一点没增长」的根因）。
@@ -334,7 +372,7 @@ export async function runAgentLoop({
   });
   // 工具偏好与会话统计：此前从未接线（工具偏好/会话统计展示组件因数据恒空而永不渲染）
   observeToolUsage(toolCallTrace.map(tc => tc?.name).filter(Boolean));
-  const extracted = extractTodos(finalFinalContent);
+  const extracted = extractTodos(finalAnswer);
   if (extracted.length > 0) setAutoTodos(extracted);
 
   // ── 自主技能沉淀（静默 + Agent 自主判断）──────────────────────────────
@@ -346,7 +384,7 @@ export async function runAgentLoop({
   const sessionSkillCount = precipitatedBySession.get(targetId) || 0;
   if (shouldAttemptPrecipitation({
     hadToolCalls,
-    contentLength: finalFinalContent.length,
+    contentLength: finalAnswer.length,
     sessionSkillCount,
     maxPerSession: MAX_SKILLS_PER_SESSION,
   })) {
@@ -360,7 +398,7 @@ export async function runAgentLoop({
         messages: [
           ...baseMessages,
           { role: 'user', content: userMessage.content },
-          { role: 'assistant', content: finalFinalContent, tool_calls: toolCallTrace.map(tc => ({ id: tc.id, function: { name: tc.name, arguments: JSON.stringify(tc.args || {}) } })) },
+          { role: 'assistant', content: finalAnswer, tool_calls: toolCallTrace.map(tc => ({ id: tc.id, function: { name: tc.name, arguments: JSON.stringify(tc.args || {}) } })) },
           { role: 'user', content: buildPrecipitationPrompt() },
         ],
         max_tokens: AUX_COMPLETION_MAX_TOKENS,
@@ -403,7 +441,7 @@ export async function runAgentLoop({
     }
   }
 
-  const currentSession = sessions.find(s => s.id === targetId) || { id: targetId, messages: [...messages, userMessage, { role: 'assistant', content: finalFinalContent }] };
+  const currentSession = sessions.find(s => s.id === targetId) || { id: targetId, messages: [...messages, userMessage, { role: 'assistant', content: finalAnswer }] };
   const totalRounds = currentSession.messages.filter(m => m.role === 'user').length;
   observeSessionEnd(totalRounds);
   if (totalRounds >= 3) {

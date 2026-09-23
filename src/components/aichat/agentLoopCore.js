@@ -9,9 +9,9 @@ import { executeAgentTool } from '../../utils/agentTools.js';
 import { getTool, resolveApprovalDecision } from '../../utils/toolRegistry.js';
 import { mergeToolCallDeltas } from '../../utils/toolCallMerge.js';
 import { validateToolArgs } from '../../utils/toolArgsValidator.js';
-import { AGENT_DEFAULT_MAX_ITERATIONS, COMPLETION_MAX_TOKENS } from '../../constants/agentLoop.js';
+import { AGENT_DEFAULT_MAX_ITERATIONS, COMPLETION_MAX_TOKENS, MAX_COMPLETION_CONTINUATIONS } from '../../constants/agentLoop.js';
 import { wrapUntrusted } from '../../session/untrusted.js';
-import { packConversation } from '../../session/contextManager.js';
+import { packConversation, resolveContextBudget } from '../../session/contextManager.js';
 import { persistLongResult } from '../../session/outputSink.js';
 
 // 上下文预算：发送给 LLM 的消息总 token 上限。超过则触发「中段摘要压缩」而非硬截断。
@@ -97,6 +97,7 @@ export async function streamAgentResponse({ controller, baseUrl, apiKey, model, 
   let content = '';
   let reasoning = '';
   let usage = null;
+  let finishReason = ''; // v36：stop | length | tool_calls
   const toolCallDeltas = []; // 收集每批 delta.tool_calls，结束统一合并
 
   try {
@@ -136,6 +137,11 @@ export async function streamAgentResponse({ controller, baseUrl, apiKey, model, 
         if (json.usage && typeof json.usage === 'object') {
           usage = json.usage;
         }
+        // v36：结束原因透传（stop=正常完成 / length=因 max_tokens 截断）——
+        // 上层据此触发「长输出自动续写」，保证长报告完整性
+        if (json.finish_reason) {
+          finishReason = json.finish_reason;
+        }
       }
     }
   } catch (err) {
@@ -150,7 +156,7 @@ export async function streamAgentResponse({ controller, baseUrl, apiKey, model, 
   }
 
   const toolCalls = mergeToolCallDeltas(toolCallDeltas);
-  return { content, tool_calls: toolCalls, usage, reasoning };
+  return { content, tool_calls: toolCalls, usage, reasoning, finishReason };
 }
 
 /**
@@ -183,7 +189,8 @@ export async function runToolLoop({
   selectedModel,
   toolCtx,
   maxIterations = AGENT_DEFAULT_MAX_ITERATIONS,
-  contextBudget = CONTEXT_BUDGET,
+  // 预算随模型窗口自适应：大窗口模型 === 默认值（行为不变），小窗口模型自动收紧防上游溢出
+  contextBudget = resolveContextBudget(selectedModel, CONTEXT_BUDGET),
   keepRecent = KEEP_RECENT,
   buildSystemSuffix,
   onProgress,
@@ -222,9 +229,11 @@ export async function runToolLoop({
 
   try {
     for (let iter = 0; iter < maxIterations; iter += 1) {
-      emit({
+      // v35：flushTrace 让上一轮已完成的工具行实时可见（Codex 式过程流）
+      flushTrace({
         content: finalContent,
         thinking: iter === 0 ? '正在思考...' : '继续推理...',
+        thinkingKind: 'think',
         toolCallCount: toolCallTrace.length,
       });
 
@@ -280,14 +289,14 @@ export async function runToolLoop({
             tools: iterTools,
             toolChoice: isFinalIteration ? undefined : 'auto',
             onChunk: (c) => {
-              emit({ content: c, thinking: '正在生成...' });
+              emit({ content: c, thinking: '正在生成...', thinkingKind: 'generate' });
               if (onContentDelta) {
                 try { onContentDelta(c); } catch { /* 流式回调失败不拖垮执行 */ }
               }
             },
             onReasoning: (delta, full) => {
               iterReasoning = full;
-              emit({ reasoning: full, thinking: '正在深度思考…' });
+              emit({ reasoning: full, thinking: '正在深度思考…', thinkingKind: 'think' });
               if (onReasoning) {
                 try { onReasoning(delta, full); } catch { /* 思维链回调失败不拖垮执行 */ }
               }
@@ -322,6 +331,65 @@ export async function runToolLoop({
       // 若无 tool_calls，本次即为最终答案
       if (!Array.isArray(data.tool_calls) || data.tool_calls.length === 0) {
         finalContent = data.content || '（无内容返回）';
+
+        // ── v36 长输出完整性：因 max_tokens 截断（finish_reason=length）时自动续写 ──
+        // 续写轮不带工具（纯文本接续），从截断处直接继续，最多 MAX_COMPLETION_CONTINUATIONS 次。
+        // 失败/中止即停，保留已生成的部分（不丢字）。
+        let continuations = 0;
+        let contAsstIdx = -1; // 续写轮的 assistant 全文槽位：原地替换而非追加（防长文重复膨胀对话）
+        let contUserIdx = -1;
+        while (
+          data?.finishReason === 'length'
+          && finalContent
+          && continuations < MAX_COMPLETION_CONTINUATIONS
+          && !controller?.signal?.aborted
+        ) {
+          continuations += 1;
+          emit({ content: finalContent, thinking: `输出较长，正在自动续写（第 ${continuations} 段）...`, thinkingKind: 'generate' });
+          const asstMsg = { role: 'assistant', content: finalContent };
+          const userMsg = {
+            role: 'user',
+            content: '你的上一条回复因长度限制被截断。请从中断处直接继续输出剩余内容：不要重复任何已输出的文字，不要重新开头，直接接着写到完整为止。若内容已自然完结，请回复「（已完结）」。',
+          };
+          if (contAsstIdx >= 0) {
+            conversationMessages[contAsstIdx] = asstMsg;
+            conversationMessages[contUserIdx] = userMsg;
+          } else {
+            conversationMessages.push(asstMsg);
+            contAsstIdx = conversationMessages.length - 1;
+            conversationMessages.push(userMsg);
+            contUserIdx = conversationMessages.length - 1;
+          }
+          try {
+            data = await streamAgentResponse({
+              controller,
+              baseUrl: llmConfig.baseUrl,
+              apiKey: llmConfig.apiKey,
+              model: selectedModel,
+              systemPrompt: fullSystemPrompt,
+              messages: conversationMessages,
+              maxTokens: COMPLETION_MAX_TOKENS,
+              // 刻意不带 tools/toolChoice：续写轮纯文本，物理上无法再调工具
+              onChunk: (c) => {
+                emit({ content: finalContent + c, thinking: '正在生成...', thinkingKind: 'generate' });
+                if (onContentDelta) {
+                  try { onContentDelta(c); } catch { /* 流式回调失败不拖垮执行 */ }
+                }
+              },
+            });
+            usageTotal.turns += 1;
+            usageTotal.prompt_tokens += Number(data.usage?.prompt_tokens) || 0;
+            usageTotal.completion_tokens += Number(data.usage?.completion_tokens) || 0;
+            usageTotal.total_tokens += Number(data.usage?.total_tokens)
+              || (Number(data.usage?.prompt_tokens) || 0) + (Number(data.usage?.completion_tokens) || 0);
+            if (!data.content) break; // 无增量：模型认为已完结，收
+            const piece = data.content;
+            finalContent += piece.replace(/（已完结）\s*$/, ''); // 模型按指令宣告完结时去掉标记
+          } catch (contErr) {
+            if (contErr?.name === 'AbortError') throw contErr; // 用户停止照常上抛
+            break; // 续写失败：保留已有内容（不丢字）
+          }
+        }
         break;
       }
 
@@ -385,7 +453,7 @@ export async function runToolLoop({
         }
       }
 
-      // 先把所有可执行调用都标记为 running（UI 立即展示全部卡片）
+      // 先把所有可执行调用都标记为 running（v35：flushTrace 让工具行带 spinner 实时出现）
       for (const c of calls) {
         toolCallTrace.push({
           id: c.tc.id,
@@ -395,7 +463,7 @@ export async function runToolLoop({
           startedAt: Date.now(),
         });
       }
-      emit({ content: finalContent, thinking: `正在调用 ${calls.length} 个工具...`, toolCallCount: toolCallTrace.length });
+      flushTrace({ content: finalContent, thinking: `正在调用 ${calls.length} 个工具...`, thinkingKind: 'tool', toolCallCount: toolCallTrace.length });
 
       // 分流：需要审批的串行，免审批的并行
       const needsApproval = [];
@@ -461,7 +529,8 @@ export async function runToolLoop({
           traceItem.result = resultText.slice(0, 8000);
           traceItem.completedAt = Date.now();
         }
-        emit({
+        // v35：flushTrace 把刚完成的工具行（spinner→✓ 转变）实时推给前端
+        flushTrace({
           content: finalContent,
           thinking: wasSkipped
             ? `工具 ${c.toolName} 审批未通过，继续推理...`

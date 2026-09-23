@@ -1,5 +1,10 @@
 const STORAGE_KEY = 'intelligenceSnapshots:v1';
 
+// 留存治理（2026-09-22）：快照按天积累（每天一条，含 lanes/briefing 大对象），
+// 此前无 cap——一年几百条会挤爆 localStorage 5MB 配额且写入失败被静默吞掉。
+// 保最近 60 天：跨日演化（G3）只看「前一日」，60 天回看余量充足。
+const MAX_SNAPSHOT_DAYS = 60;
+
 const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
 
 function readState(storage) {
@@ -14,8 +19,17 @@ function readState(storage) {
   }
 }
 
+/** 按 date 倒序只保留最近 MAX_SNAPSHOT_DAYS 天（纯函数，不改入参）。 */
+function pruneSnapshots(state) {
+  const dates = Object.keys(state.snapshots).sort((a, b) => String(b).localeCompare(String(a)));
+  if (dates.length <= MAX_SNAPSHOT_DAYS) return state;
+  const next = { version: state.version, snapshots: {} };
+  for (const date of dates.slice(0, MAX_SNAPSHOT_DAYS)) next.snapshots[date] = state.snapshots[date];
+  return next;
+}
+
 function writeState(storage, state) {
-  storage.setItem(STORAGE_KEY, JSON.stringify(state));
+  storage.setItem(STORAGE_KEY, JSON.stringify(pruneSnapshots(state)));
 }
 
 export function createMemoryStorage(initial = {}) {

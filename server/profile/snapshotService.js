@@ -114,7 +114,7 @@ export async function preheatForUser({ userId, personaSummary = null, today, opt
     '',                                 // search
     [],                                 // disabledSources
     [],                                 // interests (top stories, not personalized)
-    { forceRefresh: options.forceRefresh || false }
+    { forceRefresh: options.forceRefresh || false, userId }
   );
   const newsItems = newsResult.items || [];
 

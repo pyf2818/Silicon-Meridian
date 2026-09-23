@@ -92,4 +92,24 @@ describe('buildSystemPrompt 身份隔离（v26.9）', () => {
     expect(prompt).toContain('你是用户的个人情报分析助手');
     expect(prompt).toContain('我是 SiliconStream 的灵魂。');
   });
+
+  it('工作空间关联文件：系统提示只列目录（v36.2 正文改为随消息携带）', () => {
+    const longBody = 'X'.repeat(5000);
+    const prompt = buildSystemPrompt({
+      ...baseArgs,
+      agent: null,
+      siliconstreamPersona,
+      workspaceFiles: [
+        { name: 'app.jsx', path: 'src/app.jsx', content: longBody },
+        { name: 'huge.md', path: 'docs/huge.md', content: '正文', truncated: true },
+      ],
+    });
+    expect(prompt).toContain('【工作空间关联文件】');
+    expect(prompt).toContain('src/app.jsx');
+    expect(prompt).toContain('docs/huge.md');
+    expect(prompt).toContain('随每条用户消息');
+    expect(prompt).toContain('read_workspace_file');
+    // 正文不再内嵌进系统提示（旧实现每文件仅保留 1200 字符的假上下文）
+    expect(prompt).not.toContain(longBody.slice(0, 1200));
+  });
 });

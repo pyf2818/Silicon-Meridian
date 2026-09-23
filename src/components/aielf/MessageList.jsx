@@ -1,9 +1,8 @@
 // AiElf 消息列表 + 任务面板 + 空状态 + 全局 loading 指示器
 // 从 src/AiElf.jsx 抽离，纯展示组件
 
-import { ElfToolCallCard, TOOL_META, summarizeToolArgs } from './ElfToolCard.jsx';
+import { ActivityStream } from '../aichat/ToolCards.jsx';
 import { renderMarkdown } from './markdown.js';
-import { ICONS } from '../../constants/appConstants.jsx';
 
 export default function MessageList({
   messages,
@@ -61,37 +60,13 @@ export default function MessageList({
             )}
           </div>
           <div className="ai-elf-message-content">
-            {/* Agent 工具调用痕迹：进行中与完成后均展示 */}
-            {msg.toolCalls && msg.toolCalls.length > 0 && (
-              <div className="chat-tool-calls">
-                {msg.thinking && msg.loading && (
-                  <div className="chat-tool-thinking">
-                    <span className="chat-tool-thinking-dot" />
-                    {msg.thinking}
-                  </div>
-                )}
-                {msg.toolCalls.map((tc, idx) => {
-                  const meta = TOOL_META[tc.name] || { label: tc.name, icon: ICONS.settings };
-                  const summary = summarizeToolArgs(tc.name, tc.args);
-                  const isRunning = tc.status === 'running';
-                  const isError = !isRunning && typeof tc.result === 'string' &&
-                    /^(错误：|工具执行失败)/.test(tc.result.trim());
-                  const statusLabel = isRunning ? '执行中…' : (isError ? '出错' : '已完成');
-                  const statusClass = isError ? 'error' : tc.status;
-                  return (
-                    <ElfToolCallCard
-                      key={tc.id || idx}
-                      tc={tc}
-                      meta={meta}
-                      summary={summary}
-                      statusLabel={statusLabel}
-                      statusClass={statusClass}
-                      isError={isError}
-                    />
-                  );
-                })}
-              </div>
-            )}
+            {/* v35：Codex 式过程流（与工作站共用 ActivityStream）——完成后折叠摘要 */}
+            <ActivityStream
+              thinking={msg.loading && !msg.reasoning ? msg.thinking : ''}
+              thinkingKind={msg.thinkingKind || ''}
+              toolCalls={msg.toolCalls}
+              loading={Boolean(msg.loading)}
+            />
             {msg.content && (
               <div
                 className="ai-elf-message-text"

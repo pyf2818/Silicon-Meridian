@@ -134,6 +134,32 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
     );
   };
 
+  // 编辑精选标记：LLM 编辑层每日精选（服务端 ensureDailyEditorRun 惰性产出，≤1 次/天）
+  const renderEditorPick = () => {
+    if (!item.editorPick) return null;
+
+    return (
+      <span
+        className="editor-pick-badge"
+        title={item.editorNote ? `编辑点评：${item.editorNote}` : 'AI 编辑层每日精选'}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          padding: '2px 6px',
+          background: 'rgba(245, 158, 11, 0.12)',
+          border: '1px solid rgba(245, 158, 11, 0.35)',
+          borderRadius: '4px',
+          color: '#f59e0b',
+          fontSize: '10px',
+          fontWeight: '700',
+          letterSpacing: '0.5px'
+        }}
+      >
+        编辑精选
+      </span>
+    );
+  };
+
   return (
     <article
       ref={itemRef}
@@ -176,12 +202,23 @@ function NewsItem({ item, index, viewMode = 'standard', isFocused = false, isBoo
               AI · {item.aiLabel}
             </span>
           )}
+          {renderEditorPick()}
           {item.tags?.slice(0, 3).map(t => <span key={t} className="item-tag">{t}</span>)}
         </div>
         <div className="item-content-row">
           <div className="item-text">
             <h2 className="item-title clickable" onClick={handleTitleClick} title="点击预览原文全文"><span className="item-rank">{index + 1}.</span> {displayTitle}</h2>
             {!isCompact && <p className="item-summary">{displaySummary}</p>}
+            {!isCompact && item.editorPick && item.editorNote && (
+              <div
+                className="editor-note"
+                title={item.editorNote}
+                style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '2px' }}
+              >
+                <span style={{ flexShrink: 0, color: '#f59e0b', fontWeight: '700', fontSize: '10px', letterSpacing: '0.5px' }}>编辑点评</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '11px', color: 'var(--text-muted, #8a8f98)' }}>{item.editorNote}</span>
+              </div>
+            )}
           </div>
           {hasMedia && isCompact && (
             <span

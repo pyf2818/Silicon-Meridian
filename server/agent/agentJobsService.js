@@ -263,6 +263,21 @@ async function executeJob(job) {
       `update agent_jobs set last_run_at = $1, next_run_at = $2, last_result = $3, run_count = run_count + 1 where id = $4`,
       [startedAt, nextRun, JSON.stringify({ status, runId, durationMs }), job.id]
     );
+
+    // 留存治理（2026-09-22）：run 记录每次执行都插一行，无限涨；写入时顺带裁剪
+    // 该 job 只保留最近 100 条（对齐 memoryRetention 的「写入顺带维护、无独立 cron」模式）。
+    // 失败只记日志，不影响本次执行结果落账。
+    try {
+      await pool.query(
+        `delete from agent_job_runs
+         where job_id = $1 and id not in (
+           select id from agent_job_runs where job_id = $1 order by started_at desc limit 100
+         )`,
+        [job.id]
+      );
+    } catch (err) {
+      console.error(`[executeJob] run retention cleanup failed:`, err.message);
+    }
   }
 }
 

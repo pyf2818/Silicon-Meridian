@@ -266,3 +266,68 @@ export function buildCompactionPrompt(region) {
     user: `请压缩以下早前对话（共 ${region?.length || 0} 条消息）：\n\n${dialogue}\n\n摘要：`,
   };
 }
+
+/* ============ 模型窗口感知的预算解析（2026-09-22） ============ */
+// 此前 48k/40k 是硬编码经验值，隐含假设模型窗口 ≥ 64k；换小窗口模型（如 32k 的
+// qwen-max、16k 的 gpt-3.5）时会真溢出（上游 400/broken）。这里按模型名解析窗口、
+// 推导安全预算；识别不了就回退调用方默认值——**未知模型行为与旧版完全一致**，
+// 表只会在「确定比默认小」时收紧预算，永远不会放大。
+
+/** 常见模型家族的上下文窗口（tokens）。保守优先：不确定的取家族最小主流值——
+ *  预算算小了只是早一点压缩摘要（lossy 但可用），算大了是真的请求失败。 */
+const MODEL_CONTEXT_WINDOWS = [
+  // 名字里自带窗口的厂商（moonshot-v1-8k/32k/128k、qwen-*-128k 等）优先走正则，不进本表
+  [/^claude/i, 200_000],
+  [/^(gpt-4o|gpt-4\.1|gpt-4-turbo|o[134]|chatgpt)/i, 128_000],
+  [/^gpt-3\.5/i, 16_000],
+  [/^gemini/i, 128_000],
+  [/^deepseek/i, 64_000],
+  [/^qwen/i, 32_000],
+  [/^(glm|chatglm)/i, 128_000],
+  [/^(moonshot|kimi)/i, 128_000],
+  [/^doubao/i, 128_000],
+  [/^grok/i, 128_000],
+  [/^(llama|meta-llama)/i, 32_000],
+  [/^(mistral|minimax)/i, 128_000],
+];
+
+/** 从模型名直接解析显式窗口（如 moonshot-v1-128k → 128000）；解析不了返回 null。 */
+function parseExplicitWindow(modelId) {
+  const m = /-(\d{1,3})k\b/i.exec(String(modelId || ''));
+  if (!m) return null;
+  const k = Number(m[1]);
+  return k >= 4 && k <= 2048 ? k * 1000 : null;
+}
+
+export function detectModelContextWindow(modelId) {
+  const explicit = parseExplicitWindow(modelId);
+  if (explicit) return explicit;
+  for (const [pattern, window] of MODEL_CONTEXT_WINDOWS) {
+    if (pattern.test(String(modelId || ''))) return window;
+  }
+  return null;
+}
+
+/** 输出预留：COMPLETION_MAX_TOKENS（见 constants/agentLoop.js）+ system prompt/工具 schema 粗估 */
+const BUDGET_OUTPUT_HEADROOM = 8_000;
+const BUDGET_OVERHEAD = 4_000;
+/** 预算下限：低于这个值对话已经没法进行，宁可接受小窗口模型的体验受限 */
+const BUDGET_FLOOR = 2_000;
+/** tokenizer 估算误差 + 各 provider 计数差异的安全系数 */
+const BUDGET_SAFETY = 0.85;
+
+/**
+ * 按模型解析上下文 token 预算。
+ * 规则：budget = clamp(floor(window × 0.85) − 输出预留, 下限, fallback)。
+ * - 窗口 ≥ 默认值（claude/gpt-4o/gemini…）：结果 === fallback，行为与旧版一致
+ * - 小窗口模型（qwen-max 32k、gpt-3.5 16k…）：预算收紧到不炸
+ * - 未知模型：直接返回 fallback（识别不了宁可不动）
+ * @param {string} [modelId] llmConfig.selectedModel
+ * @param {number} fallback 调用方默认预算（48k/40k）
+ */
+export function resolveContextBudget(modelId, fallback) {
+  const window = detectModelContextWindow(modelId);
+  if (!window || !Number.isFinite(fallback) || fallback <= 0) return fallback;
+  const usable = Math.floor(window * BUDGET_SAFETY) - BUDGET_OUTPUT_HEADROOM - BUDGET_OVERHEAD;
+  return Math.min(fallback, Math.max(BUDGET_FLOOR, usable));
+}

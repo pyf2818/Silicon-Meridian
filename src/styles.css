@@ -4686,9 +4686,13 @@ body {
 .lightbox-counter { color: rgba(255, 255, 255, .6); font-size: 12px; font-family: var(--font-mono); margin-top: 6px; }
 
 /* Scrollbar */
+/* v36：custom-scrollbar 与全局滚动条同款显隐——默认隐形、悬停容器淡入 */
+.custom-scrollbar { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.custom-scrollbar:hover { scrollbar-color: var(--scrollbar-thumb, color-mix(in srgb, var(--accent-cyan) 30%, transparent)) transparent; }
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: var(--bg-hover); border-radius: 3px; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-active); border-radius: 3px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; transition: background-color .18s ease; }
+.custom-scrollbar:hover::-webkit-scrollbar-thumb { background: var(--border-active); border-radius: 3px; }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--accent-cyan); }
 
 /* Back to Top */
@@ -7264,25 +7268,56 @@ body {
 }
 .repo-drawer-stock-link:hover { text-decoration: underline; }
 
-/* ===== v31c：header AI 工具下拉（收纳诊断/早报/研究工具） ===== */
-.stock-ai-menu {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
-  width: 230px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
-  border: 1px solid var(--border-color); border-radius: 12px;
-  background: var(--bg-primary); box-shadow: 0 14px 36px rgba(0,0,0,.25);
-  animation: aiMenuIn .16s ease;
+/* ===== v36.3：header AI 工具下拉已移除（顶部只留「AI 早报」直开按钮，
+   AI 诊断入口迁至主图卡右上角 .stock-diag-entry）——旧 .stock-ai-menu 样式一并删除 ===== */
+
+/* v36.3：AI 诊断入口（主图卡头部右上角，强调样式引导点击） */
+.stock-diag-entry {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  margin-left: 12px; padding: 6px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  color: var(--accent-cyan); font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
-@keyframes aiMenuIn { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
-.stock-ai-menu button {
-  display: flex; flex-direction: column; gap: 2px; padding: 9px 11px;
-  border: 0; border-radius: 9px; background: transparent; text-align: left; cursor: pointer;
+.stock-diag-entry svg { width: 14px; height: 14px; flex: none; }
+.stock-diag-entry:hover {
+  background: color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-cyan) 12%, transparent);
 }
-.stock-ai-menu button:hover { background: color-mix(in srgb, var(--accent-cyan) 9%, transparent); }
-/* v31d：ICON svg 无固有尺寸，flex 中会被拉伸成大块——菜单内全局钉死尺寸 */
-.stock-ai-menu button svg { width: 14px; height: 14px; flex: none; display: inline-block; }
-.stock-ai-menu button b { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-primary); }
-.stock-ai-menu button b svg { width: 14px; height: 14px; color: var(--accent-cyan); }
-.stock-ai-menu button small { font-size: 10.5px; color: var(--text-muted); padding-left: 21px; }
+
+/* v36.3：历史只读视图快照说明 */
+.stock-diag-snapshot-note {
+  margin: 8px 0 0; font-size: 11px; color: var(--text-muted);
+  padding: 6px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
+}
+
+/* v36.3：AI 早报个股数据图卡 */
+.stock-briefing-cards { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--border-color); }
+.stock-briefing-cards-title { font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+.stock-briefing-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.stock-briefing-card {
+  border: 1px solid var(--border-color); border-radius: 10px;
+  background: var(--bg-secondary); padding: 9px 11px 10px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.stock-bcard-head { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.stock-bcard-head strong { font-size: 13px; color: var(--text-primary); }
+.stock-bcard-code { font-size: 10.5px; color: var(--text-muted); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.stock-bcard-pct { margin-left: auto; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.stock-bcard-pct.up { color: var(--signal-critical); }
+.stock-bcard-pct.down { color: var(--signal-positive); }
+.stock-bcard-spark { width: 100%; height: auto; display: block; }
+.stock-bcard-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; }
+.stock-bcard-metrics div { display: flex; justify-content: space-between; gap: 6px; font-size: 10.5px; }
+.stock-bcard-metrics span { color: var(--text-muted); flex: none; }
+.stock-bcard-metrics b { color: var(--text-primary); font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stock-briefing-h5 {
+  margin: 10px 0 2px; font-size: 12.5px; font-weight: 700; color: var(--accent-cyan);
+}
 
 /* v31c：研究工具白话说明条 */
 .stock-research-guide {
@@ -12315,7 +12350,9 @@ body {
 .chat-stopped-mark {
   margin-top: 8px;
   padding: 3px 8px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 10px;
   color: var(--text-muted);
   background: var(--bg-secondary, rgba(127, 127, 127, .1));
@@ -12323,6 +12360,24 @@ body {
   border: 1px dashed var(--border-color);
   font-style: italic;
 }
+
+/* v36：中断恢复「继续任务」按钮 */
+.chat-resume-btn {
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+  color: var(--accent-cyan);
+  font-size: 10px;
+  font-style: normal;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color .12s ease, border-color .12s ease;
+}
+.chat-resume-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+  border-color: var(--accent-cyan);
+}
+.chat-resume-btn:disabled { opacity: .45; cursor: not-allowed; }
 
 /* token 用量标记（agent loop 终答后展示，成本可见化） */
 .chat-usage-mark {
@@ -12637,35 +12692,26 @@ body {
   50% { opacity: 1; transform: scale(1.15); }
 }
 
-/* ===== v33：agent 步骤流——每步独立卡片 + 序号徽章 + 展开详情 ===== */
-.chat-tool-calls { position: relative; gap: 8px; padding-left: 14px; }
-/* 左侧步骤连接线：贯穿所有卡片，形成"一步一步"的序列感 */
+/* v35.1：活动行阶段色——思考=violet 脉冲 / 生成=cyan 脉冲 / 调工具=amber 转圈 */
+.chat-tool-thinking.kind-think .chat-tool-thinking-dot { background: var(--accent-violet); }
+.chat-tool-thinking.kind-generate .chat-tool-thinking-dot { background: var(--accent-cyan); }
+.chat-tool-thinking.kind-tool .chat-tool-thinking-dot {
+  width: 9px; height: 9px; background: transparent;
+  border: 1.5px solid transparent; border-top-color: var(--accent-amber);
+  border-radius: 50%; animation: toolMarkSpin .9s linear infinite;
+}
+
+/* ===== v35：Codex 式过程流——工具调用弱化为终端日志行，答案区保持沉淀 ===== */
+.chat-tool-calls { position: relative; gap: 2px; padding-left: 16px; }
+/* 左侧流程竖线：细、淡，只提供「顺序流」暗示 */
 .chat-tool-calls::before {
   content: '';
-  position: absolute; left: 11px; top: 12px; bottom: 10px;
-  width: 2px; border-radius: 1px;
+  position: absolute; left: 8px; top: 10px; bottom: 8px;
+  width: 1px;
   background: linear-gradient(to bottom,
-    color-mix(in srgb, var(--accent-cyan) 45%, transparent),
-    color-mix(in srgb, var(--border-subtle, rgba(128,128,128,.3)) 80%, transparent));
+    color-mix(in srgb, var(--accent-cyan) 30%, transparent),
+    color-mix(in srgb, var(--border-subtle, rgba(128,128,128,.3)) 70%, transparent));
 }
-.tool-call-step-badge {
-  width: 18px; height: 18px; flex: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 50%; font-size: 10px; font-weight: 700;
-  background: color-mix(in srgb, var(--accent-cyan) 15%, transparent);
-  color: var(--accent-cyan);
-  position: relative; z-index: 1;
-  margin-left: -4px;
-}
-.tool-call-step-badge.running { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #f59e0b; }
-.tool-call-step-spinner {
-  width: 9px; height: 9px; border-radius: 50%;
-  border: 2px solid transparent; border-top-color: currentColor;
-  animation: toolStepSpin .7s linear infinite;
-}
-@keyframes toolStepSpin { to { transform: rotate(360deg); } }
-.tool-call.is-expanded { border-color: color-mix(in srgb, var(--accent-cyan) 40%, transparent); }
-.tool-call-header { cursor: pointer; user-select: none; }
 .tool-call-chevron { margin-left: auto; transition: transform .15s ease; }
 .tool-call-copy {
   margin-left: auto; padding: 2px 8px; border-radius: 5px; cursor: pointer; font-size: 10px;
@@ -12704,13 +12750,15 @@ body {
   white-space: pre-wrap; word-break: break-word;
 }
 
+/* 工具调用「日志行」：透明底、单行紧凑，去卡片化 */
 .tool-call {
-  border: 1px solid var(--border-subtle, rgba(128, 128, 128, .25));
-  border-radius: 8px;
-  background: var(--bg-elevated, rgba(127, 127, 127, .06));
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   overflow: hidden;
-  transition: border-color .2s, background .2s;
+  transition: background .15s;
 }
+.tool-call.is-expanded { background: color-mix(in srgb, var(--accent-cyan) 5%, transparent); }
 
 .approval-cards-wrap {
   display: flex;
@@ -12859,28 +12907,28 @@ body {
   background: rgba(239, 68, 68, .14);
 }
 
-.tool-call-running {
-  border-color: var(--accent-cyan, #06b6d4);
-  background: rgba(6, 182, 212, .06);
-}
+/* 状态变体：只染状态符颜色，行本体保持安静 */
+.tool-call-running .tool-call-mark { color: var(--accent-cyan, #06b6d4); }
+.tool-call-done .tool-call-mark { color: var(--accent-green, #10b981); }
+.tool-call-error .tool-call-mark { color: var(--accent-red, #ef4444); }
+.tool-call-skipped .tool-call-mark { color: var(--text-muted, #888); }
 
-.tool-call-done {
-  border-color: var(--border-subtle, rgba(128, 128, 128, .25));
-}
-
+/* Codex 式单行日志头 */
 .tool-call-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 3px 6px;
   cursor: pointer;
   user-select: none;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.6;
   outline: none;
+  border-radius: 6px;
 }
 
 .tool-call-header:hover {
-  background: var(--bg-hover, rgba(127, 127, 127, .1));
+  background: var(--bg-hover, rgba(127, 127, 127, .08));
 }
 
 .tool-call-header:focus-visible {
@@ -12888,10 +12936,49 @@ body {
   outline-offset: -2px;
 }
 
-.tool-call-icon {
-  font-size: 14px;
-  flex-shrink: 0;
+/* 状态符：等宽单字符位，running 时为 spinner */
+.tool-call-mark {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
+
+.tool-call-mark-spinner {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  border-top-color: currentColor;
+  animation: toolMarkSpin .7s linear infinite;
+}
+
+@keyframes toolMarkSpin { to { transform: rotate(360deg); } }
+
+/* v35.1：工具类型标志——单字符类型符 + 语义色调（检索 cyan/联网 violet/写入 amber/行情 rose/协作 green） */
+.tool-call-type-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  font-size: 10px;
+  line-height: 1;
+  border-radius: 4px;
+  color: var(--tone-mark-fg, var(--text-muted));
+  background: var(--tone-mark-bg, rgba(127, 127, 127, .12));
+}
+.tool-call-type-mark.tone-cyan   { --tone-mark-fg: var(--accent-cyan);   --tone-mark-bg: color-mix(in srgb, var(--accent-cyan) 14%, transparent); }
+.tool-call-type-mark.tone-violet { --tone-mark-fg: var(--accent-violet); --tone-mark-bg: color-mix(in srgb, var(--accent-violet) 16%, transparent); }
+.tool-call-type-mark.tone-amber  { --tone-mark-fg: var(--accent-amber);  --tone-mark-bg: color-mix(in srgb, var(--accent-amber) 14%, transparent); }
+.tool-call-type-mark.tone-rose   { --tone-mark-fg: var(--accent-red, #ef4444); --tone-mark-bg: color-mix(in srgb, var(--accent-red, #ef4444) 12%, transparent); }
+.tool-call-type-mark.tone-green  { --tone-mark-fg: var(--accent-green);  --tone-mark-bg: color-mix(in srgb, var(--accent-green) 14%, transparent); }
 
 .tool-call-name {
   font-weight: 600;
@@ -12902,7 +12989,7 @@ body {
 .tool-call-arg-summary {
   color: var(--text-muted);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: 11px;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -12910,27 +12997,19 @@ body {
   min-width: 0;
 }
 
-.tool-call-status {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
+/* 耗时：完成后出现在行尾（等宽小字） */
+.tool-call-duration {
   flex-shrink: 0;
-  font-weight: 500;
-}
-
-.tool-call-status-running {
-  color: var(--accent-cyan, #06b6d4);
-  background: rgba(6, 182, 212, .12);
-}
-
-.tool-call-status-done {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
   color: var(--text-muted);
-  background: var(--bg-elevated, rgba(127, 127, 127, .1));
+  opacity: .85;
 }
 
 .tool-call-chevron {
   font-size: 10px;
   color: var(--text-muted);
+  opacity: .6;
   transition: transform .2s;
   flex-shrink: 0;
 }
@@ -12939,13 +13018,82 @@ body {
   transform: rotate(180deg);
 }
 
+/* 展开详情：终端块 */
 .tool-call-body {
   padding: 8px 10px 10px;
-  border-top: 1px solid var(--border-subtle, rgba(128, 128, 128, .2));
+  margin: 2px 0 4px;
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, .18));
+  border-radius: 7px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--bg-secondary, rgba(0, 0, 0, .04));
+  background: color-mix(in srgb, var(--bg-secondary, rgba(0, 0, 0, .04)) 85%, transparent);
+}
+
+/* ===== v35：过程流折叠摘要（Codex「Worked for Xs」行） ===== */
+.chat-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed var(--border-subtle, rgba(128, 128, 128, .25));
+}
+
+.chat-activity-summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background .15s, color .15s;
+}
+
+.chat-activity-summary:hover {
+  background: var(--bg-hover, rgba(127, 127, 127, .08));
+  color: var(--text-primary);
+}
+
+.chat-activity-summary-mark {
+  font-size: 10px;
+  color: var(--accent-cyan, #06b6d4);
+  flex-shrink: 0;
+}
+
+.chat-activity-summary-text {
+  font-weight: 500;
+}
+
+.chat-activity-summary-hint {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: .55;
+  flex-shrink: 0;
+}
+
+.chat-activity-collapse {
+  align-self: flex-start;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  opacity: .7;
+  transition: opacity .15s, color .15s;
+}
+
+.chat-activity-collapse:hover {
+  opacity: 1;
+  color: var(--text-primary);
 }
 
 /* 子代理执行进度区（spawn_subagent 卡片内） */
@@ -13136,6 +13284,93 @@ body {
   width: 12px;
   height: 12px;
   display: block;
+}
+
+/* v36：附件 chip 状态（缩略图/图标 + 上传状态） */
+.chat-attachment-thumb {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  display: block;
+}
+.chat-attachment-fileicon { color: var(--text-muted); display: inline-flex; }
+.chat-attachment-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-attachment-state { font-size: 10px; flex-shrink: 0; }
+.chat-attachment-state.st-uploading { color: var(--accent-amber); }
+.chat-attachment-state.st-ready { color: var(--accent-green); }
+.chat-attachment-state.st-error { color: var(--accent-red, #ef4444); }
+.chat-attachment-chip.is-error { border-color: color-mix(in srgb, var(--accent-red, #ef4444) 45%, transparent); }
+
+/* v36：用户消息气泡内的附件区（图片缩略图 grid / 文件卡片） */
+.chat-msg-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.chat-att-image-wrap { display: flex; }
+.chat-att-image {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  cursor: zoom-in;
+  display: block;
+  transition: border-color .12s ease;
+}
+.chat-att-image:hover { border-color: var(--accent-cyan); }
+.chat-att-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-cyan) 7%, transparent);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 12px;
+  max-width: 280px;
+}
+.chat-att-file:hover { border-color: var(--accent-cyan); }
+.chat-att-file-icon { display: inline-flex; color: var(--accent-cyan); flex-shrink: 0; }
+.chat-att-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.chat-att-file-size { color: var(--text-muted); font-size: 10.5px; flex-shrink: 0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+/* v36.2 空间文件卡：本地文件无下载链接，虚线边框 + 默认光标区分可下载附件 */
+.chat-att-file-ws { border-style: dashed; cursor: default; }
+.chat-att-file-ws:hover { border-color: var(--border-color); }
+
+/* v36：图片悬停预览小窗（portal 到 body，fixed 定位） */
+.chat-img-preview-pop {
+  position: fixed;
+  z-index: 1300;
+  max-width: 360px;
+  max-height: 360px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--bg-primary, #111);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 40%, transparent);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, .45);
+  pointer-events: auto;
+}
+.chat-img-preview-pop img {
+  display: block;
+  max-width: 348px;
+  max-height: 320px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+.chat-img-preview-name {
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-composer-top {
@@ -14805,7 +15040,16 @@ body {
 .stock-modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); backdrop-filter: blur(4px); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn .2s ease; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .stock-modal { background: var(--bg-card-solid); border: var(--panel-border); border-radius: 14px; max-width: 560px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0, 0, 0, .4); }
-.stock-briefing-modal { max-width: 820px; }
+/* v36.3：AI 早报改为右侧抽屉（语言对齐 stock-diag-drawer） */
+.stock-briefing-overlay { position: fixed; inset: 0; z-index: 900; background: rgba(0,0,0,.45); animation: fadeIn .18s ease; }
+.stock-briefing-drawer {
+  position: absolute; top: 0; right: 0; height: 100%; width: min(640px, 94vw);
+  background: var(--bg-primary); border-left: var(--panel-border);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: -12px 0 40px rgba(0,0,0,.35);
+  animation: slideInRight .22s ease;
+}
+@media (max-width: 700px) { .stock-briefing-drawer { width: 100vw; } }
 .stock-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
 .stock-modal-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: var(--space-sm); }
 .stock-modal-head h3 svg { width: 16px; height: 16px; color: var(--accent-amber); }
@@ -23626,7 +23870,10 @@ body {
    Webkit + Firefox 两边规则都走同一套 --scrollbar-* token。
 ============ */
 
-/* Webkit 浏览器（Chrome / Safari / Edge / 国内双核）*/
+/* Webkit 浏览器（Chrome / Safari / Edge / 国内双核）
+   v36 交互升级：默认 thumb 全透明（滚动条隐形、占位不变避免布局抖动），
+   悬停滚动容器时淡入细条，拖拽/悬停 thumb 时加深。
+   （:hover 会沿祖先链命中滚动容器——鼠标在容器内子元素上时同样生效） */
 ::-webkit-scrollbar {
   width: var(--scrollbar-size, 8px);
   height: var(--scrollbar-size, 8px);
@@ -23635,13 +23882,28 @@ body {
   background: var(--scrollbar-track, transparent);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb, color-mix(in srgb, var(--accent-cyan) 35%, transparent));
+  background: transparent;
   border-radius: 4px;
-  border: 2px solid transparent;
+  border: 2.5px solid transparent;
+  background-clip: padding-box;
+  transition: background-color .18s ease;
+}
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, color-mix(in srgb, var(--accent-cyan) 30%, transparent));
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover {
+::-webkit-scrollbar-thumb:hover,
+*:hover::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover, color-mix(in srgb, var(--accent-cyan) 58%, transparent));
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-hover, color-mix(in srgb, var(--accent-cyan) 70%, transparent));
+  background-clip: padding-box;
+}
+/* 滚动条在容器获得键盘焦点（Tab 进入）时也可见，保证键盘可用性 */
+*:focus-within::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, color-mix(in srgb, var(--accent-cyan) 30%, transparent));
   background-clip: padding-box;
 }
 
@@ -23659,10 +23921,13 @@ body {
   border-width: 1.5px;
 }
 
-/* Firefox */
+/* Firefox：默认隐形，悬停容器淡入（scrollbar-color 随继承生效） */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb, color-mix(in srgb, var(--accent-cyan) 35%, transparent)) var(--scrollbar-track, transparent);
+  scrollbar-color: transparent transparent;
+}
+*:hover {
+  scrollbar-color: var(--scrollbar-thumb, color-mix(in srgb, var(--accent-cyan) 30%, transparent)) var(--scrollbar-track, transparent);
 }
 *::-moz-scrollbar-thumb:hover {
   scrollbar-color: var(--scrollbar-thumb-hover, color-mix(in srgb, var(--accent-cyan) 58%, transparent)) var(--scrollbar-track, transparent);

@@ -268,7 +268,15 @@ export function newsPlugin() {
           const interestsParam = requestUrl.searchParams.get('interests') || '';
           const interests = interestsParam ? interestsParam.split(',').filter(Boolean) : [];
           const forceRefresh = requestUrl.searchParams.get('forceRefresh') === '1';
-          const payload = await getNews(blocked, customSources, page, pageSize, search, disabledSources, interests, { forceRefresh });
+          // 可选认证：登录用户 → 编辑层可用其设置页模型（env 未配置时）；匿名/认证不可用 → 仅 env 配置生效
+          let newsUserId = null;
+          try {
+            const { getAuthService } = await import('../auth/authService.js');
+            const { parseCookies } = await import('../http/httpUtils.js');
+            const user = await (await getAuthService()).authenticate(parseCookies(req).meridian_session || '');
+            if (user?.id) newsUserId = user.id;
+          } catch { /* 认证不可用时匿名继续 */ }
+          const payload = await getNews(blocked, customSources, page, pageSize, search, disabledSources, interests, { forceRefresh, userId: newsUserId });
           return sendJson(res, payload);
         }
 

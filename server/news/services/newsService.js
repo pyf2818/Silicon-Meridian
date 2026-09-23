@@ -4,6 +4,7 @@ import { applyBlockedWords, normalizeUrl } from '../utils/textProcessing.js';
 import { compareByRecency } from '../utils/dateUtils.js';
 import { rankItems } from '../../ranking/ranker.js';
 import { recordBlockedHits, recordCorroborations, recordTopHits } from '../../ranking/sourceStats.js';
+import { ensureDailyEditorRun, applyEditorVerdicts } from '../../intelligence/editorService.js';
 import { fetchSource } from './externalFetchers.js';
 import { fetchApiSource } from './apiFetchers.js';
 import {
@@ -496,6 +497,12 @@ export async function getNews(blocked, customSources, page = 0, pageSize = PAGE_
   const start = page * pageSize;
   const end = start + pageSize;
   const pagedItems = filteredItems.slice(start, end);
+
+  // LLM 编辑层（2026-09-22）：fire-and-forget 惰性触发（每日 ≤1 次，未配置即关闭），
+  // 已算出的批注同步合并进当前页（精选标记 + 一句话编辑点评）。读路径永不等待 LLM。
+  // LLM 编辑层（fire-and-forget，读路径零等待）：userId 用于 env 未配置时回退到用户自己的模型
+  ensureDailyEditorRun(filteredItems.slice(0, 30), { userId: options?.userId || null });
+  applyEditorVerdicts(pagedItems);
 
   return {
     // 与 /api/intelligence/* 对齐：显式带 ok。此前该 payload 没有 ok 字段，

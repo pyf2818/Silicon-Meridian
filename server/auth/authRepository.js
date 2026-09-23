@@ -26,6 +26,11 @@ export function createAuthRepository(db = getPool()) {
     },
     async createSession({ userId, tokenHash, expiresAt }) {
       await db.query('insert into sessions(user_id, token_hash, expires_at) values ($1, $2, $3)', [userId, tokenHash, expiresAt]);
+      // 留存治理（2026-09-22）：过期 session 行读取时被过滤但永不物理删除，无限涨。
+      // 登录/注册低频触发，顺带清理（失败不影响发 session——读取侧已有过期过滤兜底）。
+      try {
+        await db.query('delete from sessions where expires_at < now()');
+      } catch { /* 清理失败容忍：功能正确性由 findSession 的过期校验保证 */ }
     },
     async findSession(tokenHash) {
       const { rows } = await db.query(

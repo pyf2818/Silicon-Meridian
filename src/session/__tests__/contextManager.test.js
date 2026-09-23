@@ -9,6 +9,7 @@ import {
   buildCompactionPrompt,
   packConversation,
   PACK_DEFAULTS,
+  resolveContextBudget,
 } from '../contextManager.js';
 
 // ---------------------------------------------------------------------------
@@ -375,5 +376,47 @@ describe('buildContext 摘要窗口回归', () => {
       keepRecent: 1, cutMin: 1, generateSummary: async () => '',
     });
     expect(r.summaryText).not.toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveContextBudget：预算随模型窗口自适应（2026-09-22）
+// 规则：budget = clamp(floor(window × 0.85) − 12000, 2000, fallback)
+// 大窗口模型 === fallback（行为与旧版一致）；小窗口收紧；未知模型原样返回 fallback。
+// ---------------------------------------------------------------------------
+describe('resolveContextBudget 模型窗口自适应', () => {
+  it('大窗口 / 未知模型 === fallback，行为不变', () => {
+    expect(resolveContextBudget('claude-sonnet-4', 48_000)).toBe(48_000);
+    expect(resolveContextBudget('gpt-4o-mini', 40_000)).toBe(40_000);
+    expect(resolveContextBudget('gemini-2.5-pro', 48_000)).toBe(48_000);
+    expect(resolveContextBudget('some-unknown-model-v9', 48_000)).toBe(48_000);
+    expect(resolveContextBudget(undefined, 40_000)).toBe(40_000);
+  });
+
+  it('小窗口模型收紧预算（qwen 32k → 15200；deepseek 64k 大于 fallback 时不放大）', () => {
+    // 32000 × 0.85 − 12000 = 15200
+    expect(resolveContextBudget('qwen-max', 48_000)).toBe(15_200);
+    // 64000 × 0.85 − 12000 = 42400 → 与 48k 取 min = 42400（收紧但不放大到 48k）
+    expect(resolveContextBudget('deepseek-chat', 48_000)).toBe(42_400);
+    // deepseek 对 40k 的精灵路径：min(42400, 40000) = 40000（不变）
+    expect(resolveContextBudget('deepseek-chat', 40_000)).toBe(40_000);
+  });
+
+  it('名字自带窗口的模型直接解析（moonshot-v1-8k → 6400 触底 2000 下限）', () => {
+    // 8000 × 0.85 − 12000 < 0 → 下限 2000
+    expect(resolveContextBudget('moonshot-v1-8k', 48_000)).toBe(2_000);
+    // 32000 × 0.85 − 12000 = 15200
+    expect(resolveContextBudget('moonshot-v1-32k', 48_000)).toBe(15_200);
+    expect(resolveContextBudget('moonshot-v1-128k', 48_000)).toBe(48_000);
+  });
+
+  it('gpt-3.5 16k 收紧到 1600 触下限 2000（小窗口模型体验受限但不炸请求）', () => {
+    expect(resolveContextBudget('gpt-3.5-turbo', 48_000)).toBe(2_000);
+  });
+
+  it('非法输入防御：fallback 非正数 / 窗口解析异常时安全回落', () => {
+    expect(resolveContextBudget('claude-sonnet-4', NaN)).toBeNaN();
+    expect(resolveContextBudget('claude-sonnet-4', -1)).toBe(-1);
+    expect(resolveContextBudget('claude-sonnet-4', 0)).toBe(0);
   });
 });

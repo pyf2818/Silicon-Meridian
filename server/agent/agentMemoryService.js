@@ -1,28 +1,58 @@
 // agentMemoryService.js - 智能体跨会话记忆与用户画像深化服务
 // 提供 agent_memories 表的 CRUD + 用户画像 persona_summary 读写
+// 留存治理（2026-09-22）：cap 500/user + agent_insight TTL 90d + 读取过滤过期，
+// 策略与纯函数见 memoryRetention.js（双版共用口径）。
 import { getPool } from '../db/client.js';
 import { isDevMemoryMode } from '../db/devMemoryStore.js';
 import * as memoryAgent from './memoryAgentMemoryService.js';
+import { AGENT_MEMORY_CAP, resolveExpiresAt, mergePersonaSummaryFields } from './memoryRetention.js';
 
 /* ============ Agent 记忆 CRUD ============ */
+
+/* ============ 留存治理（写入时顺带维护，无独立 cron） ============ */
+
+/**
+ * 写入后的留存维护：① 物理清理全表过期条目；② 当前 user 超 cap 时按
+ * (weight asc, created_at asc, id asc) 淘汰。失败只记日志——治理是最终一致，
+ * 绝不让一次正常写入因为清理失败而报错。
+ */
+async function maintainAgentMemories(pool, userId) {
+  try {
+    await pool.query('delete from agent_memories where expires_at is not null and expires_at <= now()');
+    await pool.query(
+      `delete from agent_memories where user_id = $1 and id in (
+         select id from (
+           select id, row_number() over (order by weight asc, created_at asc, id asc) as rn
+           from agent_memories where user_id = $1
+         ) t where rn > $2
+       )`,
+      [userId, AGENT_MEMORY_CAP]
+    );
+  } catch (err) {
+    console.error('[agentMemory] retention maintenance failed:', err.message);
+  }
+}
 
 /**
  * 写入一条 agent 记忆
  * @param {Object} params - { userId, agentId, sessionId, memoryType, content, evidence, weight, expiresAt }
+ *   expiresAt 未显式传入时：agent_insight 默认 90 天后过期，其余类型永不过期。
  * @returns {Promise<string>} 新建记忆 id
  */
-export async function addAgentMemory({ userId, agentId, sessionId = null, memoryType, content, evidence = [], weight = 1, expiresAt = null }) {
+export async function addAgentMemory({ userId, agentId, sessionId = null, memoryType, content, evidence = [], weight = 1, expiresAt }) {
   const pool = getPool();
   const validTypes = ['user_habit', 'user_thought', 'user_trait', 'user_need', 'agent_insight'];
   if (!validTypes.includes(memoryType)) {
     throw new Error(`invalid memory_type: ${memoryType}, must be one of ${validTypes.join('/')}`);
   }
   if (isDevMemoryMode()) return memoryAgent.addAgentMemory({ userId, agentId, sessionId, memoryType, content, evidence, weight, expiresAt });
+  const resolvedExpiresAt = resolveExpiresAt(memoryType, expiresAt);
   const result = await pool.query(
     `insert into agent_memories (user_id, agent_id, session_id, memory_type, content, evidence, weight, expires_at)
      values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
-    [userId, agentId, sessionId, memoryType, content, JSON.stringify(evidence), Math.max(1, Math.min(10, weight)), expiresAt]
+    [userId, agentId, sessionId, memoryType, content, JSON.stringify(evidence), Math.max(1, Math.min(10, weight)), resolvedExpiresAt]
   );
+  await maintainAgentMemories(pool, userId);
   return result.rows[0]?.id;
 }
 
@@ -41,7 +71,7 @@ export async function addAgentMemoriesBatch(userId, memories) {
       const r = await client.query(
         `insert into agent_memories (user_id, agent_id, session_id, memory_type, content, evidence, weight, expires_at)
          values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
-        [userId, m.agentId, m.sessionId || null, m.memoryType, m.content, JSON.stringify(m.evidence || []), Math.max(1, Math.min(10, m.weight || 1)), m.expiresAt || null]
+        [userId, m.agentId, m.sessionId || null, m.memoryType, m.content, JSON.stringify(m.evidence || []), Math.max(1, Math.min(10, m.weight || 1)), resolveExpiresAt(m.memoryType, m.expiresAt)]
       );
       ids.push(r.rows[0]?.id);
     }
@@ -52,6 +82,8 @@ export async function addAgentMemoriesBatch(userId, memories) {
   } finally {
     client.release();
   }
+  // 批量只在提交后做一次维护（逐条做会重复跑同样的清理）
+  await maintainAgentMemories(pool, userId);
   return ids;
 }
 
@@ -67,7 +99,8 @@ export async function getAgentMemories(userId, options = {}) {
   const offset = Math.max(options.offset || 0, 0);
 
   let sql = `select id, agent_id, session_id, memory_type, content, evidence, weight, created_at, expires_at
-             from agent_memories where user_id = $1`;
+             from agent_memories
+             where user_id = $1 and (expires_at is null or expires_at > now())`;
   const params = [userId];
   let idx = 2;
   if (agentId) { sql += ` and agent_id = $${idx++}`; params.push(agentId); }
@@ -100,7 +133,7 @@ export async function searchAgentMemories(userId, query, options = {}) {
   const result = await pool.query(
     `select id, agent_id, session_id, memory_type, content, evidence, weight, created_at
      from agent_memories
-     where user_id = $1 and lower(content) like $2
+     where user_id = $1 and (expires_at is null or expires_at > now()) and lower(content) like $2
      order by weight desc, created_at desc
      limit $3`,
     [userId, pattern, limit]
@@ -193,10 +226,11 @@ export async function mergePersonaSummary(userId, patch) {
     const current = cur.rows[0]?.persona_summary || {};
 
     // 2. 合并字段；统一时间戳字段名（清理 updatedAt）
+    // 数组字段（habits/traits/needs/thoughts/preferences）走「新在前合并去重 + cap 20」，
+    // 修复此前浅覆盖导致旧画像被每轮 patch 无声抹掉的问题（治理口径见 memoryRetention.js）
     const now = new Date().toISOString();
     const next = {
-      ...current,
-      ...patch,
+      ...mergePersonaSummaryFields(current, patch),
       lastEvolvedAt: patch.lastEvolvedAt || now,
       lastUpdated: now,
       updatedAt: undefined,  // JSON.stringify 会忽略 undefined，清理遗留字段

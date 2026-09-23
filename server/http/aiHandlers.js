@@ -1,5 +1,19 @@
 import { allowPrivateAiNetwork, safeExternalFetch } from '../security/urlSafety.js';
 import { readJsonBody, sendJsonResponse } from './httpUtils.js';
+import { appendFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+// v36.2 幽灵"0/O"排查工具：AI_SSE_TRACE=1 时把上游 SSE 原始帧落盘，
+// 用户侧复现一次即可拿到网关转发的第一手证据（默认关闭，零开销）。
+const SSE_TRACE = process.env.AI_SSE_TRACE === '1';
+const SSE_TRACE_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.workbuddy', 'sse-trace.log');
+function traceSseFrame(payload) {
+  if (!SSE_TRACE) return;
+  try {
+    appendFileSync(SSE_TRACE_FILE, `${new Date().toISOString()} ${String(payload).slice(0, 2000)}\n`);
+  } catch { /* 追踪失败不影响主链路 */ }
+}
 
 const windows = new Map();
 const ACTION_PROMPTS = {
@@ -133,7 +147,8 @@ function buildMessages(body) {
         if (msg.content || msg.tool_calls) result.push(msg);
         return;
       }
-      if (role === 'user' && message?.content) result.push({ role: 'user', content: cleanText(message.content, 20_000) });
+      // v36：user 消息上限 20k → 64k——附件文本注入（attachmentInjection 单文件 12k/合计 36k）需要余量
+      if (role === 'user' && message?.content) result.push({ role: 'user', content: cleanText(message.content, 64_000) });
     });
     if (content) result.push({ role: 'user', content });
     return result;
@@ -157,7 +172,9 @@ export async function handleAiStreamRequest(req, res, body) {
   const apiKey = cleanText(body.apiKey, 4000);
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   const requestedMaxTokens = Number(body.max_tokens);
-  const maxTokens = Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0 && requestedMaxTokens <= 8000
+  // v36：闸门 8000 → 16000——长任务（深度调研/万字文档）需要更长单轮输出；
+  // 与前端 COMPLETION_MAX_TOKENS(16000) 同口径。
+  const maxTokens = Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0 && requestedMaxTokens <= 16000
     ? Math.floor(requestedMaxTokens)
     : 4000;
   const controller = new AbortController();
@@ -302,6 +319,7 @@ export async function handleAiStreamRequest(req, res, body) {
         if (payload === '[DONE]') { res.write('data: [DONE]\n\n'); return res.end(); }
         try {
           const json = JSON.parse(payload);
+          traceSseFrame(payload); // v36.2：env 门控原始帧追踪（排查幽灵字符）
           const choice = json.choices?.[0] || {};
           const delta = choice.delta || {};
           // v34：推理模型的思维链透传（DeepSeek-R1 / GLM 等在 delta.reasoning_content）
@@ -377,7 +395,8 @@ export async function handleAiGenerateRequest(req, res) {
     // agent loop 可能多轮调用，给个更长超时
     timeout = setTimeout(() => controller.abort(), isAgentLoop ? 120_000 : 90_000);
     const requestedMaxTokens = Number(body.max_tokens);
-    const maxTokens = Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0 && requestedMaxTokens <= 8000
+    // v36：闸门 8000 → 16000（与 COMPLETION_MAX_TOKENS 同口径，长任务需要更长单轮输出）
+    const maxTokens = Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0 && requestedMaxTokens <= 16000
       ? Math.floor(requestedMaxTokens)
       : 4000;
     // 构造上游请求体：基础字段 + agent 模式下的 tools / tool_choice

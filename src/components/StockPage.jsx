@@ -110,8 +110,6 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
   const [briefingTab, setBriefingTab] = useState('current');
   const [showResearchTools, setShowResearchTools] = useState(false);
   const [researchToolTab, setResearchToolTab] = useState('risk');
-  // v31c：header AI 工具下拉（收纳诊断/早报/研究工具，解决顶栏拥挤）
-  const [showAiMenu, setShowAiMenu] = useState(false);
   // 监控配置弹窗
   const [showAlertConfig, setShowAlertConfig] = useState(false);
   const [alertConditions, setAlertConditions] = useState(() => {
@@ -181,19 +179,20 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
     });
   }, [ai, adjust, benchmarkCode, experienceMode, investorPolicy, klineData, period, selectedCode, selectedName, realtime, sectors]);
 
-  // 触发 AI 早报
+  // 触发 AI 早报（v36.3：自选股参与深度分析，生成个股买卖建议与数据图卡）
   const runBriefing = useCallback(() => {
     ai.generateMorningBrief({
       indices: dashboard?.indices || [],
       stocks: dashboard?.stocks || [],
       sectors,
       coverage: dashboard?.coverage,
+      watchlist,
       experienceMode,
       investorPolicy,
     });
     setBriefingTab('current');
     setShowBriefing(true);
-  }, [ai, dashboard, experienceMode, investorPolicy, sectors]);
+  }, [ai, dashboard, experienceMode, investorPolicy, sectors, watchlist]);
 
   // 首次进入股市页自动生成早报：用户进入页面即可看到当日早报，无需主动点击
   // 条件：有 LLM 配置 + dashboard 已加载 + 当日尚未生成过 + 会话内只触发一次
@@ -220,10 +219,11 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
       stocks: dashboard.stocks || [],
       sectors,
       coverage: dashboard.coverage,
+      watchlist,
       experienceMode,
       investorPolicy,
     });
-  }, [llmConfig, dashboard, ai, experienceMode, investorPolicy, sectors]);
+  }, [llmConfig, dashboard, ai, experienceMode, investorPolicy, sectors, watchlist]);
 
   // 触发自选监控
   const runAlerts = useCallback(() => {
@@ -583,32 +583,16 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
         <button className={`stock-watch-btn ${isSelectedInWatchlist ? 'active' : ''}`} onClick={() => toggleStock(selectedStock)} title={isSelectedInWatchlist ? '移出自选' : '加入自选'}>
           {ICONS.star}<span>{isSelectedInWatchlist ? '已自选' : '加自选'}</span>
         </button>
+        {/* v36.3：顶部 AI 工具栏收敛——只保留「AI 早报」直开按钮（下拉移除，
+            研究工具仍可从专业模式研究流程导航进入；AI 诊断入口移至主图卡右上角） */}
         <button
           type="button"
-          className={`stock-ai-action ${showAiMenu ? 'active' : ''}`}
-          onClick={() => setShowAiMenu(v => !v)}
-          title="AI 工具：诊断 / 早报 / 研究工具"
+          className="stock-ai-action"
+          onClick={() => { setBriefingTab(ai.briefing ? 'current' : ai.briefingHistory.length ? 'history' : 'current'); setShowBriefing(true); }}
+          title="AI 早报：市场热点汇总 · 重点个股买卖建议（含数据图卡） · 风险清单"
         >
-          {ICONS.sparkle}<span>AI 工具</span>
+          {ICONS.sparkle}<span>AI 早报</span>
         </button>
-        {showAiMenu && (
-          <>
-            <div className="dropdown-backdrop" onClick={() => setShowAiMenu(false)} />
-            <div className="stock-ai-menu" onMouseLeave={() => setShowAiMenu(false)}>
-              <button type="button" onClick={() => { setShowAiMenu(false); setShowDiagDrawer(true); }}>
-                {ICONS.sparkle}<b>AI 诊断</b><small>买卖参考价 · 剧本 · 历史</small>
-              </button>
-              <button type="button" onClick={() => { setShowAiMenu(false); setBriefingTab(ai.briefing ? 'current' : ai.briefingHistory.length ? 'history' : 'current'); setShowBriefing(true); }}>
-                {ICONS.sparkle}<b>AI 市场早报</b><small>今日大盘 · 板块 · 风险清单</small>
-              </button>
-              {experienceMode === 'pro' && (
-                <button type="button" onClick={() => { setShowAiMenu(false); openResearchTools('decision'); }}>
-                  {ICONS.document}<b>研究工具</b><small>决策卡 · 仓位 · 情景 · 清单</small>
-                </button>
-              )}
-            </div>
-          </>
-        )}
         <button className="btn-refresh" onClick={loadDashboard}>{ICONS.refresh}<span>刷新</span></button>
       </header>
 
@@ -838,6 +822,15 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
                   {ICONS.grid}
                 </button>
               </div>
+              {/* v36.3：AI 诊断入口移至主图卡右上角（原顶部下拉项） */}
+              <button
+                type="button"
+                className="stock-diag-entry"
+                onClick={() => setShowDiagDrawer(true)}
+                title="AI 诊断：买卖参考价 · 操作剧本 · 历史记录"
+              >
+                {ICONS.sparkle}<span>AI 诊断</span>
+              </button>
             </div>
           </div>
           <div className="stock3-chart-wrap">
@@ -925,10 +918,10 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
         </div>
       )}
 
-      {/* AI 早报弹窗 */}
+      {/* AI 早报右侧抽屉 */}
       {showBriefing && (
-        <div className="stock-modal-overlay" onClick={() => setShowBriefing(false)}>
-          <div className="stock-modal stock-briefing-modal" onClick={e => e.stopPropagation()}>
+        <div className="stock-briefing-overlay" onClick={() => setShowBriefing(false)}>
+          <aside className="stock-briefing-drawer" onClick={e => e.stopPropagation()} role="dialog" aria-label="AI 市场早报">
             <div className="stock-modal-head">
               <h3>{ICONS.sparkle} AI 市场早报</h3>
               <button className="stock-modal-close" onClick={() => setShowBriefing(false)}>×</button>
@@ -969,7 +962,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
               ) : ai.briefing ? (
                 <>
                   <div className="stock-briefing-meta"><span>{new Date(ai.briefing.at).toLocaleString('zh-CN')}</span><span>{ai.briefing.meta?.coverage || '行情样本'} · {ai.briefing.meta?.stockCount || 0} 只</span>{ai.briefing.meta?.tokens != null && <span>Token {ai.briefing.meta.tokens}</span>}{onArchiveMaterial && <button type="button" className="stock-ai-archive" onClick={archiveBriefing} title="把这份早报存入素材库">{ICONS.bookmark}<span>存档</span></button>}</div>
-                  <BriefingContent content={ai.briefing.content} />
+                  <BriefingContent content={ai.briefing.content} snapshots={ai.briefing.meta?.snapshots || []} />
                 </>
               ) : !ai.llmReady ? (
                 <div className="stock-ai-guide">
@@ -977,7 +970,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
                   <button onClick={() => { setShowBriefing(false); onOpenLlmConfig?.(); }}>配置大模型</button>
                 </div>
               ) : (
-                <div className="stock-ai-guide"><p>生成一份包含指数、样本广度、板块轮动、关键个股、多空情景、风险和观察清单的深度早报。</p></div>
+                <div className="stock-ai-guide"><p>生成一份深度早报：近期热点汇总与分析、重点个股（含自选股）的买卖建议与精确数据图卡、多空情景、风险和观察清单。</p></div>
               )}
             </div>
             {ai.llmReady && !ai.briefingLoading && (
@@ -985,7 +978,7 @@ export default function StockPage({ llmConfig, onOpenLlmConfig, onArchiveMateria
                 <button className="stock-ai-run" onClick={runBriefing}>{ICONS.refresh}<span>生成新早报</span></button>
               </div>
             )}
-          </div>
+          </aside>
         </div>
       )}
 

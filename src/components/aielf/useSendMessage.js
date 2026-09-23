@@ -1,5 +1,5 @@
 import { selectToolSchemas } from '../../utils/agentTools.js';
-import { packConversation } from '../../session/contextManager.js';
+import { packConversation, resolveContextBudget } from '../../session/contextManager.js';
 import { saveDropSnapshot } from '../../utils/articleFetcher.js';
 import { streamLlm } from '../../utils/llmStream.js';
 
@@ -101,7 +101,8 @@ export function useSendMessage({
       // 打包逻辑与 agent 工具循环、工作站流式路径共用 contextManager.packConversation
       const plainHistory = messages.slice(-40);
       const packed = await packConversation(plainHistory, {
-        budget: PLAIN_CONTEXT_BUDGET,
+        // 预算随模型窗口自适应（未知模型 === 常量默认值，行为不变）
+        budget: resolveContextBudget(llmConfig?.selectedModel, PLAIN_CONTEXT_BUDGET),
         keepRecent: PLAIN_KEEP_RECENT,
         cutMin: 2,
         fallbackLimit: PLAIN_TAIL_LIMIT,

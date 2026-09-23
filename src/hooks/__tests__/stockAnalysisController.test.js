@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { runStockAnalysis, buildDiagnosisRecord } from '../useStockAi.js';
+import { runStockAnalysis, buildDiagnosisRecord, buildBriefingSnapshots } from '../useStockAi.js';
 
 const input = {
   stock: { name: '示例', code: 'TEST' },
@@ -87,6 +87,71 @@ it('v29：诊断历史记录只留展示字段（code/评级/模式/现价/内�
   expect(record.content).toContain('操作判断');
   expect(typeof record.at).toBe('number');
   expect(record.id).toBeTruthy();
+});
+
+it('v36.3：诊断历史记录附带图表快照（metrics/多空证据/K线瘦身序列），历史预览可重现图表', () => {
+  const klines = Array.from({ length: 80 }, (_, i) => ({
+    date: `2026-01-${String((i % 28) + 1).padStart(2, '0')}`,
+    close: 100 + i, high: 101 + i, low: 99 + i, volume: 1000 + i * 10,
+  }));
+  const record = buildDiagnosisRecord({
+    stock: { code: 'sz300502', name: '新易盛' },
+    mode: 'ai', status: 'ready', rating: '强势', risk: 'medium',
+    metrics: { price: 453.66, ma20: 440, support: 430, resistance: 470, momentum5: 2.1 },
+    bullCase: ['站上 MA20'], bearCase: ['RSI 偏高'], invalidation: ['跌破 430'], riskSignals: ['波动率 32%'],
+    dataQuality: { bars: 80 },
+    usage: { total_tokens: 999 },
+    content: '结论',
+  }, klines);
+  expect(record.status).toBe('ready');
+  expect(record.metrics.price).toBeCloseTo(453.66);
+  expect(record.bullCase).toEqual(['站上 MA20']);
+  expect(record.bearCase).toHaveLength(1);
+  expect(record.invalidation).toEqual(['跌破 430']);
+  expect(record.riskSignals).toHaveLength(1);
+  expect(record.dataQuality.bars).toBe(80);
+  // K 线快照：只留最近 60 根、瘦身三字段
+  expect(record.klinesSnapshot).toHaveLength(60);
+  expect(record.klinesSnapshot[0].close).toBe(120); // 80 根取后 60 → 首根是第 21 根
+  expect(Object.keys(record.klinesSnapshot[0]).sort()).toEqual(['close', 'date', 'volume']);
+});
+
+it('v36.3：buildBriefingSnapshots——自选股优先覆盖 + 热门股按涨跌幅补位 + 指标来自 analyzeStock', async () => {
+  const hotStocks = Array.from({ length: 12 }, (_, i) => ({
+    code: `hot${i}`, name: `热门${i}`, price: 10 + i, changePct: i - 6, amount: '1亿',
+  }));
+  const watchlist = [{ code: 'my1', name: '自选一' }, { code: 'my2', name: '自选二' }];
+  const fetchKline = vi.fn(async (code) => Array.from({ length: 30 }, (_, i) => ({
+    date: `d${i}`, close: 50 + i, high: 51 + i, low: 49 + i, volume: 800 + i * 7,
+  })));
+  const snaps = await buildBriefingSnapshots({ stocks: hotStocks, watchlist, fetchKline });
+  // 自选 2 只全部入选，其余按 |涨跌幅| 从热门里补，总量 ≤12
+  expect(snaps.length).toBeLessThanOrEqual(12);
+  const watchSnaps = snaps.filter(s => s.fromWatchlist);
+  expect(watchSnaps.map(s => s.code).sort()).toEqual(['my1', 'my2']);
+  // 指标来自确定性算法而非 AI
+  const first = snaps[0];
+  expect(first.ma20).not.toBeNull();
+  expect(first.closes).toHaveLength(30);
+  expect(first.closes[0]).toBeCloseTo(50);
+  expect(first.volumes).toHaveLength(30);
+  expect(['expanding', 'contracting', 'stable']).toContain(first.volumeTrend);
+  expect(typeof first.rating).toBe('string');
+  // fetchKline 每只调一次
+  expect(fetchKline.mock.calls.length).toBe(snaps.length);
+});
+
+it('v36.3：buildBriefingSnapshots——K 线拉取失败的单只静默跳过，不阻塞整份早报', async () => {
+  const fetchKline = vi.fn(async (code) => {
+    if (code === 'bad') throw new Error('upstream down');
+    return Array.from({ length: 20 }, (_, i) => ({ date: `d${i}`, close: 10 + i, volume: 100 }));
+  });
+  const snaps = await buildBriefingSnapshots({
+    stocks: [{ code: 'ok', name: '正常股', price: 10, changePct: 1 }, { code: 'bad', name: '坏数据', price: 5, changePct: 5 }],
+    watchlist: [],
+    fetchKline,
+  });
+  expect(snaps.map(s => s.code)).toEqual(['ok']);
 });
 
 it('v31：AI 增强成功时透传上游 token 用量，无 mock usage 时为 null 不报错', async () => {

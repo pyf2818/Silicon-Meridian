@@ -14,6 +14,90 @@ import { showToast } from '../../utils/toast.js';
 
 const RISK_LABEL = { high: '高', medium: '中', low: '低', unknown: '--' };
 
+/* v36.3：指标网格（实时报告与历史只读视图共用）——从原内联 JSX 抽出 */
+function MetricsGrid({ diagnosis }) {
+  if (!diagnosis?.metrics || diagnosis.status !== 'ready') return null;
+  const m = diagnosis.metrics;
+  return (
+    <div className="stock-analysis-metrics">
+      {[
+        { key: 'trend', title: '均线 Trend', items: [
+          ['MA5', m.ma5], ['MA10', m.ma10], ['MA20', m.ma20], ['ATR14', m.atr14],
+        ] },
+        { key: 'momentum', title: '动量 Momentum', items: [
+          ['5日动量', m.momentum5 == null ? null : `${m.momentum5}%`],
+          ['20期涨跌', m.assetReturn20 == null ? null : `${m.assetReturn20}%`],
+          ['基准同期', m.benchmarkReturn20 == null ? null : `${m.benchmarkReturn20}%`],
+          ['超额表现', m.excessReturn20 == null ? null : `${m.excessReturn20}%`],
+        ] },
+        { key: 'risk', title: '风险 Risk', items: [
+          ['最大回撤', m.drawdown == null ? null : `${m.drawdown}%`],
+          ['波动率', m.volatility == null ? null : `${m.volatility}%`],
+          ['20期位置', m.position20 == null ? null : `${m.position20}%`],
+          ['量能', ({ expanding: '放大', contracting: '收缩', stable: '平稳' })[m.volumeTrend] || '--'],
+        ] },
+        { key: 'levels', title: '支撑压力 Levels', items: [
+          ['支撑', m.support], ['压力', m.resistance],
+        ] },
+      ].map(grp => (
+        <section key={grp.key} className="stock-metrics-group">
+          <h6 className="stock-metrics-group-title">{grp.title}</h6>
+          <div className="stock-metrics-rows">
+            {grp.items.map(([label, value]) => {
+              // 涨跌语义：带 % 的数值，正=涨（红）、负=跌（绿），中文市场约定
+              const pct = typeof value === 'string' && value.endsWith('%') ? parseFloat(value) : null;
+              const tone = pct == null || Number.isNaN(pct) || pct === 0 ? '' : pct > 0 ? ' is-up' : ' is-down';
+              return <div key={label}><span>{label}</span><strong className={tone.trim()}>{value ?? '--'}</strong></div>;
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/* v36.3：多空论据网格（实时报告与历史只读视图共用） */
+function ThesisGrid({ diagnosis, expandedThesis, toggleThesis }) {
+  if (!diagnosis?.metrics || diagnosis.status !== 'ready') return null;
+  return (
+    <div className="stock-thesis-grid">
+      {[
+        { key: 'bullish', evidence: diagnosis.bullCase, fallback: '当前序列没有形成明确支持', title: '支持当前判断', sub: '多方证据' },
+        { key: 'bearish', evidence: diagnosis.bearCase, fallback: '当前序列没有形成明确反向信号', title: '反向证据', sub: '空方证据' },
+        { key: 'invalidation', evidence: diagnosis.invalidation, fallback: null, title: '判断失效条件', sub: '必须复核' },
+        { key: 'risk', evidence: diagnosis.riskSignals, fallback: '当前样本未触发额外风险信号', title: '风险实验室', sub: `${diagnosis.dataQuality?.bars || 0} 根 K 线` },
+      ].map(({ key, evidence, fallback, title, sub }) => {
+        const items = Array.isArray(evidence) ? evidence : [];
+        const expanded = !!expandedThesis[key];
+        const showMore = items.length > 1;
+        const visible = expanded ? items : items.slice(0, 1);
+        return (
+          <section key={key} className={`stock-thesis-block ${key}`}>
+            <div className="stock-thesis-head">
+              <strong>{title}</strong>
+              <span className="stock-thesis-count" title={`${items.length} 条要点`}>{items.length}</span>
+              <span className="stock-thesis-sub">{sub}</span>
+              {showMore && (
+                <button type="button" className="stock-thesis-toggle" onClick={() => toggleThesis(key)} aria-expanded={expanded}>
+                  {expanded ? '收起' : `展开 +${items.length - 1}`}
+                </button>
+              )}
+            </div>
+            {items.length > 0 ? (
+              visible.map(item => <p key={item}>{item}</p>)
+            ) : (
+              fallback ? <p className="muted">{fallback}</p> : null
+            )}
+            {key === 'risk' && (
+              <small>比较基准：{diagnosis.dataQuality?.benchmark?.name || '不可用'}；仅基于价格与成交量，未包含财务、公告、资金流和全市场数据。</small>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DiagnosisDrawer({
   open,
   onClose,
@@ -78,27 +162,51 @@ export default function DiagnosisDrawer({
 
         <div className="stock-diag-body custom-scrollbar">
           {viewing ? (
-            /* ---- 历史记录只读视图 ---- */
-            <div className="stock-diag-viewing">
-              <div className="stock-diag-viewing-head">
-                <button type="button" className="stock-diag-back" onClick={() => setViewing(null)}>← 返回列表</button>
-                <span>{new Date(viewing.at).toLocaleString('zh-CN')}</span>
-              </div>
-              <div className="stock-analysis-summary">
-                <div><span>综合评级</span><strong>{viewing.rating}</strong></div>
-                <div><span>风险等级</span><strong>{RISK_LABEL[viewing.risk] || viewing.risk || '--'}</strong></div>
-                <div><span>分析模式</span><strong>{viewing.mode === 'ai' ? 'AI 增强' : '确定性算法'}</strong></div>
-                <div><span>当时现价</span><strong>{viewing.price ?? '--'}</strong></div>
-                {viewing.tokens != null && <div><span>Token 消耗</span><strong>{viewing.tokens}</strong></div>}
-              </div>
-              <div className="stock-ai-text stock-ai-master" dangerouslySetInnerHTML={{ __html: renderMarkdown(viewing.content) }} />
-              <div className="stock-diag-viewing-actions">
-                <button type="button" className="stock-ai-save" onClick={() => archiveRecord(viewing)} disabled={!onArchiveMaterial}>
-                  {ICONS.bookmark}<span>存素材库</span>
-                </button>
-                <button type="button" className="stock-briefing-history-delete" onClick={() => { ai.deleteDiagnosisRecord(viewing.id); setViewing(null); }} title="删除这条记录">{ICONS.trash}</button>
-              </div>
-            </div>
+            /* ---- 历史记录只读视图（v36.3：指标/论据/ProCharts 从快照数据重现） ---- */
+            (() => {
+              const viewDiagnosis = {
+                status: viewing.status || 'ready',
+                metrics: viewing.metrics || null,
+                bullCase: viewing.bullCase || [],
+                bearCase: viewing.bearCase || [],
+                invalidation: viewing.invalidation || [],
+                riskSignals: viewing.riskSignals || [],
+                dataQuality: viewing.dataQuality || null,
+              };
+              const hasSnapshot = Boolean(viewing.metrics);
+              const snapshotKlines = Array.isArray(viewing.klinesSnapshot) ? viewing.klinesSnapshot : [];
+              return (
+                <div className="stock-diag-viewing">
+                  <div className="stock-diag-viewing-head">
+                    <button type="button" className="stock-diag-back" onClick={() => setViewing(null)}>← 返回列表</button>
+                    <span>{new Date(viewing.at).toLocaleString('zh-CN')}</span>
+                  </div>
+                  <div className="stock-analysis-summary">
+                    <div><span>综合评级</span><strong>{viewing.rating}</strong></div>
+                    <div><span>风险等级</span><strong>{RISK_LABEL[viewing.risk] || viewing.risk || '--'}</strong></div>
+                    <div><span>分析模式</span><strong>{viewing.mode === 'ai' ? 'AI 增强' : '确定性算法'}</strong></div>
+                    <div><span>当时现价</span><strong>{viewing.price ?? '--'}</strong></div>
+                    {viewing.tokens != null && <div><span>Token 消耗</span><strong>{viewing.tokens}</strong></div>}
+                  </div>
+                  {hasSnapshot && <MetricsGrid diagnosis={viewDiagnosis} />}
+                  {hasSnapshot && <ThesisGrid diagnosis={viewDiagnosis} expandedThesis={expandedThesis} toggleThesis={toggleThesis} />}
+                  {hasSnapshot && snapshotKlines.length >= 5 && (
+                    <ProCharts klines={snapshotKlines} diagnosis={viewDiagnosis} />
+                  )}
+                  {hasSnapshot && <p className="stock-diag-snapshot-note">以上指标与图表为诊断时点的数据快照，非当前实时行情。</p>}
+                  {!hasSnapshot && (
+                    <p className="stock-diag-snapshot-note">该记录生成于旧版本，未保留图表快照数据，仅可回看文字内容。</p>
+                  )}
+                  <div className="stock-ai-text stock-ai-master" dangerouslySetInnerHTML={{ __html: renderMarkdown(viewing.content) }} />
+                  <div className="stock-diag-viewing-actions">
+                    <button type="button" className="stock-ai-save" onClick={() => archiveRecord(viewing)} disabled={!onArchiveMaterial}>
+                      {ICONS.bookmark}<span>存素材库</span>
+                    </button>
+                    <button type="button" className="stock-briefing-history-delete" onClick={() => { ai.deleteDiagnosisRecord(viewing.id); setViewing(null); }} title="删除这条记录">{ICONS.trash}</button>
+                  </div>
+                </div>
+              );
+            })()
           ) : tab === 'history' ? (
             /* ---- 历史记录列表 ---- */
             <div className="stock-diag-history">
@@ -158,78 +266,9 @@ export default function DiagnosisDrawer({
                     <div><span>分析模式</span><strong>{diagnosis.mode === 'ai' ? 'AI 增强' : '确定性算法'}</strong></div>
                     {diagnosis.usage?.total_tokens != null && <div><span>Token 消耗</span><strong>{diagnosis.usage.total_tokens}</strong></div>}
                   </div>
+                  {diagnosis.status === 'ready' && <MetricsGrid diagnosis={diagnosis} />}
                   {diagnosis.status === 'ready' && (
-                    <div className="stock-analysis-metrics">
-                      {[
-                        { key: 'trend', title: '均线 Trend', items: [
-                          ['MA5', diagnosis.metrics.ma5], ['MA10', diagnosis.metrics.ma10], ['MA20', diagnosis.metrics.ma20], ['ATR14', diagnosis.metrics.atr14],
-                        ] },
-                        { key: 'momentum', title: '动量 Momentum', items: [
-                          ['5日动量', diagnosis.metrics.momentum5 == null ? null : `${diagnosis.metrics.momentum5}%`],
-                          ['20期涨跌', diagnosis.metrics.assetReturn20 == null ? null : `${diagnosis.metrics.assetReturn20}%`],
-                          ['基准同期', diagnosis.metrics.benchmarkReturn20 == null ? null : `${diagnosis.metrics.benchmarkReturn20}%`],
-                          ['超额表现', diagnosis.metrics.excessReturn20 == null ? null : `${diagnosis.metrics.excessReturn20}%`],
-                        ] },
-                        { key: 'risk', title: '风险 Risk', items: [
-                          ['最大回撤', diagnosis.metrics.drawdown == null ? null : `${diagnosis.metrics.drawdown}%`],
-                          ['波动率', diagnosis.metrics.volatility == null ? null : `${diagnosis.metrics.volatility}%`],
-                          ['20期位置', diagnosis.metrics.position20 == null ? null : `${diagnosis.metrics.position20}%`],
-                          ['量能', ({ expanding: '放大', contracting: '收缩', stable: '平稳' })[diagnosis.metrics.volumeTrend] || '--'],
-                        ] },
-                        { key: 'levels', title: '支撑压力 Levels', items: [
-                          ['支撑', diagnosis.metrics.support], ['压力', diagnosis.metrics.resistance],
-                        ] },
-                      ].map(grp => (
-                        <section key={grp.key} className="stock-metrics-group">
-                          <h6 className="stock-metrics-group-title">{grp.title}</h6>
-                          <div className="stock-metrics-rows">
-                            {grp.items.map(([label, value]) => {
-                              // 涨跌语义：带 % 的数值，正=涨（红）、负=跌（绿），中文市场约定
-                              const pct = typeof value === 'string' && value.endsWith('%') ? parseFloat(value) : null;
-                              const tone = pct == null || Number.isNaN(pct) || pct === 0 ? '' : pct > 0 ? ' is-up' : ' is-down';
-                              return <div key={label}><span>{label}</span><strong className={tone.trim()}>{value ?? '--'}</strong></div>;
-                            })}
-                          </div>
-                        </section>
-                      ))}
-                    </div>
-                  )}
-                  {diagnosis.status === 'ready' && (
-                    <div className="stock-thesis-grid">
-                      {[
-                        { key: 'bullish', evidence: diagnosis.bullCase, fallback: '当前序列没有形成明确支持', title: '支持当前判断', sub: '多方证据' },
-                        { key: 'bearish', evidence: diagnosis.bearCase, fallback: '当前序列没有形成明确反向信号', title: '反向证据', sub: '空方证据' },
-                        { key: 'invalidation', evidence: diagnosis.invalidation, fallback: null, title: '判断失效条件', sub: '必须复核' },
-                        { key: 'risk', evidence: diagnosis.riskSignals, fallback: '当前样本未触发额外风险信号', title: '风险实验室', sub: `${diagnosis.dataQuality?.bars || 0} 根 K 线` },
-                      ].map(({ key, evidence, fallback, title, sub }) => {
-                        const items = Array.isArray(evidence) ? evidence : [];
-                        const expanded = !!expandedThesis[key];
-                        const showMore = items.length > 1;
-                        const visible = expanded ? items : items.slice(0, 1);
-                        return (
-                          <section key={key} className={`stock-thesis-block ${key}`}>
-                            <div className="stock-thesis-head">
-                              <strong>{title}</strong>
-                              <span className="stock-thesis-count" title={`${items.length} 条要点`}>{items.length}</span>
-                              <span className="stock-thesis-sub">{sub}</span>
-                              {showMore && (
-                                <button type="button" className="stock-thesis-toggle" onClick={() => toggleThesis(key)} aria-expanded={expanded}>
-                                  {expanded ? '收起' : `展开 +${items.length - 1}`}
-                                </button>
-                              )}
-                            </div>
-                            {items.length > 0 ? (
-                              visible.map(item => <p key={item}>{item}</p>)
-                            ) : (
-                              fallback ? <p className="muted">{fallback}</p> : null
-                            )}
-                            {key === 'risk' && (
-                              <small>比较基准：{diagnosis.dataQuality?.benchmark?.name || '不可用'}；仅基于价格与成交量，未包含财务、公告、资金流和全市场数据。</small>
-                            )}
-                          </section>
-                        );
-                      })}
-                    </div>
+                    <ThesisGrid diagnosis={diagnosis} expandedThesis={expandedThesis} toggleThesis={toggleThesis} />
                   )}
                   {experienceMode === 'pro' && diagnosis.status === 'ready' && (
                     <ProCharts klines={diagKlines.length ? diagKlines : (klineData?.klines || [])} diagnosis={diagnosis} />

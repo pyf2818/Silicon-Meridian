@@ -45,18 +45,43 @@ function persistDiagnosisHistory(records) {
   try { localStorage.setItem(DIAG_HISTORY_KEY, JSON.stringify(records)); } catch { /* storage unavailable */ }
 }
 
-/** 从一次诊断结果中抽取可持久化的历史记录（只留展示所需字段，不存 metrics 大对象） */
-export function buildDiagnosisRecord(result) {
+/**
+ * 从一次诊断结果中抽取可持久化的历史记录（v36.3：附带图表快照数据）。
+ * 此前只存 content/rating/price —— 历史预览时指标网格与 ProCharts 全部无法重现
+ * （用户反馈「历史记录打开预览图表不显示」的根因）。现在附带：
+ *  - status/metrics/多空证据/失效条件/风险信号/dataQuality：指标网格与论据网格所需
+ *  - klinesSnapshot：最近 60 根 K 线瘦身序列（{date, close, volume}），ProCharts 走势图所需
+ * 体积预算：60 根 × ~50B ≈ 3KB/条 × 30 条上限 ≈ 90KB，localStorage 可承受；
+ * persist 侧已有 try/catch 兜底配额异常。
+ */
+export function buildDiagnosisRecord(result, klines = []) {
+  const slimBars = (Array.isArray(klines) ? klines : [])
+    .filter(k => Number.isFinite(Number(k?.close)))
+    .slice(-60)
+    .map(k => ({
+      date: k.date || '',
+      close: Math.round(Number(k.close) * 1000) / 1000,
+      volume: Number.isFinite(Number(k.volume)) ? Math.round(Number(k.volume)) : 0,
+    }));
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     code: result.stock?.code || '',
     name: result.stock?.name || '',
     mode: result.mode || 'algorithm',
+    status: result.status || 'ready',
     rating: result.rating || '--',
     risk: result.risk || '',
     price: result.metrics?.price ?? null,
     tokens: result.usage?.total_tokens ?? null, // v31：token 用量随记录留存
     content: result.content || result.summary || '',
+    // v36.3：图表重现所需快照
+    metrics: result.metrics || null,
+    bullCase: Array.isArray(result.bullCase) ? result.bullCase : [],
+    bearCase: Array.isArray(result.bearCase) ? result.bearCase : [],
+    invalidation: Array.isArray(result.invalidation) ? result.invalidation : [],
+    riskSignals: Array.isArray(result.riskSignals) ? result.riskSignals : [],
+    dataQuality: result.dataQuality || null,
+    klinesSnapshot: slimBars,
     at: Date.now(),
   };
 }
@@ -64,6 +89,64 @@ export function buildDiagnosisRecord(result) {
 // 检查 LLM 是否可用
 function useLlmReady(llmConfig) {
   return Boolean(llmConfig?.baseUrl && llmConfig?.apiKey && llmConfig?.selectedModel);
+}
+
+/**
+ * v36.3：为 AI 早报构建个股数据快照（真实指标 + 30 日收盘/成交量序列）。
+ * - 覆盖池 = 自选股（前 watchLimit 只，全部进快照）∪ 热门股（按 |涨跌幅| 排序前 hotLimit 只），按 code 去重，总量 totalLimit 封顶
+ * - 每只拉 60 根日K 跑 analyzeStock（确定性算法）拿 MA/RSI/动量/支撑压力/量能，与行情快照合成
+ * - fetchKline 可注入（单测）；线上默认 fetch /api/stock/kline 日K
+ * - 单只失败静默跳过（行情源偶发异常不阻塞整份早报）
+ */
+export async function buildBriefingSnapshots({
+  stocks = [], watchlist = [], fetchKline = null,
+  hotLimit = 8, watchLimit = 5, totalLimit = 12,
+} = {}) {
+  const fetchFn = fetchKline || (async code => {
+    try {
+      const res = await fetch(`/api/stock/kline?code=${code}&period=101&count=60&adjust=1`);
+      const data = await res.json();
+      return Array.isArray(data?.klines) ? data.klines : [];
+    } catch { return []; }
+  });
+  const watch = (watchlist || []).filter(s => s?.code).slice(0, watchLimit);
+  const hot = [...(stocks || [])]
+    .filter(s => s?.code && !watch.some(w => w.code === s.code))
+    .sort((a, b) => Math.abs(Number(b?.changePct) || 0) - Math.abs(Number(a?.changePct) || 0))
+    .slice(0, hotLimit);
+  const picked = [...watch, ...hot].slice(0, totalLimit);
+  if (!picked.length) return [];
+  const results = await Promise.all(picked.map(async (s) => {
+    try {
+      const klines = await fetchFn(s.code);
+      const bars = (Array.isArray(klines) ? klines : []).filter(k => Number.isFinite(Number(k?.close)));
+      if (bars.length < 5) return null;
+      const analysis = analyzeStock({
+        stock: { name: s.name, code: s.code },
+        realtime: { name: s.name, code: s.code, price: s.price, changePct: s.changePct },
+        klines: bars,
+      });
+      if (analysis?.status !== 'ready') return null;
+      const m = analysis.metrics;
+      return {
+        code: s.code,
+        name: s.name || '',
+        fromWatchlist: watch.some(w => w.code === s.code),
+        price: Number(s.price) || m.price,
+        changePct: Number(s.changePct) || 0,
+        amount: s.amount || '',
+        closes: bars.slice(-30).map(k => Math.round(Number(k.close) * 100) / 100),
+        volumes: bars.slice(-30).map(k => Math.max(0, Math.round(Number(k.volume) || 0))),
+        rating: analysis.rating,
+        risk: analysis.risk,
+        ma5: m.ma5, ma10: m.ma10, ma20: m.ma20,
+        rsi14: m.rsi14, momentum5: m.momentum5,
+        support: m.support, resistance: m.resistance,
+        volumeTrend: m.volumeTrend, volatility: m.volatility,
+      };
+    } catch { return null; }
+  }));
+  return results.filter(Boolean);
 }
 
 // 统一调用 /api/ai-generate（v30：流式——onDelta 逐字回调；v31：onUsage 捕获 token 用量）
@@ -243,7 +326,7 @@ export function useStockAi(llmConfig) {
         llmConfig: store.state.llmConfig,
         onDelta: (_delta, full) => store.setState({ diagnosisStreamText: full }),
       });
-      const record = buildDiagnosisRecord(result);
+      const record = buildDiagnosisRecord(result, kline?.klines || []);
       const nextHistory = [record, ...store.state.diagnosisHistory].slice(0, DIAG_HISTORY_LIMIT);
       persistDiagnosisHistory(nextHistory);
       store.setState({ diagnosis: { ...result, at: Date.now() }, diagnosing: false, diagnosisStreamText: '', diagnosisHistory: nextHistory });
@@ -252,8 +335,8 @@ export function useStockAi(llmConfig) {
     }
   }, []);
 
-  // ===== 模块 B：AI 市场早报 =====
-  const generateMorningBrief = useCallback(async ({ indices, stocks, sectors, coverage, experienceMode = 'beginner', investorPolicy = null }) => {
+  // ===== 模块 B：AI 市场早报（v36.3：深度分析版——热点汇总 + 重点个股条件化买卖建议 + 数据图卡） =====
+  const generateMorningBrief = useCallback(async ({ indices, stocks, sectors, coverage, watchlist = [], experienceMode = 'beginner', investorPolicy = null }) => {
     const cfg = store.state.llmConfig;
     if (!cfg || !cfg.baseUrl || !cfg.apiKey || !cfg.selectedModel) {
       store.setState({ briefingError: '请先配置大模型' });
@@ -264,27 +347,41 @@ export function useStockAi(llmConfig) {
       const stockRows = stocks || [];
       const sectorRows = sectors || [];
       const idxText = (indices || []).map(i => `${i.name}：${i.price}，涨跌 ${i.changePct >= 0 ? '+' : ''}${i.changePct}%`).join('\n') || '无数据';
-      const stockText = stockRows.slice(0, 20).map(s => `${s.name}(${s.code})：现价 ${s.price}，涨跌 ${s.changePct >= 0 ? '+' : ''}${s.changePct}%，成交额 ${s.amount || '未提供'}`).join('\n') || '无数据';
       const sectorText = sectorRows.slice(0, 12).map(s => `${s.name}：${s.changePct >= 0 ? '+' : ''}${s.changePct}%`).join('\n') || '无数据';
       const up = stockRows.filter(item => item.changePct > 0).length;
       const down = stockRows.filter(item => item.changePct < 0).length;
       const generatedAt = new Date().toISOString();
 
+      // v36.3：个股快照（自选股优先 + 热门股），逐只拉日K 跑确定性算法拿真实指标
+      const snapshots = await buildBriefingSnapshots({ stocks: stockRows, watchlist }).catch(() => []);
+      const snapshotText = snapshots.map(s => {
+        const tag = s.fromWatchlist ? '[自选]' : '';
+        const vol = ({ expanding: '放大', contracting: '收缩', stable: '平稳' })[s.volumeTrend] || '--';
+        return `- ${s.name}(${s.code})${tag}：现价 ${s.price}，涨跌 ${s.changePct >= 0 ? '+' : ''}${s.changePct}%，成交额 ${s.amount || '未提供'}；MA5/10/20：${s.ma5 ?? '--'}/${s.ma10 ?? '--'}/${s.ma20 ?? '--'}；RSI(14)：${s.rsi14 ?? '--'}；5日动量：${s.momentum5 ?? '--'}%；支撑/压力：${s.support ?? '--'}/${s.resistance ?? '--'}；量能：${vol}；算法评级：${s.rating} / 风险：${s.risk}`;
+      }).join('\n') || '无快照数据';
+
       const modeGuidance = experienceMode === 'pro'
-        ? '面向专业用户：结构化、可复核。执行摘要给量化判断；指数与板块部分标注驱动与风险预算；个股观察附关键位与失效条件；风险清单按概率×影响排序。可用 Markdown 表格。避免套话，每个判断都要能追溯到给定数据。'
-        : '面向新手用户：先给 3 句话以内的白话总评（今天市场怎么样、为什么、该注意什么），正文每个小节先用一句白话概括再展开；出现术语时用括号补一句比喻解释；结尾给出「本周观察练习」：一个新手今天就能做的小动作。语气友好鼓励，不制造焦虑，不把涨跌等同于买卖信号。';
+        ? '面向专业用户：结构化、可复核，判断附确定性与失效条件；个股建议给出精确触发价位与推演方式；可用 Markdown 表格。避免套话。'
+        : '面向新手用户：先给 3 句话以内的白话总评（今天市场怎么样、为什么、该注意什么）；个股建议用大白话说「现在能不能买/该不该卖」，每个建议带一句「为什么」和「什么情况下这个判断作废」；出现术语用括号补一句比喻解释。语气友好鼓励，不制造焦虑。';
       const policyGuidance = investorPolicy ? `\u7528\u6237\u7b56\u7565\uff1a${investorPolicy.horizon || '\u672a\u8bbe\u7f6e'}\u5468\u671f\u3001${investorPolicy.riskTolerance || '\u672a\u8bbe\u7f6e'}\u98ce\u9669\u504f\u597d\u3001\u6700\u5927\u4ed3\u4f4d ${investorPolicy.maxPosition || '--'}%\u3002` : '';
-      const systemPrompt = `你是审慎、专业的中国股票市场研究员。只能使用用户提供的行情样本，生成 700-1200 字中文结构化早报。
+      const systemPrompt = `你是审慎、专业的中国股票市场研究员与交易顾问。只能使用用户提供的行情样本与个股快照数据，生成 900-1400 字中文结构化早报。
 必须按以下标题输出：
 ## 一、执行摘要
-## 二、指数与样本广度
-## 三、板块主线与轮动
-## 四、关键个股观察
+## 二、指数与市场广度
+## 三、近期热点汇总与分析
+## 四、重点个股操作建议
 ## 五、多方情景与反方情景
 ## 六、风险清单
 ## 七、今日观察清单
 ## 八、数据边界
-规则：明确区分"数据事实"和"分析推断"；解释驱动因素时只能写待验证假设，不能伪造新闻、公告、财务、资金流或宏观数据；同时给出支持证据、反向证据和失效条件；不提供确定性涨跌预测、目标价或买卖指令。内容具体、可复核，避免空泛套话。${modeGuidance}${policyGuidance}`;
+
+各节硬性要求：
+- 「近期热点汇总与分析」：从板块涨幅样本与活跃个股分布归纳 2-4 条当日主线（哪些板块领涨/领跌、市场在交易什么逻辑），每条主线注明支撑数据（板块名+涨跌幅、代表个股及涨跌幅），并各给一条反向证据（主线可能失效的信号）。
+- 「重点个股操作建议」：对快照清单里的每只股票（标注[自选]的必须全部覆盖）逐只给出「买入 / 卖出 / 持有 / 观望」四选一的倾向性建议。每只一小节，用「### 名称（代码）｜建议：X」开头，正文三行：
+  · 判断与确定性：一句话结论，标注（已确认 / 倾向于 / 存疑）；
+  · 数据依据：只引用该股快照中的具体数值（现价、涨跌幅、MA5/10/20、RSI、5日动量、支撑/压力、量能），说明命中什么条件（如站上 MA20、RSI 超买、缩量回踩支撑）；
+  · 触发价位与失效条件：参考买点/卖点/止损/止盈的具体数字（由支撑、压力与 MA 推演，写明推演方式），以及判断作废的精确触发。
+- 规则：明确区分"数据事实"和"分析推断"；所有数字只能来自给定数据，不得虚构新闻、公告、财务、资金流或宏观数据；本早报是条件化交易框架推演而非收益承诺，最终决策权与盈亏责任归用户。${modeGuidance}${policyGuidance}`;
       const userPrompt = `生成时间：${generatedAt}
 数据口径：${coverage?.label || '行情样本'}，共 ${stockRows.length} 只；上涨 ${up}、下跌 ${down}。这不是全市场涨跌家数。
 数据频率：轮询行情，不是交易所逐笔数据。
@@ -292,13 +389,13 @@ export function useStockAi(llmConfig) {
 【主要指数】
 ${idxText}
 
-【活跃股票样本】
-${stockText}
-
 【板块涨幅样本】
 ${sectorText}
 
-请基于以上有限数据完成早报，并在"数据边界"中明确缺少全市场广度、财务、公告、新闻、资金流、估值与持仓数据。`;
+【重点个股快照】（共 ${snapshots.length} 只：自选股优先 + 涨跌幅居前热门股；买卖建议只针对这些股票，30 日收盘/成交量序列已随数据图卡展示给用户）
+${snapshotText}
+
+请基于以上有限数据完成早报，并在"数据边界"中明确缺少全市场广度、财务、公告、新闻、资金流、估值与持仓数据，个股建议仅为基于价量数据的条件化推演。`;
 
       let usage = null;
       const content = await callLlm(cfg, systemPrompt, userPrompt, (_delta, full) => store.setState({ briefingStreamText: full }), u => { usage = u; });
@@ -306,7 +403,14 @@ ${sectorText}
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         content: content + COMPLIANCE_SUFFIX,
         at: Date.now(),
-        meta: { indexCount: indices?.length || 0, stockCount: stockRows.length, sectorCount: sectorRows.length, coverage: coverage?.label || '行情样本', tokens: usage?.total_tokens ?? null },
+        // v36.3：自动生成的每日去重依赖此字段（此前缺失导致「当日已生成」检查永不命中、每次进页重复生成）
+        generatedAt,
+        meta: {
+          indexCount: indices?.length || 0, stockCount: stockRows.length, sectorCount: sectorRows.length,
+          coverage: coverage?.label || '行情样本', tokens: usage?.total_tokens ?? null,
+          watchlistCount: (watchlist || []).length, snapshotCount: snapshots.length,
+          snapshots, // v36.3：数据图卡随记录持久化——历史预览可完整重现图表
+        },
       };
       store.setState({
         briefing: record,

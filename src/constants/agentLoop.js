@@ -14,8 +14,9 @@
  * 需同时确认服务端闸门不会把它截掉。
  */
 
-/** 工作站（深度多步任务）推理轮数上限。末轮会撤走工具并注入收敛指令强制收尾。 */
-export const WORKSTATION_MAX_ITERATIONS = 12;
+/** 工作站（深度多步任务）推理轮数上限。末轮会撤走工具并注入收敛指令强制收尾。
+ *  v36：12 → 20——长任务（深度调研/多文件产出/团队协作）12 轮不够走完全流程。 */
+export const WORKSTATION_MAX_ITERATIONS = 20;
 
 /** AI 精灵（全站轻量助手）推理轮数上限。刻意压低：精灵定位是低摩擦快问快答。 */
 export const ELF_MAX_ITERATIONS = 6;
@@ -24,11 +25,14 @@ export const ELF_MAX_ITERATIONS = 6;
 export const AGENT_DEFAULT_MAX_ITERATIONS = WORKSTATION_MAX_ITERATIONS;
 
 /** 对话补全的单次输出上限（token）。
- *  8000 而非 4000：agent 的核心场景「写一个完整的文件」的参数 JSON 很容易超过
- *  4000 token（中文 content ≈ 1 字 1~2 token），一旦截断，toolCallMerge 的卫生降级
- *  会把整个参数替换为 {}（安全失败），模型重试必然再次截断 → 写文件死循环。
- *  服务端闸门是 >8000 才回落，8000 恰好通过。 */
-export const COMPLETION_MAX_TOKENS = 8000;
+ *  16000 而非 8000：长任务（深度调研报告/万字文档）单轮 8000 常被截断；
+ *  配合 agentLoopCore 的 length 续写机制（finish_reason=length 自动接续），
+ *  长输出可以跨轮写完整。服务端闸门已同步放宽到 16000（aiHandlers.js）。 */
+export const COMPLETION_MAX_TOKENS = 16000;
+
+/** 终答因长度截断（finish_reason=length）时的自动续写次数上限：
+ *  防止某些模型每轮都顶满上限导致无限续写；续写轮不带工具，纯粹接续文本。 */
+export const MAX_COMPLETION_CONTINUATIONS = 3;
 
 /** 辅助产物的输出上限（如技能沉淀）：只需结构化要点，不需要长文，省额度 */
 export const AUX_COMPLETION_MAX_TOKENS = 3000;

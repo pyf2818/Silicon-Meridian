@@ -204,16 +204,88 @@ function ResearchChecklist({ code, name, realtime, diagnosis, aiFill }) {
   );
 }
 
-function BriefingContent({ content }) {
+/* v36.3：个股迷你走势图（30 日收盘 sparkline + 成交量柱）
+ * 颜色语义：涨=红、跌=绿（中文市场约定），与全局 --signal-* 令牌对齐 */
+function MiniStockChart({ snapshot }) {
+  const closes = (snapshot.closes || []).filter(Number.isFinite);
+  if (closes.length < 2) return null;
+  const W = 220;
+  const H = 58;
+  const PAD = 3;
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const span = (max - min) || 1;
+  const x = i => PAD + ((W - PAD * 2) * i) / (closes.length - 1);
+  const y = v => PAD + (H - PAD * 2) - ((v - min) / span) * (H - PAD * 2);
+  const points = closes.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+  const line = points.join(' ');
+  const area = `M ${x(0).toFixed(1)},${H - PAD} L ${points.join(' L ')} L ${x(closes.length - 1).toFixed(1)},${H - PAD} Z`;
+  const up = closes[closes.length - 1] >= closes[0];
+  const stroke = up ? 'var(--signal-critical)' : 'var(--signal-positive)';
+  const volumes = (snapshot.volumes || []).filter(Number.isFinite);
+  const vMax = Math.max(...volumes, 1);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="stock-bcard-spark" role="img" aria-label={`${snapshot.name || '个股'} 近 30 日走势与量能`}>
+      <path d={area} fill={stroke} opacity="0.12" />
+      <polyline points={line} fill="none" stroke={stroke} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      {volumes.length === closes.length && volumes.map((v, i) => {
+        const bw = ((W - PAD * 2) / closes.length) * 0.6;
+        const bh = Math.max(1, (v / vMax) * (H * 0.16));
+        return <rect key={i} x={(x(i) - bw / 2).toFixed(1)} y={(H - PAD - bh).toFixed(1)} width={bw.toFixed(1)} height={bh.toFixed(1)} fill={stroke} opacity="0.28" />;
+      })}
+    </svg>
+  );
+}
+
+/* v36.3：个股数据图卡——早报买卖建议的精确数据支撑（真实行情快照，非 AI 生成数字） */
+function BriefingStockCard({ snapshot }) {
+  if (!snapshot?.code) return null;
+  const pct = Number(snapshot.changePct) || 0;
+  const up = pct >= 0;
+  const rows = [
+    ['MA5/10/20', [snapshot.ma5, snapshot.ma10, snapshot.ma20].map(v => v ?? '--').join(' / ')],
+    ['RSI(14)', snapshot.rsi14 ?? '--'],
+    ['5日动量', snapshot.momentum5 == null ? '--' : `${snapshot.momentum5}%`],
+    ['支撑/压力', `${snapshot.support ?? '--'} / ${snapshot.resistance ?? '--'}`],
+    ['量能', ({ expanding: '放大', contracting: '收缩', stable: '平稳' })[snapshot.volumeTrend] || '--'],
+    ['算法评级', `${snapshot.rating || '--'} · 风险 ${snapshot.risk || '--'}`],
+  ];
+  return (
+    <div className="stock-briefing-card">
+      <div className="stock-bcard-head">
+        <strong>{snapshot.name || snapshot.code}</strong>
+        <span className="stock-bcard-code">{snapshot.code}{snapshot.fromWatchlist ? ' · 自选' : ''}</span>
+        <span className={`stock-bcard-pct ${up ? 'up' : 'down'}`}>
+          {Number.isFinite(Number(snapshot.price)) ? Number(snapshot.price).toFixed(2) : '--'}（{up ? '+' : ''}{pct.toFixed(2)}%）
+        </span>
+      </div>
+      <MiniStockChart snapshot={snapshot} />
+      <div className="stock-bcard-metrics">
+        {rows.map(([k, v]) => <div key={k}><span>{k}</span><b>{v}</b></div>)}
+      </div>
+    </div>
+  );
+}
+
+function BriefingContent({ content, snapshots = [] }) {
   return (
     <div className="stock-briefing-text">
       {(content || '').split('\n').map((line, index) => {
         const value = line.trim();
         if (!value) return <span className="stock-briefing-space" key={index} />;
         if (value.startsWith('## ')) return <h4 key={index}>{value.slice(3)}</h4>;
-        if (/^[-*•]\s/.test(value)) return <p className="bullet" key={index}>{value.replace(/^[-*•]\s*/, '')}</p>;
+        if (value.startsWith('### ')) return <h5 key={index} className="stock-briefing-h5">{value.slice(4)}</h5>;
+        if (/^[-*•]\s/.test(value) || value.startsWith('·')) return <p className="bullet" key={index}>{value.replace(/^[-*•·]\s*/, '')}</p>;
         return <p key={index}>{value}</p>;
       })}
+      {Array.isArray(snapshots) && snapshots.length > 0 && (
+        <div className="stock-briefing-cards">
+          <div className="stock-briefing-cards-title">重点个股 · 数据支撑图卡（真实行情快照，与 AI 建议同源）</div>
+          <div className="stock-briefing-cards-grid">
+            {snapshots.map(s => <BriefingStockCard key={s.code} snapshot={s} />)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

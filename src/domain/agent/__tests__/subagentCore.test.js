@@ -26,7 +26,8 @@ describe('SUBAGENT_PRESETS（预置子代理）', () => {
       expect(p.systemPrompt.length).toBeGreaterThan(20);
       expect(Array.isArray(p.tools)).toBe(true);
       expect(p.maxTurns).toBeGreaterThanOrEqual(3);
-      expect(p.maxTurns).toBeLessThanOrEqual(12);
+      // v36：深度调研类 preset 轮数上调（researcher 14），守卫同步放宽到 16——仍防预算失控
+      expect(p.maxTurns).toBeLessThanOrEqual(16);
     }
   });
 

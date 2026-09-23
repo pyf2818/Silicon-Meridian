@@ -70,13 +70,22 @@ async function toolWriteWorkspaceFile(args, ctx) {
   }
   const path = String(args?.path || '').trim();
   const content = String(args?.content ?? '');
+  const append = args?.append === true;
   const check = validateWorkspacePath(path);
   if (!check.ok) return `错误：${check.error}`;
   const segments = check.segments;
-  await writeFile(ctx.rootHandle, segments.slice(0, -1), segments[segments.length - 1], content);
+  let finalContent = content;
+  if (append) {
+    // 追加模式（长任务分段续写基石）：读旧文（不存在视为空）→ 拼接 → 全量写回
+    try {
+      const existing = await readFile(ctx.rootHandle, segments);
+      finalContent = `${existing}${existing && !existing.endsWith('\n') ? '\n' : ''}${content}`;
+    } catch { /* 文件不存在：追加等同新建 */ }
+  }
+  await writeFile(ctx.rootHandle, segments.slice(0, -1), segments[segments.length - 1], finalContent);
   // 写入即索引：agent 写入工作空间的文件自动进入知识索引，供后续对话召回（知识库闭环）
-  try { await indexFile(path, segments[segments.length - 1], content); } catch { /* 索引失败不影响写入 */ }
-  return `已写入文件：${path}（${content.length} 字符）`;
+  try { await indexFile(path, segments[segments.length - 1], finalContent); } catch { /* 索引失败不影响写入 */ }
+  return `${append ? '已追加到文件' : '已写入文件'}：${path}（${finalContent.length} 字符${append ? `，本次新增 ${content.length}` : ''}）`;
 }
 
 /* 复制工作空间内文件：读取源 → 写入目标（目标已存在则覆盖） */
@@ -1522,12 +1531,13 @@ const BUILTIN_TOOL_DEFS = [
       type: 'function',
       function: {
         name: 'write_workspace_file',
-        description: '将内容写入工作空间的文件（覆盖或新建）',
+        description: '将内容写入工作空间的文件（覆盖或新建）。长报告/长文档建议分段追加：先写第一段，之后每轮用 append=true 续写，避免单次输出过长被截断。',
         parameters: {
           type: 'object',
           properties: {
             path: { type: 'string', description: '相对于工作空间根目录的文件路径' },
-            content: { type: 'string', description: '要写入的完整文件内容' }
+            content: { type: 'string', description: '要写入的完整文件内容（append=true 时为本次追加的段落）' },
+            append: { type: 'boolean', description: 'true=在文件末尾追加（文件不存在则新建）。长内容分段续写时使用，默认 false=全量覆盖' },
           },
           required: ['path', 'content']
         }

@@ -87,10 +87,13 @@ export async function handleCommunityRequest(req, res, { path = [], service, aut
       const user = await viewer(req, auth, true);
       return sendJsonResponse(res, 200, { ok: true, data: await community.setFollow({ userId: user.id, followedId: requireUuid(parts[1]), enabled: method === 'PUT' }) });
     }
-    // C3 任务 3：本地上传（multipart）。登录 + 限流；校验（mime 白名单 + 魔法数嗅探 + 分级大小）后 bytea/内存入库
+    // C3 任务 3：本地上传（multipart）。校验（mime 白名单 + 魔法数嗅探 + 分级大小）后 bytea/内存入库
+    // v36.1：登录放宽为可选——工作站附件不应强依赖社区账号（dev 内存模式重启即丢登录态）。
+    // 限流：登录按 user.id 30 次/小时；匿名按 IP 20 次/小时（反图床滥用；nginx 后共享桶偏紧但安全）。
     if (parts[0] === 'uploads' && parts.length === 1 && method === 'POST') {
-      const user = await viewer(req, auth, true);
-      rateLimit(`upload:${user.id}`, 30, 60 * 60 * 1000);
+      const user = await viewer(req, auth);
+      const bucket = user ? `upload:${user.id}` : `upload-anon:${req.socket?.remoteAddress || 'unknown'}`;
+      rateLimit(bucket, user ? 30 : 20, 60 * 60 * 1000);
       const contentType = req.headers?.['content-type'] || '';
       if (!/multipart\/form-data/i.test(contentType)) throw Object.assign(new Error('请使用 multipart/form-data 上传'), { code: 'INVALID_MULTIPART', status: 400 });
       const body = await readRawBody(req);
@@ -102,7 +105,7 @@ export async function handleCommunityRequest(req, res, { path = [], service, aut
       for (const file of files) {
         const { kind, mime } = classifyUpload(file.filename, file.contentType, file.data);
         assertUploadSize(kind, file.data.length);
-        const record = await repository.createUpload({ ownerId: user.id, kind, mime, name: file.filename, size: file.data.length, data: file.data });
+        const record = await repository.createUpload({ ownerId: user?.id || null, kind, mime, name: file.filename, size: file.data.length, data: file.data });
         results.push({ ...record, url: `/api/community/uploads/${record.id}` });
       }
       return sendJsonResponse(res, 201, { ok: true, data: { uploads: results } });
