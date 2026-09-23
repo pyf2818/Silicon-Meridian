@@ -7,7 +7,7 @@
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-7-646cff?logo=vite&logoColor=white)](https://vite.dev)
 [![Node](https://img.shields.io/badge/Node-20%20%7C%2022-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-1005%20passing-3fb950)](../../actions)
+[![Tests](https://img.shields.io/badge/tests-1392%20passing-3fb950)](../../actions)
 [![MapLibre](https://img.shields.io/badge/globe-MapLibre%20GL%20v6-1e88e5)](https://maplibre.org)
 
 *SiliconStream 把公开 RSS/Atom 资讯、GitHub 趋势、A 股行情和用户关注主题汇总到同一个情报入口，再用 AI 帮你验证、分析、沉淀为素材和作品。全球态势、AI 工作站、Agent Team、工作流与社区都是这条主线上的专业视图与执行层。未配置大模型时仍可用确定性算法运行核心情报流程。*
@@ -52,17 +52,17 @@
 | 模块 | 能力 |
 | --- | --- |
 | **AI 工作站**（首页） | 多专业 Agent 深度工作台：ReAct 循环、工具编排、`set_plan` 计划执行、子智能体派生（spawn_subagent）与多智能体协作团队（spawn_agent_team，共享任务清单 + 邮箱通信） |
-| **AI 精灵** | 全站轻量助理：任意页面快速问答，拖入资讯/股票/代码/GitHub 卡片即席分析，产出可一键移交工作站深做 |
+| **AI 精灵（川川）** | 全站轻量助理：任意页面快速问答，拖入资讯/股票/代码/GitHub 卡片即席分析，产出可一键移交工作站深做 |
 | **今日情报 & 精准推荐** | 新鲜度/热度/信源等级/个人画像四维评分；快照预热、日历时间线、评分组成与推荐原因全透明 |
-| **学习型画像** | 领域与信源分层、特别关注、行为信号回流推荐（学习兴趣 +12/项），画像置信度与乐观锁同步 |
+| **学习型画像** | 领域与信源分层、特别关注、行为信号回流推荐，画像置信度与乐观锁同步 |
 | **MCP 集成** | 原生 Model Context Protocol 客户端：stdio / HTTP 双传输，`list_mcp_tools` / `mcp_call` 工具直达 Agent 循环 |
 
 ### 📊 情报与市场
 | 模块 | 能力 |
 | --- | --- |
 | **全球态势大屏** | 卫星级真实地球 + 资讯地理聚合 + 两级弹窗钻取 + 指挥中心氛围（详见下文亮点） |
-| **全部动态** | 255+ 硬编码信源（S/A/B/C/D 分级轮询、失败退避、自动降档），分类/地区/模式/关键词/信源多维过滤 |
-| **股市动向** | A 股搜索、自选股、实时行情、分时、K 线、板块排行；**AI 大师双引擎**（MACD/RSI/KDJ 技术面 + 「老舵主」人设盘感输出） |
+| **全部动态** | 270+ 硬编码信源（S/A/B/C/D 分级轮询、失败退避、自动降档），分类/地区/模式/关键词/信源多维过滤 |
+| **股市动向** | A 股搜索、自选股、实时行情、分时、K 线、板块排行；**AI 诊断**（买卖参考价 / 操作剧本 / 多空情景 / 风险清单，历史记录可回看并完整展示图表快照）与 **AI 早报**（右侧抽屉：基于自选股 + 热门股快照，给出条件化个股买卖建议，附涨跌幅 / 成交量 / 估值等数据图卡，并汇总近期热点与分析） |
 | **GitHub 热门** | 日/周/月榜与语言筛选、增量 Star、主题标签、AI 情报速读 |
 
 ### 🎨 创作与协作
@@ -81,11 +81,11 @@
 | --- | --- |
 | ![AI 工作站](public/screenshots/main-interface.png) | ![全球态势大屏](public/screenshots/globe-view.png) |
 
-| 大屏两级资讯钻取 | 全部动态（255+ 信源） |
+| 大屏两级资讯钻取 | 全部动态（270+ 信源） |
 | --- | --- |
 | ![大屏弹窗](public/screenshots/globe-popup.png) | ![全部动态](public/screenshots/all-news.png) |
 
-| 股市动向（K 线 + AI 大师） | GitHub 热门 |
+| 股市动向（K 线 + AI 诊断 / AI 早报） | GitHub 热门 |
 | --- | --- |
 | ![股市动向](public/screenshots/stock-analysis.png) | ![GitHub 热门](public/screenshots/github-trending.png) |
 
@@ -122,7 +122,7 @@ Browser
   └─ /api/*
        ├─ Node API + 领域服务（news / intelligence / profile / community / agent / mcp / skills / cron）
        ├─ PostgreSQL 15（认证 · 画像 · 社区 · 快照）
-       ├─ RSS / GitHub / 行情数据源（255+ 信源分级调度）
+       ├─ RSS / GitHub / 行情数据源（270+ 信源分级调度）
        ├─ OpenAI 兼容模型网关（可选，含 SSRF 防护）
        └─ Scrapling 抓取服务（可选）
 ```
@@ -140,8 +140,8 @@ Browser
 ### 本地开发
 
 ```bash
-git clone https://github.com/pyf2818/siliconstream.git
-cd siliconstream
+git clone https://github.com/pyf2818/Silicon-Meridian.git
+cd Silicon-Meridian
 npm install
 cp .env.example .env
 ```
@@ -204,13 +204,13 @@ AI 与抓取网关内置请求体限制、超时、频率限制、私网拦截�
 ## 🧪 测试与质量
 
 ```bash
-npm run test              # Vitest 单测：1072 个用例全绿（domain 纯逻辑引擎 / stores / hooks / utils / server）
+npm run test              # Vitest 单测：1392 个用例全绿（domain 纯逻辑引擎 / stores / hooks / utils / server）
 npm run test:integration  # 集成测试
 npm run test:e2e          # Playwright E2E
 npm run verify:platform   # 平台连通性自检（DB + 服务）
 ```
 
-另附探针脚本（`screenshots/_probe_*.mjs`）对大屏等关键链路做真实浏览器断言：真实鼠标命中点击、瓦片网络层校验、深度缩放存活检查。
+另附探针脚本（`scripts/probe-*.mjs`）对关键链路做真实浏览器断言：真实鼠标命中点击、瓦片网络层校验、深度缩放存活检查、股市 AI 诊断与早报抽屉回归。
 
 ---
 
@@ -250,7 +250,7 @@ npm start          # dist/ + 完整 /api/*，默认 :3000（首次需先 db:migr
 ```text
 src/
   App.jsx                    主应用编排（页面组合 / 路由 / 设置）
-  components/                业务组件（aichat 工作站 / aielf 精灵 / 大屏等）
+  components/                业务组件（aichat 工作站 / aielf 精灵 / 大屏 / 股市等）
     aichat/                    Agent 循环内核 · 系统提示 · 子智能体运行器
   domain/                    纯逻辑引擎（团队协作 · 子智能体 · 工作流），单测就地覆盖
   store/                     12 个 Zustand store（persist 中间件）
@@ -284,7 +284,12 @@ scrapling_server.py          可选网页抓取服务
 - 部分中文站点有反爬策略，Scrapling 提高成功率但不能保证所有来源可用。
 - 卫星瓦片来自 ESRI 公共服务，弱网或受限网络下首屏加载可能较慢。
 - Vercel 部署不包含需要长驻 PostgreSQL 的完整账户与社区能力。
+- 股市 AI 诊断为**条件化买卖剧本**，非投资建议，请独立判断、自负风险。
 
 ## 📄 许可证
 
 本仓库当前未附加开源许可证。未经项目所有者明确授权，不授予复制、修改或分发权利。
+
+---
+
+<p align="center">万般硅川 · 让每天的 AI 资讯，变成你能用上的判断。</p>
