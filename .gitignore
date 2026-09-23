@@ -212,3 +212,10 @@ commit-msg.txt
 
 # Jupyter checkpoints
 .ipynb_checkpoints/
+
+# 探针/截图产物噪声（2026-09-23 拍板不入库）
+# 前导斜杠锚定仓库根：只忽略根目录散图与根目录 screenshots/，不影响 public/screenshots/（README 引用图）
+/screenshots/
+/*.png
+/*.jpg
+/*.jpeg
