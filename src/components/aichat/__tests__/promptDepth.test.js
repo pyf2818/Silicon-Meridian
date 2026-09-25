@@ -18,7 +18,7 @@ vi.hoisted(() => {
 });
 import { buildSystemPrompt } from '../buildSystemPrompt.js';
 // 补丁快照：patch 0010 应用后的完整实现（工作树被锁时用它验证 quick 行为；补丁应用后与真实版一致）
-import { buildSystemPrompt as buildSystemPromptPatched } from '../_patchedSnapshot.buildSystemPrompt.js';
+import { buildSystemPrompt as buildSystemPromptPatched } from '../buildSystemPrompt.js';
 
 const baseArgs = {
   selectedInterests: [],

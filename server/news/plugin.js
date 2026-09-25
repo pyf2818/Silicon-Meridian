@@ -4,6 +4,9 @@ import { sendJson, parseBody, isSafeUrl } from './utils/httpUtils.js';
 import { handleAuthRequest } from '../http/authHandlers.js';
 import { handleCommunityRequest } from '../http/communityHandlers.js';
 import { handleChatRequest } from '../http/chatHandlers.js';
+import { handleArtifactRequest } from '../http/artifactHandlers.js';
+import { handleAuditRequest } from '../http/auditHandlers.js';
+import { handleHealthRequest } from '../http/healthHandler.js';
 import { handleCreativeRequest } from '../http/creativeHandlers.js';
 import { handleProfileRequest } from '../http/profileHandlers.js';
 import { handleAgentMemoryRequest } from '../http/agentMemoryHandlers.js';
@@ -180,9 +183,23 @@ export function newsPlugin() {
           const path = requestUrl.pathname.slice('/api/chat/'.length).split('/');
           return handleChatRequest(req, res, { path });
         }
+        // 产物中心：agent 任务产出统一注册与验收（Artifact Hub）
+        if (requestUrl.pathname === '/api/artifacts' || requestUrl.pathname.startsWith('/api/artifacts/')) {
+          const path = requestUrl.pathname === '/api/artifacts'
+            ? []
+            : requestUrl.pathname.slice('/api/artifacts/'.length).split('/');
+          return handleArtifactRequest(req, res, { path });
+        }
         if (requestUrl.pathname.startsWith('/api/community/')) {
           const path = requestUrl.pathname.slice('/api/community/'.length).split('/');
           return handleCommunityRequest(req, res, { path });
+        }
+        // 安全三件套：审计查询（仅本人）+ 进程健康快照
+        if (requestUrl.pathname === '/api/audit') {
+          return handleAuditRequest(req, res);
+        }
+        if (requestUrl.pathname === '/api/health') {
+          return handleHealthRequest(req, res);
         }
         if (requestUrl.pathname.startsWith('/api/creative/')) {
           const path = requestUrl.pathname.slice('/api/creative/'.length).split('/');

@@ -28,6 +28,17 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
 };
 
+// CSP report-only：只报告不阻断，先观察真实违规再逐步收紧为强制模式
+const CSP_REPORT_ONLY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "media-src 'self' https:",
+  "font-src 'self' data:",
+  "connect-src 'self' https: http:"
+].join('; ');
+
 const apiMiddleware = createNewsApiMiddleware();
 
 function sendJson(res, status, payload) {
@@ -78,7 +89,9 @@ async function serveFile(req, res, filename) {
   const info = await stat(filename);
   if (!info.isFile()) throw Object.assign(new Error('Not found'), { code: 'ENOENT' });
   const extension = path.extname(filename).toLowerCase();
+  const cspHeaders = extension === '.html' ? { 'Content-Security-Policy-Report-Only': CSP_REPORT_ONLY } : {};
   res.writeHead(200, {
+    ...cspHeaders,
     'Content-Type': MIME_TYPES[extension] || 'application/octet-stream',
     'Content-Length': info.size,
     'Cache-Control': filename.includes(`${path.sep}assets${path.sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache',
@@ -113,7 +126,11 @@ const server = http.createServer(async (req, res) => {
   }
   try {
     const requestUrl = new URL(req.url || '/', 'http://localhost');
-    if (requestUrl.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'siliconstream' });
+    if (requestUrl.pathname === '/health') {
+      // 进程健康快照（rss/heap/audit 失败计数/DB 探测），对齐 supervisor 可观测语义
+      const { handleHealthRequest } = await import('./http/healthHandler.js');
+      return handleHealthRequest(req, res);
+    }
     if (requestUrl.pathname === '/api/scrape') return await proxyScrapling(req, res, requestUrl);
     if (requestUrl.pathname.startsWith('/api/')) {
       return await apiMiddleware(req, res, () => sendJson(res, 404, { ok: false, error: 'API route not found' }));
@@ -135,16 +152,43 @@ server.listen(PORT, '0.0.0.0', () => {
       runDailyPreheat().catch(err => console.error('[preheat] cron error:', err));
     }, { timezone: 'Asia/Shanghai' });
     console.log('[cron] daily preheat registered for 06:00 Asia/Shanghai');
+    // 批 8：记忆蒸馏 cron —— 每天 04:00 跑一轮（repository 未接线时 runMemoryDistill 自动跳过）
+    cron.schedule('0 4 * * *', async () => {
+      try {
+        const { runMemoryDistill } = await import('./agent/memoryDistillService.js');
+        const result = await runMemoryDistill({ options: { staleDays: 30 } });
+        console.log('[cron] memory distill:', JSON.stringify(result));
+      } catch (err) {
+        console.error('[cron] memory distill error:', err);
+      }
+    }, { timezone: 'Asia/Shanghai' });
+    console.log('[cron] memory distill registered for 04:00 Asia/Shanghai');
   }
 });
 
-async function shutdown() {
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return; // 防重入：SIGINT 连按/信号风暴只走一次
+  shuttingDown = true;
+  console.log(`[productionServer] ${signal} received, shutting down...`);
+  try { server.closeIdleConnections?.(); } catch {} // keep-alive 空闲连接立即断开，加速 close 收敛
   server.close(async () => {
-    await closePool();
+    try { await closePool(); } catch (err) { console.error('[productionServer] closePool error:', err); }
     process.exit(0);
   });
-  setTimeout(() => process.exit(1), 10_000).unref();
+  setTimeout(() => process.exit(1), 10_000).unref(); // 兜底强退：有连接挂死也不超过 10s
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// 进程级兜底（对齐 supervisor 可观测语义）：
+// unhandledRejection 记录不退出 —— 后台 fire-and-forget 路径的单点失败不杀全体在线用户
+process.on('unhandledRejection', (reason) => {
+  console.error('[productionServer] unhandledRejection:', reason);
+});
+// uncaughtException 同步异常栈可能已损坏 —— 记录后走优雅退出，交给容器编排重启
+process.on('uncaughtException', (err) => {
+  console.error('[productionServer] uncaughtException:', err);
+  shutdown('uncaughtException');
+});

@@ -1,6 +1,7 @@
 import { getPool } from '../db/client.js';
 import { isDevMemoryMode } from '../db/devMemoryStore.js';
 import { createMemoryProfileRepository } from './memoryProfileRepository.js';
+import { encryptLlmSecrets, decryptLlmSecrets } from '../security/llmSecrets.js';
 
 async function inTransaction(db, work) {
   const client = await db.connect();
@@ -90,7 +91,8 @@ export function createProfileRepository(db) {
         'SELECT llm_config FROM user_profiles WHERE user_id = $1',
         [userId]
       );
-      return res.rows[0]?.llm_config || {};
+      // 存储层解密：绕过 service 直调 repository 的调用方（snapshot/editor）也拿到明文
+      return decryptLlmSecrets(res.rows[0]?.llm_config || {});
     },
     /**
      * Phase 3 Task A3: 写入跨设备 LLM 配置（upsert）。
@@ -102,7 +104,7 @@ export function createProfileRepository(db) {
          VALUES ($1, $2, now())
          ON CONFLICT (user_id) DO UPDATE
          SET llm_config = EXCLUDED.llm_config, updated_at = now()`,
-        [userId, JSON.stringify(config || {})]
+        [userId, JSON.stringify(encryptLlmSecrets(config) || {})]
       );
     },
   };

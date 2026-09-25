@@ -17,7 +17,10 @@ describe('agent job persistence', () => {
   it('creates the next run using the requested timezone', async () => {
     query.mockResolvedValue({ rows: [{ id: 'job', next_run_at: 'next' }] });
     await createJob({ userId: 'u', agentId: 'a', name: 'job', missionPrompt: 'run', cronExpr: '0 8 * * *', timezone: 'UTC' });
-    expect(query.mock.calls[0][1][7].toISOString()).toBe('2026-09-13T08:00:00.000Z');
+    // 0011 护栏在 insert 前新增了一次 count 查询——按 SQL 特征定位 insert 调用，不依赖调用序号
+    const insertCall = query.mock.calls.find(([sql]) => sql.includes('insert into agent_jobs'));
+    expect(insertCall).toBeTruthy();
+    expect(insertCall[1][7].toISOString()).toBe('2026-09-13T08:00:00.000Z');
   });
 
   it('persists camelCase API fields and recalculates the schedule with the saved timezone', async () => {

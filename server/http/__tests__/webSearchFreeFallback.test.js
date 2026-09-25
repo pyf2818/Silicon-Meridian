@@ -63,7 +63,7 @@ describe('callStackExchange', () => {
     expect(results[0]).toHaveProperty('title');
     expect(results[0]).toHaveProperty('url');
     expect(results[0].url.startsWith('http')).toBe(true);
-  });
+  }, 20000);
 
   it('结果字段完整', async () => {
     const { results } = await callStackExchange('python asyncio', 2);
@@ -72,7 +72,7 @@ describe('callStackExchange', () => {
       expect(typeof r.url).toBe('string');
       expect(typeof r.snippet).toBe('string');
     }
-  });
+  }, 20000);
 });
 
 describe('callKeyFreeSearch', () => {

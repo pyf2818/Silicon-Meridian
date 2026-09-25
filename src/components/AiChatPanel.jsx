@@ -9,6 +9,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { renderMarkdown } from '../utils/markdown.jsx';
+import { stripLeadingOrdinal } from './aichat/stripLeadingOrdinal.js';
 import { computePopoverPosition, toPlainRect } from '../utils/popoverPosition.js';
 import SafeBoundary from './SafeBoundary.jsx';
 import SessionSidebar from './SessionSidebar.jsx';
@@ -415,6 +416,10 @@ export default function AiChatPanel({
   }, [showModeMenu]);
   const currentModeMeta = PERMISSION_MODES.find(m => m.id === agentPermissionMode) || PERMISSION_MODES[1];
 
+  // 上下文深度模式（对齐 WorkBuddy fragments 语义）：deep 全量注入；quick 快问快答——
+  // 砍掉证据目录/素材目录/历史记忆等重上下文，身份锚定与安全段无条件保留
+  const [chatDepthMode, setChatDepthMode] = useState('deep');
+
   // 联网搜索切换：直接打补丁到 llmConfig（持久化由 useLlmConfig effect 负责）
   const webSearchEnabled = llmConfig?.webSearchEnabled !== false;
   const toggleWebSearch = useCallback(() => {
@@ -786,7 +791,8 @@ export default function AiChatPanel({
     workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs,
     materialContext, agent,
     siliconstreamPersona, personaSummary,
-  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, materialContext, agent, siliconstreamPersona, personaSummary]);
+    mode: chatDepthMode,
+  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, materialContext, agent, siliconstreamPersona, personaSummary, chatDepthMode]);
 
   // ===== 上下文窗口进度环：与发送链路同源的估算器（systemPrompt + 历史 + 输入草稿） =====
   // 注意：必须在 systemPrompt 定义之后（TDZ）；分母 = 流式回复的真实压缩预算
@@ -1875,7 +1881,7 @@ export default function AiChatPanel({
                 msg.content ? (
                   <div
                     className="chat-bubble-content is-streaming"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(stripLeadingOrdinal(msg.content)) }}
                   />
                 ) : msg.thinking ? null : (
                   <div className="chat-typing"><span /><span /><span /></div>
@@ -1883,7 +1889,7 @@ export default function AiChatPanel({
               ) : (
                 <div
                   className={`chat-bubble-content${(isStreaming && i === messages.length - 1) ? ' is-streaming' : ''}${msg.stopped ? ' is-stopped' : ''}`}
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.role === 'user' ? (msg.displayContent || msg.content) : msg.content) }}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.role === 'user' ? (msg.displayContent || msg.content) : stripLeadingOrdinal(msg.content)) }}
                 />
               )}
               {msg.stopped && (
@@ -2228,6 +2234,16 @@ export default function AiChatPanel({
                 ))}
               </div>
             )}
+            {/* 上下文深度切换（quick/deep）：快问省 token，深研全量注入 */}
+            <button
+              type="button"
+              className="chat-mode-chip"
+              onClick={() => setChatDepthMode(m => (m === 'deep' ? 'quick' : 'deep'))}
+              title={chatDepthMode === 'deep' ? '当前：深研模式（全量上下文注入）。点击切换为快问模式' : '当前：快问模式（轻量上下文，证据/记忆用工具按需拉取）。点击切回深研模式'}
+            >
+              <span className="chat-mode-dot" style={{ background: chatDepthMode === 'deep' ? 'var(--accent-cyan)' : 'var(--status-warn, #d29922)' }} />
+              {chatDepthMode === 'deep' ? '深研' : '快问'}
+            </button>
             {/* 计划模式触发（P0-2）：把输入框内容转为「先出方案、批准后执行」的计划请求 */}
             <button
               type="button"

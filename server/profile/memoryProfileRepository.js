@@ -5,6 +5,7 @@
  *   profile_domains / profile_sources / special_follows / (dailyProfileSnapshots 来自 briefing 快照)
  */
 import { profiles, randomUUID } from '../db/devMemoryStore.js';
+import { encryptLlmSecrets, decryptLlmSecrets } from '../security/llmSecrets.js';
 
 function ensureProfile(userId) {
   let p = profiles.get(userId);
@@ -62,10 +63,10 @@ export function createMemoryProfileRepository() {
       return p.version;
     },
     async getLlmConfig(userId) {
-      return ensureProfile(userId).llmConfig || {};
+      return decryptLlmSecrets(ensureProfile(userId).llmConfig || {});
     },
     async setLlmConfig(userId, config) {
-      ensureProfile(userId).llmConfig = config || {};
+      ensureProfile(userId).llmConfig = encryptLlmSecrets(config) || {};
     },
   };
 }

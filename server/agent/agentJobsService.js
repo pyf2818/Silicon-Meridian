@@ -1,6 +1,7 @@
 // agentJobsService.js - 智能体定时任务 CRUD + 下次执行时间计算
 import { getPool } from '../db/client.js';
 import { runAgentOnce } from '../http/agentRunHandlers.js';
+import { assertJobCreationAllowed, assertCronIntervalAllowed } from './agentJobsGuards.js';
 
 /* ============ Cron 表达式解析（简化版，支持 5 字段：分 时 日 月 周） ============ */
 // 不支持 L/W/# 等高级语法，仅支持 * / 数字 / , / -
@@ -81,6 +82,9 @@ export async function createJob({ userId, agentId, name, description = '', cronE
   const pool = getPool();
   // 校验 cron 表达式
   const nextRun = nextCronRun(cronExpr, new Date(), timezone);
+  // 护栏：per-user 任务数上限 + cron 最小触发间隔（防 LLM 成本失控）
+  const countRes = await pool.query('select count(*)::int as count from agent_jobs where user_id = $1', [userId]);
+  assertJobCreationAllowed({ count: countRes.rows[0]?.count || 0, cronExpr, timezone, nextCronRunFn: nextCronRun });
   const result = await pool.query(
     `insert into agent_jobs (user_id, agent_id, name, description, cron_expr, timezone, mission_prompt, next_run_at)
      values ($1, $2, $3, $4, $5, $6, $7, $8) returning id, next_run_at`,
@@ -110,6 +114,8 @@ export async function updateJob(jobId, userId, patch) {
     );
     if (!current.rows.length) return { updated: 0 };
     const nextRun = nextCronRun(patch.cronExpr ?? current.rows[0].cron_expr, new Date(), patch.timezone ?? current.rows[0].timezone);
+    // 护栏：cron 表达式/时区变更时重验最小触发间隔
+    assertCronIntervalAllowed({ cronExpr: patch.cronExpr ?? current.rows[0].cron_expr, timezone: patch.timezone ?? current.rows[0].timezone, nextCronRunFn: nextCronRun });
     fields.push(`next_run_at = $${idx++}`);
     params.push(nextRun);
   }
