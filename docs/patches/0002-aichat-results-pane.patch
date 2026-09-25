@@ -1,0 +1,24 @@
+diff --git a/src/components/AiChatPanel.jsx b/src/components/AiChatPanel.jsx
+index 7586b12..5915268 100644
+--- a/src/components/AiChatPanel.jsx
++++ b/src/components/AiChatPanel.jsx
+@@ -41,6 +41,7 @@ import { useInputHistory } from './aichat/useInputHistory.js';
+ import { useSelfEvolution } from '../hooks/useSelfEvolution.js';
+ import { useSkills } from '../hooks/useSkills.js';
+ import { showToast } from '../utils/toast.js';
++import ResultsPane from './workstation/ResultsPane.jsx';
+ import { useProfileStore, useUiStore } from '../store';
+ import { ICONS } from '../constants/appConstants.jsx';
+ import { packConversation, estimateMessages, resolveContextBudget } from '../session/contextManager.js';
+@@ -2615,6 +2616,11 @@ export default function AiChatPanel({
+           onInvokeTool={handleInvokeTool}
+         />
+       )}
++
++      {/* 右栏扩展：产物结果区（Artifact Hub，常驻；对齐 WorkBuddy 任务→交付物→结果区契约） */}
++      {variant === 'main' && (
++        <ResultsPane sessionId={activeSessionId || ''} />
++      )}
+       <PersonaDrawer
+         open={showPersonaDrawer}
+         onClose={() => setShowPersonaDrawer(false)}

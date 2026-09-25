@@ -1,0 +1,64 @@
+diff --git a/src/components/aichat/buildSystemPrompt.js b/src/components/aichat/buildSystemPrompt.js
+index 408b2a8..ebceaf1 100644
+--- a/src/components/aichat/buildSystemPrompt.js
++++ b/src/components/aichat/buildSystemPrompt.js
+@@ -50,6 +50,9 @@ export function buildSystemPrompt({
+   agent,
+   siliconstreamPersona,
+   personaSummary,
++  // 上下文深度模式：'deep'（默认，全量注入）| 'quick'（快问快答：砍证据目录/素材目录/记忆等重上下文，
++  //  身份锚定与安全段无条件保留——对齐 WorkBuddy「安全段无条件注入」原则）
++  mode = 'deep',
+ }) {
+   const interests = (selectedInterests || [])
+     .map(id => categories?.find(c => c.id === id)?.label || id)
+@@ -57,7 +60,7 @@ export function buildSystemPrompt({
+   // 【目录层】情报条目不再注入正文摘要：旧版 12 条 × 600 字 ≈ 5K token，且 agent 只看得见 12 条。
+   // 改为最多 60 条「一行一条」的紧凑目录（≈1.5K token，固定成本不随库内总量增长），
+   // 正文一律交给工具按需取（见下方 CATALOG_USAGE_HINT）。
+-  const evidenceItems = excludeAllEvidence
++  const evidenceItems = (excludeAllEvidence || mode === 'quick')
+     ? []
+     : (intelligenceContext?.items || []).slice(0, CATALOG_LIMITS.news);
+   const evidence = buildEvidenceCatalog({ items: evidenceItems }).text;
+@@ -124,7 +127,7 @@ export function buildSystemPrompt({
+     ].filter(Boolean).join('\n') : '',
+     // Phase 3 Task B10: 相关记忆段（服务端 agent_memories，来自 fetchRelevantMemories）
+     // 仅当相关时参考，避免重复询问用户已表达过的偏好/需求
+-    agentMemories && agentMemories.length > 0
++    mode !== 'quick' && agentMemories && agentMemories.length > 0
+       ? '【相关记忆】基于当前话题检索的跨会话记忆（仅当相关时参考，避免重复询问）：\n' +
+         agentMemories.slice(0, 5).map(m => {
+           const type = m.memory_type || m.memoryType || '记忆';
+@@ -144,6 +147,7 @@ export function buildSystemPrompt({
+     `今日共 ${workbenchItems?.length || 0} 条资讯。`,
+     // 情报聚焦：当日 briefing 摘要 + 聚焦工具指引（证据细节按需拉取，而非全量塞入）
+     (() => {
++      if (mode === 'quick') return ''; // quick 档不注入情报聚焦（工具按需拉取）
+       const briefing = intelligenceContext?.briefing || {};
+       const topEvents = Array.isArray(briefing.topEvents) ? briefing.topEvents.slice(0, 8) : [];
+       if (!briefing.oneLine && !topEvents.length) return '';
+@@ -168,19 +172,19 @@ export function buildSystemPrompt({
+     '当需要展示数据时，请使用 markdown 表格。当需要展示趋势时，使用简洁的符号图表。',
+     '【输出风格·硬性约束】禁止使用任何 emoji、颜文字或装饰性符号（包括但不限于 💡📊🚀✨🔍📌🎯✅❌⚡🔥💡等）。也不要在标题或列表项前加 emoji。保持专业、克制的文字表达，让信息密度本身成为可读性的来源。',
+     evidence ? `站内证据目录（预置清单，供快速定位；不是证据边界——工具检索到的新内容同样可作依据；正文按需取）：\n${evidence}\n\n${CATALOG_USAGE_HINT}` : '站内暂无预置证据；需要事实依据时用 search_news / web_search 等工具检索，基于检索结果作答并注明来源，不要凭空编造。',
+-    (!excludeAllMaterials && (materialContext?.selected?.length || materialContext?.lines?.length))
++    mode !== 'quick' && (!excludeAllMaterials && (materialContext?.selected?.length || materialContext?.lines?.length))
+       ? `【素材库目录】以下素材可用于延续研究（AI 精灵保存的素材优先代表跨页面拖拽分析后的交接记录；只列标题与元信息，正文用 list_knowledge / read_workspace_file 取）：\n${buildEvidenceCatalog({ materials: materialContext.selected || [] }).text || materialContext.lines.join('\n')}`
+       : '',
+     // 会话记忆：检索相关历史摘要，让 AI 跨对话不失忆
+-    relevantMemories.length > 0
++    mode !== 'quick' && relevantMemories.length > 0
+       ? '【历史记忆】你之前和用户有过以下相关对话，可参考其结论（但以今日证据为准）：\n' +
+         relevantMemories.map(m => `  - ${m.topic}（${new Date(m.createdAt).toLocaleDateString('zh-CN')}）：${m.conclusions.join('；')}`).join('\n')
+       : '',
+     // 工作空间召回：自动检索相关历史文件注入上下文
+-    recalledFiles.length > 0
++    mode !== 'quick' && recalledFiles.length > 0
+       ? `【工作空间召回·目录】以下是你之前沉淀的相关文件（只列名称与一瞥，需要全文时用 read_workspace_file 按名读取）：\n${buildEvidenceCatalog({ files: recalledFiles }).text}`
+       : '',
+-    workspaceFiles.length > 0
++    mode !== 'quick' && workspaceFiles.length > 0
+       ? `【工作空间关联文件】用户已将以下本地文件关联到当前空间，其正文会随每条用户消息以「空间文件」块携带（以消息内文件块为准，此处只列目录）：\n${workspaceFiles.map(f => `  - ${f.name}（${f.path || '本地文件'}${f.truncated ? '，空间内已截断，需要全文可用 read_workspace_file' : ''}）`).join('\n')}`
+       : '',
+     // Phase 1.3 Task 14: 预留"最近校准"段 —— 读取 pendingSuggestions 中近 7 天 accepted 的建议。

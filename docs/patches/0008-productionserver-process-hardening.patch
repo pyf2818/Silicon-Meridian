@@ -1,0 +1,39 @@
+diff --git a/server/productionServer.js b/server/productionServer.js
+index 12382d8..368b5e9 100644
+--- a/server/productionServer.js
++++ b/server/productionServer.js
+@@ -138,13 +138,29 @@ server.listen(PORT, '0.0.0.0', () => {
+   }
+ });
+ 
+-async function shutdown() {
++let shuttingDown = false;
++async function shutdown(signal) {
++  if (shuttingDown) return; // 防重入：SIGINT 连按/信号风暴只走一次
++  shuttingDown = true;
++  console.log(`[productionServer] ${signal} received, shutting down...`);
++  try { server.closeIdleConnections?.(); } catch {} // keep-alive 空闲连接立即断开，加速 close 收敛
+   server.close(async () => {
+-    await closePool();
++    try { await closePool(); } catch (err) { console.error('[productionServer] closePool error:', err); }
+     process.exit(0);
+   });
+-  setTimeout(() => process.exit(1), 10_000).unref();
++  setTimeout(() => process.exit(1), 10_000).unref(); // 兜底强退：有连接挂死也不超过 10s
+ }
+ 
+-process.on('SIGINT', shutdown);
+-process.on('SIGTERM', shutdown);
++process.on('SIGINT', () => shutdown('SIGINT'));
++process.on('SIGTERM', () => shutdown('SIGTERM'));
++
++// 进程级兜底（对齐 supervisor 可观测语义）：
++// unhandledRejection 记录不退出 —— 后台 fire-and-forget 路径的单点失败不杀全体在线用户
++process.on('unhandledRejection', (reason) => {
++  console.error('[productionServer] unhandledRejection:', reason);
++});
++// uncaughtException 同步异常栈可能已损坏 —— 记录后走优雅退出，交给容器编排重启
++process.on('uncaughtException', (err) => {
++  console.error('[productionServer] uncaughtException:', err);
++  shutdown('uncaughtException');
++});

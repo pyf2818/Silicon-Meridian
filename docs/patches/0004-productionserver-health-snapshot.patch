@@ -1,0 +1,17 @@
+diff --git a/server/productionServer.js b/server/productionServer.js
+index 12382d8..9e57ba5 100644
+--- a/server/productionServer.js
++++ b/server/productionServer.js
+@@ -113,7 +113,11 @@ const server = http.createServer(async (req, res) => {
+   }
+   try {
+     const requestUrl = new URL(req.url || '/', 'http://localhost');
+-    if (requestUrl.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'siliconstream' });
++    if (requestUrl.pathname === '/health') {
++      // 进程健康快照（rss/heap/audit 失败计数/DB 探测），对齐 supervisor 可观测语义
++      const { handleHealthRequest } = await import('./http/healthHandler.js');
++      return handleHealthRequest(req, res);
++    }
+     if (requestUrl.pathname === '/api/scrape') return await proxyScrapling(req, res, requestUrl);
+     if (requestUrl.pathname.startsWith('/api/')) {
+       return await apiMiddleware(req, res, () => sendJson(res, 404, { ok: false, error: 'API route not found' }));

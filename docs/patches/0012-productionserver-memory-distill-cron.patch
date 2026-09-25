@@ -1,0 +1,22 @@
+diff --git a/server/productionServer.js b/server/productionServer.js
+index 12382d8..2354e22 100644
+--- a/server/productionServer.js
++++ b/server/productionServer.js
+@@ -135,6 +135,17 @@ server.listen(PORT, '0.0.0.0', () => {
+       runDailyPreheat().catch(err => console.error('[preheat] cron error:', err));
+     }, { timezone: 'Asia/Shanghai' });
+     console.log('[cron] daily preheat registered for 06:00 Asia/Shanghai');
++    // 批 8：记忆蒸馏 cron —— 每天 04:00 跑一轮（repository 未接线时 runMemoryDistill 自动跳过）
++    cron.schedule('0 4 * * *', async () => {
++      try {
++        const { runMemoryDistill } = await import('./agent/memoryDistillService.js');
++        const result = await runMemoryDistill({ options: { staleDays: 30 } });
++        console.log('[cron] memory distill:', JSON.stringify(result));
++      } catch (err) {
++        console.error('[cron] memory distill error:', err);
++      }
++    }, { timezone: 'Asia/Shanghai' });
++    console.log('[cron] memory distill registered for 04:00 Asia/Shanghai');
+   }
+ });
+ 

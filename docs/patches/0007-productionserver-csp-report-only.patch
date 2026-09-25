@@ -1,0 +1,32 @@
+diff --git a/server/productionServer.js b/server/productionServer.js
+index 12382d8..9e6e91a 100644
+--- a/server/productionServer.js
++++ b/server/productionServer.js
+@@ -28,6 +28,17 @@ const MIME_TYPES = {
+   '.woff2': 'font/woff2',
+ };
+ 
++// CSP report-only：只报告不阻断，先观察真实违规再逐步收紧为强制模式
++const CSP_REPORT_ONLY = [
++  "default-src 'self'",
++  "script-src 'self'",
++  "style-src 'self' 'unsafe-inline'",
++  "img-src 'self' data: https:",
++  "media-src 'self' https:",
++  "font-src 'self' data:",
++  "connect-src 'self' https: http:"
++].join('; ');
++
+ const apiMiddleware = createNewsApiMiddleware();
+ 
+ function sendJson(res, status, payload) {
+@@ -78,7 +89,9 @@ async function serveFile(req, res, filename) {
+   const info = await stat(filename);
+   if (!info.isFile()) throw Object.assign(new Error('Not found'), { code: 'ENOENT' });
+   const extension = path.extname(filename).toLowerCase();
++  const cspHeaders = extension === '.html' ? { 'Content-Security-Policy-Report-Only': CSP_REPORT_ONLY } : {};
+   res.writeHead(200, {
++    ...cspHeaders,
+     'Content-Type': MIME_TYPES[extension] || 'application/octet-stream',
+     'Content-Length': info.size,
+     'Cache-Control': filename.includes(`${path.sep}assets${path.sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache',

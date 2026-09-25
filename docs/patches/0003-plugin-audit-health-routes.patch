@@ -1,0 +1,27 @@
+diff --git a/server/news/plugin.js b/server/news/plugin.js
+index fa2c659..41bdf6e 100644
+--- a/server/news/plugin.js
++++ b/server/news/plugin.js
+@@ -5,6 +5,8 @@ import { handleAuthRequest } from '../http/authHandlers.js';
+ import { handleCommunityRequest } from '../http/communityHandlers.js';
+ import { handleChatRequest } from '../http/chatHandlers.js';
+ import { handleArtifactRequest } from '../http/artifactHandlers.js';
++import { handleAuditRequest } from '../http/auditHandlers.js';
++import { handleHealthRequest } from '../http/healthHandler.js';
+ import { handleCreativeRequest } from '../http/creativeHandlers.js';
+ import { handleProfileRequest } from '../http/profileHandlers.js';
+ import { handleAgentMemoryRequest } from '../http/agentMemoryHandlers.js';
+@@ -191,6 +193,13 @@ export function newsPlugin() {
+         if (requestUrl.pathname.startsWith('/api/community/')) {
+           const path = requestUrl.pathname.slice('/api/community/'.length).split('/');
+           return handleCommunityRequest(req, res, { path });
++        // 安全三件套：审计查询（仅本人）+ 进程健康快照
++        if (requestUrl.pathname === '/api/audit') {
++          return handleAuditRequest(req, res);
++        }
++        if (requestUrl.pathname === '/api/health') {
++          return handleHealthRequest(req, res);
++        }
+         }
+         if (requestUrl.pathname.startsWith('/api/creative/')) {
+           const path = requestUrl.pathname.slice('/api/creative/'.length).split('/');
