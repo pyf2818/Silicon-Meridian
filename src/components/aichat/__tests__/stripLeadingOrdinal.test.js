@@ -38,4 +38,31 @@ describe('stripLeadingOrdinal', () => {
   it('纯数字单条回复不误删（剥完无内容则保留原样）', () => {
     expect(stripLeadingOrdinal('0')).toBe('0');
   });
+
+  // ── v37：实测模型还会输出字母 O / 全角数字开头（\d 不匹配 → 渲染漏网）──
+  it('v37: 剥离字母 O / o 的孤立首行', () => {
+    expect(stripLeadingOrdinal('O\n**一句话结论**：不一样。')).toBe('**一句话结论**：不一样。');
+    expect(stripLeadingOrdinal('o\n正文开始')).toBe('正文开始');
+  });
+
+  it('v37: 剥离全角数字孤立首行', () => {
+    expect(stripLeadingOrdinal('０\n正文开始')).toBe('正文开始');
+    expect(stripLeadingOrdinal('０１\n正文开始')).toBe('正文开始');
+  });
+
+  it('v37: "O(n) 复杂度" 这类同行带后续内容的 O 不误伤', () => {
+    const t = 'O(n) 复杂度是这个算法的瓶颈。\n下一行正文。';
+    expect(stripLeadingOrdinal(t)).toBe(t);
+  });
+
+  it('v37: OK 开头的正常英文回复不误伤（同行有后续内容）', () => {
+    const t = 'OK，以下是分析结果。';
+    expect(stripLeadingOrdinal(t)).toBe(t);
+  });
+
+  it('v37: 代码块内首行为数字时不受影响（仅当正文以其开头才按规则评估）', () => {
+    // 正文以代码块围栏开头，围栏行不匹配序号行 → 整体保留
+    const t = '```\n0\n```\n后文';
+    expect(stripLeadingOrdinal(t)).toBe(t);
+  });
 });

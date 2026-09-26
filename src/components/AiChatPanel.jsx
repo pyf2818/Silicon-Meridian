@@ -791,8 +791,9 @@ export default function AiChatPanel({
     workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs,
     materialContext, agent,
     siliconstreamPersona, personaSummary,
+    skillLibrary: skillsHook.skills,
     mode: chatDepthMode,
-  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, materialContext, agent, siliconstreamPersona, personaSummary, chatDepthMode]);
+  }), [selectedInterests, categories, intelligenceProfile, workbenchItems?.length, intelligenceContext, workspaceFiles, relevantMemories, agentMemories, recalledFiles, learnedPrefs, materialContext, agent, siliconstreamPersona, personaSummary, skillsHook.skills, chatDepthMode]);
 
   // ===== 上下文窗口进度环：与发送链路同源的估算器（systemPrompt + 历史 + 输入草稿） =====
   // 注意：必须在 systemPrompt 定义之后（TDZ）；分母 = 流式回复的真实压缩预算

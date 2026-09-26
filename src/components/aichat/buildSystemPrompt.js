@@ -31,6 +31,7 @@ import {
  * @param {object} opts.siliconstreamPersona SiliconStream 本体的独立灵魂
  *   { persona, soul, voice, habits }（v26.9 身份隔离：与工作站角色完全解耦）
  * @param {object} opts.personaSummary 用户性格画像（来自服务端 persona_summary）
+ * @param {Array} [opts.skillLibrary] 技能库清单（来自 /api/skills，每项含 id/title/description/triggers/source）
  * @returns {string} 最终 system prompt
  */
 export function buildSystemPrompt({
@@ -50,6 +51,7 @@ export function buildSystemPrompt({
   agent,
   siliconstreamPersona,
   personaSummary,
+  skillLibrary,
   // 上下文深度模式：'deep'（默认，全量注入）| 'quick'（快问快答：砍证据目录/素材目录/记忆等重上下文，
   //  身份锚定与安全段无条件保留——对齐 WorkBuddy「安全段无条件注入」原则）
   mode = 'deep',
@@ -114,6 +116,21 @@ export function buildSystemPrompt({
     // 注意位置：此段必须放在 system prompt 前部（指令区），不能落在证据/素材等数据段之后——
     // 服务端网关有 systemPrompt 长度上限，数据段越长越可能把末尾内容截掉，工具指引首当其冲。
     agent?.tools?.length ? buildToolCapabilitiesText(agent.tools) : '',
+    // v37 技能库目录：让 agent 知道技能库的存在、格式与调用方式（此前模型自称"我的 skill 是纯文本"，
+    // 就是因为 prompt 里从未告知技能库形态）。放在指令区尾部，避免被长数据段挤出截断。
+    // quick 模式不注入（快问快答省 token；技能调用本就属于深度任务场景）。
+    mode !== 'quick' && Array.isArray(skillLibrary) ? (() => {
+      const skills = skillLibrary.filter(s => s && s.id);
+      if (skills.length === 0) {
+        return '【技能库】当前技能库为空。完成任务后可用 create_skill 把工作方法论沉淀为技能（SKILL.md 格式，存入服务端 skills/ 目录）；可用 list_skills 查看库内技能。';
+      }
+      const lines = skills.slice(0, 24).map(s =>
+        `  - ${s.id}（${s.source || 'work'}）${s.title || s.id}：${String(s.description || '').slice(0, 80)}`
+        + `${Array.isArray(s.triggers) && s.triggers.length ? `｜触发词：${s.triggers.join('/')}` : ''}`);
+      return '【技能库】你拥有一个持久化技能库：服务端 skills/ 目录按 SKILL.md 文件夹格式存放（YAML frontmatter 元信息 + Markdown 方法论正文——与主流 Claude Skills 同构，不是纯文本聊天记录）。当前技能（最多列 24 条，全量用 list_skills）：\n'
+        + lines.join('\n')
+        + '\n任务场景与某技能的描述/触发词匹配时：先 use_skill 读取其全文，再按其方法论执行（不要凭清单里的描述臆测技能内容）。';
+    })() : '',
     // 不可信数据处理规则（与 agentLoopCore 的 wrapUntrusted 定界符配对，prompt 注入核心防线）
     untrustedDataPolicyText(),
     '【用户画像】你了解以下关于用户的信息，回复时主动贴合其关注点和偏好：',

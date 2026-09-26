@@ -100,6 +100,22 @@ const CAPABILITIES = {
       'skill 记录「怎么做」而非「输出结果」：适用场景、工作流程、决策点、工具经验',
     ],
   },
+  list_skills: {
+    label: '技能列表',
+    snippet: '列出技能库全部技能（SKILL.md 文件夹格式，builtin/work/user 三源）',
+    guidelines: [
+      '任务场景可能与既有技能匹配、或不确定技能库里有什么时，先 list_skills 再 use_skill',
+      '返回的是清单（id/标题/描述/触发词），不含正文；正文用 use_skill 读取',
+    ],
+  },
+  use_skill: {
+    label: '调用技能',
+    snippet: '按 id 读取技能的 SKILL.md 全文（方法论/流程/输出模板），按其指导执行任务',
+    guidelines: [
+      '任务场景与技能描述/触发词匹配时调用；读完后按其方法论执行，不要凭记忆瞎编技能内容',
+      '技能库是 SKILL.md 文件夹格式（与主流 Claude Skills 同构）：frontmatter 是元信息，正文才是方法论',
+    ],
+  },
   spawn_subagent: {
     label: '派出子代理',
     snippet: '把可并行的子任务派给专业化子代理（explorer 侦察 / researcher 研究 / writer 撰稿 / critic 审校），收集结构化报告',

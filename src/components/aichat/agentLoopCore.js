@@ -13,6 +13,7 @@ import { AGENT_DEFAULT_MAX_ITERATIONS, COMPLETION_MAX_TOKENS, MAX_COMPLETION_CON
 import { wrapUntrusted } from '../../session/untrusted.js';
 import { packConversation, resolveContextBudget } from '../../session/contextManager.js';
 import { persistLongResult } from '../../session/outputSink.js';
+import { stripLeadingOrdinal } from './stripLeadingOrdinal.js';
 
 // 上下文预算：发送给 LLM 的消息总 token 上限。超过则触发「中段摘要压缩」而非硬截断。
 const CONTEXT_BUDGET = 48_000;
@@ -579,6 +580,15 @@ export async function runToolLoop({
   // 此时不能把空字符串作为成功回复交给 UI。
   if (!finalContent && toolCallTrace.length >= maxIterations) {
     finalContent = '已达到本次推理轮次上限，未能生成完整回答。请缩小任务范围后重试。';
+  }
+
+  // v37：最终答案落库前剥离开头孤立序号行（「0」/「O」/全角数字独占一行）。
+  // 此前只在渲染层剥（AiChatPanel），存储的 content 仍带序号——复制出去有 0，
+  // 且历史消息回传 LLM 时模型看到自己的历史带 0，形成自我强化、永远剥不干净。
+  // 在共享内核出口剥一处 = 工作站/群聊/精灵三条路径的落库与上下文同时干净。
+  // （流式过程中的 onProgress/onContentDelta 增量不动，避免破坏流式状态机。）
+  if (typeof finalContent === 'string') {
+    finalContent = stripLeadingOrdinal(finalContent);
   }
 
   return {

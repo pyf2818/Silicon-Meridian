@@ -620,6 +620,59 @@ async function toolCreateSkill(args, ctx) {
 export const createSkillDirect = toolCreateSkill;
 
 /**
+ * list_skills / use_skill —— 技能库只读发现与调用通道（v37）。
+ *
+ * 背景：P5 已建成 SKILL.md 文件夹生态（skills/<source>/<id>/SKILL.md，frontmatter+body），
+ * SkillsPanel 可视化管理、create_skill 写入同一体系，但 agent 侧没有任何读取工具、
+ * trigger 匹配也没接入循环 → 模型根本不知道技能库存在，甚至自称"我的 skill 是纯文本"。
+ * 这两个工具把调用链补齐：list_skills 发现 → use_skill 读取全文 → 按其方法论执行。
+ *
+ * 安全性：纯只读（GET /api/skills），无注入面增量——技能内容在写入侧已过审批
+ * （create_skill requiresApproval / builtin 随项目分发 / user 由用户手动创建），
+ * 读取结果统一经内核 wrapUntrusted 包裹后才进入上下文。故不设审批。
+ */
+async function fetchAllSkills() {
+  const res = await fetch('/api/skills?refresh=1');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) throw new Error(data?.error || `http ${res.status}`);
+  return Array.isArray(data.skills) ? data.skills : [];
+}
+
+async function toolListSkills() {
+  try {
+    const skills = await fetchAllSkills();
+    if (skills.length === 0) {
+      return '技能库为空（skills/ 目录暂无 SKILL.md）。完成任务后可用 create_skill 沉淀第一个技能。';
+    }
+    const lines = skills.map(s =>
+      `- ${s.id}（${s.source}）${s.title}：${s.description || '(无描述)'}`
+      + `${Array.isArray(s.triggers) && s.triggers.length ? `｜触发词：${s.triggers.join('/')}` : ''}`);
+    return `技能库共 ${skills.length} 个技能（source：builtin=内置 / work=工作沉淀 / user=用户创建）：\n${lines.join('\n')}\n\n任务场景与某技能匹配时，用 use_skill 读取其全文后按方法论执行。`;
+  } catch (err) {
+    return `错误：${err?.message || '读取技能库失败'}`;
+  }
+}
+
+async function toolUseSkill(args) {
+  const id = String(args?.id || '').trim();
+  if (!id) return '错误：id 不能为空（先用 list_skills 查看可用技能）';
+  try {
+    const skills = await fetchAllSkills();
+    const skill = skills.find(s => s.id === id);
+    if (!skill) return `错误：技能 "${id}" 不存在。用 list_skills 查看可用技能列表。`;
+    const body = String(skill.body || '').trim() || '(技能正文为空)';
+    const header = [
+      `技能「${skill.title}」（${skill.id} · ${skill.source} · v${skill.version || '0.1.0'}）`,
+      `描述：${skill.description || '(无)'}`,
+      Array.isArray(skill.tools) && skill.tools.length ? `依赖工具：${skill.tools.join(', ')}` : '',
+    ].filter(Boolean).join('\n');
+    return `${header}\n\n--- SKILL.md 正文 ---\n${body}`;
+  } catch (err) {
+    return `错误：${err?.message || '读取技能失败'}`;
+  }
+}
+
+/**
  * 联网搜索：豆包搜索（火山引擎，国内首选） > Tavily > DuckDuckGo
  * 返回结构化文本：标题、链接、摘要，便于 LLM 后续引用
  */
@@ -1753,6 +1806,43 @@ const BUILTIN_TOOL_DEFS = [
       requiresApproval: true,
     },
     executor: toolCreateSkill,
+  },
+  {
+    name: 'list_skills',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'list_skills',
+        description: '【技能库发现】列出技能库全部技能（skills/ 目录，SKILL.md 文件夹格式：frontmatter 元信息 + Markdown 正文）。不确定有哪些技能可用、或任务场景可能与既有技能匹配时，先调用本工具查看清单。',
+        parameters: { type: 'object', properties: {}, required: [] },
+      },
+    },
+    meta: {
+      label: '技能列表', iconKey: 'bookmark', description: '列出技能库全部可用技能', category: 'skills',
+      // 只读免审：GET /api/skills，读取动作无注入面增量（写入侧已审批），结果经 wrapUntrusted 包裹
+    },
+    executor: toolListSkills,
+  },
+  {
+    name: 'use_skill',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'use_skill',
+        description: '【技能调用】按 id 读取一个技能的 SKILL.md 全文（适用场景、工作流程与方法论、决策点、输出模板）。任务场景与某技能的描述/触发词匹配时调用，读完后按其方法论执行任务；写作/简报类技能的正文可直接作为输出模板套用。',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: '技能 id（从 list_skills 的清单中获得）' },
+          },
+          required: ['id'],
+        },
+      },
+    },
+    meta: {
+      label: '调用技能', iconKey: 'bookmark', description: '读取技能全文并按其方法论执行', category: 'skills',
+    },
+    executor: toolUseSkill,
   },
   {
     name: 'save_knowledge',
