@@ -3,6 +3,8 @@ import SafeBoundary from './components/SafeBoundary.jsx';
 import { createRoot } from 'react-dom/client';
 import './i18n/index.js'; // i18n 初始化（中英文双语支持，默认中文，可切换）
 import App from './App.jsx';
+import WindowControls from './components/WindowControls.jsx'; // Electron 桌面壳：自绘窗口控制按钮（浏览器环境渲染 null）
+import CloseConfirmDialog from './components/CloseConfirmDialog.jsx'; // Electron 桌面壳：关闭确认对话框（浏览器环境渲染 null）
 import './styles.css';
 import './themes.css';
 import './hud-theme.css';
@@ -39,6 +41,8 @@ createRoot(document.getElementById('root')).render(
       <Suspense fallback={null}>
         <ParticleField />
       </Suspense>
+      <WindowControls />
+      <CloseConfirmDialog />
       <App />
     </SafeBoundary>
   </React.StrictMode>

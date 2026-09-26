@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // skills/ 目录约定在项目根（server/ 的上一级）
-const SKILLS_ROOT = resolve(__dirname, '..', '..', 'skills');
+const SKILLS_ROOT = process.env.SKILLS_ROOT || resolve(__dirname, '..', '..', 'skills');
 
 // 三种来源：builtin 内置 / work 工作沉淀 / user 用户创建
 export const SKILL_SOURCES = [

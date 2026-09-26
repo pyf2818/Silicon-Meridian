@@ -1,0 +1,36 @@
+# electron-builder 配置（独立文件，避免改动被锁的 package.json）
+appId: com.siliconstream.meridian
+productName: SiliconStream
+directories:
+  output: release
+files:
+  - dist/**
+  - electron/**
+  - server/**
+  - api/**
+  - src/domain/**
+  - src/session/**
+  - build/icon.ico
+  - build/icon-tray.png
+  - package.json
+  - .env
+  - '!**/*.map'
+  - '!**/*.test.js'
+  - '!**/__tests__/**'
+extraResources:
+  - from: skills
+    to: skills
+asar: true
+compression: maximum
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: SiliconStream

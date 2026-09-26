@@ -9,6 +9,7 @@ import SandboxPanel from './settings/SandboxPanel.jsx';
 import LlmTab from './settings/LlmTab.jsx';
 import LanguageSwitcher from './LanguageSwitcher.jsx';
 import AboutTab from './settings/AboutTab.jsx';
+import DesktopTab from './settings/DesktopTab.jsx';
 import AppearanceTab from './settings/AppearanceTab.jsx';
 import NotificationsTab from './settings/NotificationsTab.jsx';
 import ShortcutsTab from './settings/ShortcutsTab.jsx';
@@ -65,6 +66,7 @@ const NAV_GROUPS = [
   {
     id: 'system',
     items: [
+      { id: 'desktop', icon: 'sliders' },
       { id: 'shortcuts', icon: 'keyboard' },
       { id: 'labs', icon: 'flask' },
       { id: 'help', icon: 'help' },
@@ -295,6 +297,8 @@ export default function SettingsModal({
         return <div className="sc-tab"><CustomToolsPanel /></div>;
       case 'sandbox':
         return <div className="sc-tab"><SandboxPanel /></div>;
+      case 'desktop':
+        return <div className={'sc-tab'}><DesktopTab /></div>;
       case 'about':
         return <div className="sc-tab"><AboutTab /></div>;
       default:

@@ -1,0 +1,124 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 深空背景：左上微亮的对角渐变 -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1c202b"/>
+      <stop offset="0.55" stop-color="#10131a"/>
+      <stop offset="1" stop-color="#080a0f"/>
+    </linearGradient>
+    <!-- 主川流：青 → 深蓝，自上而下 -->
+    <linearGradient id="flowMain" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a8f0ff"/>
+      <stop offset="0.42" stop-color="#4fe3ff"/>
+      <stop offset="1" stop-color="#1f6fe8"/>
+    </linearGradient>
+    <!-- 左流：暗青，尾端渐隐 -->
+    <linearGradient id="flowLeft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5fd6f2" stop-opacity="0.9"/>
+      <stop offset="0.75" stop-color="#2f9fd8" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#1f6fa8" stop-opacity="0.08"/>
+    </linearGradient>
+    <!-- 右流：蓝紫，尾端渐隐 -->
+    <linearGradient id="flowRight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7ab4ff" stop-opacity="0.9"/>
+      <stop offset="0.75" stop-color="#5a7cf0" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#4a5cc8" stop-opacity="0.08"/>
+    </linearGradient>
+    <!-- 顶部环境辉光 -->
+    <radialGradient id="glow" cx="0.5" cy="0.14" r="0.95">
+      <stop offset="0" stop-color="#4fe3ff" stop-opacity="0.15"/>
+      <stop offset="0.55" stop-color="#4fe3ff" stop-opacity="0.035"/>
+      <stop offset="1" stop-color="#4fe3ff" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 底部回流微光 -->
+    <radialGradient id="glowFloor" cx="0.5" cy="0.98" r="0.6">
+      <stop offset="0" stop-color="#1f6fe8" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#1f6fe8" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blurHalo" x="-130%" y="-30%" width="360%" height="160%">
+      <feGaussianBlur stdDeviation="13"/>
+    </filter>
+    <filter id="blurSoft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3.2"/>
+    </filter>
+    <filter id="blurDot" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+  </defs>
+
+  <!-- ===== 底座 ===== -->
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+
+  <!-- ===== 硅晶格：同心六边形（克制纹理，川流穿行其上） ===== -->
+  <g fill="none" stroke="#4fe3ff" stroke-width="2">
+    <!-- r=152 外环 -->
+    <path d="M 104 256 L 180 124.4 L 332 124.4 L 408 256 L 332 387.6 L 180 387.6 Z" stroke-opacity="0.055"/>
+    <!-- r=104 中环 -->
+    <path d="M 152 256 L 204 165.9 L 308 165.9 L 360 256 L 308 346.1 L 204 346.1 Z" stroke-opacity="0.045"/>
+    <!-- 顶点连线：晶格结构感 -->
+    <path d="M 256 104 L 256 152 M 256 408 L 256 360" stroke-opacity="0.05"/>
+  </g>
+
+  <!-- ===== 川：三条数据光河（中央主河最壮，左右支流渐隐） ===== -->
+  <!-- 左支流：光晕层 + 清晰层 -->
+  <g>
+    <path d="M 158 118 C 138 190, 178 250, 158 330 C 148 368, 154 400, 148 424"
+          fill="none" stroke="#4fe3ff" stroke-opacity="0.24" stroke-width="22"
+          stroke-linecap="round" filter="url(#blurHalo)"/>
+    <path d="M 158 118 C 138 190, 178 250, 158 330 C 148 368, 154 400, 148 424"
+          fill="none" stroke="url(#flowLeft)" stroke-width="12"
+          stroke-linecap="round" filter="url(#blurSoft)"/>
+    <path d="M 158 118 C 138 190, 178 250, 158 330 C 148 368, 154 400, 148 424"
+          fill="none" stroke="url(#flowLeft)" stroke-width="10" stroke-linecap="round"/>
+  </g>
+
+  <!-- 右支流 -->
+  <g>
+    <path d="M 358 132 C 378 200, 340 262, 358 336 C 366 368, 360 392, 364 408"
+          fill="none" stroke="#6a9cff" stroke-opacity="0.22" stroke-width="20"
+          stroke-linecap="round" filter="url(#blurHalo)"/>
+    <path d="M 358 132 C 378 200, 340 262, 358 336 C 366 368, 360 392, 364 408"
+          fill="none" stroke="url(#flowRight)" stroke-width="11"
+          stroke-linecap="round" filter="url(#blurSoft)"/>
+    <path d="M 358 132 C 378 200, 340 262, 358 336 C 366 368, 360 392, 364 408"
+          fill="none" stroke="url(#flowRight)" stroke-width="9" stroke-linecap="round"/>
+  </g>
+
+  <!-- 中央主川：三笔中最壮阔的一道 -->
+  <g>
+    <path d="M 256 92 C 232 170, 282 240, 258 320 C 246 360, 254 392, 250 436"
+          fill="none" stroke="#4fe3ff" stroke-opacity="0.34" stroke-width="26"
+          stroke-linecap="round" filter="url(#blurHalo)"/>
+    <path d="M 256 92 C 232 170, 282 240, 258 320 C 246 360, 254 392, 250 436"
+          fill="none" stroke="url(#flowMain)" stroke-width="17"
+          stroke-linecap="round" filter="url(#blurSoft)"/>
+    <path d="M 256 92 C 232 170, 282 240, 258 320 C 246 360, 254 392, 250 436"
+          fill="none" stroke="url(#flowMain)" stroke-width="15" stroke-linecap="round"/>
+    <!-- 主川高光芯线：随流势的河心急流 -->
+    <path d="M 255 108 C 240 170, 274 232, 258 300"
+          fill="none" stroke="#d8faff" stroke-opacity="0.55" stroke-width="4"
+          stroke-linecap="round" filter="url(#blurSoft)"/>
+    <path d="M 255 108 C 240 170, 274 232, 258 300"
+          fill="none" stroke="#eafcff" stroke-opacity="0.72" stroke-width="2.4" stroke-linecap="round"/>
+  </g>
+
+  <!-- ===== 数据粒子：川流上下的光点 ===== -->
+  <g fill="#bff2ff">
+    <circle cx="256" cy="66" r="4.5" filter="url(#blurDot)" opacity="0.9"/>
+    <circle cx="256" cy="66" r="2.2"/>
+    <circle cx="158" cy="92" r="3.2" filter="url(#blurDot)" opacity="0.6"/>
+    <circle cx="158" cy="92" r="1.6" opacity="0.85"/>
+    <circle cx="358" cy="106" r="3" filter="url(#blurDot)" opacity="0.55"/>
+    <circle cx="358" cy="106" r="1.5" opacity="0.8"/>
+    <circle cx="250" cy="462" r="3.4" filter="url(#blurDot)" opacity="0.5"/>
+    <circle cx="250" cy="462" r="1.7" opacity="0.7"/>
+  </g>
+
+  <!-- ===== 环境光层 ===== -->
+  <rect width="512" height="512" rx="116" fill="url(#glow)"/>
+  <rect width="512" height="512" rx="116" fill="url(#glowFloor)"/>
+
+  <!-- ===== 内描边：1.5px 高光圈，玻璃质感收边 ===== -->
+  <rect x="2" y="2" width="508" height="508" rx="114" fill="none"
+        stroke="#ffffff" stroke-opacity="0.09" stroke-width="3"/>
+</svg>

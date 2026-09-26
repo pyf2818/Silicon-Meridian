@@ -143,7 +143,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, process.env.SERVER_HOST || '0.0.0.0', () => {
   console.log(`SiliconStream listening on http://0.0.0.0:${PORT}`);
   // Phase 3 Task B5: 注册每日简报预热 cron — 06:00 Asia/Shanghai
   // 仅在生产环境注册，避免 dev 环境意外触发上游 LLM 调用

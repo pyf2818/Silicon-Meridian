@@ -11063,7 +11063,7 @@ body {
 
 .sidebar-user-info { align-items: center; gap: 8px; overflow: hidden; }
 .sidebar-user-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -16310,7 +16310,7 @@ body {
   .newspaper-sources ol { columns: 1; }}
 
 /* Persistent community */
-.community-page { width: 100%; max-width: 1320px; min-width: 0; margin: 0 auto; padding: 28px 28px 64px; box-sizing: border-box; overflow-x: hidden; }
+.community-page { width: 100%; max-width: none; min-width: 0; margin: 0 auto; padding: 28px 28px 64px; box-sizing: border-box; overflow-x: hidden; }
 .community-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 4px 0 24px; border-bottom: 1px solid var(--border-color); }
 .community-header h1 { margin: 5px 0 8px; font-size: 30px; letter-spacing: 0; }
 .community-header > div { min-width: 0; }
@@ -26314,7 +26314,7 @@ body {
    竞争情报监测面板（MonitorPage / 调研报告 M5）
    纯主题变量驱动，深浅模式自适应
    ============================================================ */
-.monitor-page { padding: 20px 24px 40px; max-width: 1200px; margin: 0 auto; }
+.monitor-page { padding: 20px 24px 40px; margin: 0 auto; }
 .monitor-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .monitor-title { font-size: 22px; font-weight: 800; color: var(--text-primary); margin: 0; letter-spacing: .01em; }
 .monitor-sub { margin: 6px 0 0; font-size: 13px; color: var(--text-muted); }
@@ -27112,7 +27112,7 @@ body {
 .wf-empty-hint { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%,-50%); color: #94a3b8; font-size: 13px; }
 
 /* Phase 3 collaboration */
-.chat-page { width: 100%; max-width: 1480px; margin: 0 auto; padding: 28px; color: var(--text-primary); }
+.chat-page { width: 100%; max-width: none; margin: 0 auto; padding: 28px; color: var(--text-primary); }
 .chat-header { display:flex; justify-content:space-between; gap:24px; align-items:flex-end; margin-bottom:18px; }
 .chat-header h1 { margin:4px 0 8px; font-size:28px; } .chat-header p { margin:0; color:var(--text-muted); }
 .chat-header-actions { display:flex; gap:8px; } .chat-header-actions input,.chat-panel-title input,.chat-group-create input { min-width:130px; border:1px solid var(--border-color); border-radius:7px; padding:9px 10px; background:var(--bg-card); color:var(--text-primary); }
