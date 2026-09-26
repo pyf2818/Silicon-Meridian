@@ -1,6 +1,7 @@
 import { CATEGORIES, MODES, DEFAULT_SOURCES, SOURCE_GRADES, PAGE_SIZE } from './config/constants.js';
 import { getSourceGrade, getSourceGradeInfo } from './config/sourceGrades.js';
 import { sendJson, parseBody, isSafeUrl } from './utils/httpUtils.js';
+import { readRawBody } from '../http/httpUtils.js';
 import { handleAuthRequest } from '../http/authHandlers.js';
 import { handleCommunityRequest } from '../http/communityHandlers.js';
 import { handleChatRequest } from '../http/chatHandlers.js';
@@ -18,7 +19,10 @@ import { handleAiGenerateRequest, handleAiInsightsRequest } from '../http/aiHand
 import { handleFetchPageRequest } from '../http/fetchPageHandler.js';
 import { handleWebSearchRequest } from '../http/webSearchHandler.js';
 import { handleIntelligenceRequest } from '../http/intelligenceHandlers.js';
-import { listSkills, getSkillById, matchSkillsByTriggers, listSkillsBySource, SKILL_SOURCES, saveSkill, saveSkillRaw, createSkill, deleteSkill } from '../skills/skillLoader.js';
+import { listSkills, getSkillById, matchSkillsByTriggers, listSkillsBySource, SKILL_SOURCES, saveSkill, saveSkillRaw, createSkill, deleteSkill, readSkillFile } from '../skills/skillLoader.js';
+import { installFromGitHub, installFromFiles } from '../skills/installer.js';
+import { readZip, findSkillMdPrefix } from '../skills/zipReader.js';
+import { parseMultipart } from '../http/multipart.js';
 import { getNews, warmNewsCache, startNewsWarming } from './services/newsService.js';
 import { getTrending, getGithubTrending } from './services/trendingService.js';
 import { discoverSourceCandidates, validateFeedUrl } from './services/sourceDiscovery.js';
@@ -153,6 +157,57 @@ export function newsPlugin() {
           }
           const skills = listSkills(refresh);
           return sendJson(res, { ok: true, skills, count: skills.length, sources: SKILL_SOURCES });
+        }
+        // v38 渐进披露 L3：按需读取技能目录内的附加文件（references/scripts/assets）
+        if (requestUrl.pathname.startsWith('/api/skills/') && requestUrl.pathname.endsWith('/file') && req.method === 'GET') {
+          const id = decodeURIComponent(requestUrl.pathname.slice('/api/skills/'.length, -'/file'.length));
+          const relPath = requestUrl.searchParams.get('path') || '';
+          try {
+            return sendJson(res, { ok: true, file: readSkillFile(id, relPath) });
+          } catch (err) {
+            return sendJson(res, { ok: false, error: err?.message || '读取失败' }, 400);
+          }
+        }
+        // v38 技能导入（Agent Skills 开放标准兼容）：GitHub 子目录 / zip 上传 → skills/user/<id>/
+        if (requestUrl.pathname === '/api/skills/import-github' && req.method === 'POST') {
+          const body = await parseBody(req);
+          try {
+            const result = await installFromGitHub(String(body?.repo || ''), String(body?.subpath || ''), String(body?.ref || ''));
+            const skill = listSkills(true).find(s => s.id === result.id) || null;
+            return sendJson(res, { ok: true, id: result.id, files: result.files, skill });
+          } catch (err) {
+            return sendJson(res, { ok: false, error: err?.message || '导入失败' }, 400);
+          }
+        }
+        if (requestUrl.pathname === '/api/skills/import-zip' && req.method === 'POST') {
+          try {
+            const raw = await readRawBody(req, 12 * 1024 * 1024);
+            const contentType = req.headers['content-type'] || '';
+            let zipBuffer = null;
+            let nameHint = '';
+            if (contentType.startsWith('multipart/form-data')) {
+              const parsed = parseMultipart(raw, contentType);
+              const filePart = parsed.files.find(f => f.name === 'file' || f.filename) || parsed.files[0];
+              if (!filePart) return sendJson(res, { ok: false, error: 'multipart 中没有文件（字段名 file）' }, 400);
+              zipBuffer = filePart.data;
+              nameHint = String(filePart.filename || '').replace(/\.zip$/i, '');
+            } else {
+              // 非 multipart：裸 zip 二进制，名字从查询串拿
+              zipBuffer = raw;
+              nameHint = requestUrl.searchParams.get('name') || '';
+            }
+            const entries = readZip(zipBuffer);
+            const prefix = findSkillMdPrefix(entries);
+            if (prefix === null) return sendJson(res, { ok: false, error: 'zip 中未找到 SKILL.md（不是有效的技能包）' }, 400);
+            const relEntries = entries
+              .filter(e => e.path.startsWith(prefix))
+              .map(e => ({ path: e.path.slice(prefix.length), data: e.data }));
+            const result = installFromFiles(relEntries, nameHint || prefix.replace('/', ''));
+            const skill = listSkills(true).find(s => s.id === result.id) || null;
+            return sendJson(res, { ok: true, id: result.id, files: result.files, skill });
+          } catch (err) {
+            return sendJson(res, { ok: false, error: err?.message || 'zip 导入失败' }, 400);
+          }
         }
         if (requestUrl.pathname === '/api/skills/match') {
           const query = requestUrl.searchParams.get('q') || '';

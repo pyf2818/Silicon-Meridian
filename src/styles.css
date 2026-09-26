@@ -19804,6 +19804,32 @@ body {
   border-left: 2px solid var(--accent-red, #ef4444);
   flex-shrink: 0;
 }
+/* v38 社区技能导入视图 */
+.skills-import-note {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--text-muted, #64748b);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent, #3b82f6) 6%, transparent);
+  border-radius: 4px;
+  border-left: 2px solid var(--accent, #3b82f6);
+  margin: 0 0 10px;
+}
+.skills-import-hint {
+  font-size: 10px;
+  color: var(--text-muted, #64748b);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+.skills-import-ok {
+  font-size: 10px;
+  color: var(--accent-green, #22c55e);
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--accent-green, #22c55e) 8%, transparent);
+  border-radius: 4px;
+  border-left: 2px solid var(--accent-green, #22c55e);
+  flex-shrink: 0;
+}
 .skills-form-actions {
   display: flex;
   justify-content: flex-end;

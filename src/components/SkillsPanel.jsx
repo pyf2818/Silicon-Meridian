@@ -123,7 +123,7 @@ function parseRawText(text) {
 }
 
 export default function SkillsPanel({ skillsHook }) {
-  const { bySource, loading, error, refresh, saveSkill, saveSkillRaw, createSkill, deleteSkill } = skillsHook;
+  const { bySource, loading, error, refresh, saveSkill, saveSkillRaw, createSkill, deleteSkill, importFromGitHub, importFromZip } = skillsHook;
   const [view, setView] = useState('list');        // list | detail | edit | new
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -185,6 +185,48 @@ export default function SkillsPanel({ skillsHook }) {
     setRawMode(false);
     setFormError(null);
     setView('new');
+  };
+
+  // ===== v38 社区技能导入（Agent Skills 开放标准：SKILL.md + scripts/references/assets）=====
+  const [importTab, setImportTab] = useState('github');   // github | zip
+  const [githubInput, setGithubInput] = useState('');      // URL 或 owner/repo
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState(null);        // { ok, text }
+
+  const openImport = () => {
+    setImportMsg(null);
+    setView('import');
+  };
+
+  // 解析 github.com/owner/repo/tree/branch/sub/path 或裸 owner/repo
+  const handleImportGitHub = async () => {
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const result = await importFromGitHub(githubInput.trim());
+      setImportMsg({ ok: true, text: `导入成功：${result.id}（${result.files} 个文件），已进入「用户创建」技能列表` });
+      setGithubInput('');
+    } catch (err) {
+      setImportMsg({ ok: false, text: err?.message || '导入失败' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImportZip = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const result = await importFromZip(file);
+      setImportMsg({ ok: true, text: `导入成功：${result.id}（${result.files} 个文件），已进入「用户创建」技能列表` });
+    } catch (err) {
+      setImportMsg({ ok: false, text: err?.message || '导入失败' });
+    } finally {
+      setImporting(false);
+      event.target.value = ''; // 允许重复选择同一文件
+    }
   };
 
   // 返回列表
@@ -578,6 +620,85 @@ export default function SkillsPanel({ skillsHook }) {
     );
   }
 
+  /* ===================== 视图：import（v38 社区导入） ===================== */
+  if (view === 'import') {
+    return (
+      <div className="skills-panel-form">
+        <div className="skills-panel-back">
+          <button type="button" className="skills-back-btn" onClick={backToList} title="返回列表">
+            <span className="icon-sm">{ICONS.chevronLeft}</span>
+            返回
+          </button>
+          <span className="skills-form-title">导入社区技能</span>
+        </div>
+
+        <div className="skills-form-body custom-scrollbar">
+          <p className="skills-import-note">
+            兼容 Agent Skills 开放标准（SKILL.md + scripts/references/assets），从 GitHub 仓库子目录或 zip 包导入，
+            安装为「用户创建」技能。导入的脚本不会自动执行——agent 使用前会先读取源码并请求你的审批。
+          </p>
+
+          <div className="skills-filter-row" role="tablist">
+            <button
+              type="button"
+              className={`skills-filter-tag${importTab === 'github' ? ' is-active' : ''}`}
+              onClick={() => setImportTab('github')}
+            >从 GitHub 导入</button>
+            <button
+              type="button"
+              className={`skills-filter-tag${importTab === 'zip' ? ' is-active' : ''}`}
+              onClick={() => setImportTab('zip')}
+            >从 zip 导入</button>
+          </div>
+
+          {importTab === 'github' ? (
+            <div className="skills-form-row">
+              <label className="skills-form-label">仓库地址或技能子目录</label>
+              <input
+                type="text"
+                className="skills-form-input"
+                value={githubInput}
+                onChange={e => setGithubInput(e.target.value)}
+                placeholder="anthropics/skills 或 https://github.com/anthropics/skills/tree/main/skills/pdf"
+                spellCheck={false}
+                disabled={importing}
+              />
+              <span className="skills-import-hint">
+                指向某个技能目录（其下须有 SKILL.md）。免认证 GitHub API 限 60 次/小时，批量导入建议用 zip。
+              </span>
+              <button
+                type="button"
+                className="skills-form-submit"
+                onClick={handleImportGitHub}
+                disabled={importing || !githubInput.trim()}
+              >
+                {importing ? '导入中…' : '开始导入'}
+              </button>
+            </div>
+          ) : (
+            <div className="skills-form-row">
+              <label className="skills-form-label">选择技能 zip 包</label>
+              <input
+                type="file"
+                accept=".zip"
+                className="skills-form-input"
+                onChange={handleImportZip}
+                disabled={importing}
+              />
+              <span className="skills-import-hint">
+                zip ≤10MB，单技能包（内含一个 SKILL.md；技能集合包请拆分后逐个导入）。
+              </span>
+            </div>
+          )}
+
+          {importMsg && (
+            <div className={importMsg.ok ? 'skills-import-ok' : 'skills-form-error'}>{importMsg.text}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   /* ===================== 视图：list（默认） ===================== */
   return (
     <div className="skills-panel-list">
@@ -599,6 +720,10 @@ export default function SkillsPanel({ skillsHook }) {
             </button>
           )}
         </div>
+        <button type="button" className="skills-new-btn" onClick={openImport} title="从 GitHub / zip 导入社区技能">
+          <span className="icon-sm">{ICONS.download}</span>
+          导入
+        </button>
         <button type="button" className="skills-new-btn" onClick={openNew} title="新建技能">
           <span className="icon-sm">{ICONS.plus}</span>
           新建

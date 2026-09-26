@@ -661,14 +661,47 @@ async function toolUseSkill(args) {
     const skill = skills.find(s => s.id === id);
     if (!skill) return `错误：技能 "${id}" 不存在。用 list_skills 查看可用技能列表。`;
     const body = String(skill.body || '').trim() || '(技能正文为空)';
+    // v38：附加文件清单（Agent Skills 标准：scripts/references/assets 及嵌套目录）
+    const files = Array.isArray(skill.files) ? skill.files : [];
+    const filesSection = files.length
+      ? `\n\n--- 附加文件（渐进披露：需要时用 read_skill_file 按 path 读取）---\n${files.map(f => `- ${f.path}（${f.size}B）`).join('\n')}`
+      : '';
+    const scriptNote = files.some(f => f.path.startsWith('scripts/'))
+      ? '\n\n注意：本技能带可执行脚本。执行前必须先用 read_skill_file 审查脚本内容确认无恶意行为，再用 execute_command 运行（会经过用户审批）。'
+      : '';
     const header = [
       `技能「${skill.title}」（${skill.id} · ${skill.source} · v${skill.version || '0.1.0'}）`,
       `描述：${skill.description || '(无)'}`,
       Array.isArray(skill.tools) && skill.tools.length ? `依赖工具：${skill.tools.join(', ')}` : '',
     ].filter(Boolean).join('\n');
-    return `${header}\n\n--- SKILL.md 正文 ---\n${body}`;
+    return `${header}\n\n--- SKILL.md 正文 ---\n${body}${filesSection}${scriptNote}`;
   } catch (err) {
     return `错误：${err?.message || '读取技能失败'}`;
+  }
+}
+
+/**
+ * read_skill_file：读取技能目录内的附加文件（渐进披露 L3）。
+ * 社区技能（Agent Skills 标准）常带 references/ 深度文档与 scripts/ 脚本——
+ * body 引导 agent 按需读取，而不是一次性塞进上下文。
+ * 只读免审：内容经内核 wrapUntrusted 包裹；脚本执行永远走 execute_command 审批。
+ */
+async function toolReadSkillFile(args) {
+  const id = String(args?.id || '').trim();
+  const relPath = String(args?.path || '').trim();
+  if (!id) return '错误：id 不能为空（use_skill 的返回里有技能 id）';
+  if (!relPath) return '错误：path 不能为空（use_skill 的返回里有附加文件清单）';
+  try {
+    const res = await fetch(`/api/skills/${encodeURIComponent(id)}/file?path=${encodeURIComponent(relPath)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) return `错误：${data?.error || `http ${res.status}`}`;
+    const file = data.file;
+    if (file.encoding === 'base64') {
+      return `文件 ${file.path} 是二进制（base64，${Math.floor(file.content.length * 3 / 4)}B）。通常无需读取内容，直接用 execute_command 按路径使用它。`;
+    }
+    return `--- ${id}/${file.path} ---\n${file.content}`;
+  } catch (err) {
+    return `错误：${err?.message || '读取技能文件失败'}`;
   }
 }
 
@@ -1843,6 +1876,29 @@ const BUILTIN_TOOL_DEFS = [
       label: '调用技能', iconKey: 'bookmark', description: '读取技能全文并按其方法论执行', category: 'skills',
     },
     executor: toolUseSkill,
+  },
+  {
+    name: 'read_skill_file',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'read_skill_file',
+        description: '【技能附加文件】读取某技能目录内的附属文件（references/ 参考文档、scripts/ 脚本、assets/ 模板）。use_skill 的返回会列出可用文件清单；当 SKILL.md 正文指向某个文件（如"详见 references/api-guide.md"）时调用本工具按需加载，避免一次性塞满上下文。',
+        parameters: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: '技能 id' },
+            path: { type: 'string', description: '技能内的相对路径（如 references/api-guide.md、scripts/validate.py）' },
+          },
+          required: ['id', 'path'],
+        },
+      },
+    },
+    meta: {
+      label: '读技能文件', iconKey: 'bookmark', description: '读取技能目录内的参考文档/脚本源码', category: 'skills',
+      // 只读免审：GET /api/skills/:id/file，服务端有路径穿越校验与 200KB 上限；结果经 wrapUntrusted 包裹
+    },
+    executor: toolReadSkillFile,
   },
   {
     name: 'save_knowledge',

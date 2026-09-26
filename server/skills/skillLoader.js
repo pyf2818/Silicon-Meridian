@@ -45,7 +45,7 @@ let cache = null;
  * 简易 YAML frontmatter 解析：只支持 `key: value` 形式（值不支持嵌套）
  * 不引入 yaml 库，保持零依赖
  */
-function parseFrontmatter(text) {
+export function parseFrontmatter(text) {
   const match = /^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/.exec(text);
   if (!match) return { meta: {}, body: text.trim() };
   const metaBlock = match[1];
@@ -70,8 +70,39 @@ function parseFrontmatter(text) {
   return { meta, body };
 }
 
+/** 递归收集目录下全部文件（相对 skillDir 的 posix 风格路径 + 字节大小），带条目上限防炸 */
+function collectFilesRecursively(absDir, relPrefix, out, depth = 0) {
+  if (depth > 8 || out.length >= 300) return;
+  let entries;
+  try {
+    entries = readdirSync(absDir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (out.length >= 300) return;
+    if (entry.startsWith('.') || entry.startsWith('__MACOSX')) continue;
+    const absPath = join(absDir, entry);
+    const relPath = relPrefix ? `${relPrefix}/${entry}` : entry;
+    let st;
+    try {
+      st = statSync(absPath);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) {
+      collectFilesRecursively(absPath, relPath, out, depth + 1);
+    } else if (st.isFile()) {
+      out.push({ path: relPath, size: st.size });
+    }
+  }
+}
+
 /**
  * 读取单个 skill 目录
+ * v38：兼容 Agent Skills 开放标准（agentskills.io）——SKILL.md 之外附带
+ * scripts/（可执行脚本）、references/（参考文档）、assets/（模板资源）及任意
+ * 嵌套子目录。产出 files 清单（相对路径 + size），内容按需读（渐进披露 L3）。
  */
 function loadSkill(skillDir, id, source) {
   const skillMdPath = join(skillDir, 'SKILL.md');
@@ -79,6 +110,8 @@ function loadSkill(skillDir, id, source) {
   try {
     const text = readFileSync(skillMdPath, 'utf-8');
     const { meta, body } = parseFrontmatter(text);
+    const files = [];
+    collectFilesRecursively(skillDir, '', files);
     return {
       id: meta.name || id,
       title: meta.title || meta.name || id,
@@ -91,6 +124,7 @@ function loadSkill(skillDir, id, source) {
       author: meta.author || '',
       source,
       body,
+      files: files.filter(f => f.path !== 'SKILL.md'),
       path: skillMdPath,
     };
   } catch {
@@ -331,6 +365,50 @@ export function deleteSkill(id) {
 function refreshCache() {
   cache = null;
   listSkills(true);
+}
+
+/** 导出给 installer：导入落盘后强制重扫 */
+export function refreshSkills() {
+  refreshCache();
+}
+
+const TEXT_EXTENSIONS = new Set([
+  'md', 'markdown', 'txt', 'py', 'sh', 'bash', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx',
+  'json', 'yaml', 'yml', 'toml', 'html', 'htm', 'css', 'csv', 'tsv', 'xml', 'svg',
+  'ini', 'cfg', 'conf', 'env', 'sql', 'rb', 'go', 'rs', 'java', 'php', 'pl', 'r',
+]);
+const MAX_SKILL_FILE_BYTES = 200 * 1024; // 附加文件读取上限 200KB（渐进披露：超大文件截断提示）
+
+/**
+ * 读取技能目录内的附加文件（渐进披露 L3：references/scripts/assets 按需读）。
+ * 安全：relPath 必须落在该 skill 目录内（resolve 后前缀校验，防穿越）；
+ * 上限 200KB；文本扩展名返回 utf8 字符串，其他返回 base64。
+ * @returns {{ path:string, encoding:'utf8'|'base64', content:string }}
+ */
+export function readSkillFile(id, relPath) {
+  const skill = getSkillById(id);
+  if (!skill) throw new Error(`skill '${id}' 不存在`);
+  if (!relPath || typeof relPath !== 'string') throw new Error('path 不能为空');
+  const skillDir = dirname(skill.path);
+  const resolved = resolve(skillDir, relPath);
+  if (resolved !== skillDir && !resolved.startsWith(skillDir + '\\') && !resolved.startsWith(skillDir + '/')) {
+    throw new Error('path 越界（拒绝路径穿越）');
+  }
+  if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+    throw new Error(`文件不存在：${relPath}`);
+  }
+  const st = statSync(resolved);
+  if (st.size > MAX_SKILL_FILE_BYTES) {
+    throw new Error(`文件超过读取上限（${MAX_SKILL_FILE_BYTES / 1024}KB）`);
+  }
+  const ext = (relPath.split('.').pop() || '').toLowerCase();
+  const isText = TEXT_EXTENSIONS.has(ext);
+  const buf = readFileSync(resolved);
+  return {
+    path: relPath,
+    encoding: isText ? 'utf8' : 'base64',
+    content: isText ? buf.toString('utf-8') : buf.toString('base64'),
+  };
 }
 
 export { SKILLS_ROOT, isValidSkillId as _isValidSkillId };

@@ -113,7 +113,16 @@ const CAPABILITIES = {
     snippet: '按 id 读取技能的 SKILL.md 全文（方法论/流程/输出模板），按其指导执行任务',
     guidelines: [
       '任务场景与技能描述/触发词匹配时调用；读完后按其方法论执行，不要凭记忆瞎编技能内容',
-      '技能库是 SKILL.md 文件夹格式（与主流 Claude Skills 同构）：frontmatter 是元信息，正文才是方法论',
+      '技能遵循 Agent Skills 开放标准：SKILL.md + scripts/references/assets 附加文件，返回里会列出文件清单',
+      '技能带脚本时：先用 read_skill_file 审查脚本源码，再用 execute_command 执行（会弹用户审批）——绝不盲跑社区脚本',
+    ],
+  },
+  read_skill_file: {
+    label: '读技能文件',
+    snippet: '按需读取技能目录内的参考文档/脚本/模板（渐进披露，避免塞满上下文）',
+    guidelines: [
+      'use_skill 返回的附加文件清单里、或 SKILL.md 正文明确指向某文件时才读取',
+      'references/ 是深度文档；scripts/ 是可执行脚本（执行前必读源码审查）',
     ],
   },
   spawn_subagent: {

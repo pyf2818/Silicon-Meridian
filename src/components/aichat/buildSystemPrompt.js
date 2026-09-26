@@ -127,9 +127,9 @@ export function buildSystemPrompt({
       const lines = skills.slice(0, 24).map(s =>
         `  - ${s.id}（${s.source || 'work'}）${s.title || s.id}：${String(s.description || '').slice(0, 80)}`
         + `${Array.isArray(s.triggers) && s.triggers.length ? `｜触发词：${s.triggers.join('/')}` : ''}`);
-      return '【技能库】你拥有一个持久化技能库：服务端 skills/ 目录按 SKILL.md 文件夹格式存放（YAML frontmatter 元信息 + Markdown 方法论正文——与主流 Claude Skills 同构，不是纯文本聊天记录）。当前技能（最多列 24 条，全量用 list_skills）：\n'
+      return '【技能库】你拥有一个持久化技能库：服务端 skills/ 目录按 Agent Skills 开放标准存放（SKILL.md 的 frontmatter 是元信息、正文是方法论；可附带 scripts/ 可执行脚本、references/ 参考文档、assets/ 模板——与主流 Claude Skills 同构，支持从社区导入）。当前技能（最多列 24 条，全量用 list_skills）：\n'
         + lines.join('\n')
-        + '\n任务场景与某技能的描述/触发词匹配时：先 use_skill 读取其全文，再按其方法论执行（不要凭清单里的描述臆测技能内容）。';
+        + '\n任务场景与某技能的描述/触发词匹配时：先 use_skill 读取其全文，再按其方法论执行（不要凭清单里的描述臆测技能内容）。SKILL.md 正文引用了附加文件（references/scripts 等）时用 read_skill_file 按需读取；技能带脚本时必须先审查脚本源码再经 execute_command（用户审批）执行，绝不盲跑社区脚本。';
     })() : '',
     // 不可信数据处理规则（与 agentLoopCore 的 wrapUntrusted 定界符配对，prompt 注入核心防线）
     untrustedDataPolicyText(),

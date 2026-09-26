@@ -95,6 +95,34 @@ export function useSkills({ enabled = true } = {}) {
     return data;
   }, [refresh]);
 
+  // v38 从 GitHub 导入技能（owner/repo 或完整 URL，可带 subpath/ref）
+  const importFromGitHub = useCallback(async (repo, subpath = '', ref = '') => {
+    const resp = await fetch('/api/skills/import-github', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo, subpath, ref }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data?.ok) {
+      throw new Error(data?.error || `http ${resp.status}`);
+    }
+    await refresh();
+    return data;
+  }, [refresh]);
+
+  // v38 从 zip 导入技能（FormData 上传，服务端解压校验）
+  const importFromZip = useCallback(async (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const resp = await fetch('/api/skills/import-zip', { method: 'POST', body: fd });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data?.ok) {
+      throw new Error(data?.error || `http ${resp.status}`);
+    }
+    await refresh();
+    return data;
+  }, [refresh]);
+
   return {
     skills,
     bySource,
@@ -106,5 +134,7 @@ export function useSkills({ enabled = true } = {}) {
     saveSkill,
     saveSkillRaw,
     deleteSkill,
+    importFromGitHub,
+    importFromZip,
   };
 }
