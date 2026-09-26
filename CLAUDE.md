@@ -10,13 +10,16 @@ npm run dev                              # Dev server on 0.0.0.0:5175 (with API 
 npm run build                            # Production build -> dist/
 npm start                                # Production Node server (dist + full API, default port 3000)
 npm run preview                          # Preview production build (static only, no API)
-npm run test                             # Run unit tests (vitest) — 410 tests across src/utils, src/store, src/domain, src/hooks/__tests__, src/components/profile/__tests__, server/
+npm run test                             # Run unit tests (vitest) — 1477 tests across 144 files (src/domain, src/session, src/store, src/hooks, src/components, src/utils, server/)
 npm run test:watch                       # Watch mode
 npm run test:integration                 # Integration tests (vitest.integration.config.js)
-npm run test:e2e                         # Playwright E2E tests
+npm run test:e2e                         # Playwright E2E tests (scripts/run-e2e.mjs)
 npm run verify:platform                  # Verify platform connectivity (DB + services)
 npm run intelligence:sync                # Intelligence data sync script
-npm run preheat:today                    # Trigger today's briefing preheat
+npm run preheat:today [userId]           # Trigger today's briefing preheat
+npm run dev:detached                     # Detached dev server (logs: dev-server.log / dev-server.err.log, pid: dev-server.pid)
+npm run electron:dev                     # Desktop shell (dev): BrowserWindow loads vite dev server on 5175
+npm run electron:build                   # Desktop build: vite build + electron-builder Windows NSIS -> release/
 node node_modules/vitest/vitest.mjs run <file>  # Run a single test file (bin symlink not created on Windows)
 npm run db:migrate
 python scrapling_server.py               # Flask API on port 5000 (optional, for Scrapling scraping)
@@ -24,27 +27,35 @@ python scrapling_server.py               # Flask API on port 5000 (optional, for
 
 No lint, typecheck, or formatter commands exist.
 
+**Electron desktop shell** (`electron/main.mjs` = entry via `package.json` `main`; `electron/preload.cjs` = sandboxed contextBridge):
+- Production mode embeds `server/productionServer.js` on a free port starting at 3777 (loopback only, polls `/health`); `--dev` mode loads the vite dev server and falls back to embedded `dist/` if 5175 is down.
+- Borderless window; window controls are React-drawn (`src/components/WindowControls.jsx` via `window.meridianWindow` IPC — plain web has no such global, so UI must feature-detect it). F11 = real fullscreen.
+- Close behavior is user-configurable (ask / exit / tray, persisted in `userData/close-behavior.json`); `ask` triggers `close-requested` IPC → `CloseConfirmDialog.jsx`; second close click while pending force-quits.
+- Main-process events log to `electron-main.log` (repo root) — desktop has no visible terminal.
+- Builder config lives in `electron-builder.yml`, NOT package.json (package.json is lock-managed and must stay untouched). Skills ship as `extraResources` → `resources/skills`; `SKILLS_ROOT` env points dev to repo `skills/` and packaged to the resources dir.
+
 **Important**: `vite preview` only serves static files — it does NOT run `server/newsPlugin.js`. Use `npm run dev` for a working instance with API endpoints. The `vite.config.js` port is **5175**, not the default 5173.
 
 **Vitest on Windows**: `npx vitest` fails (bin symlink not created); use `node node_modules/vitest/vitest.mjs run` instead. If esbuild throws `EBUSY`, kill stale processes: `taskkill //F //IM esbuild.exe`. Vitest 4.x triggers rolldown native binding failures — pin to **vitest 3.x**.
 
 ## Architecture
 
-**Tech Stack**: React 19 + Vite 7 + Tailwind CSS 3 + Three.js (react-globe.gl) + klinecharts (stock charts)
+**Tech Stack**: React 19 + Vite 7 + Tailwind CSS 3 + Three.js (react-globe.gl) + klinecharts (stock charts) + i18next (zh-CN/en, `src/i18n/`, default zh-CN, persisted in localStorage `appLanguage`)
 
 **Data Flow**: Vite middleware plugin (`server/news/plugin.js`) intercepts `/api/*` routes at dev-server level. Frontend uses native `fetch` to call these APIs. There is no Express/Koa — the plugin registers middleware directly on the Vite dev server.
 
-**v2 Direction**: See `docs/wanban-silicon-valley-v2-blueprint.md`. The product is migrating from "news aggregator" to a "personal intelligence & creation OS" centered on daily briefing, user profile, materials library, agent workflows, and content creation. Current branch `codex/intelligence-workbench-redesign` implements this.
+**v2 Direction**: See `docs/wanban-silicon-valley-v2-blueprint.md`. The product has evolved from "news aggregator" to a "personal intelligence & creation OS" — daily briefing, user profile, materials library, agent workflows, and content creation are all on `main` now (originally built out on `codex/intelligence-workbench-redesign`). Active development continues on `main`; feature branches exist for focused work.
 
-**Core positioning**: 首页即 AI 工作站（`home` nav → `nav.aiWorkstation` → `AiChatPanel.jsx`，App.jsx:2305）——项目核心功能是 agent 式深度工作台（多专业 agent + 工具编排 + `set_plan` 计划执行），不是简单聊天。AI 精灵（`src/AiElf.jsx`）是全站轻量助理：快速问答、拖拽卡片即席分析、功能讲解，单例 agent（「方案 A 去 agent 化」），两者分工定义在 `src/constants/aielfDefaults.js`。
+**Core positioning**: 首页即 AI 工作站（`home` nav → `nav.aiWorkstation` → `AiChatPanel.jsx`，App.jsx:2369）——项目核心功能是 agent 式深度工作台（多专业 agent + 工具编排 + `set_plan` 计划执行），不是简单聊天。AI 精灵（`src/AiElf.jsx`）是全站轻量助理：快速问答、拖拽卡片即席分析、功能讲解，单例 agent（「方案 A 去 agent 化」），两者分工定义在 `src/constants/aielfDefaults.js`。
 
 ### Frontend (`src/`)
 
-- **`App.jsx`** (~2800 lines) - Main component with routing logic, settings modal, and page composition. State progressively extracted into Zustand stores (`src/store/`) and custom hooks. Topbar JSX extracted to `src/components/Topbar.jsx`. Workflow runner logic in `src/hooks/useAgentWorkflowRunner.js`, workflow actions in `src/hooks/useWorkflowActions.js`.
-- **`AiElf.jsx`** (643 lines) - 全站轻量智能助手（AI 精灵，单例 agent，「方案 A 去 agent 化」）：快速问答、拖拽资讯/股票/代码/GitHub 卡片即席分析、帮用户理解产品与操作；分析产出可「存入 AI 工作站」深做。工具白名单只含分析/查证类（`aielfDefaults.js`），不含 set_plan 等多步编排。Lazy-loaded via `React.lazy`. SendMessage logic extracted to `src/components/aielf/useSendMessage.js`, agent loop in `src/components/aielf/runElfAgentLoop.js`, sub-components in `src/components/aielf/` (Sidebar, ChatHeader, MessageList, InputArea). `elfStore` 现仅存头像/名字等外观人格（多 agent 会话模型已移除）。
+- **`App.jsx`** (~3000 lines) - Main component with routing logic, settings modal, and page composition. State progressively extracted into Zustand stores (`src/store/`) and custom hooks. Topbar JSX extracted to `src/components/Topbar.jsx`. Workflow runner logic in `src/hooks/useAgentWorkflowRunner.js`, workflow actions in `src/hooks/useWorkflowActions.js`.
+- **`AiElf.jsx`** (~450 lines) - 全站轻量智能助手（AI 精灵，单例 agent，「方案 A 去 agent 化」）：快速问答、拖拽资讯/股票/代码/GitHub 卡片即席分析、帮用户理解产品与操作；分析产出可「存入 AI 工作站」深做。工具白名单只含分析/查证类（`aielfDefaults.js`），不含 set_plan 等多步编排。Lazy-loaded via `React.lazy`. SendMessage logic extracted to `src/components/aielf/useSendMessage.js`, agent loop in `src/components/aielf/runElfAgentLoop.js`, sub-components in `src/components/aielf/` (Sidebar, ChatHeader, MessageList, InputArea). `elfStore` 现仅存头像/名字等外观人格（多 agent 会话模型已移除）。
 - **`GlobeView.jsx`** (999 lines) - 3D globe via `react-globe.gl`/Three.js. Fullscreen uses `createPortal` to `document.body`. Canvas needs `min-height: 420px`. Lazy-loaded.
 - **`main.jsx`** - Mounts `<App />` inside `<ErrorBoundary>` + `<React.StrictMode>`.
-- **`styles.css`** (16052 lines) - CSS custom properties for dark/light themes. Tailwind config only sets content paths - no Tailwind utilities used in practice.
+- **`styles.css`** (~30000+ lines) - CSS custom properties for dark/light themes. Tailwind config only sets content paths - no Tailwind utilities used in practice.
+- **`src/i18n/index.js`** - i18next: zh-CN (default) + en, persisted to localStorage `appLanguage`; `LanguageSwitcher.jsx` in the topbar. New translatable UI strings should use `useTranslation` keys, not raw text.
 - **`themes.css`** (884 lines) - Multi-palette theme definitions.
 
 #### Code Splitting
@@ -57,7 +68,7 @@ A Feishu-inspired three-layer refactor is underway. Block = reusable building-bl
 
 ```
 src/shell/
-  CommandPalette.jsx    Global Ctrl+K / Cmd+K palette: page nav (9 main routes), news search, quick actions. Controlled component (open/onClose/onNavigate/onSearch/recentVisits props). Toggled via Ctrl/Cmd+K in App.jsx (~line 4117).
+  CommandPalette.jsx    Global Ctrl+K / Cmd+K palette: page nav (9 main routes), news search, quick actions. Controlled component (open/onClose/onNavigate/onSearch/recentVisits props). Toggled via Ctrl/Cmd+K in App.jsx.
 src/blocks/
   index.js              Barrel: exports BlockGrid, BlockPanel, BlockList, BlockToolbar, BlockStat
   BlockGrid.jsx         Grid container with .Card sub-component (<BlockGrid columns={3}><BlockGrid.Card .../></BlockGrid>)
@@ -75,8 +86,9 @@ State progressively extracted from App.jsx `useState` into Zustand stores. Each 
 
 ```
 src/store/
-  index.js              Barrel: exports 12 stores
+  index.js              Barrel: re-exports all stores + inline useUiStore/useLightboxStore
   newsStore.js          资讯列表：items/loading/error/blockedCategories/searchQuery + loadNews
+  newsPreviewStore.js   资讯预览面板状态
   recommendStore.js     推荐引擎：items/briefing/todayBriefing/loading + loadRecommendations
   workflowStore.js      智能体工作流：draft/templates/activeId/selectedNodeId/run/result/history/actions (persisted)
   materialsStore.js     素材库 UI：filter/search/tags/timeRange/sourceFilter/spaceFilter/showSpaceForm/showAddMaterial
@@ -87,7 +99,8 @@ src/store/
   githubStore.js        GitHub 情报：repos/loading/error/lang/period + loadGithubTrending
   sourceStore.js        信源管理：customSources/disabledSources/health/verify/discovery
   stockStore.js         股市：realtime/kline/timeline/sectors/watchlist/loading (localStorage watchlist)
-  uiStore.js            全局 UI 开关（在 store/index.js 内联定义）：lightbox/sidebar/rightPanel/settings/shortcuts/profileTab/...
+  teamStore.js          Agent Team 共享任务板 + 邮箱（模块级单例 + localStorage 'agentTeamState'，最近 10 团队）
+  uiStore.js            全局 UI 开关（在 store/index.js 内联定义）：lightbox/sidebar/rightPanel/settings/shortcuts/profileTab/showCommandPalette/...
 ```
 
 UI Store (`useUiStore`) and Lightbox Store (`useLightboxStore`) are defined inline in `src/store/index.js`. Usage:
@@ -111,7 +124,7 @@ src/components/
   ArticleEditor.jsx        Markdown article editor
   StockPage.jsx            股市动向三栏行情终端（分时/K线/五档/AI诊断）
   AiChatPanel.jsx          AI 工作站主面板（首页核心功能，非简单聊天：多专业 agent + 工具编排 + set_plan 计划执行；780 lines，拆出 aichat/ 子目录）
-  CreativeWorkspace.jsx    智创空间主组件（素材库 + 编辑器 + 工作流；注意：智创中心落地页已改为素材仓库，本组件不再被 studio 导航渲染）
+  WorkspacePanel.jsx       本地工作空间面板（AI 工作站左栏"文件" tab；IndexedDB 目录树 + 空间绑定，替代原 CreativeWorkspace.jsx）
   CommunityPage.jsx        社区广场页（发帖/评论/点赞/收藏/关注）
   CommunityPostDetail.jsx  社区帖子详情
   NewsItem.jsx             资讯卡片
@@ -126,7 +139,7 @@ src/components/
   NewspaperOverlay.jsx     今日情报报覆盖层
   SkeletonCard.jsx         骨架屏卡片
   ColorfulBubbles.jsx      装饰气泡动画
-  WorkflowNodeCard.jsx     画布节点卡片
+  workflow/CanvasPage.jsx  工作流画布页（WorkflowCanvas.jsx + 节点渲染，替代已删除的 WorkflowNodeCard.jsx）
   settings/                设置模态子标签页
     SourcesTab.jsx         信息源管理
     AgentsTab.jsx          Agent 管理
@@ -163,29 +176,13 @@ src/components/
 - `SkeletonCard`, `GithubRepoCard` are **inline functions** in App.jsx.
 - `ThemePicker.jsx` lives at `src/ThemePicker.jsx` (NOT `src/components/`); exports default `ThemePicker` + named `PALETTES`.
 
-#### Pages (App.jsx routing destinations)
+#### Pages (App.jsx routing destinations; lazy = React.lazy+Suspense)
 
-```
-src/components/
-  NewsPage.jsx               资讯聚合页（分类/模式/地区/信源过滤 + 搜索 + 分页）
-  CustomUrlPage.jsx          自定义 URL 抓取页
-  RecommendationFeed.jsx    精准推荐时间线（含日期轨道）
-  RecommendationDateRail.jsx 推荐日期导航
-  RecommendationsPage.jsx    推荐页容器
-  GithubPage.jsx             GitHub 热门页（日/周/月榜 + 语言筛选 + AI 情报）
-  TrendingPage.jsx           热点趋势页
-  StockPage.jsx              股市动向三栏终端（分时/K线/五档/AI诊断）
-  MaterialsPage.jsx          智创素材库页
-  StudioPage.jsx             智创工作室（工作流画布 + 素材 + 编辑器）
-  AgentsPage.jsx             Agent 管理页
-  CalendarPage.jsx           日历管理页
-  CommunityPage.jsx          社区广场
-  ProfilePage.jsx            个人画像（Phase 6 双栏仪表盘 + 设置 tab）
-  ReadingListPage.jsx        阅读列表
-  InsightDashboardPage.jsx   情报仪表盘
-  KnowledgeExportPage.jsx    知识导出页
-  MonitorPage.jsx            竞争情报监测页
-```
+Static (eager-loaded): `NewsPage`, `CustomUrlPage`, `CalendarPage`, `MaterialsPage` (also the Studio route — studio ≡ materials now), `ChatPage` (community).
+
+Lazy-loaded: `StockPage`, `CommunityPage`, `ProfilePage`, `GithubPage`, `RecommendationsPage`, `TrendingPage`, `CanvasPage` (replaced `StudioPage` as the workflow canvas), `KnowledgeExportPage`, `MonitorPage`, `ReadingListPage`, `AiElf.jsx` (home/ai-workstation), `AiChatPanel.jsx` (home).
+
+Nav map: `home` → AI 工作站 (AiChatPanel + AiElf), `studio`/`materials` → MaterialsPage (same component, two routes), `canvas` → CanvasPage (workflow canvas), `square` → CommunityPage (social), `chat` → ChatPage, `all` → NewsPage + RightPanel, `stock`/`github`/`trending`/`monitor`/`profile-center`/`recommendations` → their respective pages.
 
 #### Shell & Block System (Feishu-inspired three-layer UI)
 
@@ -279,6 +276,10 @@ src/domain/creative/
   assetModel.js            创作资产模型（素材/文档/版本抽象）
   exportEngine.js          导出引擎（Markdown/JSON/HTML）
   versionStore.js          版本存储（diff + rollback）
+src/domain/agent/
+  subagentCore.js          Subagent 编排纯逻辑核（预置 explorer/researcher/writer/critic，spawn 契约 + 预算 + 报告聚合）
+  teamCore.js              Agent Team 契约校验 + 任务状态机 + 看板/邮箱渲染
+  agentEvolution.js / officeGame.js / officeScene.js / skillPrecipitation.js / attachmentInjection.js  其余 agent 域纯逻辑
 ```
 
 #### Utility / Hook / Constant Files
@@ -465,7 +466,7 @@ server/news/
 
 **Production API**: `api/*.js` contains Vercel serverless functions. `api/meta.js` and `api/news.js` reuse `server/news/config/constants.js`. `api/auth/[action].js`, `api/community/[...path].js`, `api/profile/[...path].js` delegate to the **same** `server/http/*Handlers.js` as the dev plugin (no manual copy). `api/stock/[action].js` reuses `server/news/services/stockService.js` directly. When changing API behavior, prefer updating the shared handler/service; only `api/news.js`-style files that hand-copy plugin logic need both-side updates.
 
-### Platform Backend (server/auth, server/community, server/profile, server/db, server/http, server/agent, server/skills)
+### Platform Backend (server/auth, server/community, server/profile, server/db, server/http, server/agent, server/skills + chat/ranking/artifacts/translation/mcp/intelligence/creative)
 
 PostgreSQL-backed platform layer. Requires `DATABASE_URL` + `npm run db:migrate`.
 
@@ -473,7 +474,8 @@ PostgreSQL-backed platform layer. Requires `DATABASE_URL` + `npm run db:migrate`
 server/db/
   client.js                  pg Pool (reads DATABASE_URL and DATABASE_SSL)
   migrate.js                 Runs migrations (npm run db:migrate)
-  migrations/001..007.sql    7 migrations: platform schema + indexes + intelligence + agent autonomy + profile extensions + LLM sync + persona history
+  devMemoryStore.js          In-memory fallback when no PG (services branch on isDevMemoryModeResolved(); production never does)
+  migrations/001..014.sql    14 migrations: platform schema + indexes + intelligence + agent autonomy + profile extensions + LLM sync + persona history + chat + community channels/uploads + identity + artifacts + security
 server/http/                 Shared HTTP handlers (used by BOTH dev plugin.js and api/ serverless)
   httpUtils.js               sendJsonResponse, readJsonBody, parseCookies, sessionCookie, routeError
   authHandlers.js            handleAuthRequest - register/login/logout/me/profile/interests
@@ -482,12 +484,20 @@ server/http/                 Shared HTTP handlers (used by BOTH dev plugin.js an
   agentMemoryHandlers.js     handleAgentMemoryRequest - agent memories + persona
   agentRunHandlers.js        handleAgentRunRequest - agent execution
   agentJobsHandlers.js       handleAgentJobsRequest - scheduled agent tasks
+  agentMcpHandlers.js        handleAgentMcpRequest - MCP registry endpoints
+  chatHandlers.js            Chat session/message endpoints
+  artifactHandlers.js        产物中心 endpoints (artifactService)
+  auditHandlers.js           Audit-log endpoints
+  healthHandler.js           /health snapshot (also polled by the Electron shell)
   creativeHandlers.js        handleCreativeRequest - assets, documents, versions
   intelligenceHandlers.js    handleIntelligenceRequest - events, items, opportunities, sectors, alerts
   aiHandlers.js              handleAiGenerateRequest, handleAiInsightsRequest
   fetchPageHandler.js        handleFetchPageRequest - SSRF-protected page fetch
+  pageContentExtractor.js    Page body/HTML extraction shared by fetch-page routes
+  multipart.js               Multipart form parsing (uploads)
   webSearchHandler.js        handleWebSearchRequest - web search gateway
   lastSeenMiddleware.js      updateLastSeen - track user activity
+server/security/             urlSafety.js (SSRF DNS guard) + llmSecrets.js (LLM key handling) + auditService.js (audit logs) + crypto.js
 server/auth/                 authService + authRepository + passwords (argon2-style hashing)
 server/community/            communityService + communityRepository
 server/profile/              profileService + profileRepository + snapshotService + agentMemoryService
@@ -496,6 +506,13 @@ server/agent/                Agent autonomous layer
   agentContext.js            Agent execution context (user profile + preferences + memory injection)
   agentMemoryService.js      Agent memory CRUD + persona_summary merge式更新
   memoryAgentMemoryService.js Memory service extension (vector retrieval + semantic dedup)
+server/chat/                 chatService + chatRepository (+ memoryChatRepository in-memory dev variant)
+server/ranking/              Deterministic news ranking: signals.js + ranker.js + policy.js (pure-data weight config; hard red line — event-value signals must keep ≥50% of every lane, anti-filter-bubble)
+server/artifacts/            产物中心 artifactService: PG / in-memory dual storage, per-user cap 200, camelCase meta rows (no data)
+server/translation/          modelManager.js — translation model selection
+server/mcp/                  mcpRegistry.js — MCP tool registry
+server/intelligence/         collectors/ + processors/ + services/ + repositories/ (richer than the endpoint layer alone)
+server/creative/             creativeService + creativeRepository
 server/skills/
   skillLoader.js             Tool registration / discovery / trigger matching (SKILL_SOURCES + matchSkillsByTriggers)
 server/cron/
@@ -571,6 +588,7 @@ server/cron/
 - **Node**: `server/productionServer.js` serves `dist/` and the complete shared API on `PORT` (default 3000)
 - **Docker**: Multi-stage Node 22 image; startup runs migrations and then the production server
 - **Docker Compose**: application + PostgreSQL 15; Scrapling is an optional external service configured by `SCRAPLING_URL`
+- **Electron desktop**: `npm run electron:build` — NSIS x64 installer in `release/`. The packaged app embeds the production server (loopback port from 3777) and ships `skills/` as extraResources; `.env` at the app root is read by the main process at startup
 - **Vercel**: use Node/Docker for the complete long-lived platform; serverless-compatible routes remain in `api/`
 
 ## Critical Duplication (Must Update Both)
@@ -594,7 +612,7 @@ Categories, source grades, and tag rules are defined **independently** in both `
 - **GitHub card**: App.jsx has an **inline** `GithubRepoCard` function (NOT a separate file). Inline version uses `inferGithubScenario/Audience/Difficulty/Value` + `buildGithubMaterial`; `deriveRepoInsight` in repoInsight.js is a parallel implementation. AI insight is collapsible by default.
 ## Known Issues
 
-- **Tests limited to pure-logic engines** — 425 unit tests cover workflowEngine.js (80) + profileModel.js (85) + behaviorStore/profileStore (10) + useProfileSync (9) + applySuggestionByType (7) + useAgentMemories (8) + useSnapshotPreheat (7) + dashboardBuilders (27 = Phase 4 12 + Phase 5 15) + src/domain/intelligence + src/domain/stock + sandbox + agentTools (31) + server/ (incl. profileRepository/profileService 15 + snapshotService 4 + aiHandlers 4) tests; no integration/E2E tests, no component tests
+- **Unit tests are pure-logic only** — 1477 tests across 144 files (`npm test`, all passing as of 2026-09): src/domain, src/session, src/store, src/hooks, src/components (incl. profile/aichat/agent), src/utils, and server/ (chat/ranking/artifacts/agentRunHandlers, etc.); no React component tests. Integration (`npm run test:integration`) and Playwright E2E (`npm run test:e2e`) exist but are not in the default suite.
 - **RSS failure rate ~40-50%** — many sources return 403/404 or HTML instead of RSS
 - **Auth requires PostgreSQL** - register/login/me/logout/profile/interests delegate to server/http/authHandlers.js -> server/auth/authService.js (password hashing + session tokens in sessions table). Dev (server/news/plugin.js) and prod (api/auth/[action].js) share the same handler. Without DATABASE_URL, auth endpoints return 503 DATABASE_UNAVAILABLE.
 - **`package.json` type: "module"** — all `.js` files use ESM; CI workflows using `require()` will crash
@@ -616,7 +634,7 @@ Categories, source grades, and tag rules are defined **independently** in both `
 - `scripts/` contains deployment and test scripts; `docs/reports/` contains historical optimization reports
 - v2 localStorage keys: `agentWorkflowHistory` (workflow run records, max 12), `dailyBriefingReport` (last generated briefing). AI Elf uses per-agent keys. All `setItem` calls must be wrapped in try-catch for `QuotaExceededError`.
 - WorkflowEngine: `condition` node failure halts the entire rest of the chain (subsequent nodes marked `skipped`), it does NOT branch. LLM nodes require `ctx.llmConfig` (baseUrl/apiKey/selectedModel) and an agent with `systemPrompt`; local nodes ignore LLM config entirely.
-- `App.jsx` (~2800 lines) imports v2 modules and Zustand stores. When editing workflow/profile/materials state, prefer reading from the store directly rather than passing as props. Inline workflow constants (`WORKFLOW_SKILL_CATALOG`, `WORKFLOW_CONDITION_METRICS`, `getWorkflowSkillMeta`, `isWorkflowSkillId`, `formatWorkflowNodeConfig`) are still defined in App.jsx for live usage; the larger constants (`DEFAULT_AGENT_WORKFLOW`, `WORKFLOW_TEMPLATE_LIBRARY`, `normalizeWorkflowTemplate`, `createWorkflowTemplateInstance`, `validateWorkflowImportPayload`) live in `src/constants/workflowConstants.js` and are consumed by `workflowStore.js`.
+- `App.jsx` (~3000 lines) imports v2 modules and Zustand stores. When editing workflow/profile/materials state, prefer reading from the store directly rather than passing as props. Inline workflow constants (`WORKFLOW_SKILL_CATALOG`, `WORKFLOW_CONDITION_METRICS`, `getWorkflowSkillMeta`, `isWorkflowSkillId`, `formatWorkflowNodeConfig`) are still defined in App.jsx for live usage; the larger constants (`DEFAULT_AGENT_WORKFLOW`, `WORKFLOW_TEMPLATE_LIBRARY`, `normalizeWorkflowTemplate`, `createWorkflowTemplateInstance`, `validateWorkflowImportPayload`) live in `src/constants/workflowConstants.js` and are consumed by `workflowStore.js`.
 - Runtime `ReferenceError: useMemo is not defined` means a component file uses `useMemo` without importing it from `react` — add `import { useMemo } from 'react'` to that file.
 - Intelligence API: `GET /api/intelligence/events|items|opportunities|sectors|alerts` return external industry/competitor/supply-chain data. In dev mode, `SILICON_E2E=1` enables fixture responses for offline testing.
 - Agent auth: `server/http/agentAuth.js` provides middleware for agent run endpoints; agent context (`agentContext.js`) injects user profile + preferences + relevant memories into each agent execution.
