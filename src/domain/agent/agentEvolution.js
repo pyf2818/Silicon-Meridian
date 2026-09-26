@@ -41,6 +41,7 @@ function emptyProfile() {
     stats: { runs: 0, toolCalls: 0, tokens: 0, skills: 0, goalRounds: 0, lastAt: 0 },
     experiences: [], // { id, at, topic, lesson, source }
     milestones: [],  // { id, at, level, label }
+    history: [],     // v39 { at, score, runs } 成长值时间序列（图形化趋势用，封顶 90 点）
   };
 }
 
@@ -88,6 +89,7 @@ function ensureProfile(agentId) {
   if (!p.stats || typeof p.stats !== 'object') p.stats = emptyProfile().stats;
   if (!Array.isArray(p.experiences)) p.experiences = [];
   if (!Array.isArray(p.milestones)) p.milestones = [];
+  if (!Array.isArray(p.history)) p.history = []; // v39 老档案自愈
   return p;
 }
 
@@ -120,14 +122,16 @@ export function getEvolution(agentId) {
     stats,
     experiences: [...p.experiences].sort((a, b) => b.at - a.at),
     milestones: [...p.milestones].sort((a, b) => a.level - b.level),
+    history: [...p.history],
     level: lv,
   };
 }
 
 /** 一次真实工作结束后的统计累计（runs/tokens/toolCalls/skills）。
- *  跨过等级阈值时自动写入里程碑（进化树节点）。返回是否升级。 */
+ *  v39：每次累计都追加 history 快照（at+score+runs，封顶 90 点）供图形化趋势展示。
+ *  跨过等级阈值时自动写入里程碑（进化树节点）。返回 { leveledUp, score }。 */
 export function recordAgentRun(agentId, { tokens = 0, toolCalls = 0, skillsUsed = 0, goalRounds = 0 } = {}) {
-  if (!agentId) return false;
+  if (!agentId) return { leveledUp: false, score: 0 };
   const p = ensureProfile(agentId);
   p.stats.runs = (Number(p.stats.runs) || 0) + 1;
   p.stats.tokens = (Number(p.stats.tokens) || 0) + (Number(tokens) || 0);
@@ -135,7 +139,8 @@ export function recordAgentRun(agentId, { tokens = 0, toolCalls = 0, skillsUsed 
   p.stats.skills = (Number(p.stats.skills) || 0) + (Number(skillsUsed) || 0);
   p.stats.goalRounds = (Number(p.stats.goalRounds) || 0) + (Number(goalRounds) || 0);
   p.stats.lastAt = Date.now();
-  const before = evolutionLevelOf(getEvolutionScore({ ...p.stats, experienceCount: p.experiences.length }));
+  const score = getEvolutionScore({ ...p.stats, experienceCount: p.experiences.length });
+  const before = evolutionLevelOf(score);
   // 以「本次累计后」的等级为准，检查是否需要补里程碑
   let leveledUp = false;
   const existingLevels = new Set(p.milestones.map(m => m.level));
@@ -148,9 +153,14 @@ export function recordAgentRun(agentId, { tokens = 0, toolCalls = 0, skillsUsed 
     }].slice(-MAX_MILESTONES);
     leveledUp = true;
   }
+  // v39 成长值历史点：与上次快照同分数且间隔 <60s 时合并（流式重试等瞬态不去重趋势）
+  const last = p.history[p.history.length - 1];
+  if (!last || last.score !== score || Date.now() - last.at > 60_000) {
+    p.history = [...p.history, { at: Date.now(), score, runs: p.stats.runs }].slice(-90);
+  }
   persist();
   notify();
-  return leveledUp;
+  return { leveledUp, score };
 }
 
 /** 沉淀一条工作经验（去重 + 封顶）。返回是否真的写入了。 */

@@ -29501,6 +29501,27 @@ body {
 }
 .evo-level-hint { margin-top: 6px; font-size: 10.5px; line-height: 1.6; color: var(--text-muted); }
 .evo-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px; }
+/* ── v39 成长趋势图（EvolutionProfile）── */
+.evo-trend {
+  margin-top: 12px;
+  padding: 8px 10px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-cyan, #22d3ee) 4%, transparent);
+  color: var(--text-muted, #64748b);
+}
+.evo-trend-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.evo-trend-title { font-size: 11.5px; font-weight: 600; color: var(--text-primary); }
+.evo-trend-delta { font-size: 10px; }
+.evo-trend-delta.is-up { color: var(--accent-cyan, #22d3ee); }
+.evo-trend-delta.is-flat { opacity: 0.7; }
+.evo-trend-svg { display: block; width: 100%; height: 92px; }
+.evo-trend-lvlabel { font-size: 8px; fill: var(--text-muted, #64748b); }
+.evo-trend-foot { display: flex; justify-content: space-between; font-size: 9.5px; opacity: 0.75; margin-top: 2px; }
+.evo-trend-empty {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 64px; font-size: 10.5px; text-align: center;
+}
 .evo-stat {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 8px 4px; border-radius: 9px; border: 1px solid var(--border-color);

@@ -23,7 +23,7 @@ export function VerifiedBadge({ badge, compact = false }) {
   );
 }
 
-export function ChuanChuanV2({ size = 120, className = '' }) {
+export function ChuanChuanV2({ size = 120, className = '', guide = false }) {
   const uid = useId().replace(/[:]/g, '');
   return (
     <svg width={size} height={size} viewBox="0 0 220 220" className={`chuanchuan-v2 ${className}`} aria-hidden="true">
@@ -44,11 +44,35 @@ export function ChuanChuanV2({ size = 120, className = '' }) {
           <stop offset="0%" stopColor="#fb7185" stopOpacity="0.65" />
           <stop offset="100%" stopColor="#fb7185" stopOpacity="0" />
         </radialGradient>
+        {/* v39 引导员光环渐变 */}
+        <linearGradient id={`cc-halo-${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#67e8f9" stopOpacity="0.9" />
+          <stop offset="60%" stopColor="#38bdf8" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="#818cf8" stopOpacity="0.85" />
+        </linearGradient>
       </defs>
+
+      {/* v39 引导员光环：外圈双弧（缓慢公转，标识「官方引导员」身份） */}
+      {guide && (
+        <g className="cc-halo" fill="none">
+          <circle cx="110" cy="118" r="100" stroke={`url(#cc-halo-${uid})`} strokeWidth="3.5" strokeDasharray="46 26 8 26" strokeLinecap="round" opacity="0.85" />
+          <circle cx="110" cy="118" r="92" stroke="#a5f3fc" strokeWidth="1.4" strokeDasharray="2 12" strokeLinecap="round" opacity="0.55" />
+        </g>
+      )}
 
       <ellipse cx="110" cy="203" rx="52" ry="9" fill="#0e7490" opacity="0.22" />
 
       <g className="cc-float">
+        {/* v39 AI 芯片天线：硅基身份标识（触杆 + 方形芯片 + 呼吸灯） */}
+        <g className="cc-antenna">
+          <line x1="110" y1="30" x2="110" y2="12" stroke="#38bdf8" strokeWidth="4" strokeLinecap="round" />
+          <g className="cc-antenna-blink">
+            <rect x="101" y="0" width="18" height="14" rx="3.5" fill="#22d3ee" stroke="#0ea5e9" strokeWidth="1.6" />
+            <circle cx="110" cy="7" r="2.6" fill="#ecfeff" />
+            <path d="M104.5,7 h3 M112.5,7 h3" stroke="#0e7490" strokeWidth="1.2" strokeLinecap="round" />
+          </g>
+        </g>
+
         {/* 川字鳍（三根，中高侧低，保持「川」意象） */}
         <g strokeLinecap="round" fill="none" strokeWidth="7">
           <path className="cc-fin cc-fin-l" d="M84,40 Q76,22 88,10" stroke="#7dd3fc" />
@@ -79,17 +103,19 @@ export function ChuanChuanV2({ size = 120, className = '' }) {
         <circle cx="76" cy="138" r="2.6" fill="#f0f9ff" />
         <circle cx="131" cy="105" r="2.6" fill="#f0f9ff" />
 
-        {/* 大眼睛（含眨眼动效）+ 高光双点 */}
+        {/* 大眼睛（含眨眼动效）+ 高光双点 + v39 下弧眼睑反光（眼神更灵动） */}
         <g className="cc-eyes">
           <g className="cc-eye">
             <ellipse cx="87" cy="126" rx="10.5" ry="13" fill="#0f2f3d" />
             <circle cx="91" cy="121" r="4" fill="#ffffff" />
             <circle cx="83.5" cy="131" r="1.8" fill="#a5f3fc" opacity="0.9" />
+            <path d="M79,133 Q87,137 95,133" stroke="#67e8f9" strokeWidth="1.6" strokeLinecap="round" opacity="0.65" fill="none" />
           </g>
           <g className="cc-eye">
             <ellipse cx="133" cy="126" rx="10.5" ry="13" fill="#0f2f3d" />
             <circle cx="137" cy="121" r="4" fill="#ffffff" />
             <circle cx="129.5" cy="131" r="1.8" fill="#a5f3fc" opacity="0.9" />
+            <path d="M125,133 Q133,137 141,133" stroke="#67e8f9" strokeWidth="1.6" strokeLinecap="round" opacity="0.65" fill="none" />
           </g>
         </g>
 

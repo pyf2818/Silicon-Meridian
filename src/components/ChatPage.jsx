@@ -3,6 +3,8 @@ import { useChat } from '../hooks/useChat.js';
 import CommunityAvatar from './community/CommunityAvatar.jsx';
 import MascotState from './community/MascotState.jsx';
 import PostCover from './community/PostCover.jsx';
+import ChuanChuanGuide, { CHUANCHUAN_CONTACT } from './community/ChuanChuanGuide.jsx';
+import { ChuanChuanV2 } from './community/ChuanChuanV2.jsx';
 
 const label = item => item?.displayName || item?.username || item?.title || '未命名会话';
 const DAY = 86400000;
@@ -43,6 +45,7 @@ export default function ChatPage({ user, pendingShare, onConsumeShare, onRequire
   const [manualId, setManualId] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState('');
   const [streakTick, setStreakTick] = useState(0);
+  const [guideOpen, setGuideOpen] = useState(false);
   const active = useMemo(() => chat.conversations.find(item => item.id === chat.activeId), [chat.conversations, chat.activeId]);
   const streaks = useMemo(() => readStreaks(), [streakTick]);
   const now = dayStart(Date.now());
@@ -114,6 +117,16 @@ export default function ChatPage({ user, pendingShare, onConsumeShare, onRequire
           <div className="chat-discover-title">按用户 ID 添加</div>
           <div className="chat-discover-manual"><input value={manualId} onChange={e => setManualId(e.target.value)} placeholder="粘贴用户 ID" /><button onClick={() => addById()}>添加</button></div>
         </div>}
+        {(!search || `${CHUANCHUAN_CONTACT.displayName}${CHUANCHUAN_CONTACT.username}`.includes(search)) && <div
+          className="chat-contact chat-contact-system"
+          role="button" tabIndex={0}
+          onClick={() => setGuideOpen(true)}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setGuideOpen(true); } }}
+        >
+          <div className="cc-guide-entry-avatar"><ChuanChuanV2 size={34} guide /></div>
+          <span><strong>{CHUANCHUAN_CONTACT.displayName}</strong><small>{CHUANCHUAN_CONTACT.tagline}</small></span>
+          <button onClick={e => { e.stopPropagation(); setGuideOpen(true); }}>咨询</button>
+        </div>}
         {chat.contacts.filter(item => !search || `${item.displayName}${item.username}`.includes(search)).map(contact => <div key={contact.id} className={`chat-contact ${confirmDeleteId === contact.id ? 'confirming' : ''}`}>
           <CommunityAvatar name={label(contact)} src={contact.avatar || contact.avatarUrl || ''} size={34} online />
           <span><strong>{label(contact)}</strong><small>@{contact.username}</small></span>
@@ -128,5 +141,6 @@ export default function ChatPage({ user, pendingShare, onConsumeShare, onRequire
         </div>
       </aside>
     </div>
+    <ChuanChuanGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
   </section>;
 }

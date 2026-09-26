@@ -191,6 +191,9 @@ playwright-report/
 test-results/
 .data/
 
+# 技能运行时数据（用户从 GitHub/zip 安装的技能属部署本地数据，不随仓库走；builtin/work/_template 才是产品资产）
+/skills/user/
+
 # 探针运行时输出目录（每次探针用新目录名，规避回收站删除的沙盒限制）
 /.pw-*/
 

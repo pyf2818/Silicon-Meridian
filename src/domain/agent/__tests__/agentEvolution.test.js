@@ -90,7 +90,8 @@ describe('agentEvolution 进化档案', () => {
   });
 
   it('异常输入不崩溃（空 id / 非法对象）', () => {
-    expect(recordAgentRun('', {})).toBe(false);
+    // v39：recordAgentRun 返回 { leveledUp, score }（含 history 快照语义）
+    expect(recordAgentRun('', {})).toEqual({ leveledUp: false, score: 0 });
     expect(depositExperience('', { lesson: 'x'.repeat(20) })).toBe(false);
     expect(getEvolution('')).toBeTruthy();
   });

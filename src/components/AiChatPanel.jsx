@@ -1252,13 +1252,20 @@ export default function AiChatPanel({
       observeReply(finalContent);
       setLearnedVersion(v => v + 1);
       // v26 #13 Agent 进化：真实工作统计 + 工作经验沉淀（失败静默，不影响主流程）
+      // v39：纯聊天路径补 tokens 估算（中文 ≈1.6 字符/token）——此前此路径 runs+1 之外
+      // 全部记 0，成长值几乎不动（用户感知「数值始终不变」的直接原因之一）。
+      // 经验沉淀加最小长度门槛（<120 字的短问答没有沉淀价值，防噪声刷屏）。
       try {
-        recordAgentRun(agent?.id || 'orchestrator', {});
-        depositExperience(agent?.id || 'orchestrator', {
-          topic: String(userMessage?.content || '').replace(/\s+/g, ' ').slice(0, 40),
-          lesson: String(finalContent || '').replace(/\s+/g, ' ').slice(0, 200),
-          source: 'chat',
+        recordAgentRun(agent?.id || 'orchestrator', {
+          tokens: Math.ceil(String(finalContent || '').length / 1.6),
         });
+        if (String(finalContent || '').length >= 120) {
+          depositExperience(agent?.id || 'orchestrator', {
+            topic: String(userMessage?.content || '').replace(/\s+/g, ' ').slice(0, 40),
+            lesson: String(finalContent || '').replace(/\s+/g, ' ').slice(0, 200),
+            source: 'chat',
+          });
+        }
       } catch { /* 进化统计失败不影响主流程 */ }
       // 自动提取行动项
       const extracted = extractTodos(finalContent);

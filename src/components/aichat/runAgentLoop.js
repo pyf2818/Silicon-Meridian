@@ -366,7 +366,9 @@ export async function runAgentLoop({
   setLearnedVersion(v => v + 1);
   // 进化档案统计：runAgentLoop 路径此前从未记录 → 进化数值只被流式路径累加，
   // 走本路径的对话完全不计入（用户「用了好久一点没增长」的根因）。
+  // v39：usage 累计本来就有，补记 tokens——否则成长值公式里 token 项恒 0，增长肉眼不可见。
   recordAgentRun(agent?.id || 'orchestrator', {
+    tokens: Number(usage?.total_tokens) || 0,
     toolCalls: toolCallTrace.length,
     skillsUsed: toolCallTrace.filter(tc => tc?.name === 'create_skill' || String(tc?.args || '').includes('"title"')).length,
   });
